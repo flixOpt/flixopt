@@ -427,7 +427,7 @@ class SegmentedCalculation(Calculation):
         **Sequential Solving**: Each segment solved independently but with coupling
 
     Limitations and Constraints:
-        **Investment Parameters**: InvestParameters are not supported in segmented calculations
+        **Investment Parameters**: SizingParameters are not supported in segmented calculations
         as investment decisions must be made for the entire time horizon, not per segment.
 
         **Global Constraints**: Time-horizon-wide constraints (flow_hours_total_min/max,

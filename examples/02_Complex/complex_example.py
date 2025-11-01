@@ -59,7 +59,7 @@ if __name__ == '__main__':
         Q_th=fx.Flow(
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus
-            size=fx.InvestParameters(
+            size=fx.SizingParameters(
                 effects_of_size=1000,  # Fixed investment costs
                 fixed_size=50,  # Fixed size
                 mandatory=True,  # Forced investment
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         'Speicher',
         charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
         discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
-        capacity_in_flow_hours=fx.InvestParameters(
+        capacity_in_flow_hours=fx.SizingParameters(
             piecewise_effects_of_investment=segmented_investment_effects,  # Investment effects
             mandatory=True,  # Forced investment
             minimum_size=0,

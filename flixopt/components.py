@@ -15,7 +15,7 @@ from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
-from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
+from .interface import OnOffParameters, PiecewiseConversion, SizingParameters
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -205,9 +205,9 @@ class LinearConverter(Component):
                         )
         if self.piecewise_conversion:
             for flow in self.flows.values():
-                if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
+                if isinstance(flow.size, SizingParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'Using a Flow with variable size (SizingParameters without fixed_size) '
                         f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
                         f'({flow.label_full}).'
                     )
@@ -273,7 +273,7 @@ class Storage(Component):
         charging: Incoming flow for loading the storage.
         discharging: Outgoing flow for unloading the storage.
         capacity_in_flow_hours: Storage capacity in flow-hours (kWh, m³, kg).
-            Scalar for fixed size or InvestParameters for optimization.
+            Scalar for fixed size or SizingParameters for optimization.
         relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
         relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
         initial_charge_state: Charge at start. Numeric or 'lastValueOfSim'. Default: 0.
@@ -332,7 +332,7 @@ class Storage(Component):
             label='pumped_hydro',
             charging=pump_flow,
             discharging=turbine_flow,
-            capacity_in_flow_hours=InvestParameters(
+            capacity_in_flow_hours=SizingParameters(
                 minimum_size=1000,  # Minimum economic scale
                 maximum_size=10000,  # Site constraints
                 specific_effects={'cost': 150},  # €150/MWh capacity
@@ -386,7 +386,7 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: PeriodicDataUser | InvestParameters,
+        capacity_in_flow_hours: PeriodicDataUser | SizingParameters,
         relative_minimum_charge_state: TemporalDataUser = 0,
         relative_maximum_charge_state: TemporalDataUser = 1,
         initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
@@ -470,8 +470,8 @@ class Storage(Component):
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|InvestParameters')
+        if isinstance(self.capacity_in_flow_hours, SizingParameters):
+            self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|SizingParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
                 f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
@@ -491,8 +491,8 @@ class Storage(Component):
             else:
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
 
-        # Use new InvestParameters methods to get capacity bounds
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+        # Use new SizingParameters methods to get capacity bounds
+        if isinstance(self.capacity_in_flow_hours, SizingParameters):
             minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
             maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
         else:
@@ -517,8 +517,8 @@ class Storage(Component):
                 )
 
         if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                self.discharging.size, InvestParameters
+            if not isinstance(self.charging.size, SizingParameters) or not isinstance(
+                self.discharging.size, SizingParameters
             ):
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
@@ -559,10 +559,10 @@ class Transmission(Component):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        in1: The primary inflow (side A). Pass InvestParameters here for capacity optimization.
+        in1: The primary inflow (side A). Pass SizingParameters here for capacity optimization.
         out1: The primary outflow (side B).
         in2: Optional secondary inflow (side B) for bidirectional operation.
-            If in1 has InvestParameters, in2 will automatically have matching capacity.
+            If in1 has SizingParameters, in2 will automatically have matching capacity.
         out2: Optional secondary outflow (side A) for bidirectional operation.
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
             Applied as: output = input × (1 - relative_losses)
@@ -572,7 +572,7 @@ class Transmission(Component):
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
             reality for most transmission systems. Default is True.
-        balanced: Whether to equate the size of the in1 and in2 Flow. Needs InvestParameters in both Flows.
+        balanced: Whether to equate the size of the in1 and in2 Flow. Needs SizingParameters in both Flows.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -611,7 +611,7 @@ class Transmission(Component):
             in1=Flow(
                 label='heat_supply',
                 bus=central_plant_bus,
-                size=InvestParameters(
+                size=SizingParameters(
                     minimum_size=1000,  # Minimum 1 MW capacity
                     maximum_size=10000,  # Maximum 10 MW capacity
                     specific_effects={'cost': 200},  # €200/kW capacity
@@ -645,7 +645,7 @@ class Transmission(Component):
 
         For bidirectional transmission, each direction has independent loss calculations.
 
-        When using InvestParameters on in1, the capacity automatically applies to in2
+        When using SizingParameters on in1, the capacity automatically applies to in2
         to maintain consistent bidirectional capacity without additional investment variables.
 
         Absolute losses force the creation of binary on/off variables, which increases
@@ -703,9 +703,9 @@ class Transmission(Component):
 
         if self.balanced:
             if self.in2 is None:
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+                raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
+            if not isinstance(self.in1.size, SizingParameters) or not isinstance(self.in2.size, SizingParameters):
+                raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
             if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
                 self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
             ).any():
@@ -863,7 +863,7 @@ class StorageModel(ComponentModel):
             short_name='charge_state',
         )
 
-        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+        if isinstance(self.element.capacity_in_flow_hours, SizingParameters):
             self.add_submodels(
                 InvestmentModel(
                     model=self._model,
@@ -918,7 +918,7 @@ class StorageModel(ComponentModel):
     @property
     def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
-        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+        if not isinstance(self.element.capacity_in_flow_hours, SizingParameters):
             return (
                 relative_lower_bound * self.element.capacity_in_flow_hours,
                 relative_upper_bound * self.element.capacity_in_flow_hours,
@@ -1187,7 +1187,7 @@ class Source(Component):
                 Flow(
                     label='solar_power',
                     bus=electricity_bus,
-                    size=InvestParameters(
+                    size=SizingParameters(
                         minimum_size=0,
                         maximum_size=50000,  # Up to 50 MW
                         specific_effects={'cost': 800},  # €800/kW installed

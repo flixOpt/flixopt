@@ -260,7 +260,7 @@ class TestStorageModel:
             'InvestStorage',
             charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
             discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=fx.InvestParameters(
+            capacity_in_flow_hours=fx.SizingParameters(
                 effects_of_size=100,
                 effects_per_size=10,
                 minimum_size=20,
@@ -459,7 +459,7 @@ class TestStorageModel:
             'InvestStorage',
             charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
             discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=fx.InvestParameters(**invest_params),
+            capacity_in_flow_hours=fx.SizingParameters(**invest_params),
             initial_charge_state=0,
             eta_charge=0.9,
             eta_discharge=0.9,

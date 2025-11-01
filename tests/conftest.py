@@ -158,7 +158,7 @@ class Converters:
                     relative_minimum=5 / 50,
                     relative_maximum=1,
                     previous_flow_rate=50,
-                    size=fx.InvestParameters(
+                    size=fx.SizingParameters(
                         effects_of_size=1000,
                         fixed_size=50,
                         mandatory=True,
@@ -267,7 +267,7 @@ class Storage:
             'Speicher',
             charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
-            capacity_in_flow_hours=fx.InvestParameters(effects_of_size=20, fixed_size=30, mandatory=True),
+            capacity_in_flow_hours=fx.SizingParameters(effects_of_size=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
             relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
             relative_maximum_final_charge_state=0.8,
@@ -280,7 +280,7 @@ class Storage:
     @staticmethod
     def complex():
         """Complex storage with piecewise investment from flow_system_complex"""
-        invest_speicher = fx.InvestParameters(
+        invest_speicher = fx.SizingParameters(
             effects_of_size=0,
             piecewise_effects_of_investment=fx.PiecewiseEffects(
                 piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),

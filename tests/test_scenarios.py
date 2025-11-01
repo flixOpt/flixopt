@@ -4,7 +4,7 @@ import pytest
 from linopy.testing import assert_linequal
 
 import flixopt as fx
-from flixopt.commons import Effect, InvestParameters, Sink, Source, Storage
+from flixopt.commons import Effect, Sink, SizingParameters, Source, Storage
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
@@ -62,7 +62,7 @@ def test_system():
     power_gen = Flow(
         label='Generation',
         bus=electricity_bus.label_full,
-        size=InvestParameters(
+        size=SizingParameters(
             minimum_size=0,
             maximum_size=20,
             effects_per_size={'costs': 100},  # €/kW
@@ -78,7 +78,7 @@ def test_system():
         label='Battery',
         charging=storage_charge,
         discharging=storage_discharge,
-        capacity_in_flow_hours=InvestParameters(
+        capacity_in_flow_hours=SizingParameters(
             minimum_size=0,
             maximum_size=50,
             effects_per_size={'costs': 50},  # €/kWh
@@ -149,7 +149,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             relative_minimum=5 / 50,
             relative_maximum=1,
             previous_flow_rate=50,
-            size=fx.InvestParameters(
+            size=fx.SizingParameters(
                 effects_of_size=1000,
                 fixed_size=50,
                 mandatory=True,
@@ -169,7 +169,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         Q_fu=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
     )
 
-    invest_speicher = fx.InvestParameters(
+    invest_speicher = fx.SizingParameters(
         effects_of_size=0,
         piecewise_effects_of_investment=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
@@ -459,7 +459,7 @@ def test_size_equality_constraints():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(
+                size=fx.SizingParameters(
                     minimum_size=10,
                     maximum_size=100,
                     effects_per_size={'cost': 100},
@@ -499,7 +499,7 @@ def test_flow_rate_equality_constraints():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(
+                size=fx.SizingParameters(
                     minimum_size=10,
                     maximum_size=100,
                     effects_per_size={'cost': 100},
@@ -539,7 +539,7 @@ def test_selective_scenario_independence():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
+                size=fx.SizingParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )
@@ -565,7 +565,7 @@ def test_selective_scenario_independence():
     ]
     assert len(solar_flow_constraints) == 0
 
-    # Demand should NOT have size constraints (no InvestParameters, size is fixed)
+    # Demand should NOT have size constraints (no SizingParameters, size is fixed)
     demand_size_constraints = [c for c in constraint_names if 'demand(in)|size' in c and 'scenario_independent' in c]
     assert len(demand_size_constraints) == 0
 
@@ -599,7 +599,7 @@ def test_scenario_parameters_io_persistence():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
+                size=fx.SizingParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )
@@ -640,7 +640,7 @@ def test_scenario_parameters_io_with_calculation():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
+                size=fx.SizingParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )

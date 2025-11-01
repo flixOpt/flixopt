@@ -670,7 +670,7 @@ class PiecewiseEffects(Interface):
 
 
 @register_class_for_io
-class InvestParameters(Interface):
+class SizingParameters(Interface):
     """Define investment decision parameters with flexible sizing and effect modeling.
 
     This class models investment decisions in optimization problems, supporting
@@ -693,7 +693,7 @@ class InvestParameters(Interface):
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
-        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+        [SizingParameters](../user-guide/mathematical-notation/features/SizingParameters.md)
 
     Args:
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
@@ -711,8 +711,6 @@ class InvestParameters(Interface):
             Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
         piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
             Combinable with effects_of_size and effects_per_size.
-        effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
-            Dict: {'effect_name': value}.
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
             For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
 
@@ -720,8 +718,6 @@ class InvestParameters(Interface):
         fix_effects: **Deprecated**. Use `effects_of_size` instead.
             Will be removed in version 4.0.
         specific_effects: **Deprecated**. Use `effects_per_size` instead.
-            Will be removed in version 4.0.
-        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
             Will be removed in version 4.0.
         piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
             Will be removed in version 4.0.
@@ -742,7 +738,7 @@ class InvestParameters(Interface):
         Simple binary investment (solar panels):
 
         ```python
-        solar_investment = InvestParameters(
+        solar_investment = SizingParameters(
             fixed_size=100,  # 100 kW system (binary decision)
             mandatory=False,  # Investment is optional
             effects_of_size={
@@ -759,7 +755,7 @@ class InvestParameters(Interface):
         Flexible sizing with economies of scale:
 
         ```python
-        battery_investment = InvestParameters(
+        battery_investment = SizingParameters(
             minimum_size=10,  # Minimum viable system size (kWh)
             maximum_size=1000,  # Maximum installable capacity
             mandatory=False,  # Investment is optional
@@ -791,7 +787,7 @@ class InvestParameters(Interface):
         Mandatory replacement with retirement costs:
 
         ```python
-        boiler_replacement = InvestParameters(
+        boiler_replacement = SizingParameters(
             minimum_size=50,
             maximum_size=200,
             mandatory=False,  # Can choose not to replace
@@ -803,10 +799,6 @@ class InvestParameters(Interface):
                 'cost': 400,  # €400/kW capacity
                 'maintenance': 25,  # Annual maintenance per kW
             },
-            effects_of_retirement={
-                'cost': 8000,  # Demolition if not replaced
-                'environmental': 100,  # Disposal fees
-            },
         )
         ```
 
@@ -814,14 +806,14 @@ class InvestParameters(Interface):
 
         ```python
         # Gas turbine option
-        gas_turbine = InvestParameters(
+        gas_turbine = SizingParameters(
             fixed_size=50,  # MW
             effects_of_size={'cost': 2500000, 'CO2': 1250000},
             effects_per_size={'fuel_cost': 45, 'maintenance': 12},
         )
 
         # Wind farm option
-        wind_farm = InvestParameters(
+        wind_farm = SizingParameters(
             minimum_size=20,
             maximum_size=100,
             effects_of_size={'cost': 1000000, 'CO2': -5000000},
@@ -832,7 +824,7 @@ class InvestParameters(Interface):
         Technology learning curve:
 
         ```python
-        hydrogen_electrolyzer = InvestParameters(
+        hydrogen_electrolyzer = SizingParameters(
             minimum_size=1,
             maximum_size=50,  # MW
             piecewise_effects_of_investment=PiecewiseEffects(
@@ -881,7 +873,6 @@ class InvestParameters(Interface):
         mandatory: bool = False,
         effects_of_size: PeriodicEffectsUser | None = None,
         effects_per_size: PeriodicEffectsUser | None = None,
-        effects_of_retirement: PeriodicEffectsUser | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
         **kwargs,
@@ -890,9 +881,6 @@ class InvestParameters(Interface):
         effects_of_size = self._handle_deprecated_kwarg(kwargs, 'fix_effects', 'effects_of_size', effects_of_size)
         effects_per_size = self._handle_deprecated_kwarg(
             kwargs, 'specific_effects', 'effects_per_size', effects_per_size
-        )
-        effects_of_retirement = self._handle_deprecated_kwarg(
-            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
         )
         piecewise_effects_of_investment = self._handle_deprecated_kwarg(
             kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
@@ -912,9 +900,6 @@ class InvestParameters(Interface):
         self._validate_kwargs(kwargs)
 
         self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
-        self.effects_of_retirement: PeriodicEffectsUser = (
-            effects_of_retirement if effects_of_retirement is not None else {}
-        )
         self.fixed_size = fixed_size
         self.mandatory = mandatory
         self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
@@ -928,12 +913,6 @@ class InvestParameters(Interface):
             label_prefix=name_prefix,
             effect_values=self.effects_of_size,
             label_suffix='effects_of_size',
-            dims=['period', 'scenario'],
-        )
-        self.effects_of_retirement = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_retirement,
-            label_suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
         self.effects_per_size = flow_system.fit_effects_to_model_coords(
@@ -1019,16 +998,6 @@ class InvestParameters(Interface):
         return self.effects_per_size
 
     @property
-    def divest_effects(self) -> PeriodicEffectsUser:
-        """Deprecated property. Use effects_of_retirement instead."""
-        warnings.warn(
-            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_retirement
-
-    @property
     def piecewise_effects(self) -> PiecewiseEffects | None:
         """Deprecated property. Use piecewise_effects_of_investment instead."""
         warnings.warn(
@@ -1047,7 +1016,7 @@ class InvestParameters(Interface):
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:
-        """Format InvestParameters for display in repr methods.
+        """Format SizingParameters for display in repr methods.
 
         Returns:
             Formatted string showing size information
@@ -1077,188 +1046,6 @@ class InvestParameters(Interface):
             ),
             coords=(pd.Index(periods, name='period'),),
         ).rename('linked_periods')
-
-
-@register_class_for_io
-class SizingParameters(Interface):
-    """Define capacity sizing parameters with flexible bounds and size-dependent effects.
-
-    This class models capacity sizing decisions, supporting both binary (invest/don't invest)
-    and continuous sizing choices with size-dependent effects. It focuses purely on capacity
-    constraints without investment timing considerations.
-
-    SizingParameters can be used standalone for simple capacity planning or combined with
-    InvestmentParameters for complex investment timing optimization.
-
-    Sizing Decision Types:
-        **Binary Sizing**: Fixed size installations creating yes/no decisions
-        (e.g., install a 100 kW generator or not)
-
-        **Continuous Sizing**: Variable size decisions with minimum/maximum bounds
-        (e.g., battery capacity from 10-1000 kWh, pipeline diameter optimization)
-
-    Cost Modeling:
-        - **Size-Dependent Effects**: Linear costs proportional to size (€/kW, €/m²)
-
-    Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [SizingParameters](../user-guide/mathematical-notation/features/SizingParameters.md)
-
-    Args:
-        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
-        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
-            Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
-            Ignored if fixed_size is specified.
-        mandatory: Controls whether sizing is required. When True, forces capacity to be
-            non-zero (useful for mandatory capacity requirements). When False (default),
-            optimization can choose zero capacity.
-        specific_effects: Variable costs proportional to size (per-unit costs).
-            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
-        linked_periods: Describes which periods have linked sizes. 1 means linked, 0 means size=0.
-            None means no linked periods. For convenience, pass a tuple containing the first and
-            last period (2025, 2039), linking them and those in between.
-
-    Examples:
-        Simple binary sizing (solar panels):
-
-        ```python
-        solar_sizing = SizingParameters(
-            fixed_size=100,  # 100 kW system (binary decision)
-            mandatory=False,  # Capacity is optional
-            specific_effects={
-                'cost': 1200,  # €1200/kW for panels (annualized)
-                'CO2': -800,  # kg CO2 avoided per kW annually
-            },
-        )
-        ```
-
-        Flexible continuous sizing:
-
-        ```python
-        battery_sizing = SizingParameters(
-            minimum_size=10,  # Minimum viable system size (kWh)
-            maximum_size=1000,  # Maximum installable capacity
-            mandatory=False,  # Capacity is optional
-            specific_effects={
-                'cost': 600,  # €600/kWh annualized cost
-                'space': 0.5,  # m² per kWh
-            },
-        )
-        ```
-
-        Mandatory capacity with linked periods:
-
-        ```python
-        turbine_sizing = SizingParameters(
-            minimum_size=50,
-            maximum_size=200,
-            mandatory=True,  # Must have capacity
-            linked_periods=(2025, 2030),  # Same size across these years
-            specific_effects={
-                'cost': 400,  # €400/kW capacity
-                'maintenance': 25,  # Annual maintenance per kW
-            },
-        )
-        ```
-
-    Common Use Cases:
-        - Power generation: Plant sizing, capacity planning
-        - Energy storage: Battery sizing, capacity optimization
-        - Infrastructure: Network capacity, facility sizing
-        - Industrial equipment: Capacity expansion, production sizing
-    """
-
-    def __init__(
-        self,
-        fixed_size: PeriodicDataUser | None = None,
-        minimum_size: PeriodicDataUser | None = None,
-        maximum_size: PeriodicDataUser | None = None,
-        mandatory: bool = False,
-        specific_effects: PeriodicEffectsUser | None = None,
-        linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
-    ):
-        self.fixed_size = fixed_size
-        self.mandatory = mandatory
-        self.specific_effects: PeriodicEffectsUser = specific_effects if specific_effects is not None else {}
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big
-        self.linked_periods = linked_periods
-
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.specific_effects = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.specific_effects,
-            label_suffix='specific_effects',
-            dims=['period', 'scenario'],
-        )
-
-        self.minimum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
-        )
-        self.maximum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
-        )
-
-        # Convert tuple (first_period, last_period) to DataArray if needed
-        if isinstance(self.linked_periods, (tuple, list)):
-            if len(self.linked_periods) != 2:
-                raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
-                )
-            if flow_system.periods is None:
-                raise ValueError(
-                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
-                    f'Please define periods in FlowSystem or use linked_periods=None.'
-                )
-            logger.debug(f'Computing linked_periods from {self.linked_periods}')
-            start, end = self.linked_periods
-            if start not in flow_system.periods.values:
-                logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {flow_system.periods.values}'
-                )
-            if end not in flow_system.periods.values:
-                logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
-                )
-            self.linked_periods = InvestParameters.compute_linked_periods(start, end, flow_system.periods)
-            logger.debug(f'Computed {self.linked_periods=}')
-
-        self.linked_periods = flow_system.fit_to_model_coords(
-            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
-        )
-        self.fixed_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
-        )
-
-    @property
-    def minimum_or_fixed_size(self) -> PeriodicData:
-        return self.fixed_size if self.fixed_size is not None else self.minimum_size
-
-    @property
-    def maximum_or_fixed_size(self) -> PeriodicData:
-        return self.fixed_size if self.fixed_size is not None else self.maximum_size
-
-    def format_for_repr(self) -> str:
-        """Format SizingParameters for display in repr methods.
-
-        Returns:
-            Formatted string showing size information
-        """
-        from .io import numeric_to_str_for_repr
-
-        if self.fixed_size is not None:
-            val = numeric_to_str_for_repr(self.fixed_size)
-            status = 'mandatory' if self.mandatory else 'optional'
-            return f'{val} ({status})'
-
-        # Show range if available
-        parts = []
-        if self.minimum_size is not None:
-            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
-        if self.maximum_size is not None:
-            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
-        return ', '.join(parts) if parts else 'sizing'
 
 
 InvestmentPeriodData = PeriodicDataUser

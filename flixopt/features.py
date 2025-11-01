@@ -16,7 +16,13 @@ from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions, Scalar, TemporalData
-    from .interface import InvestParameters, InvestTimingParameters, OnOffParameters, Piecewise, SizingParameters
+    from .interface import (
+        InvestmentParameters,
+        InvestTimingParameters,
+        OnOffParameters,
+        Piecewise,
+        SizingParameters,
+    )
 
 logger = logging.getLogger('flixopt')
 
@@ -119,13 +125,13 @@ class InvestmentModel(Submodel):
 
     """
 
-    parameters: InvestParameters
+    parameters: SizingParameters
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: InvestParameters,
+        parameters: SizingParameters,
         label_of_model: str | None = None,
     ):
         self.piecewise_effects: PiecewiseEffectsModel | None = None

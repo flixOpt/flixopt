@@ -149,7 +149,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=True),
+            size=fx.SizingParameters(minimum_size=20, maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
@@ -212,7 +212,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=False),
+            size=fx.SizingParameters(minimum_size=20, maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
@@ -287,7 +287,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(maximum_size=100, mandatory=False),
+            size=fx.SizingParameters(maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
@@ -362,7 +362,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(maximum_size=100, mandatory=True),
+            size=fx.SizingParameters(maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
         )
@@ -420,7 +420,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(fixed_size=75, mandatory=True),
+            size=fx.SizingParameters(fixed_size=75, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.9,
         )
@@ -455,7 +455,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(
+            size=fx.SizingParameters(
                 minimum_size=20,
                 maximum_size=100,
                 mandatory=False,
@@ -492,7 +492,7 @@ class TestFlowInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(
+            size=fx.SizingParameters(
                 minimum_size=20,
                 maximum_size=100,
                 mandatory=False,
@@ -1074,7 +1074,7 @@ class TestFlowOnInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=False),
+            size=fx.SizingParameters(minimum_size=20, maximum_size=200, mandatory=False),
             relative_minimum=0.2,
             relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
@@ -1175,7 +1175,7 @@ class TestFlowOnInvestModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=True),
+            size=fx.SizingParameters(minimum_size=20, maximum_size=200, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.8,
             on_off_parameters=fx.OnOffParameters(),
@@ -1302,7 +1302,7 @@ class TestFlowWithFixedProfile:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            size=fx.InvestParameters(minimum_size=50, maximum_size=200, mandatory=False),
+            size=fx.SizingParameters(minimum_size=50, maximum_size=200, mandatory=False),
             fixed_relative_profile=profile,
         )
 

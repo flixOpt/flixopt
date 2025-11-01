@@ -19,13 +19,14 @@ from .effects import Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import (
-    InvestParameters,
+    InvestmentParameters,
     InvestTimingParameters,
     OnOffParameters,
     Piece,
     Piecewise,
     PiecewiseConversion,
     PiecewiseEffects,
+    SizingParameters,
 )
 
 __all__ = [
@@ -45,12 +46,14 @@ __all__ = [
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',
-    'InvestParameters',
+    'InvestmentParameters',
+    'SizingParameters',
     'OnOffParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
+    'SizingParameters',
     'AggregationParameters',
     'plotting',
     'results',
