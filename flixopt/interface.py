@@ -711,8 +711,6 @@ class SizingParameters(Interface):
             Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
         piecewise_effects_per_size: Non-linear costs using PiecewiseEffects.
             Combinable with effects_of_size and effects_per_size.
-        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
-            For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
 
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_size` instead.
@@ -874,7 +872,6 @@ class SizingParameters(Interface):
         effects_of_size: PeriodicEffectsUser | None = None,
         effects_per_size: PeriodicEffectsUser | None = None,
         piecewise_effects_per_size: PiecewiseEffects | None = None,
-        linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters using centralized helper
@@ -906,7 +903,6 @@ class SizingParameters(Interface):
         self.piecewise_effects_per_size = piecewise_effects_per_size
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
-        self.linked_periods = linked_periods
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         self.effects_of_size = flow_system.fit_effects_to_model_coords(
@@ -931,33 +927,6 @@ class SizingParameters(Interface):
         )
         self.maximum_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
-        )
-        # Convert tuple (first_period, last_period) to DataArray if needed
-        if isinstance(self.linked_periods, (tuple, list)):
-            if len(self.linked_periods) != 2:
-                raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
-                )
-            if flow_system.periods is None:
-                raise ValueError(
-                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
-                    f'Please define periods in FlowSystem or use linked_periods=None.'
-                )
-            logger.debug(f'Computing linked_periods from {self.linked_periods}')
-            start, end = self.linked_periods
-            if start not in flow_system.periods.values:
-                logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {flow_system.periods.values}'
-                )
-            if end not in flow_system.periods.values:
-                logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
-                )
-            self.linked_periods = self.compute_linked_periods(start, end, flow_system.periods)
-            logger.debug(f'Computed {self.linked_periods=}')
-
-        self.linked_periods = flow_system.fit_to_model_coords(
-            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
         self.fixed_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
@@ -1035,17 +1004,6 @@ class SizingParameters(Interface):
         if self.maximum_size is not None:
             parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
         return ', '.join(parts) if parts else 'invest'
-
-    @staticmethod
-    def compute_linked_periods(first_period: int, last_period: int, periods: pd.Index | list[int]) -> xr.DataArray:
-        return xr.DataArray(
-            xr.where(
-                (first_period <= np.array(periods)) & (np.array(periods) <= last_period),
-                1,
-                0,
-            ),
-            coords=(pd.Index(periods, name='period'),),
-        ).rename('linked_periods')
 
 
 InvestmentPeriodData = PeriodicDataUser

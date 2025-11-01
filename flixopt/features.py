@@ -58,10 +58,6 @@ class SizingModel(Submodel):
 
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
-        if self.parameters.linked_periods is not None:
-            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
-            size_min = size_min * self.parameters.linked_periods
-            size_max = size_max * self.parameters.linked_periods
 
         self.add_variables(
             short_name='size',
@@ -81,13 +77,6 @@ class SizingModel(Submodel):
                 variable=self.size,
                 variable_state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
-
-        if self.parameters.linked_periods is not None:
-            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
-            self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                short_name='linked_periods',
             )
 
     def _add_effects(self):
@@ -145,10 +134,6 @@ class InvestmentModel(Submodel):
 
     def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
-        if self.parameters.linked_periods is not None:
-            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
-            size_min = size_min * self.parameters.linked_periods
-            size_max = size_max * self.parameters.linked_periods
 
         self.add_variables(
             short_name='size',
@@ -168,13 +153,6 @@ class InvestmentModel(Submodel):
                 variable=self.size,
                 variable_state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
-
-        if self.parameters.linked_periods is not None:
-            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
-            self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                short_name='linked_periods',
             )
 
     def _add_effects(self):
