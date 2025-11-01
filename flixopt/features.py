@@ -132,13 +132,13 @@ class SizingModel(_SizeModel):
         return self.available
 
 
-class InvestmentTimingFeature(_SizeModel):
+class InvestmentModel(_SizeModel):
     """
     Model investment timing with fixed lifetime.
 
     This feature works in conjunction with SizingModel to provide full investment modeling:
     - SizingModel: Determines HOW MUCH capacity to install
-    - InvestmentTimingFeature: Determines WHEN to invest
+    - InvestmentModel: Determines WHEN to invest
 
     The model creates binary variables to track:
     - When the investment occurs (one period)
