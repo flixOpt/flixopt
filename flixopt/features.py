@@ -17,9 +17,9 @@ from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions, PeriodicData, Scalar, TemporalData
+    from .effects import PeriodicEffects
     from .interface import (
         InvestmentParameters,
-        InvestTimingParameters,
         OnOffParameters,
         Piecewise,
         SizingParameters,
@@ -60,6 +60,24 @@ class _SizeModel(Submodel):
                 bounds=(size_min, size_max),
             )
 
+    def _add_sizing_effects(self, effects_per_size: PeriodicEffects, effects_of_size: PeriodicEffects):
+        if effects_per_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in effects_per_size.items()},
+                target='periodic',
+            )
+
+        if effects_of_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.available * factor if self.available is not None else factor
+                    for effect, factor in effects_of_size.items()
+                },
+                target='periodic',
+            )
+
     @property
     def size(self) -> linopy.Variable:
         """Capacity size variable"""
@@ -97,26 +115,16 @@ class SizingModel(_SizeModel):
 
     def _do_modeling(self):
         super()._do_modeling()
-        self._create_variables_and_constraints()
-        self._add_effects()
-
-    def _create_variables_and_constraints(self):
         self._create_sizing_variables_and_constraints(
-            submodel=self,
             size_min=self.parameters.minimum_or_fixed_size,
             size_max=self.parameters.maximum_or_fixed_size,
             mandatory=self.parameters.mandatory,
             dims=['period', 'scenario'],
         )
-
-    def _add_effects(self):
-        """Add size-dependent effects"""
-        if self.parameters.effects_per_size:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={effect: self.size * factor for effect, factor in self.parameters.effects_per_size.items()},
-                target='periodic',
-            )
+        self._add_sizing_effects(
+            effects_per_size=self.parameters.effects_per_size,
+            effects_of_size=self.parameters.effects_of_size,
+        )
 
     @property
     def invested(self) -> linopy.Variable | None:
@@ -258,22 +266,7 @@ class InvestmentTimingFeature(_SizeModel):
 
     def _add_effects(self):
         """Add investment effects to the model."""
-        if self.parameters.effects_per_size:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={effect: self.size * factor for effect, factor in self.parameters.effects_per_size.items()},
-                target='periodic',
-            )
-
-        if self.parameters.effects_of_size:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.is_invested * factor if self.is_invested is not None else factor
-                    for effect, factor in self.parameters.effects_of_size.items()
-                },
-                target='periodic',
-            )
+        self._add_sizing_effects()
 
         # New kind of effects ==========================================================================================
 
