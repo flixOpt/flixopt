@@ -20,7 +20,6 @@ from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
-import yaml
 from tqdm import tqdm
 
 from . import io as fx_io
@@ -258,12 +257,9 @@ class FullCalculation(Calculation):
         if should_log:
             logger.info(
                 f'{" Main Results ":#^80}\n'
-                + yaml.dump(
+                + fx_io.format_yaml_string(
                     self.main_results,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    indent=4,
+                    compact_numeric_lists=True,
                 )
             )
 
