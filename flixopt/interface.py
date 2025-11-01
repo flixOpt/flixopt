@@ -925,6 +925,17 @@ class SizingParameters(_SizeParameters):
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
+@register_class_for_io
+class InvestParameters(SizingParameters):
+    def __init__(self, **kwargs):
+        warnings.warn(
+            'InvestParameters is deprecated, use SizingParameters instead',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(**kwargs)
+
+
 InvestmentPeriodData = PeriodicDataUser
 """This datatype is used to define things related to the period of investment."""
 InvestmentPeriodDataBool = bool | InvestmentPeriodData

@@ -20,6 +20,7 @@ from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import (
     InvestmentParameters,
+    InvestParameters,
     OnOffParameters,
     Piece,
     Piecewise,
@@ -59,4 +60,5 @@ __all__ = [
     'linear_converters',
     'solvers',
     'SizingParameters',
+    'InvestParameters',
 ]
