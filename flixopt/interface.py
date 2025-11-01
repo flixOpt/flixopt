@@ -868,34 +868,11 @@ class SizingParameters(Interface):
         fixed_size: PeriodicDataUser | None = None,
         minimum_size: PeriodicDataUser | None = None,
         maximum_size: PeriodicDataUser | None = None,
-        mandatory: bool = False,
+        mandatory: bool | xr.DataArray = False,
         effects_of_size: PeriodicEffectsUser | None = None,
         effects_per_size: PeriodicEffectsUser | None = None,
         piecewise_effects_per_size: PiecewiseEffects | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        effects_of_size = self._handle_deprecated_kwarg(kwargs, 'fix_effects', 'effects_of_size', effects_of_size)
-        effects_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'specific_effects', 'effects_per_size', effects_per_size
-        )
-        piecewise_effects_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'piecewise_effects', 'piecewise_effects_per_size', piecewise_effects_per_size
-        )
-        # For mandatory parameter with non-None default, disable conflict checking
-        if 'optional' in kwargs:
-            warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        mandatory = self._handle_deprecated_kwarg(
-            kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
         self.fixed_size = fixed_size
         self.mandatory = mandatory
@@ -931,50 +908,9 @@ class SizingParameters(Interface):
         self.fixed_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
         )
-
-    @property
-    def optional(self) -> bool:
-        """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
-        import warnings
-
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
-        return not self.mandatory
-
-    @optional.setter
-    def optional(self, value: bool):
-        """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
-        self.mandatory = not value
-
-    @property
-    def fix_effects(self) -> PeriodicEffectsUser:
-        """Deprecated property. Use effects_of_size instead."""
-        warnings.warn(
-            'The fix_effects property is deprecated. Use effects_of_size instead.',
-            DeprecationWarning,
-            stacklevel=2,
+        self.mandatory = flow_system.fit_to_model_coords(
+            f'{name_prefix}|mandatory', self.fixed_size, dims=['period', 'scenario']
         )
-        return self.effects_of_size
-
-    @property
-    def specific_effects(self) -> PeriodicEffectsUser:
-        """Deprecated property. Use effects_per_size instead."""
-        warnings.warn(
-            'The specific_effects property is deprecated. Use effects_per_size instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_per_size
-
-    @property
-    def piecewise_effects(self) -> PiecewiseEffects | None:
-        """Deprecated property. Use piecewise_effects_per_size instead."""
-        warnings.warn(
-            'The piecewise_effects property is deprecated. Use piecewise_effects_per_size instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.piecewise_effects_per_size
 
     @property
     def minimum_or_fixed_size(self) -> PeriodicData:
@@ -984,27 +920,6 @@ class SizingParameters(Interface):
     def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
-    def format_for_repr(self) -> str:
-        """Format SizingParameters for display in repr methods.
-
-        Returns:
-            Formatted string showing size information
-        """
-        from .io import numeric_to_str_for_repr
-
-        if self.fixed_size is not None:
-            val = numeric_to_str_for_repr(self.fixed_size)
-            status = 'mandatory' if self.mandatory else 'optional'
-            return f'{val} ({status})'
-
-        # Show range if available
-        parts = []
-        if self.minimum_size is not None:
-            parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
-        if self.maximum_size is not None:
-            parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
-        return ', '.join(parts) if parts else 'invest'
-
 
 InvestmentPeriodData = PeriodicDataUser
 """This datatype is used to define things related to the period of investment."""
@@ -1013,7 +928,7 @@ InvestmentPeriodDataBool = bool | InvestmentPeriodData
 
 
 @register_class_for_io
-class InvestmentParameters(Interface):
+class InvestmentParameters(SizingParameters):
     """Define investment timing parameters with fixed lifetime.
 
     This class models WHEN to invest with a fixed lifetime duration.
@@ -1040,13 +955,13 @@ class InvestmentParameters(Interface):
             Once invested, the asset operates for this many periods.
         allow_investment: Allow investment in specific periods. Default: True (all periods).
         force_investment: Force investment to occur in a specific period. Default: False.
-        fixed_effects_by_investment_period: Effects that depend on when investment occurs.
+        effects_of_investment: Effects that depend on when investment occurs.
             Dict mapping effect names to xr.DataArray with dimensions [period, scenario, investment_period].
             These effects can vary by the investment period, enabling modeling of:
             - Technology learning curves (costs decrease over time)
             - Time-varying financing costs
             - Period-specific subsidies or regulations
-        specific_effects_by_investment_period: Size-dependent effects that also depend on investment period.
+        effects_of_investment_per_size: Size-dependent effects that also depend on investment period.
             Dict mapping effect names to xr.DataArray with dimensions [period, scenario, investment_period].
 
     Examples:
@@ -1092,7 +1007,7 @@ class InvestmentParameters(Interface):
 
         timing = InvestmentParameters(
             fixed_lifetime=10,
-            specific_effects_by_investment_period={
+            effects_of_investment_per_size={
                 'cost': learning_costs  # €/kW depends on investment year
             },
         )
@@ -1122,8 +1037,9 @@ class InvestmentParameters(Interface):
         fixed_lifetime: Scalar,
         allow_investment: InvestmentPeriodDataBool = True,
         force_investment: InvestmentPeriodDataBool = False,
-        fixed_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
-        specific_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
+        effects_of_investment: dict[str, xr.DataArray] | None = None,
+        effects_of_investment_per_size: dict[str, xr.DataArray] | None = None,
+        **kwargs,
     ):
         if fixed_lifetime is None:
             raise ValueError('InvestmentParameters requires fixed_lifetime to be specified.')
@@ -1132,15 +1048,17 @@ class InvestmentParameters(Interface):
         self.allow_investment = allow_investment
         self.force_investment = force_investment
 
-        self.fixed_effects_by_investment_period: dict[str, xr.DataArray] = (
-            fixed_effects_by_investment_period if fixed_effects_by_investment_period is not None else {}
+        self.effects_of_investment: dict[str, xr.DataArray] = (
+            effects_of_investment if effects_of_investment is not None else {}
         )
-        self.specific_effects_by_investment_period: dict[str, xr.DataArray] = (
-            specific_effects_by_investment_period if specific_effects_by_investment_period is not None else {}
+        self.effects_of_investment_per_size: dict[str, xr.DataArray] = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
+        super().__init__(**kwargs)
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         """Transform user data into internal model coordinates."""
+        super().transform_data(flow_system, name_prefix)
         # Transform boolean/data flags to DataArrays
         self.allow_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|allow_investment', self.allow_investment, dims=['period', 'scenario']
@@ -1148,13 +1066,19 @@ class InvestmentParameters(Interface):
         self.force_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
         )
+        self.effects_of_investment = flow_system.fit_to_model_coords(
+            f'{name_prefix}|effects_of_investment', self.effects_of_investment, dims=['period', 'scenario']
+        )  # TODO: investment period dim
 
-        # Investment-period-dependent effects are already xr.DataArray
-        # They should have dimensions [period, scenario, investment_period]
-        # TODO: Add validation for effect dimensions
+        self.effects_of_investment_per_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|effects_of_investment_per_size',
+            self.effects_of_investment_per_size,
+            dims=['period', 'scenario'],
+        )  # TODO: investment period dim
 
     def _plausibility_checks(self, flow_system: FlowSystem) -> None:
         """Validate parameter consistency."""
+        # super()._plausibility_checks(flow_system)
         if flow_system.periods is None:
             raise ValueError("InvestmentParameters requires the flow_system to have a 'periods' dimension.")
 
@@ -1163,15 +1087,14 @@ class InvestmentParameters(Interface):
             raise ValueError('force_investment can only be True for a single investment_period per scenario.')
 
         # Check lifetime feasibility
-        if self.fixed_lifetime is not None:
-            periods = flow_system.periods.values
-            if len(periods) > 1:
-                # Warn if investment in late periods would extend beyond model horizon
-                max_horizon = periods[-1] - periods[0]
-                if self.fixed_lifetime > max_horizon:
-                    logger.warning(
-                        f'Fixed lifetime ({self.fixed_lifetime}) if Investment exceeds model horizon ({max_horizon}). '
-                    )
+        _periods = flow_system.periods.values
+        if len(_periods) > 1:
+            # Warn if investment in late periods would extend beyond model horizon
+            max_horizon = _periods[-1] - _periods[0]
+            if self.fixed_lifetime > max_horizon:
+                logger.warning(
+                    f'Fixed lifetime ({self.fixed_lifetime}) if Investment exceeds model horizon ({max_horizon}). '
+                )
 
 
 YearOfInvestmentData = PeriodicDataUser

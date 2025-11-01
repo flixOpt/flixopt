@@ -546,10 +546,6 @@ class Flow(Element):
         # Wenn kein SizingParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, SizingParameters) and self.size.fixed_size is None) else True
 
-    def _format_invest_params(self, params: SizingParameters) -> str:
-        """Format SizingParameters for display."""
-        return f'size: {params.format_for_repr()}'
-
 
 class FlowModel(ElementModel):
     element: Flow  # Type hint
