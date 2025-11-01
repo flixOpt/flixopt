@@ -1039,6 +1039,7 @@ class InvestmentParameters(SizingParameters):
         force_investment: InvestmentPeriodDataBool = False,
         effects_of_investment: dict[str, xr.DataArray] | None = None,
         effects_of_investment_per_size: dict[str, xr.DataArray] | None = None,
+        previous_size: PeriodicDataUser = 0,
         **kwargs,
     ):
         if fixed_lifetime is None:
@@ -1047,6 +1048,7 @@ class InvestmentParameters(SizingParameters):
         self.fixed_lifetime = fixed_lifetime
         self.allow_investment = allow_investment
         self.force_investment = force_investment
+        self.previous_size = previous_size
 
         self.effects_of_investment: dict[str, xr.DataArray] = (
             effects_of_investment if effects_of_investment is not None else {}
@@ -1065,6 +1067,9 @@ class InvestmentParameters(SizingParameters):
         )
         self.force_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
+        )
+        self.previous_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|previous_size', self.previous_size, dims=['period', 'scenario']
         )
         self.effects_of_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|effects_of_investment', self.effects_of_investment, dims=['period', 'scenario']
