@@ -669,8 +669,12 @@ class PiecewiseEffects(Interface):
             piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
+class _SizeParameters(Interface):
+    pass
+
+
 @register_class_for_io
-class SizingParameters(Interface):
+class SizingParameters(_SizeParameters):
     """Define investment decision parameters with flexible sizing and effect modeling.
 
     This class models investment decisions in optimization problems, supporting
@@ -1109,7 +1113,7 @@ YearOfInvestmentDataBool = bool | YearOfInvestmentData
 
 
 @register_class_for_io
-class InvestTimingParameters(Interface):
+class _InvestTimingParameters(Interface):
     """
     Investment with fixed start and end years.
 
@@ -1195,7 +1199,7 @@ class InvestTimingParameters(Interface):
     def _plausibility_checks(self, flow_system):
         """Validate parameter consistency."""
         if flow_system.years is None:
-            raise ValueError("InvestTimingParameters requires the flow_system to have a 'years' dimension.")
+            raise ValueError("InvestmentParameters requires the flow_system to have a 'period' dimension.")
 
         if (self.force_investment.sum('year') > 1).any():
             raise ValueError('force_investment can only be True for a single year.')

@@ -26,7 +26,7 @@ from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
 from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
-from .features import InvestmentModel, InvestmentTimingModel
+from .features import InvestmentModel, SizingModel, _SizeModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
 
@@ -121,15 +121,13 @@ class Calculation:
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, (InvestmentModel, InvestmentTimingModel))
-                    and model.size.solution.max() >= CONFIG.Modeling.epsilon
+                    if isinstance(model, _SizeModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, (InvestmentModel, InvestmentTimingModel))
-                    and model.size.solution.max() < CONFIG.Modeling.epsilon
+                    if isinstance(model, _SizeModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
