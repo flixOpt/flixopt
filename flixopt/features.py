@@ -190,21 +190,21 @@ class InvestmentModel(_SizeModel):
         """Track investment and decomissioning period absed on binary state variable."""
         self.add_variables(
             binary=True,
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
             short_name='size|investment_occurs',
         )
         self.add_constraints(
-            self.investment_occurs.sum('year') <= 1,
+            self.investment_occurs.sum('period') <= 1,
             short_name='invest_once',
         )
 
         self.add_variables(
             binary=True,
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
             short_name='size|decommissioning_occurs',
         )
         self.add_constraints(
-            self.decommissioning_occurs.sum('year') <= 1,
+            self.decommissioning_occurs.sum('period') <= 1,
             short_name='decommission_once',
         )
 
@@ -215,18 +215,18 @@ class InvestmentModel(_SizeModel):
             switch_off=self.decommissioning_occurs,
             name=self.is_invested.name,
             previous_state=0,
-            coord='year',
+            coord='period',
         )
 
     def _track_investment_and_decomissioning_size(self):
         self.add_variables(
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
             short_name='size|increase',
             lower=0,
             upper=self.parameters.maximum_or_fixed_size,
         )
         self.add_variables(
-            coords=self._model.get_coords(['year', 'scenario']),
+            coords=self._model.get_coords(['period', 'scenario']),
             short_name='size|decrease',
             lower=0,
             upper=self.parameters.maximum_or_fixed_size,
