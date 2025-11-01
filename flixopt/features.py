@@ -35,23 +35,29 @@ class _SizeModel(Submodel):
         self,
         size_min: PeriodicData,
         size_max: PeriodicData,
-        mandatory: bool,
+        mandatory: PeriodicData,
         dims: list[FlowSystemDimensions],
     ):
         """Create timing variables and constraints."""
+        if not np.issubdtype(mandatory.dtype, np.bool_):
+            raise TypeError(f'Expected all bool values, got {mandatory.dtype=}: {mandatory}')
 
         size = self.add_variables(
             short_name='size',
-            lower=size_min if mandatory else 0,
+            lower=size_min.where(mandatory, 0),
             upper=size_max,
             coords=self._model.get_coords(dims),
         )
 
-        if not mandatory:
+        if not mandatory.all():
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(dims),
                 short_name='available',
+            )
+            self.add_constraints(
+                self.available == mandatory.astype(int),
+                short_name='mandatory',
             )
             BoundingPatterns.bounds_with_state(
                 self,
