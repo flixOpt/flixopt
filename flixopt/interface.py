@@ -707,10 +707,10 @@ class InvestParameters(Interface):
             With multiple periods, at least one period has to have an investment.
         effects_of_size: Fixed costs if investment is made, regardless of size.
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
-        effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
+        effects_per_size: Variable costs proportional to size (per-unit costs).
             Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
         piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
-            Combinable with effects_of_size and effects_of_investment_per_size.
+            Combinable with effects_of_size and effects_per_size.
         effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
             Dict: {'effect_name': value}.
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
@@ -719,7 +719,7 @@ class InvestParameters(Interface):
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_size` instead.
             Will be removed in version 4.0.
-        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
+        specific_effects: **Deprecated**. Use `effects_per_size` instead.
             Will be removed in version 4.0.
         divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
             Will be removed in version 4.0.
@@ -749,7 +749,7 @@ class InvestParameters(Interface):
                 'cost': 25000,  # Installation and permitting costs
                 'CO2': -50000,  # Avoided emissions over lifetime
             },
-            effects_of_investment_per_size={
+            effects_per_size={
                 'cost': 1200,  # €1200/kW for panels (annualized)
                 'CO2': -800,  # kg CO2 avoided per kW annually
             },
@@ -799,7 +799,7 @@ class InvestParameters(Interface):
                 'cost': 15000,  # Installation costs
                 'disruption': 3,  # Days of downtime
             },
-            effects_of_investment_per_size={
+            effects_per_size={
                 'cost': 400,  # €400/kW capacity
                 'maintenance': 25,  # Annual maintenance per kW
             },
@@ -817,7 +817,7 @@ class InvestParameters(Interface):
         gas_turbine = InvestParameters(
             fixed_size=50,  # MW
             effects_of_size={'cost': 2500000, 'CO2': 1250000},
-            effects_of_investment_per_size={'fuel_cost': 45, 'maintenance': 12},
+            effects_per_size={'fuel_cost': 45, 'maintenance': 12},
         )
 
         # Wind farm option
@@ -825,7 +825,7 @@ class InvestParameters(Interface):
             minimum_size=20,
             maximum_size=100,
             effects_of_size={'cost': 1000000, 'CO2': -5000000},
-            effects_of_investment_per_size={'cost': 1800000, 'land_use': 0.5},
+            effects_per_size={'cost': 1800000, 'land_use': 0.5},
         )
         ```
 
@@ -880,7 +880,7 @@ class InvestParameters(Interface):
         maximum_size: PeriodicDataUser | None = None,
         mandatory: bool = False,
         effects_of_size: PeriodicEffectsUser | None = None,
-        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
+        effects_per_size: PeriodicEffectsUser | None = None,
         effects_of_retirement: PeriodicEffectsUser | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
@@ -888,8 +888,8 @@ class InvestParameters(Interface):
     ):
         # Handle deprecated parameters using centralized helper
         effects_of_size = self._handle_deprecated_kwarg(kwargs, 'fix_effects', 'effects_of_size', effects_of_size)
-        effects_of_investment_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
+        effects_per_size = self._handle_deprecated_kwarg(
+            kwargs, 'specific_effects', 'effects_per_size', effects_per_size
         )
         effects_of_retirement = self._handle_deprecated_kwarg(
             kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
@@ -917,9 +917,7 @@ class InvestParameters(Interface):
         )
         self.fixed_size = fixed_size
         self.mandatory = mandatory
-        self.effects_of_investment_per_size: PeriodicEffectsUser = (
-            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
-        )
+        self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
@@ -938,10 +936,10 @@ class InvestParameters(Interface):
             label_suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
-        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
+        self.effects_per_size = flow_system.fit_effects_to_model_coords(
             label_prefix=name_prefix,
-            effect_values=self.effects_of_investment_per_size,
-            label_suffix='effects_of_investment_per_size',
+            effect_values=self.effects_per_size,
+            label_suffix='effects_per_size',
             dims=['period', 'scenario'],
         )
 
@@ -1012,13 +1010,13 @@ class InvestParameters(Interface):
 
     @property
     def specific_effects(self) -> PeriodicEffectsUser:
-        """Deprecated property. Use effects_of_investment_per_size instead."""
+        """Deprecated property. Use effects_per_size instead."""
         warnings.warn(
-            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            'The specific_effects property is deprecated. Use effects_per_size instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.effects_of_investment_per_size
+        return self.effects_per_size
 
     @property
     def divest_effects(self) -> PeriodicEffectsUser:

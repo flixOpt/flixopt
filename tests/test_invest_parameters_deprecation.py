@@ -3,7 +3,7 @@ Test backward compatibility and deprecation warnings for InvestParameters.
 
 This test verifies that:
 1. Old parameter names (fix_effects, specific_effects, divest_effects, piecewise_effects) still work with warnings
-2. New parameter names (effects_of_size, effects_of_investment_per_size, effects_of_retirement, piecewise_effects_of_investment) work correctly
+2. New parameter names (effects_of_size, effects_per_size, effects_of_retirement, piecewise_effects_of_investment) work correctly
 3. Both old and new approaches produce equivalent results
 """
 
@@ -25,11 +25,11 @@ class TestInvestParametersDeprecation:
             params = InvestParameters(
                 fixed_size=100,
                 effects_of_size={'cost': 25000},
-                effects_of_investment_per_size={'cost': 1200},
+                effects_per_size={'cost': 1200},
                 effects_of_retirement={'cost': 5000},
             )
             assert params.effects_of_size == {'cost': 25000}
-            assert params.effects_of_investment_per_size == {'cost': 1200}
+            assert params.effects_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
 
     def test_old_fix_effects_deprecation_warning(self):
@@ -45,13 +45,13 @@ class TestInvestParametersDeprecation:
 
     def test_old_specific_effects_deprecation_warning(self):
         """Test that specific_effects triggers deprecation warning."""
-        with pytest.warns(DeprecationWarning, match='specific_effects.*deprecated.*effects_of_investment_per_size'):
+        with pytest.warns(DeprecationWarning, match='specific_effects.*deprecated.*effects_per_size'):
             params = InvestParameters(specific_effects={'cost': 1200})
             # Verify backward compatibility
-            assert params.effects_of_investment_per_size == {'cost': 1200}
+            assert params.effects_per_size == {'cost': 1200}
 
         # Accessing the property also triggers warning
-        with pytest.warns(DeprecationWarning, match='specific_effects.*deprecated.*effects_of_investment_per_size'):
+        with pytest.warns(DeprecationWarning, match='specific_effects.*deprecated.*effects_per_size'):
             assert params.specific_effects == {'cost': 1200}
 
     def test_old_divest_effects_deprecation_warning(self):
@@ -105,7 +105,7 @@ class TestInvestParametersDeprecation:
 
             # Verify all mappings work (accessing new properties - no warnings)
             assert params.effects_of_size == {'cost': 25000}
-            assert params.effects_of_investment_per_size == {'cost': 1200}
+            assert params.effects_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
             assert params.piecewise_effects_of_investment is test_piecewise
 
@@ -128,14 +128,14 @@ class TestInvestParametersDeprecation:
                 effects_of_size={'cost': 25000},
             )
 
-        # specific_effects + effects_of_investment_per_size
+        # specific_effects + effects_per_size
         with pytest.raises(
             ValueError,
-            match='Either specific_effects or effects_of_investment_per_size can be specified, but not both',
+            match='Either specific_effects or effects_per_size can be specified, but not both',
         ):
             InvestParameters(
                 specific_effects={'cost': 1200},
-                effects_of_investment_per_size={'cost': 1500},
+                effects_per_size={'cost': 1500},
             )
 
         # divest_effects + effects_of_retirement
@@ -197,7 +197,7 @@ class TestInvestParametersDeprecation:
 
         params = InvestParameters(
             effects_of_size={'cost': 25000},
-            effects_of_investment_per_size={'cost': 1200},
+            effects_per_size={'cost': 1200},
             effects_of_retirement={'cost': 5000},
             piecewise_effects_of_investment=test_piecewise,
         )
@@ -216,7 +216,7 @@ class TestInvestParametersDeprecation:
         with pytest.warns(DeprecationWarning):
             assert params.fix_effects is params.effects_of_size
         with pytest.warns(DeprecationWarning):
-            assert params.specific_effects is params.effects_of_investment_per_size
+            assert params.specific_effects is params.effects_per_size
         with pytest.warns(DeprecationWarning):
             assert params.divest_effects is params.effects_of_retirement
         with pytest.warns(DeprecationWarning):
@@ -227,7 +227,7 @@ class TestInvestParametersDeprecation:
         params = InvestParameters()
 
         assert params.effects_of_size == {}
-        assert params.effects_of_investment_per_size == {}
+        assert params.effects_per_size == {}
         assert params.effects_of_retirement == {}
         assert params.piecewise_effects_of_investment is None
 
@@ -256,7 +256,7 @@ class TestInvestParametersDeprecation:
 
             # All should work correctly
             assert params.effects_of_size == {'cost': 25000}
-            assert params.effects_of_investment_per_size == {'cost': 1200}
+            assert params.effects_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
 
     def test_unexpected_keyword_arguments(self):

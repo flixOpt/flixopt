@@ -63,7 +63,7 @@ if __name__ == '__main__':
                 effects_of_size=1000,  # Fixed investment costs
                 fixed_size=50,  # Fixed size
                 mandatory=True,  # Forced investment
-                effects_of_investment_per_size={Costs.label: 10, PE.label: 2},  # Specific costs
+                effects_per_size={Costs.label: 10, PE.label: 2},  # Specific costs
             ),
             load_factor_max=1.0,  # Maximum load factor (50 kW)
             load_factor_min=0.1,  # Minimum load factor (5 kW)

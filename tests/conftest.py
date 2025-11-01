@@ -162,7 +162,7 @@ class Converters:
                         effects_of_size=1000,
                         fixed_size=50,
                         mandatory=True,
-                        effects_of_investment_per_size={'costs': 10, 'PE': 2},
+                        effects_per_size={'costs': 10, 'PE': 2},
                     ),
                     on_off_parameters=fx.OnOffParameters(
                         on_hours_total_min=0,
@@ -290,7 +290,7 @@ class Storage:
                 },
             ),
             mandatory=True,
-            effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
+            effects_per_size={'costs': 0.01, 'CO2': 0.01},
             minimum_size=0,
             maximum_size=1000,
         )

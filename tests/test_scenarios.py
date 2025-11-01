@@ -65,7 +65,7 @@ def test_system():
         size=InvestParameters(
             minimum_size=0,
             maximum_size=20,
-            effects_of_investment_per_size={'costs': 100},  # €/kW
+            effects_per_size={'costs': 100},  # €/kW
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
@@ -81,7 +81,7 @@ def test_system():
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,
             maximum_size=50,
-            effects_of_investment_per_size={'costs': 50},  # €/kWh
+            effects_per_size={'costs': 50},  # €/kWh
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
@@ -153,7 +153,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 effects_of_size=1000,
                 fixed_size=50,
                 mandatory=True,
-                effects_of_investment_per_size={'costs': 10, 'PE': 2},
+                effects_per_size={'costs': 10, 'PE': 2},
             ),
             on_off_parameters=fx.OnOffParameters(
                 on_hours_total_min=0,
@@ -179,7 +179,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             },
         ),
         mandatory=True,
-        effects_of_investment_per_size={'costs': 0.01, 'CO2': 0.01},
+        effects_per_size={'costs': 0.01, 'CO2': 0.01},
         minimum_size=0,
         maximum_size=1000,
     )
@@ -462,7 +462,7 @@ def test_size_equality_constraints():
                 size=fx.InvestParameters(
                     minimum_size=10,
                     maximum_size=100,
-                    effects_of_investment_per_size={'cost': 100},
+                    effects_per_size={'cost': 100},
                 ),
             )
         ],
@@ -502,7 +502,7 @@ def test_flow_rate_equality_constraints():
                 size=fx.InvestParameters(
                     minimum_size=10,
                     maximum_size=100,
-                    effects_of_investment_per_size={'cost': 100},
+                    effects_per_size={'cost': 100},
                 ),
             )
         ],
@@ -539,9 +539,7 @@ def test_selective_scenario_independence():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(
-                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
-                ),
+                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )
@@ -601,9 +599,7 @@ def test_scenario_parameters_io_persistence():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(
-                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
-                ),
+                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )
@@ -644,9 +640,7 @@ def test_scenario_parameters_io_with_calculation():
             fx.Flow(
                 label='out',
                 bus='grid',
-                size=fx.InvestParameters(
-                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
-                ),
+                size=fx.InvestParameters(minimum_size=10, maximum_size=100, effects_per_size={'cost': 100}),
             )
         ],
     )

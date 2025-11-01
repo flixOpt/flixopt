@@ -193,13 +193,10 @@ class InvestmentModel(Submodel):
                 target='periodic',
             )
 
-        if self.parameters.effects_of_investment_per_size:
+        if self.parameters.effects_per_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={
-                    effect: self.size * factor
-                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
-                },
+                expressions={effect: self.size * factor for effect, factor in self.parameters.effects_per_size.items()},
                 target='periodic',
             )
 
