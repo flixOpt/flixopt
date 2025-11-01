@@ -14,8 +14,8 @@ import xarray as xr
 from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, PiecewiseModel
-from .interface import OnOffParameters, PiecewiseConversion, SizingParameters
+from .features import InvestmentModel, PiecewiseModel, SizingModel
+from .interface import InvestmentParameters, OnOffParameters, PiecewiseConversion, SizingParameters
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -865,7 +865,7 @@ class StorageModel(ComponentModel):
 
         if isinstance(self.element.capacity_in_flow_hours, SizingParameters):
             self.add_submodels(
-                InvestmentModel(
+                SizingModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
@@ -880,6 +880,9 @@ class StorageModel(ComponentModel):
                 scaling_variable=self.investment.size,
                 relative_bounds=self._relative_charge_state_bounds,
             )
+
+        elif isinstance(self.element.capacity_in_flow_hours, InvestmentParameters):
+            raise NotImplementedError
 
         # Initial charge state
         self._initial_and_final_charge_state()
