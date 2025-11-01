@@ -3,7 +3,7 @@ Test backward compatibility and deprecation warnings for InvestParameters.
 
 This test verifies that:
 1. Old parameter names (fix_effects, specific_effects, divest_effects, piecewise_effects) still work with warnings
-2. New parameter names (effects_of_investment, effects_of_investment_per_size, effects_of_retirement, piecewise_effects_of_investment) work correctly
+2. New parameter names (effects_of_size, effects_of_investment_per_size, effects_of_retirement, piecewise_effects_of_investment) work correctly
 3. Both old and new approaches produce equivalent results
 """
 
@@ -24,23 +24,23 @@ class TestInvestParametersDeprecation:
             # Should not raise DeprecationWarning
             params = InvestParameters(
                 fixed_size=100,
-                effects_of_investment={'cost': 25000},
+                effects_of_size={'cost': 25000},
                 effects_of_investment_per_size={'cost': 1200},
                 effects_of_retirement={'cost': 5000},
             )
-            assert params.effects_of_investment == {'cost': 25000}
+            assert params.effects_of_size == {'cost': 25000}
             assert params.effects_of_investment_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
 
     def test_old_fix_effects_deprecation_warning(self):
         """Test that fix_effects triggers deprecation warning."""
-        with pytest.warns(DeprecationWarning, match='fix_effects.*deprecated.*effects_of_investment'):
+        with pytest.warns(DeprecationWarning, match='fix_effects.*deprecated.*effects_of_size'):
             params = InvestParameters(fix_effects={'cost': 25000})
             # Verify backward compatibility
-            assert params.effects_of_investment == {'cost': 25000}
+            assert params.effects_of_size == {'cost': 25000}
 
         # Accessing the property also triggers warning
-        with pytest.warns(DeprecationWarning, match='fix_effects.*deprecated.*effects_of_investment'):
+        with pytest.warns(DeprecationWarning, match='fix_effects.*deprecated.*effects_of_size'):
             assert params.fix_effects == {'cost': 25000}
 
     def test_old_specific_effects_deprecation_warning(self):
@@ -104,7 +104,7 @@ class TestInvestParametersDeprecation:
             assert len([warning for warning in w if issubclass(warning.category, DeprecationWarning)]) == 4
 
             # Verify all mappings work (accessing new properties - no warnings)
-            assert params.effects_of_investment == {'cost': 25000}
+            assert params.effects_of_size == {'cost': 25000}
             assert params.effects_of_investment_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
             assert params.piecewise_effects_of_investment is test_piecewise
@@ -121,13 +121,11 @@ class TestInvestParametersDeprecation:
 
     def test_both_old_and_new_raises_error(self):
         """Test that specifying both old and new parameter names raises ValueError."""
-        # fix_effects + effects_of_investment
-        with pytest.raises(
-            ValueError, match='Either fix_effects or effects_of_investment can be specified, but not both'
-        ):
+        # fix_effects + effects_of_size
+        with pytest.raises(ValueError, match='Either fix_effects or effects_of_size can be specified, but not both'):
             InvestParameters(
                 fix_effects={'cost': 10000},
-                effects_of_investment={'cost': 25000},
+                effects_of_size={'cost': 25000},
             )
 
         # specific_effects + effects_of_investment_per_size
@@ -198,7 +196,7 @@ class TestInvestParametersDeprecation:
         )
 
         params = InvestParameters(
-            effects_of_investment={'cost': 25000},
+            effects_of_size={'cost': 25000},
             effects_of_investment_per_size={'cost': 1200},
             effects_of_retirement={'cost': 5000},
             piecewise_effects_of_investment=test_piecewise,
@@ -216,7 +214,7 @@ class TestInvestParametersDeprecation:
 
         # Properties should return the same objects as the new attributes
         with pytest.warns(DeprecationWarning):
-            assert params.fix_effects is params.effects_of_investment
+            assert params.fix_effects is params.effects_of_size
         with pytest.warns(DeprecationWarning):
             assert params.specific_effects is params.effects_of_investment_per_size
         with pytest.warns(DeprecationWarning):
@@ -228,7 +226,7 @@ class TestInvestParametersDeprecation:
         """Test that empty/None parameters work correctly."""
         params = InvestParameters()
 
-        assert params.effects_of_investment == {}
+        assert params.effects_of_size == {}
         assert params.effects_of_investment_per_size == {}
         assert params.effects_of_retirement == {}
         assert params.piecewise_effects_of_investment is None
@@ -248,7 +246,7 @@ class TestInvestParametersDeprecation:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always', DeprecationWarning)
             params = InvestParameters(
-                effects_of_investment={'cost': 25000},  # New
+                effects_of_size={'cost': 25000},  # New
                 specific_effects={'cost': 1200},  # Old
                 effects_of_retirement={'cost': 5000},  # New
             )
@@ -257,7 +255,7 @@ class TestInvestParametersDeprecation:
             assert len([warning for warning in w if issubclass(warning.category, DeprecationWarning)]) == 1
 
             # All should work correctly
-            assert params.effects_of_investment == {'cost': 25000}
+            assert params.effects_of_size == {'cost': 25000}
             assert params.effects_of_investment_per_size == {'cost': 1200}
             assert params.effects_of_retirement == {'cost': 5000}
 
@@ -280,7 +278,7 @@ class TestInvestParametersDeprecation:
         with pytest.raises(
             TypeError, match="InvestParameters.__init__\\(\\) got unexpected keyword argument\\(s\\): 'typo'"
         ):
-            InvestParameters(effects_of_investment={'cost': 100}, typo='value')
+            InvestParameters(effects_of_size={'cost': 100}, typo='value')
 
     def test_optional_parameter_deprecation(self):
         """Test that optional parameter triggers deprecation warning and maps to mandatory."""

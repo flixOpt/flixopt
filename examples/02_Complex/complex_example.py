@@ -60,7 +60,7 @@ if __name__ == '__main__':
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus
             size=fx.InvestParameters(
-                effects_of_investment=1000,  # Fixed investment costs
+                effects_of_size=1000,  # Fixed investment costs
                 fixed_size=50,  # Fixed size
                 mandatory=True,  # Forced investment
                 effects_of_investment_per_size={Costs.label: 10, PE.label: 2},  # Specific costs

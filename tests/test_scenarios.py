@@ -150,7 +150,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             relative_maximum=1,
             previous_flow_rate=50,
             size=fx.InvestParameters(
-                effects_of_investment=1000,
+                effects_of_size=1000,
                 fixed_size=50,
                 mandatory=True,
                 effects_of_investment_per_size={'costs': 10, 'PE': 2},
@@ -170,7 +170,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
 
     invest_speicher = fx.InvestParameters(
-        effects_of_investment=0,
+        effects_of_size=0,
         piecewise_effects_of_investment=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([fx.Piece(5, 25), fx.Piece(25, 100)]),
             piecewise_shares={

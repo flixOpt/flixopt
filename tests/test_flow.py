@@ -459,7 +459,7 @@ class TestFlowInvestModel:
                 minimum_size=20,
                 maximum_size=100,
                 mandatory=False,
-                effects_of_investment={'costs': 1000, 'CO2': 5},  # Fixed investment effects
+                effects_of_size={'costs': 1000, 'CO2': 5},  # Fixed investment effects
                 effects_of_investment_per_size={'costs': 500, 'CO2': 0.1},  # Specific investment effects
             ),
         )
