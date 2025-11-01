@@ -240,7 +240,7 @@ class InvestmentModel(_SizeModel):
             decrease_binary=self.decommissioning_occurs,
             name=f'{self.label_of_element}|size|changes',
             max_change=self.parameters.maximum_or_fixed_size,
-            initial_level=0,
+            previous_level=self.parameters.previous_size,
             coord='period',
         )
 
