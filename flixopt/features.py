@@ -252,7 +252,6 @@ class InvestmentTimingFeature(_SizeModel):
         model: The optimization model instance
         label_of_element: The label of the parent element
         parameters: InvestmentParameters defining timing constraints
-        sizing_model: Reference to the SizingModel for this element (required)
         label_of_model: Optional custom label for the model
     """
 
@@ -368,20 +367,48 @@ class InvestmentTimingFeature(_SizeModel):
             )
 
     def _add_effects(self):
-        """Add investment-period-dependent effects."""
+        """Add investment effects to the model."""
         if self.parameters.effects_per_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={effect: self.size * factor for effect, factor in self.parameters.effects_per_size.items()},
                 target='periodic',
             )
-        # For now, we'll skip the complex investment-period-dependent effects
-        # These require extending the effect system with the investment_period dimension
-        # We can add this in a follow-up iteration
-        if self.parameters.effects_of_investment or self.parameters.effects_of_investment_per_size:
-            logger.warning(
-                f'{self.label_full}: Investment-period-dependent effects are not yet implemented. '
-                f'These effects will be ignored in this version.'
+
+        if self.parameters.effects_of_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.is_invested * factor if self.is_invested is not None else factor
+                    for effect, factor in self.parameters.effects_of_size.items()
+                },
+                target='periodic',
+            )
+
+        if self.parameters.fixed_effects_by_investment_year:
+            # Effects depending on when the investment is made
+            remapped_variable = self.investment_occurs.rename({'year': 'year_of_investment'})
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.fixed_effects_by_investment_year.items()
+                },
+                target='invest',
+            )
+
+        if self.parameters.specific_effects_by_investment_year:
+            # Annual effects proportional to investment size
+            remapped_variable = self.size_increase.rename({'year': 'year_of_investment'})
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: (remapped_variable * factor).sum('year_of_investment')
+                    for effect, factor in self.parameters.specific_effects_by_investment_year.items()
+                },
+                target='invest',
             )
 
     @property
