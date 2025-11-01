@@ -51,13 +51,23 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Enhanced solver configuration with new CONFIG.Solving section for centralized solver parameter management.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
+**Solver configuration:**
+- **New `CONFIG.Solving` configuration section** for centralized solver parameter management:
+    - `mip_gap`: Default MIP gap tolerance for solver convergence (default: 0.01)
+    - `time_limit_seconds`: Default time limit in seconds for solver runs (default: 300)
+    - `log_to_console`: Whether solver should output to console (default: True)
+    - `log_main_results`: Whether to log main results after solving (default: True)
+- Solvers (`HighsSolver`, `GurobiSolver`) now use `CONFIG.Solving` defaults for parameters, allowing global configuration
+- Solver parameters can still be explicitly overridden when creating solver instances
+
 ### 💥 Breaking Changes
+- Individual solver output is now hidden in **SegmentedCalculation**. To return to the prior behaviour, set `show_individual_solves=True` in `do_modeling_and_solve()`.
 
 ### ♻️ Changed
 
@@ -72,6 +82,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Unified contributing guides in docs and on github
 
 ### 👷 Development
 - Added type hints for submodel in all Interface classes

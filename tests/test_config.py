@@ -31,6 +31,10 @@ class TestConfigModule:
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
+        assert CONFIG.Solving.mip_gap == 0.01
+        assert CONFIG.Solving.time_limit_seconds == 300
+        assert CONFIG.Solving.log_to_console is True
+        assert CONFIG.Solving.log_main_results is True
         assert CONFIG.config_name == 'flixopt'
 
     def test_module_initialization(self):
@@ -106,6 +110,11 @@ class TestConfigModule:
         assert config_dict['logging']['rich'] is False
         assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
+        assert 'solving' in config_dict
+        assert config_dict['solving']['mip_gap'] == 0.01
+        assert config_dict['solving']['time_limit_seconds'] == 300
+        assert config_dict['solving']['log_to_console'] is True
+        assert config_dict['solving']['log_main_results'] is True
 
     def test_config_load_from_file(self, tmp_path):
         """Test loading configuration from YAML file."""
@@ -119,6 +128,10 @@ logging:
 modeling:
   big: 20000000
   epsilon: 1e-6
+solving:
+  mip_gap: 0.001
+  time_limit_seconds: 600
+  log_main_results: false
 """
         config_file.write_text(config_content)
 
@@ -130,6 +143,9 @@ modeling:
         assert CONFIG.Modeling.big == 20000000
         # YAML may load epsilon as string, so convert for comparison
         assert float(CONFIG.Modeling.epsilon) == 1e-6
+        assert CONFIG.Solving.mip_gap == 0.001
+        assert CONFIG.Solving.time_limit_seconds == 600
+        assert CONFIG.Solving.log_main_results is False
 
     def test_config_load_from_file_not_found(self):
         """Test that loading from non-existent file raises error."""
@@ -264,6 +280,10 @@ modeling:
   big: 50000000
   epsilon: 1e-4
   big_binary_bound: 200000
+solving:
+  mip_gap: 0.005
+  time_limit_seconds: 900
+  log_main_results: false
 """
         config_file.write_text(config_content)
 
@@ -278,6 +298,9 @@ modeling:
         assert CONFIG.Modeling.big == 50000000
         assert float(CONFIG.Modeling.epsilon) == 1e-4
         assert CONFIG.Modeling.big_binary_bound == 200000
+        assert CONFIG.Solving.mip_gap == 0.005
+        assert CONFIG.Solving.time_limit_seconds == 900
+        assert CONFIG.Solving.log_main_results is False
 
         # Verify logging was applied
         logger = logging.getLogger('flixopt')
@@ -426,6 +449,10 @@ modeling:
         CONFIG.Modeling.big = 99999999
         CONFIG.Modeling.epsilon = 1e-8
         CONFIG.Modeling.big_binary_bound = 500000
+        CONFIG.Solving.mip_gap = 0.0001
+        CONFIG.Solving.time_limit_seconds = 1800
+        CONFIG.Solving.log_to_console = False
+        CONFIG.Solving.log_main_results = False
         CONFIG.config_name = 'test_config'
 
         # Reset should restore all defaults
@@ -439,6 +466,10 @@ modeling:
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
         assert CONFIG.Modeling.big_binary_bound == 100_000
+        assert CONFIG.Solving.mip_gap == 0.01
+        assert CONFIG.Solving.time_limit_seconds == 300
+        assert CONFIG.Solving.log_to_console is True
+        assert CONFIG.Solving.log_main_results is True
         assert CONFIG.config_name == 'flixopt'
 
         # Verify logging was also reset
@@ -460,11 +491,17 @@ modeling:
         CONFIG.Modeling.big = 999999
         CONFIG.Modeling.epsilon = 1e-10
         CONFIG.Modeling.big_binary_bound = 999999
+        CONFIG.Solving.mip_gap = 0.0001
+        CONFIG.Solving.time_limit_seconds = 9999
+        CONFIG.Solving.log_to_console = False
+        CONFIG.Solving.log_main_results = False
         CONFIG.config_name = 'modified'
 
         # Verify values are actually different from defaults
         assert CONFIG.Logging.level != _DEFAULTS['logging']['level']
         assert CONFIG.Modeling.big != _DEFAULTS['modeling']['big']
+        assert CONFIG.Solving.mip_gap != _DEFAULTS['solving']['mip_gap']
+        assert CONFIG.Solving.log_to_console != _DEFAULTS['solving']['log_to_console']
 
         # Now reset
         CONFIG.reset()
@@ -477,4 +514,104 @@ modeling:
         assert CONFIG.Modeling.big == _DEFAULTS['modeling']['big']
         assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
         assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['modeling']['big_binary_bound']
+        assert CONFIG.Solving.mip_gap == _DEFAULTS['solving']['mip_gap']
+        assert CONFIG.Solving.time_limit_seconds == _DEFAULTS['solving']['time_limit_seconds']
+        assert CONFIG.Solving.log_to_console == _DEFAULTS['solving']['log_to_console']
+        assert CONFIG.Solving.log_main_results == _DEFAULTS['solving']['log_main_results']
         assert CONFIG.config_name == _DEFAULTS['config_name']
+
+    def test_solving_config_defaults(self):
+        """Test that CONFIG.Solving has correct default values."""
+        assert CONFIG.Solving.mip_gap == 0.01
+        assert CONFIG.Solving.time_limit_seconds == 300
+        assert CONFIG.Solving.log_to_console is True
+        assert CONFIG.Solving.log_main_results is True
+
+    def test_solving_config_modification(self):
+        """Test that CONFIG.Solving attributes can be modified."""
+        # Modify solving config
+        CONFIG.Solving.mip_gap = 0.005
+        CONFIG.Solving.time_limit_seconds = 600
+        CONFIG.Solving.log_main_results = False
+        CONFIG.apply()
+
+        # Verify modifications
+        assert CONFIG.Solving.mip_gap == 0.005
+        assert CONFIG.Solving.time_limit_seconds == 600
+        assert CONFIG.Solving.log_main_results is False
+
+    def test_solving_config_integration_with_solvers(self):
+        """Test that solvers use CONFIG.Solving defaults."""
+        from flixopt import solvers
+
+        # Test with default config
+        CONFIG.reset()
+        solver1 = solvers.HighsSolver()
+        assert solver1.mip_gap == CONFIG.Solving.mip_gap
+        assert solver1.time_limit_seconds == CONFIG.Solving.time_limit_seconds
+
+        # Modify config and create new solver
+        CONFIG.Solving.mip_gap = 0.002
+        CONFIG.Solving.time_limit_seconds = 900
+        CONFIG.apply()
+
+        solver2 = solvers.GurobiSolver()
+        assert solver2.mip_gap == 0.002
+        assert solver2.time_limit_seconds == 900
+
+        # Explicit values should override config
+        solver3 = solvers.HighsSolver(mip_gap=0.1, time_limit_seconds=60)
+        assert solver3.mip_gap == 0.1
+        assert solver3.time_limit_seconds == 60
+
+    def test_solving_config_yaml_loading(self, tmp_path):
+        """Test loading solving config from YAML file."""
+        config_file = tmp_path / 'solving_config.yaml'
+        config_content = """
+solving:
+  mip_gap: 0.0001
+  time_limit_seconds: 1200
+  log_main_results: false
+"""
+        config_file.write_text(config_content)
+
+        CONFIG.load_from_file(config_file)
+
+        assert CONFIG.Solving.mip_gap == 0.0001
+        assert CONFIG.Solving.time_limit_seconds == 1200
+        assert CONFIG.Solving.log_main_results is False
+
+    def test_solving_config_in_to_dict(self):
+        """Test that CONFIG.Solving is included in to_dict()."""
+        CONFIG.Solving.mip_gap = 0.003
+        CONFIG.Solving.time_limit_seconds = 450
+        CONFIG.Solving.log_main_results = False
+
+        config_dict = CONFIG.to_dict()
+
+        assert 'solving' in config_dict
+        assert config_dict['solving']['mip_gap'] == 0.003
+        assert config_dict['solving']['time_limit_seconds'] == 450
+        assert config_dict['solving']['log_main_results'] is False
+
+    def test_solving_config_persistence(self):
+        """Test that Solving config is independent of other configs."""
+        # Set custom solving values
+        CONFIG.Solving.mip_gap = 0.007
+        CONFIG.Solving.time_limit_seconds = 750
+
+        # Change and apply logging config
+        CONFIG.Logging.console = True
+        CONFIG.apply()
+
+        # Solving values should be unchanged
+        assert CONFIG.Solving.mip_gap == 0.007
+        assert CONFIG.Solving.time_limit_seconds == 750
+
+        # Change modeling config
+        CONFIG.Modeling.big = 99999999
+        CONFIG.apply()
+
+        # Solving values should still be unchanged
+        assert CONFIG.Solving.mip_gap == 0.007
+        assert CONFIG.Solving.time_limit_seconds == 750

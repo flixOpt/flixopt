@@ -24,6 +24,8 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
+  MPLBACKEND: Agg  # Non-interactive matplotlib backend for CI/testing
+  PLOTLY_RENDERER: json  # Headless plotly renderer for CI/testing
 
 jobs:
   lint:

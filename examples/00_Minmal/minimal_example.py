@@ -9,8 +9,7 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
-    fx.CONFIG.Logging.console = True
-    fx.CONFIG.apply()
+    fx.CONFIG.silent()
     flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=3, freq='h'))
 
     flow_system.add_elements(
