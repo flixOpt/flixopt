@@ -67,7 +67,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Solver parameters can still be explicitly overridden when creating solver instances
 
 ### 💥 Breaking Changes
-- Individual solver output is now hidden in **SegmentedCalculation**. To return t the prior behaviour, set `show_individual_solves=True` in `do_modeling_and_solve()`.
+- Individual solver output is now hidden in **SegmentedCalculation**. To return to the prior behaviour, set `show_individual_solves=True` in `do_modeling_and_solve()`.
 
 ### ♻️ Changed
 
