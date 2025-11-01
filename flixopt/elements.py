@@ -601,7 +601,7 @@ class FlowModel(ElementModel):
     def _create_investment_model(self):
         if isinstance(self.element.size, SizingParameters):
             self.add_submodels(
-                InvestmentModel(
+                SizingModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.size,
