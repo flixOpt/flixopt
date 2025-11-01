@@ -830,7 +830,6 @@ def cleanup_figures():
     plt.close('all')
 
 
-
 @pytest.fixture(scope='session', autouse=True)
 def set_test_environment():
     """
