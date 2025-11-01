@@ -1275,18 +1275,20 @@ InvestmentPeriodDataBool = bool | InvestmentPeriodData
 
 @register_class_for_io
 class InvestmentParameters(Interface):
-    """Define investment timing parameters with lifetime tracking and timing-dependent effects.
+    """Define investment timing parameters with fixed lifetime.
 
-    This class models investment timing decisions, including when investments occur,
-    their lifetime duration, and effects that depend on the investment timing.
+    This class models WHEN to invest with a fixed lifetime duration.
     It must be combined with SizingParameters to fully model investment decisions.
 
-    InvestmentParameters focuses on the TIMING aspect (when to invest, for how long),
+    InvestmentParameters focuses on the TIMING aspect (when to invest),
     while SizingParameters handles the CAPACITY aspect (how much to install).
 
+    The model optimizes when to make an investment that will last for a fixed duration.
+    During the investment's lifetime, the capacity (from SizingParameters) is active.
+
     Investment Timing Features:
-        **Timing Control**: Control when investments and decommissioning can/must occur
-        **Lifetime Tracking**: Model investment lifetime with min/max bounds
+        **Single Investment Decision**: Decide which period to invest in (at most once)
+        **Fixed Lifetime**: Investment lasts for a specified number of periods
         **Timing-Dependent Effects**: Effects that vary based on when investment occurs
             (e.g., technology learning curves, time-varying costs)
 
@@ -1295,32 +1297,26 @@ class InvestmentParameters(Interface):
         [InvestmentParameters](../user-guide/mathematical-notation/features/InvestmentParameters.md)
 
     Args:
+        fixed_lifetime: REQUIRED. The investment lifetime in number of periods.
+            Once invested, the asset operates for this many periods.
         allow_investment: Allow investment in specific periods. Default: True (all periods).
-        allow_decommissioning: Allow decommissioning in specific periods. Default: True (all periods).
         force_investment: Force investment to occur in a specific period. Default: False.
-        force_decommissioning: Force decommissioning in a specific period. Default: False.
-        fixed_lifetime: Fix the investment lifetime (duration between investment and decommissioning).
-        minimum_lifetime: Minimum lifetime constraint (periods).
-        maximum_lifetime: Maximum lifetime constraint (periods).
-        previous_lifetime: Existing asset lifetime before first period (for continuation scenarios).
         fixed_effects_by_investment_period: Effects that depend on when investment occurs.
+            Dict mapping effect names to xr.DataArray with dimensions [period, scenario, investment_period].
             These effects can vary by the investment period, enabling modeling of:
             - Technology learning curves (costs decrease over time)
             - Time-varying financing costs
             - Period-specific subsidies or regulations
-            xr.DataArray with dimensions [period, scenario, investment_period].
         specific_effects_by_investment_period: Size-dependent effects that also depend on investment period.
-            xr.DataArray with dimensions [period, scenario, investment_period].
+            Dict mapping effect names to xr.DataArray with dimensions [period, scenario, investment_period].
 
     Examples:
-        Basic timing constraints:
+        Basic investment timing:
 
         ```python
         timing = InvestmentParameters(
-            minimum_lifetime=5,  # Must operate at least 5 periods
-            maximum_lifetime=20,  # Cannot exceed 20 periods
-            allow_investment=True,  # Allow in all periods
-            allow_decommissioning=True,
+            fixed_lifetime=10,  # Investment lasts 10 periods
+            allow_investment=True,  # Can invest in any period
         )
         ```
 
@@ -1328,11 +1324,11 @@ class InvestmentParameters(Interface):
 
         ```python
         timing = InvestmentParameters(
+            fixed_lifetime=10,  # Must operate for 10 periods
             force_investment=xr.DataArray(
-                [0, 0, 1, 0, 0],  # Force in period 3
+                [0, 0, 1, 0, 0],  # Force in period 3 (2030)
                 coords=[('period', [2020, 2025, 2030, 2035, 2040])],
             ),
-            fixed_lifetime=10,  # Must operate for 10 periods
         )
         ```
 
@@ -1341,66 +1337,61 @@ class InvestmentParameters(Interface):
         ```python
         # Create investment-period-dependent effects
         periods = [2020, 2025, 2030, 2035, 2040]
+
+        # Cost per kW depends on WHEN you invest (learning curve)
+        # Each row is a current period, columns are investment periods
         learning_costs = xr.DataArray(
             [
-                [1200, 1100, 1000, 950, 900],  # Costs in 2020 if invested in [2020, 2025, ...]
-                [0, 1100, 1000, 950, 900],  # Costs in 2025 if invested in [2020, 2025, ...]
-                [0, 0, 1000, 950, 900],  # Costs in 2030 if invested in [2020, 2025, ...]
-                [0, 0, 0, 950, 900],  # Costs in 2035 if invested in [2020, 2025, ...]
-                [0, 0, 0, 0, 900],  # Costs in 2040 if invested in [2020, 2025, ...]
+                [1200, 0, 0, 0, 0],  # 2020: only if invested in 2020
+                [1200, 1100, 0, 0, 0],  # 2025: depends on when invested
+                [1200, 1100, 1000, 0, 0],  # 2030: costs lower if invested later
+                [1200, 1100, 1000, 950, 0],  # 2035
+                [1200, 1100, 1000, 950, 900],  # 2040: benefit from all past investments
             ],
             coords=[('period', periods), ('investment_period', periods)],
         )
 
         timing = InvestmentParameters(
-            minimum_lifetime=5,
-            maximum_lifetime=15,
+            fixed_lifetime=10,
             specific_effects_by_investment_period={
-                'cost': learning_costs  # Cost per kW depends on investment year
+                'cost': learning_costs  # €/kW depends on investment year
             },
         )
         ```
 
-        Replacement scenario with existing asset:
+        Restrict investment to early periods:
 
         ```python
         timing = InvestmentParameters(
-            previous_lifetime=10,  # Existing asset has been operating for 10 years
-            force_investment=xr.DataArray([1, 0, 0], coords=[('period', [2025, 2030, 2035])]),
-            fixed_lifetime=15,  # New investment lasts 15 years
+            fixed_lifetime=15,
+            allow_investment=xr.DataArray(
+                [1, 1, 1, 0, 0],  # Only allow investment in first 3 periods
+                coords=[('period', [2020, 2025, 2030, 2035, 2040])],
+            ),
         )
         ```
 
     Common Use Cases:
         - Technology learning: Model cost reductions over time
-        - Lifecycle planning: Track investment lifetimes and replacement timing
-        - Retirement analysis: Model existing asset decommissioning
         - Multi-period optimization: Optimize investment timing across periods
         - Regulatory changes: Model period-specific incentives or constraints
+        - Strategic timing: Find optimal investment timing considering future conditions
     """
 
     def __init__(
         self,
+        fixed_lifetime: Scalar,
         allow_investment: InvestmentPeriodDataBool = True,
-        allow_decommissioning: InvestmentPeriodDataBool = True,
         force_investment: InvestmentPeriodDataBool = False,
-        force_decommissioning: InvestmentPeriodDataBool = False,
-        fixed_lifetime: Scalar | None = None,
-        minimum_lifetime: Scalar | None = None,
-        maximum_lifetime: Scalar | None = None,
-        previous_lifetime: Scalar | None = None,
         fixed_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
         specific_effects_by_investment_period: dict[str, xr.DataArray] | None = None,
     ):
-        self.allow_investment = allow_investment
-        self.allow_decommissioning = allow_decommissioning
-        self.force_investment = force_investment
-        self.force_decommissioning = force_decommissioning
+        if fixed_lifetime is None:
+            raise ValueError('InvestmentParameters requires fixed_lifetime to be specified.')
 
         self.fixed_lifetime = fixed_lifetime
-        self.minimum_lifetime = minimum_lifetime
-        self.maximum_lifetime = maximum_lifetime
-        self.previous_lifetime = previous_lifetime
+        self.allow_investment = allow_investment
+        self.force_investment = force_investment
 
         self.fixed_effects_by_investment_period: dict[str, xr.DataArray] = (
             fixed_effects_by_investment_period if fixed_effects_by_investment_period is not None else {}
@@ -1409,91 +1400,39 @@ class InvestmentParameters(Interface):
             specific_effects_by_investment_period if specific_effects_by_investment_period is not None else {}
         )
 
-    @property
-    def minimum_or_fixed_lifetime(self) -> Scalar | None:
-        return self.fixed_lifetime if self.fixed_lifetime is not None else self.minimum_lifetime
-
-    @property
-    def maximum_or_fixed_lifetime(self) -> Scalar | None:
-        return self.fixed_lifetime if self.fixed_lifetime is not None else self.maximum_lifetime
-
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         """Transform user data into internal model coordinates."""
         # Transform boolean/data flags to DataArrays
         self.allow_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|allow_investment', self.allow_investment, dims=['period', 'scenario']
         )
-        self.allow_decommissioning = flow_system.fit_to_model_coords(
-            f'{name_prefix}|allow_decommissioning', self.allow_decommissioning, dims=['period', 'scenario']
-        )
         self.force_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
         )
-        self.force_decommissioning = flow_system.fit_to_model_coords(
-            f'{name_prefix}|force_decommissioning', self.force_decommissioning, dims=['period', 'scenario']
-        )
 
-        # Investment-period-dependent effects are already xr.DataArray, so no transformation needed
+        # Investment-period-dependent effects are already xr.DataArray
         # They should have dimensions [period, scenario, investment_period]
+        # TODO: Add validation for effect dimensions
 
     def _plausibility_checks(self, flow_system: FlowSystem) -> None:
         """Validate parameter consistency."""
         if flow_system.periods is None:
             raise ValueError("InvestmentParameters requires the flow_system to have a 'periods' dimension.")
 
-        # Check force_investment uniqueness
-        if hasattr(self.force_investment, 'sum'):
-            if (self.force_investment.sum('period') > 1).any():
-                raise ValueError('force_investment can only be True for a single period.')
-
-        # Check force_decommissioning uniqueness
-        if hasattr(self.force_decommissioning, 'sum'):
-            if (self.force_decommissioning.sum('period') > 1).any():
-                raise ValueError('force_decommissioning can only be True for a single period.')
-
-        # Check investment before decommissioning
-        if hasattr(self.force_investment, 'sum') and hasattr(self.force_decommissioning, 'sum'):
-            if (self.force_investment.sum('period') == 1).any() and (
-                self.force_decommissioning.sum('period') == 1
-            ).any():
-                # Get period values for forced investment/decommissioning
-                # This is a simplified check - full check would need proper period value extraction
-                logger.debug('Checking forced investment occurs before forced decommissioning')
-
-        # Check previous_lifetime consistency
-        if self.previous_lifetime is not None:
-            if self.force_investment is False:
-                logger.warning(
-                    'previous_lifetime is specified but force_investment is False. '
-                    'This may lead to unexpected behavior.'
-                )
+        # Check force_investment uniqueness (can only force in one period per scenario)
+        if (self.force_investment.sum('investment_period') > 1).any():
+            raise ValueError('force_investment can only be True for a single investment_period per scenario.')
 
         # Check lifetime feasibility
-        if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
+        if self.fixed_lifetime is not None:
             periods = flow_system.periods.values
             if len(periods) > 1:
-                max_span = periods[-1] - periods[0]
-                if self.minimum_or_fixed_lifetime > max_span:
+                # Warn if investment in late periods would extend beyond model horizon
+                max_horizon = periods[-1] - periods[0]
+                if self.fixed_lifetime > max_horizon:
                     logger.warning(
-                        f'Minimum lifetime ({self.minimum_or_fixed_lifetime}) exceeds model period span ({max_span}). '
-                        f'This may lead to infeasible investments in later periods.'
+                        f'Fixed lifetime ({self.fixed_lifetime}) if Investment exceeds model horizon ({max_horizon}). '
                     )
-
-    def format_for_repr(self) -> str:
-        """Format InvestmentParameters for display in repr methods.
-
-        Returns:
-            Formatted string showing timing information
-        """
-        parts = []
-        if self.fixed_lifetime is not None:
-            parts.append(f'lifetime: {self.fixed_lifetime}')
-        elif self.minimum_lifetime is not None or self.maximum_lifetime is not None:
-            if self.minimum_lifetime is not None:
-                parts.append(f'min_life: {self.minimum_lifetime}')
-            if self.maximum_lifetime is not None:
-                parts.append(f'max_life: {self.maximum_lifetime}')
-        return ', '.join(parts) if parts else 'timing'
 
 
 YearOfInvestmentData = PeriodicDataUser
