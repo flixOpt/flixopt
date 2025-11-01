@@ -31,9 +31,8 @@ logger = logging.getLogger('flixopt')
 class _SizeModel(Submodel):
     """A model that creates the size variable together with a Binary"""
 
-    @staticmethod
     def _create_sizing_variables_and_constraints(
-        submodel: Submodel,
+        self,
         size_min: PeriodicData,
         size_max: PeriodicData,
         mandatory: bool,
@@ -41,23 +40,23 @@ class _SizeModel(Submodel):
     ):
         """Create timing variables and constraints."""
 
-        size = submodel.add_variables(
+        size = self.add_variables(
             short_name='size',
             lower=size_min if mandatory else 0,
             upper=size_max,
-            coords=submodel._model.get_coords(dims),
+            coords=self._model.get_coords(dims),
         )
 
         if not mandatory:
-            submodel.add_variables(
+            self.add_variables(
                 binary=True,
-                coords=submodel._model.get_coords(dims),
+                coords=self._model.get_coords(dims),
                 short_name='available',
             )
             BoundingPatterns.bounds_with_state(
-                submodel,
+                self,
                 variable=size,
-                variable_state=submodel._variables['available'],
+                variable_state=self._variables['available'],
                 bounds=(size_min, size_max),
             )
 
@@ -67,9 +66,9 @@ class _SizeModel(Submodel):
         return self._variables['size']
 
     @property
-    def available(self) -> linopy.Variable:
+    def available(self) -> linopy.Variable | None:
         """Capacity size variable"""
-        return self._variables['available']
+        return self._variables.get('available')
 
 
 class SizingModel(_SizeModel):
