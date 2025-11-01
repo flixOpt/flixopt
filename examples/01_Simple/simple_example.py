@@ -8,9 +8,8 @@ import pandas as pd
 import flixopt as fx
 
 if __name__ == '__main__':
-    # Enable console logging
-    fx.CONFIG.Logging.console = True
-    fx.CONFIG.apply()
+    fx.CONFIG.exploring()
+
     # --- Create Time Series Data ---
     # Heat demand profile (e.g., kW) over time and corresponding power prices
     heat_demand_per_h = np.array([30, 0, 90, 110, 110, 20, 20, 20, 20])
@@ -101,7 +100,7 @@ if __name__ == '__main__':
     flow_system.add_elements(costs, CO2, boiler, storage, chp, heat_sink, gas_source, power_sink)
 
     # Visualize the flow system for validation purposes
-    flow_system.plot_network(show=True)
+    flow_system.plot_network()
 
     # --- Define and Run Calculation ---
     # Create a calculation object to model the Flow System

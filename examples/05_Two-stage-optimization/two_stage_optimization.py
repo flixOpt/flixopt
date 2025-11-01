@@ -19,6 +19,8 @@ import flixopt as fx
 logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
+    fx.CONFIG.exploring()
+
     # Data Import
     data_import = pd.read_csv(
         pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0

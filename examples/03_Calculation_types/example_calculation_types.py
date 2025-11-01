@@ -11,9 +11,8 @@ import xarray as xr
 import flixopt as fx
 
 if __name__ == '__main__':
-    # Enable console logging
-    fx.CONFIG.Logging.console = True
-    fx.CONFIG.apply()
+    fx.CONFIG.exploring()
+
     # Calculation Types
     full, segmented, aggregated = True, True, True
 
@@ -165,7 +164,7 @@ if __name__ == '__main__':
         a_kwk,
         a_speicher,
     )
-    flow_system.plot_network(controls=False, show=True)
+    flow_system.plot_network()
 
     # Calculations
     calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []

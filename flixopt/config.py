@@ -63,6 +63,14 @@ _DEFAULTS = MappingProxyType(
                 'default_qualitative_colorscale': 'plotly',
             }
         ),
+        'solving': MappingProxyType(
+            {
+                'mip_gap': 0.01,
+                'time_limit_seconds': 300,
+                'log_to_console': True,
+                'log_main_results': True,
+            }
+        ),
     }
 )
 
@@ -75,6 +83,8 @@ class CONFIG:
     Attributes:
         Logging: Logging configuration.
         Modeling: Optimization modeling parameters.
+        Solving: Solver configuration and default parameters.
+        Plotting: Plotting configuration.
         config_name: Configuration name.
 
     Examples:
@@ -91,6 +101,9 @@ class CONFIG:
           level: DEBUG
           console: true
           file: app.log
+        solving:
+          mip_gap: 0.001
+          time_limit_seconds: 600
         ```
     """
 
@@ -194,6 +207,30 @@ class CONFIG:
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
 
+    class Solving:
+        """Solver configuration and default parameters.
+
+        Attributes:
+            mip_gap: Default MIP gap tolerance for solver convergence.
+            time_limit_seconds: Default time limit in seconds for solver runs.
+            log_to_console: Whether solver should output to console.
+            log_main_results: Whether to log main results after solving.
+
+        Examples:
+            ```python
+            # Set tighter convergence and longer timeout
+            CONFIG.Solving.mip_gap = 0.001
+            CONFIG.Solving.time_limit_seconds = 600
+            CONFIG.Solving.log_to_console = False
+            CONFIG.apply()
+            ```
+        """
+
+        mip_gap: float = _DEFAULTS['solving']['mip_gap']
+        time_limit_seconds: int = _DEFAULTS['solving']['time_limit_seconds']
+        log_to_console: bool = _DEFAULTS['solving']['log_to_console']
+        log_main_results: bool = _DEFAULTS['solving']['log_main_results']
+
     class Plotting:
         """Plotting configuration.
 
@@ -245,6 +282,12 @@ class CONFIG:
 
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
+
+        for key, value in _DEFAULTS['solving'].items():
+            setattr(cls.Solving, key, value)
+
+        for key, value in _DEFAULTS['plotting'].items():
+            setattr(cls.Plotting, key, value)
 
         cls.config_name = _DEFAULTS['config_name']
         cls.apply()
@@ -329,6 +372,12 @@ class CONFIG:
             elif key == 'modeling' and isinstance(value, dict):
                 for nested_key, nested_value in value.items():
                     setattr(cls.Modeling, nested_key, nested_value)
+            elif key == 'solving' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Solving, nested_key, nested_value)
+            elif key == 'plotting' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    setattr(cls.Plotting, nested_key, nested_value)
             elif hasattr(cls, key):
                 setattr(cls, key, value)
 
@@ -366,6 +415,12 @@ class CONFIG:
                 'epsilon': cls.Modeling.epsilon,
                 'big_binary_bound': cls.Modeling.big_binary_bound,
             },
+            'solving': {
+                'mip_gap': cls.Solving.mip_gap,
+                'time_limit_seconds': cls.Solving.time_limit_seconds,
+                'log_to_console': cls.Solving.log_to_console,
+                'log_main_results': cls.Solving.log_main_results,
+            },
             'plotting': {
                 'default_show': cls.Plotting.default_show,
                 'default_engine': cls.Plotting.default_engine,
@@ -375,6 +430,66 @@ class CONFIG:
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
             },
         }
+
+    @classmethod
+    def silent(cls) -> type[CONFIG]:
+        """Configure for silent operation.
+
+        Disables console logging, solver output, and result logging
+        for clean production runs. Does not show plots. Automatically calls apply().
+        """
+        cls.Logging.console = False
+        cls.Plotting.default_show = False
+        cls.Logging.file = None
+        cls.Solving.log_to_console = False
+        cls.Solving.log_main_results = False
+        cls.apply()
+        return cls
+
+    @classmethod
+    def debug(cls) -> type[CONFIG]:
+        """Configure for debug mode with verbose output.
+
+        Enables console logging at DEBUG level and all solver output for
+        troubleshooting. Automatically calls apply().
+        """
+        cls.Logging.console = True
+        cls.Logging.level = 'DEBUG'
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+        cls.apply()
+        return cls
+
+    @classmethod
+    def exploring(cls) -> type[CONFIG]:
+        """Configure for exploring flixopt
+
+        Enables console logging at INFO level and all solver output.
+        Also enables browser plotting for plotly with showing plots per default
+        """
+        cls.Logging.console = True
+        cls.Logging.level = 'INFO'
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+        cls.browser_plotting()
+        cls.apply()
+        return cls
+
+    @classmethod
+    def browser_plotting(cls) -> type[CONFIG]:
+        """Configure for interactive usage with plotly to open plots in browser.
+
+        Sets plotly.io.renderers.default = 'browser'. Useful for running examples
+        and viewing interactive plots. Does NOT modify CONFIG.Plotting settings.
+        """
+        cls.Plotting.default_show = True
+        cls.apply()
+
+        import plotly.io as pio
+
+        pio.renderers.default = 'browser'
+
+        return cls
 
 
 class MultilineFormatter(logging.Formatter):

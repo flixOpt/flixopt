@@ -3,8 +3,11 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import os
 import pathlib
 import re
+import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -931,3 +934,59 @@ def build_metadata_info(parts: list[str], prefix: str = ' | ') -> str:
         return ''
     info = ' | '.join(parts)
     return prefix + info if prefix else info
+
+
+@contextmanager
+def suppress_output():
+    """
+    Suppress all console output including C-level output from solvers.
+
+    WARNING: Not thread-safe. Modifies global file descriptors.
+    Use only with sequential execution or multiprocessing.
+    """
+    # Save original file descriptors
+    old_stdout_fd = os.dup(1)
+    old_stderr_fd = os.dup(2)
+    devnull_fd = None
+
+    try:
+        # Open devnull
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+
+        # Flush Python buffers before redirecting
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        # Redirect file descriptors to devnull
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+
+        yield
+
+    finally:
+        # Restore original file descriptors with nested try blocks
+        # to ensure all cleanup happens even if one step fails
+        try:
+            # Flush any buffered output in the redirected streams
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except (OSError, ValueError):
+            pass  # Stream might be closed or invalid
+
+        try:
+            os.dup2(old_stdout_fd, 1)
+        except OSError:
+            pass  # Failed to restore stdout, continue cleanup
+
+        try:
+            os.dup2(old_stderr_fd, 2)
+        except OSError:
+            pass  # Failed to restore stderr, continue cleanup
+
+        # Close all file descriptors
+        for fd in [devnull_fd, old_stdout_fd, old_stderr_fd]:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass  # FD already closed or invalid
