@@ -966,7 +966,7 @@ class InvestmentParameters(SizingParameters):
         [InvestmentParameters](../user-guide/mathematical-notation/features/InvestmentParameters.md)
 
     Args:
-        fixed_lifetime: REQUIRED. The investment lifetime in number of periods.
+        lifetime: REQUIRED. The investment lifetime in number of periods.
             Once invested, the asset operates for this many periods.
         allow_investment: Allow investment in specific periods. Default: True (all periods).
         force_investment: Force investment to occur in a specific period. Default: False.
@@ -984,7 +984,7 @@ class InvestmentParameters(SizingParameters):
 
         ```python
         timing = InvestmentParameters(
-            fixed_lifetime=10,  # Investment lasts 10 periods
+            lifetime=10,  # Investment lasts 10 periods
             allow_investment=True,  # Can invest in any period
         )
         ```
@@ -993,7 +993,7 @@ class InvestmentParameters(SizingParameters):
 
         ```python
         timing = InvestmentParameters(
-            fixed_lifetime=10,  # Must operate for 10 periods
+            lifetime=10,  # Must operate for 10 periods
             force_investment=xr.DataArray(
                 [0, 0, 1, 0, 0],  # Force in period 3 (2030)
                 coords=[('period', [2020, 2025, 2030, 2035, 2040])],
@@ -1021,7 +1021,7 @@ class InvestmentParameters(SizingParameters):
         )
 
         timing = InvestmentParameters(
-            fixed_lifetime=10,
+            lifetime=10,
             effects_of_investment_per_size={
                 'cost': learning_costs  # €/kW depends on investment year
             },
@@ -1032,7 +1032,7 @@ class InvestmentParameters(SizingParameters):
 
         ```python
         timing = InvestmentParameters(
-            fixed_lifetime=15,
+            lifetime=15,
             allow_investment=xr.DataArray(
                 [1, 1, 1, 0, 0],  # Only allow investment in first 3 periods
                 coords=[('period', [2020, 2025, 2030, 2035, 2040])],
@@ -1049,7 +1049,7 @@ class InvestmentParameters(SizingParameters):
 
     def __init__(
         self,
-        fixed_lifetime: Scalar,
+        lifetime: Scalar,
         allow_investment: InvestmentPeriodDataBool = True,
         force_investment: InvestmentPeriodDataBool = False,
         effects_of_investment: dict[str, xr.DataArray] | None = None,
@@ -1057,10 +1057,10 @@ class InvestmentParameters(SizingParameters):
         previous_size: PeriodicDataUser = 0,
         **kwargs,
     ):
-        if fixed_lifetime is None:
-            raise ValueError('InvestmentParameters requires fixed_lifetime to be specified.')
+        if lifetime is None:
+            raise ValueError('InvestmentParameters requires lifetime to be specified.')
 
-        self.fixed_lifetime = fixed_lifetime
+        self.lifetime = lifetime
         self.allow_investment = allow_investment
         self.force_investment = force_investment
         self.previous_size = previous_size
@@ -1111,9 +1111,9 @@ class InvestmentParameters(SizingParameters):
         if len(_periods) > 1:
             # Warn if investment in late periods would extend beyond model horizon
             max_horizon = _periods[-1] - _periods[0]
-            if self.fixed_lifetime > max_horizon:
+            if self.lifetime > max_horizon:
                 logger.warning(
-                    f'Fixed lifetime ({self.fixed_lifetime}) if Investment exceeds model horizon ({max_horizon}). '
+                    f'Fixed lifetime ({self.lifetime}) if Investment exceeds model horizon ({max_horizon}). '
                 )
 
 
@@ -1138,7 +1138,7 @@ class _InvestTimingParameters(Interface):
         allow_decommissioning: YearOfInvestmentDataBool = True,
         force_investment: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
         force_decommissioning: YearOfInvestmentDataBool = False,  # TODO: Allow to simply pass the year
-        fixed_lifetime: Scalar | None = None,
+        lifetime: Scalar | None = None,
         minimum_lifetime: Scalar | None = None,
         maximum_lifetime: Scalar | None = None,
         minimum_size: YearOfInvestmentData | None = None,
@@ -1163,7 +1163,7 @@ class _InvestTimingParameters(Interface):
             allow_decommissioning: Allow decommissioning in a certain year. By default, allow it in all years.
             force_investment: Force the investment to occur in a certain year.
             force_decommissioning: Force the decommissioning to occur in a certain year.
-            fixed_lifetime: Fix the lifetime of an investment (duration between investment and decommissioning).
+            lifetime: Fix the lifetime of an investment (duration between investment and decommissioning).
             minimum_size: Minimum possible size of the investment. Can depend on the year of investment.
             maximum_size: Maximum possible size of the investment. Can depend on the year of investment.
             fixed_size: Fix the size of the investment. Can depend on the year of investment. Can still be 0 if not forced.
@@ -1195,7 +1195,7 @@ class _InvestTimingParameters(Interface):
 
         self.maximum_lifetime = maximum_lifetime
         self.minimum_lifetime = minimum_lifetime
-        self.fixed_lifetime = fixed_lifetime
+        self.lifetime = lifetime
         self.previous_lifetime = previous_lifetime
 
         self.fix_effects: PeriodicEffectsUser = fix_effects if fix_effects is not None else {}
@@ -1238,14 +1238,14 @@ class _InvestTimingParameters(Interface):
                 # TODO: Might be only a warning
                 raise ValueError('previous_lifetime can only be used if force_investment is True.')
 
-        if self.minimum_or_fixed_lifetime is not None and self.maximum_or_fixed_lifetime is not None:
+        if self.minimum_or_lifetime is not None and self.maximum_or_lifetime is not None:
             years = flow_system.years.values
 
             infeasible_years = []
             for i, inv_year in enumerate(years[:-1]):  # Exclude last year
                 future_years = years[i + 1 :]  # All years after investment
-                min_decomm = self.minimum_or_fixed_lifetime + inv_year
-                max_decomm = self.maximum_or_fixed_lifetime + inv_year
+                min_decomm = self.minimum_or_lifetime + inv_year
+                max_decomm = self.maximum_or_lifetime + inv_year
                 if max_decomm >= years[-1]:
                     continue
 
@@ -1261,13 +1261,13 @@ class _InvestTimingParameters(Interface):
                     f'  Investment years with no feasible decommissioning: {[int(year) for year in infeasible_years]}\n'
                     f'  Consider relaxing the lifetime constraints or including more years into your model.\n'
                     f'  Lifetime:\n'
-                    f'      min={self.minimum_or_fixed_lifetime}\n'
-                    f'      max={self.maximum_or_fixed_lifetime}\n'
+                    f'      min={self.minimum_or_lifetime}\n'
+                    f'      max={self.maximum_or_lifetime}\n'
                     f'  Model years: {list(flow_system.years)}\n'
                 )
 
         specify_timing = (
-            (self.fixed_lifetime is not None)
+            (self.lifetime is not None)
             + bool((self.force_investment.sum('year') > 1).any())
             + bool((self.force_decommissioning.sum('year') > 1).any())
         )
@@ -1299,9 +1299,7 @@ class _InvestTimingParameters(Interface):
         self.minimum_lifetime = flow_system.fit_to_model_coords(
             f'{name_prefix}|minimum_lifetime', self.minimum_lifetime, dims=['scenario']
         )
-        self.fixed_lifetime = flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_lifetime', self.fixed_lifetime, dims=['scenario']
-        )
+        self.lifetime = flow_system.fit_to_model_coords(f'{name_prefix}|lifetime', self.lifetime, dims=['scenario'])
 
         self.force_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|force_investment', self.force_investment, dims=['year', 'scenario']
@@ -1377,14 +1375,14 @@ class _InvestTimingParameters(Interface):
         return self.fixed_size is not None
 
     @property
-    def minimum_or_fixed_lifetime(self) -> PeriodicDataUser:
+    def minimum_or_lifetime(self) -> PeriodicDataUser:
         """Get the effective minimum lifetime (fixed lifetime takes precedence)."""
-        return self.fixed_lifetime if self.fixed_lifetime is not None else self.minimum_lifetime
+        return self.lifetime if self.lifetime is not None else self.minimum_lifetime
 
     @property
-    def maximum_or_fixed_lifetime(self) -> PeriodicDataUser:
+    def maximum_or_lifetime(self) -> PeriodicDataUser:
         """Get the effective maximum lifetime (fixed lifetime takes precedence)."""
-        return self.fixed_lifetime if self.fixed_lifetime is not None else self.maximum_lifetime
+        return self.lifetime if self.lifetime is not None else self.maximum_lifetime
 
 
 @register_class_for_io
