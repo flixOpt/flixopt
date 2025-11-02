@@ -37,6 +37,7 @@ class _SizeModel(Submodel):
         size_max: PeriodicData,
         mandatory: PeriodicData,
         dims: list[FlowSystemDimensions],
+        force_available: bool = False,
     ):
         """Create timing variables and constraints."""
         if not np.issubdtype(mandatory.dtype, np.bool_):
@@ -49,7 +50,7 @@ class _SizeModel(Submodel):
             coords=self._model.get_coords(dims),
         )
 
-        if mandatory.any():
+        if force_available or mandatory.any():
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(dims),
@@ -184,6 +185,7 @@ class InvestmentModel(_SizeModel):
             size_max=self.parameters.maximum_or_fixed_size,
             mandatory=self.parameters.mandatory,
             dims=['period', 'scenario'],
+            force_available=True,
         )
 
         self._track_investment_and_decomissioning_period()
@@ -214,10 +216,10 @@ class InvestmentModel(_SizeModel):
 
         BoundingPatterns.state_transition_bounds(
             self,
-            state_variable=self.is_invested,
+            state_variable=self.available,
             switch_on=self.investment_occurs,
             switch_off=self.decommissioning_occurs,
-            name=self.is_invested.name,
+            name=self.available.name,
             previous_state=0,
             coord='period',
         )
@@ -315,7 +317,7 @@ class InvestmentModel(_SizeModel):
     @property
     def is_invested(self) -> linopy.Variable:
         """Binary variable indicating which periods have active investment"""
-        return self._variables['is_invested']
+        return self._variables['ava']
 
     @property
     def size_decrease(self) -> linopy.Variable:
