@@ -1086,11 +1086,11 @@ class InvestmentParameters(SizingParameters):
         self.previous_size = flow_system.fit_to_model_coords(
             f'{name_prefix}|previous_size', self.previous_size, dims=['period', 'scenario']
         )
-        self.effects_of_investment = flow_system.fit_to_model_coords(
+        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
             f'{name_prefix}|effects_of_investment', self.effects_of_investment, dims=['period', 'scenario']
         )  # TODO: investment period dim
 
-        self.effects_of_investment_per_size = flow_system.fit_to_model_coords(
+        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
             f'{name_prefix}|effects_of_investment_per_size',
             self.effects_of_investment_per_size,
             dims=['period', 'scenario'],

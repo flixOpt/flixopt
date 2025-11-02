@@ -49,14 +49,14 @@ class _SizeModel(Submodel):
             coords=self._model.get_coords(dims),
         )
 
-        if not mandatory.all():
+        if mandatory.any():
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(dims),
                 short_name='available',
             )
             self.add_constraints(
-                self.available == mandatory.astype(int),
+                self.available.where(mandatory) == 1,
                 short_name='mandatory',
             )
             BoundingPatterns.bounds_with_state(
