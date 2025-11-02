@@ -1052,8 +1052,8 @@ class InvestmentParameters(SizingParameters):
         lifetime: Scalar,
         allow_investment: InvestmentPeriodDataBool = True,
         force_investment: InvestmentPeriodDataBool = False,
-        effects_of_investment: dict[str, xr.DataArray] | None = None,
-        effects_of_investment_per_size: dict[str, xr.DataArray] | None = None,
+        effects_of_investment: PeriodicEffectsUser | None = None,
+        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
         previous_size: PeriodicDataUser = 0,
         **kwargs,
     ):
