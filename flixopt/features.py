@@ -190,8 +190,6 @@ class InvestmentModel(_SizeModel):
         self._track_investment_and_decomissioning_size()
         self._apply_investment_period_constraints()
 
-        self._add_effects()
-
     def _track_investment_and_decomissioning_period(self):
         """Track investment and decomissioning period absed on binary state variable."""
         self.add_variables(
