@@ -599,9 +599,10 @@ class FlowModel(ElementModel):
         )
 
     def _create_investment_model(self):
-        if isinstance(self.element.size, SizingParameters):
+        # Check InvestmentParameters first (best practice to check more specific types first)
+        if isinstance(self.element.size, InvestmentParameters):
             self.add_submodels(
-                SizingModel(
+                InvestmentModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.size,
@@ -609,9 +610,9 @@ class FlowModel(ElementModel):
                 ),
                 'investment',
             )
-        elif isinstance(self.element.size, InvestmentParameters):
+        elif isinstance(self.element.size, SizingParameters):
             self.add_submodels(
-                InvestmentModel(
+                SizingModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     parameters=self.element.size,

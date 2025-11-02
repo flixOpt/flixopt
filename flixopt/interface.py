@@ -670,7 +670,64 @@ class PiecewiseEffects(Interface):
 
 
 class _SizeParameters(Interface):
-    pass
+    """Base class for sizing and investment parameters."""
+
+    def __init__(
+        self,
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
+        mandatory: bool | xr.DataArray = False,
+        effects_of_size: PeriodicEffectsUser | None = None,
+        effects_per_size: PeriodicEffectsUser | None = None,
+        piecewise_effects_per_size: PiecewiseEffects | None = None,
+    ):
+        self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
+        self.fixed_size = fixed_size
+        self.mandatory = mandatory
+        self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
+        self.piecewise_effects_per_size = piecewise_effects_per_size
+        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
+        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
+
+    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+        self.effects_of_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_of_size,
+            label_suffix='effects_of_size',
+            dims=['period', 'scenario'],
+        )
+        self.effects_per_size = flow_system.fit_effects_to_model_coords(
+            label_prefix=name_prefix,
+            effect_values=self.effects_per_size,
+            label_suffix='effects_per_size',
+            dims=['period', 'scenario'],
+        )
+
+        if self.piecewise_effects_per_size is not None:
+            self.piecewise_effects_per_size.has_time_dim = False
+            self.piecewise_effects_per_size.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+
+        self.minimum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+        )
+        self.maximum_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+        )
+        self.fixed_size = flow_system.fit_to_model_coords(
+            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
+        )
+        self.mandatory = flow_system.fit_to_model_coords(
+            f'{name_prefix}|mandatory', self.mandatory, dims=['period', 'scenario']
+        )
+
+    @property
+    def minimum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.minimum_size
+
+    @property
+    def maximum_or_fixed_size(self) -> PeriodicData:
+        return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
 
 @register_class_for_io
@@ -867,62 +924,8 @@ class SizingParameters(_SizeParameters):
 
     """
 
-    def __init__(
-        self,
-        fixed_size: PeriodicDataUser | None = None,
-        minimum_size: PeriodicDataUser | None = None,
-        maximum_size: PeriodicDataUser | None = None,
-        mandatory: bool | xr.DataArray = False,
-        effects_of_size: PeriodicEffectsUser | None = None,
-        effects_per_size: PeriodicEffectsUser | None = None,
-        piecewise_effects_per_size: PiecewiseEffects | None = None,
-    ):
-        self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
-        self.fixed_size = fixed_size
-        self.mandatory = mandatory
-        self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
-        self.piecewise_effects_per_size = piecewise_effects_per_size
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
-
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.effects_of_size = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_of_size,
-            label_suffix='effects_of_size',
-            dims=['period', 'scenario'],
-        )
-        self.effects_per_size = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
-            effect_values=self.effects_per_size,
-            label_suffix='effects_per_size',
-            dims=['period', 'scenario'],
-        )
-
-        if self.piecewise_effects_per_size is not None:
-            self.piecewise_effects_per_size.has_time_dim = False
-            self.piecewise_effects_per_size.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
-
-        self.minimum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
-        )
-        self.maximum_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
-        )
-        self.fixed_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
-        )
-        self.mandatory = flow_system.fit_to_model_coords(
-            f'{name_prefix}|mandatory', self.mandatory, dims=['period', 'scenario']
-        )
-
-    @property
-    def minimum_or_fixed_size(self) -> PeriodicData:
-        return self.fixed_size if self.fixed_size is not None else self.minimum_size
-
-    @property
-    def maximum_or_fixed_size(self) -> PeriodicData:
-        return self.fixed_size if self.fixed_size is not None else self.maximum_size
+    # SizingParameters now inherits all functionality from _SizeParameters
+    # No additional implementation needed
 
 
 @register_class_for_io
@@ -943,17 +946,15 @@ InvestmentPeriodDataBool = bool | InvestmentPeriodData
 
 
 @register_class_for_io
-class InvestmentParameters(SizingParameters):
+class InvestmentParameters(_SizeParameters):
     """Define investment timing parameters with fixed lifetime.
 
     This class models WHEN to invest with a fixed lifetime duration.
-    It must be combined with SizingParameters to fully model investment decisions.
+    It includes all sizing parameters (capacity bounds, effects) plus timing controls.
 
-    InvestmentParameters focuses on the TIMING aspect (when to invest),
-    while SizingParameters handles the CAPACITY aspect (how much to install).
-
-    The model optimizes when to make an investment that will last for a fixed duration.
-    During the investment's lifetime, the capacity (from SizingParameters) is active.
+    InvestmentParameters combines both TIMING (when to invest) and CAPACITY (how much)
+    aspects in a single class, optimizing when to make an investment that will last
+    for a fixed duration.
 
     Investment Timing Features:
         **Single Investment Decision**: Decide which period to invest in (at most once)
@@ -978,6 +979,14 @@ class InvestmentParameters(SizingParameters):
             - Period-specific subsidies or regulations
         effects_of_investment_per_size: Size-dependent effects that also depend on investment period.
             Dict mapping effect names to xr.DataArray with dimensions [period, scenario, investment_period].
+        previous_size: Size of existing capacity from previous periods. Default: 0.
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        mandatory: Controls whether investment is required. When True, forces investment.
+        effects_of_size: Fixed costs if investment is made, regardless of size.
+        effects_per_size: Variable costs proportional to size (per-unit costs).
+        piecewise_effects_per_size: Non-linear costs using PiecewiseEffects.
 
     Examples:
         Basic investment timing:
@@ -1055,11 +1064,19 @@ class InvestmentParameters(SizingParameters):
         effects_of_investment: PeriodicEffectsUser | None = None,
         effects_of_investment_per_size: PeriodicEffectsUser | None = None,
         previous_size: PeriodicDataUser = 0,
-        **kwargs,
+        # Sizing parameters (inherited from _SizeParameters)
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
+        mandatory: bool | xr.DataArray = False,
+        effects_of_size: PeriodicEffectsUser | None = None,
+        effects_per_size: PeriodicEffectsUser | None = None,
+        piecewise_effects_per_size: PiecewiseEffects | None = None,
     ):
         if lifetime is None:
             raise ValueError('InvestmentParameters requires lifetime to be specified.')
 
+        # Initialize investment-specific attributes
         self.lifetime = lifetime
         self.allow_investment = allow_investment
         self.force_investment = force_investment
@@ -1071,7 +1088,17 @@ class InvestmentParameters(SizingParameters):
         self.effects_of_investment_per_size: dict[str, xr.DataArray] = (
             effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
-        super().__init__(**kwargs)
+
+        # Initialize base sizing parameters
+        super().__init__(
+            fixed_size=fixed_size,
+            minimum_size=minimum_size,
+            maximum_size=maximum_size,
+            mandatory=mandatory,
+            effects_of_size=effects_of_size,
+            effects_per_size=effects_per_size,
+            piecewise_effects_per_size=piecewise_effects_per_size,
+        )
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         """Transform user data into internal model coordinates."""

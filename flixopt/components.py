@@ -470,7 +470,7 @@ class Storage(Component):
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        if isinstance(self.capacity_in_flow_hours, SizingParameters):
+        if isinstance(self.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
             self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|SizingParameters')
         else:
             self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
@@ -492,7 +492,7 @@ class Storage(Component):
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
 
         # Use new SizingParameters methods to get capacity bounds
-        if isinstance(self.capacity_in_flow_hours, SizingParameters):
+        if isinstance(self.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
             minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
             maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
         else:
@@ -517,8 +517,8 @@ class Storage(Component):
                 )
 
         if self.balanced:
-            if not isinstance(self.charging.size, SizingParameters) or not isinstance(
-                self.discharging.size, SizingParameters
+            if not isinstance(self.charging.size, (SizingParameters, InvestmentParameters)) or not isinstance(
+                self.discharging.size, (SizingParameters, InvestmentParameters)
             ):
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
@@ -704,7 +704,9 @@ class Transmission(Component):
         if self.balanced:
             if self.in2 is None:
                 raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
-            if not isinstance(self.in1.size, SizingParameters) or not isinstance(self.in2.size, SizingParameters):
+            if not isinstance(self.in1.size, (SizingParameters, InvestmentParameters)) or not isinstance(
+                self.in2.size, (SizingParameters, InvestmentParameters)
+            ):
                 raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
             if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
                 self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
@@ -863,7 +865,11 @@ class StorageModel(ComponentModel):
             short_name='charge_state',
         )
 
-        if isinstance(self.element.capacity_in_flow_hours, SizingParameters):
+        # Check InvestmentParameters first (best practice to check more specific types first)
+        if isinstance(self.element.capacity_in_flow_hours, InvestmentParameters):
+            raise NotImplementedError
+
+        elif isinstance(self.element.capacity_in_flow_hours, SizingParameters):
             self.add_submodels(
                 SizingModel(
                     model=self._model,
@@ -880,9 +886,6 @@ class StorageModel(ComponentModel):
                 scaling_variable=self.investment.size,
                 relative_bounds=self._relative_charge_state_bounds,
             )
-
-        elif isinstance(self.element.capacity_in_flow_hours, InvestmentParameters):
-            raise NotImplementedError
 
         # Initial charge state
         self._initial_and_final_charge_state()
@@ -921,7 +924,7 @@ class StorageModel(ComponentModel):
     @property
     def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
-        if not isinstance(self.element.capacity_in_flow_hours, SizingParameters):
+        if not isinstance(self.element.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
             return (
                 relative_lower_bound * self.element.capacity_in_flow_hours,
                 relative_upper_bound * self.element.capacity_in_flow_hours,
