@@ -264,18 +264,15 @@ class InvestmentModel(_SizeModel):
         is_first = periods == periods.isel(period=0)
         decom_period = periods + self.parameters.lifetime - xr.where(is_first, self.parameters.previous_lifetime, 0)
 
-        # Map to available periods
-        valid = decom_period <= self._model.flow_system.periods.values[-1]
-        avail_decom = periods.sel(period=decom_period.where(valid, drop=True), method='bfill')
+        # Map to available periods (drop invalid ones for sel to work)
+        valid = decom_period.where(decom_period <= self._model.flow_system.periods.values[-1], drop=True)
+        avail_decom = periods.sel(period=valid, method='bfill').assign_coords(period=valid.period)
 
         # One constraint per unique decommissioning period
-        for decom_val in np.unique(avail_decom.where(valid).values):
-            if np.isnan(decom_val):
-                continue
-            mask = (avail_decom == decom_val) & valid
+        for decom_val in np.unique(avail_decom.values):
+            mask = avail_decom == decom_val
             self.add_constraints(
-                self.investment_occurs.where(mask, 0).sum('period')
-                == self.decommissioning_occurs.sel(period=decom_val),
+                self.investment_occurs.where(mask).sum('period') == self.decommissioning_occurs.sel(period=decom_val),
                 short_name=f'size|lifetime{int(decom_val)}',
             )
 
