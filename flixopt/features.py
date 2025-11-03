@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Protocol
 import linopy
 import numpy as np
 
+from . import io as fx_io
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
@@ -266,8 +267,8 @@ class InvestmentModel(_SizeModel):
             available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
             if (decommissioning_period != available_decommissioning_period).any():
                 logger.warning(
-                    f'For an Investment in period {period}, the decommissioning period would be {decommissioning_period}.'
-                    f'As this period is not part of the Model horizon, the lifetime will be extended until the next period ({available_decommissioning_period}), which will effectively extend the lifetime by +{available_decommissioning_period - decommissioning_period} periods.'
+                    f'For an Investment in period {period}, the decommissioning period would be {fx_io._format_value_for_repr(decommissioning_period)}.'
+                    f'As this period is not part of the Model horizon, the lifetime will be extended until the next period ({fx_io._format_value_for_repr(available_decommissioning_period)}), which will effectively extend the lifetime by +{fx_io._format_value_for_repr(available_decommissioning_period - decommissioning_period)} periods.'
                 )
 
             self.add_constraints(
