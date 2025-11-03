@@ -256,8 +256,9 @@ class InvestmentModel(_SizeModel):
 
     def _select_best_investment_periods(self, periods):
         """Select investment periods that don't conflict, preferring those with minimal lifetime extension."""
-        # Build list of all investment -> decommissioning mappings
-        mappings = []
+        # Map decommissioning_period -> (investment_period, extension, available_decommissioning_period)
+        decom_to_best = {}
+
         for i, period in enumerate(periods.values):
             decommissioning_period = (
                 period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
@@ -267,56 +268,32 @@ class InvestmentModel(_SizeModel):
 
             available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
             extension = (available_decommissioning_period - decommissioning_period).max().item()
+            decom_value = available_decommissioning_period.item()
 
-            mappings.append(
-                {
-                    'investment_period': period,
-                    'decommissioning_period': available_decommissioning_period,
-                    'extension': extension,
-                }
-            )
-
-        # Find conflicts: investments with same decommissioning period
-        selected = set()
-        disabled = []
-
-        for i, mapping in enumerate(mappings):
-            # Check if any previous mapping has the same decommissioning period
-            conflict = None
-            for j in range(i):
-                if mappings[j]['investment_period'] in disabled:
-                    continue
-                if (mappings[j]['decommissioning_period'] == mapping['decommissioning_period']).all():
-                    conflict = mappings[j]
-                    break
-
-            if conflict is None:
-                # No conflict, select this investment
-                selected.add(mapping['investment_period'])
-            else:
-                # Conflict found: keep the one with smaller extension
-                if mapping['extension'] < conflict['extension']:
-                    # Current mapping is better, replace the previous one
-                    selected.discard(conflict['investment_period'])
-                    selected.add(mapping['investment_period'])
-                    disabled.append(conflict['investment_period'])
+            # Check if this decommissioning period already has a candidate
+            if decom_value in decom_to_best:
+                prev_period, prev_ext, prev_decom = decom_to_best[decom_value]
+                if extension < prev_ext:
+                    # Current investment is better (smaller extension)
+                    decom_to_best[decom_value] = (period, extension, available_decommissioning_period)
                     logger.warning(
-                        f'Investment in period {fx_io._format_value_for_repr(conflict["investment_period"])} conflicts with period '
-                        f'{fx_io._format_value_for_repr(mapping["investment_period"])} (both map to decommissioning period '
-                        f'{fx_io._format_value_for_repr(mapping["decommissioning_period"])}). Disabling period {fx_io._format_value_for_repr(conflict["investment_period"])} '
-                        f'as it requires more lifetime extension ({conflict["extension"]:.1f} vs {mapping["extension"]:.1f} periods).'
+                        f'Investment in period {fx_io._format_value_for_repr(prev_period)} conflicts with period '
+                        f'{fx_io._format_value_for_repr(period)} (both map to decommissioning period '
+                        f'{fx_io._format_value_for_repr(decom_value)}). Disabling period {fx_io._format_value_for_repr(prev_period)} '
+                        f'as it requires more lifetime extension ({prev_ext:.1f} vs {extension:.1f} periods).'
                     )
                 else:
-                    # Previous mapping is better, disable current one
-                    disabled.append(mapping['investment_period'])
+                    # Previous investment is better
                     logger.warning(
-                        f'Investment in period {fx_io._format_value_for_repr(mapping["investment_period"])} conflicts with period '
-                        f'{fx_io._format_value_for_repr(conflict["investment_period"])} (both map to decommissioning period '
-                        f'{fx_io._format_value_for_repr(mapping["decommissioning_period"])}). Disabling period {fx_io._format_value_for_repr(mapping["investment_period"])} '
-                        f'as it requires more lifetime extension ({mapping["extension"]:.1f} vs {conflict["extension"]:.1f} periods).'
+                        f'Investment in period {fx_io._format_value_for_repr(period)} conflicts with period '
+                        f'{fx_io._format_value_for_repr(prev_period)} (both map to decommissioning period '
+                        f'{fx_io._format_value_for_repr(decom_value)}). Disabling period {fx_io._format_value_for_repr(period)} '
+                        f'as it requires more lifetime extension ({extension:.1f} vs {prev_ext:.1f} periods).'
                     )
+            else:
+                decom_to_best[decom_value] = (period, extension, available_decommissioning_period)
 
-        return selected
+        return {period for period, _, _ in decom_to_best.values()}
 
     def _track_lifetime(self):
         periods = self._model.flow_system.fit_to_model_coords(
