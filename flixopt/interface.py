@@ -1113,9 +1113,6 @@ class InvestmentParameters(_SizeParameters):
         self.previous_lifetime = flow_system.fit_to_model_coords(
             f'{name_prefix}|previous_lifetime', self.previous_lifetime, dims=['scenario']
         )
-        self.lifetime = flow_system.fit_to_model_coords(
-            f'{name_prefix}|lifetime', self.lifetime, dims=['period', 'scenario']
-        )
         self.effects_of_investment = flow_system.fit_effects_to_model_coords(
             f'{name_prefix}|effects_of_investment', self.effects_of_investment, dims=['period', 'scenario']
         )  # TODO: investment period dim
