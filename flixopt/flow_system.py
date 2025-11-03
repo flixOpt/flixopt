@@ -165,7 +165,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.periods_extra = self._calculate_periods_extra(self.periods)
+        self.periods_extra = self._calculate_periods_extra(self.periods, None)
 
         self.weights = weights
 
@@ -175,7 +175,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.hours_of_last_timestep = hours_per_timestep[-1].item()
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
-        self.periods_per_period = self.fit_to_model_coords('periods_per_period', periods_per_period)
+        self.periods_per_period = self.fit_to_model_coords(
+            'periods_per_period', periods_per_period, dims=['period', 'scenario']
+        )
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(element_type_name='components')
@@ -262,7 +264,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if periods_of_last_period is None:
             periods_of_last_period = periods[-1] - periods[-2]
 
-        return pd.Index(periods.append(periods[-1] + periods_of_last_period), name='period')
+        return pd.Index(periods.append(pd.Index([periods[-1] + periods_of_last_period])), name='period')
 
     @staticmethod
     def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
