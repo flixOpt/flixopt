@@ -270,7 +270,7 @@ class InvestmentModel(_SizeModel):
 
         # One constraint per unique decommissioning period
         for decom_val in np.unique(avail_decom.values):
-            mask = avail_decom == decom_val
+            mask = (avail_decom == decom_val).reindex(period=periods).fillna(0)
             self.add_constraints(
                 self.investment_occurs.where(mask).sum('period') == self.decommissioning_occurs.sel(period=decom_val),
                 short_name=f'size|lifetime{int(decom_val)}',
