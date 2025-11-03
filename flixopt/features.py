@@ -258,6 +258,8 @@ class InvestmentModel(_SizeModel):
         periods = self._model.flow_system.fit_to_model_coords(
             'periods', self._model.flow_system.periods.values, dims=['period', 'scenario']
         )
+        used_decommissioning_periods = set()
+
         for i, period in enumerate(periods.values):
             decommissioning_period = (
                 period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
@@ -265,6 +267,24 @@ class InvestmentModel(_SizeModel):
             if (decommissioning_period > self._model.flow_system.periods.values[-1]).all():
                 continue
             available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
+
+            # Check if this decommissioning period is already used by a previous investment period
+            decom_period_key = tuple(available_decommissioning_period.values.flatten())
+            if decom_period_key in used_decommissioning_periods:
+                logger.warning(
+                    f'Investment in period {fx_io._format_value_for_repr(period)} would require decommissioning in period {fx_io._format_value_for_repr(available_decommissioning_period)}, '
+                    f'but this decommissioning period is already linked to a previous investment period. '
+                    f'Investment in period {fx_io._format_value_for_repr(period)} will be disabled to avoid conflicting constraints.'
+                )
+                # Disable investment in this period
+                self.add_constraints(
+                    self.investment_occurs.sel(period=period) == 0,
+                    short_name=f'size|no_investment_due_to_lifetime_conflict{period}',
+                )
+                continue
+
+            used_decommissioning_periods.add(decom_period_key)
+
             if (decommissioning_period != available_decommissioning_period).any():
                 logger.warning(
                     f'For an Investment in period {period}, the decommissioning period would be {fx_io._format_value_for_repr(decommissioning_period)}.'
