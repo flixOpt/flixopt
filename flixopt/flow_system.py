@@ -165,17 +165,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.periods_extra = self._calculate_periods_extra(self.periods)
-
         self.weights = weights
 
         hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
-        periods_per_period = self.calculate_periods_per_period(self.periods_extra)
 
         self.hours_of_last_timestep = hours_per_timestep[-1].item()
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
-        self.periods_per_period = self.fit_to_model_coords('periods_per_period', periods_per_period)
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(element_type_name='components')
@@ -257,27 +253,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def _calculate_periods_extra(periods: pd.Index, periods_of_last_period: int | None) -> pd.Index:
-        """Create periods with an extra period at the end."""
-        if periods_of_last_period is None:
-            periods_of_last_period = periods[-1] - periods[-2]
-
-        return pd.Index(periods.append(periods[-1] + periods_of_last_period), name='period')
-
-    @staticmethod
     def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
         """Calculate duration of each timestep as a 1D DataArray."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
-        )
-
-    @staticmethod
-    def calculate_periods_per_period(periods: pd.Index) -> xr.DataArray:
-        """Calculate duration of each period as a 1D DataArray."""
-        periods_per_period = np.diff(periods)
-        return xr.DataArray(
-            periods_per_period, coords={'period': periods[:-1]}, dims='period', name='periods_per_period'
         )
 
     @staticmethod
