@@ -1058,12 +1058,12 @@ class InvestmentParameters(_SizeParameters):
 
     def __init__(
         self,
-        lifetime: Scalar,
+        lifetime: InvestmentPeriodData,
         allow_investment: InvestmentPeriodDataBool = True,
         force_investment: InvestmentPeriodDataBool = False,
         effects_of_investment: PeriodicEffectsUser | None = None,
         effects_of_investment_per_size: PeriodicEffectsUser | None = None,
-        previous_size: PeriodicDataUser = 0,
+        previous_lifetime: int = 0,
         # Sizing parameters (inherited from _SizeParameters)
         fixed_size: PeriodicDataUser | None = None,
         minimum_size: PeriodicDataUser | None = None,
@@ -1080,7 +1080,7 @@ class InvestmentParameters(_SizeParameters):
         self.lifetime = lifetime
         self.allow_investment = allow_investment
         self.force_investment = force_investment
-        self.previous_size = previous_size
+        self.previous_lifetime = previous_lifetime
 
         self.effects_of_investment: dict[str, xr.DataArray] = (
             effects_of_investment if effects_of_investment is not None else {}
@@ -1110,8 +1110,8 @@ class InvestmentParameters(_SizeParameters):
         self.force_investment = flow_system.fit_to_model_coords(
             f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
         )
-        self.previous_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|previous_size', self.previous_size, dims=['period', 'scenario']
+        self.previous_lifetime = flow_system.fit_to_model_coords(
+            f'{name_prefix}|previous_lifetime', self.previous_lifetime, dims=['scenario']
         )
         self.effects_of_investment = flow_system.fit_effects_to_model_coords(
             f'{name_prefix}|effects_of_investment', self.effects_of_investment, dims=['period', 'scenario']

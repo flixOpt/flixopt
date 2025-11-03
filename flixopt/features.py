@@ -190,6 +190,7 @@ class InvestmentModel(_SizeModel):
 
         self._track_investment_and_decomissioning_period()
         self._track_investment_and_decomissioning_size()
+        self._track_lifetime()
         self._apply_investment_period_constraints()
 
     def _track_investment_and_decomissioning_period(self):
@@ -246,9 +247,32 @@ class InvestmentModel(_SizeModel):
             decrease_binary=self.decommissioning_occurs,
             name=f'{self.label_of_element}|size|changes',
             max_change=self.parameters.maximum_or_fixed_size,
-            previous_level=self.parameters.previous_size,
+            previous_level=0
+            if self.parameters.previous_lifetime is None
+            else self.size.isel(period=0),  # TODO: What value?
             coord='period',
         )
+
+    def _track_lifetime(self):
+        for i, period in enumerate(self._model.flow_system.periods.values()):
+            decommissioning_period = (
+                period + self.parameters.lifetime - self.parameters.previous_lifetime if i == 0 else 0
+            )
+            available_decommissioning_period = self._model.flow_system.periods.get_indexer(
+                [decommissioning_period],
+                method='bfill',
+            )[0]
+            if decommissioning_period != available_decommissioning_period:
+                logger.warning(
+                    f'For an Investment in period {period}, the decommissioning period would be {decommissioning_period}.'
+                    f'As this period is not part of the Model horizon, the lifetime will effectively be extended until the next period (+{available_decommissioning_period - decommissioning_period}).'
+                )
+
+            self.add_constraints(
+                self.size_increase.sel(period=period)
+                == self.size_decrease.sel(period=available_decommissioning_period),
+                short_name='size|lifetime',
+            )
 
     def _apply_investment_period_constraints(self):
         # Constraint: Apply allow_investment restrictions
