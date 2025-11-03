@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from . import io as fx_io
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
@@ -259,52 +260,24 @@ class InvestmentModel(_SizeModel):
             'periods', self._model.flow_system.periods.values, dims=['period', 'scenario']
         )
 
-        # Group investment periods by their decommissioning period
-        decom_to_investments = {}
+        # Calculate decommissioning periods (vectorized)
+        is_first = periods == periods.isel(period=0)
+        decom_period = periods + self.parameters.lifetime - xr.where(is_first, self.parameters.previous_lifetime, 0)
 
-        for i, period in enumerate(periods.values):
-            decommissioning_period = (
-                period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
-            )
-            if (decommissioning_period > self._model.flow_system.periods.values[-1]).all():
+        # Map to available periods
+        valid = decom_period <= self._model.flow_system.periods.values[-1]
+        avail_decom = periods.sel(period=decom_period.where(valid, drop=True), method='bfill')
+
+        # One constraint per unique decommissioning period
+        for decom_val in np.unique(avail_decom.where(valid).values):
+            if np.isnan(decom_val):
                 continue
-
-            available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
-            decom_value = available_decommissioning_period.item()
-
-            if decom_value not in decom_to_investments:
-                decom_to_investments[decom_value] = []
-
-            decom_to_investments[decom_value].append((period, decommissioning_period, available_decommissioning_period))
-
-            # Warn about lifetime extension
-            if (decommissioning_period != available_decommissioning_period).any():
-                logger.warning(
-                    f'For an Investment in period {period}, the decommissioning period would be {fx_io._format_value_for_repr(decommissioning_period)}. '
-                    f'As this period is not part of the Model horizon, the lifetime will be extended until the next period ({fx_io._format_value_for_repr(available_decommissioning_period)}), which will effectively extend the lifetime by +{fx_io._format_value_for_repr(available_decommissioning_period - decommissioning_period)} periods.'
-                )
-
-        # Add constraints: sum of investments equals decommissioning
-        for decom_value, investment_list in decom_to_investments.items():
-            available_decommissioning_period = investment_list[0][2]
-
-            if len(investment_list) > 1:
-                # Multiple investments map to same decommissioning period - sum them
-                investment_sum = sum(
-                    self.investment_occurs.sel(period=inv_period) for inv_period, _, _ in investment_list
-                )
-                self.add_constraints(
-                    investment_sum == self.decommissioning_occurs.sel(period=available_decommissioning_period),
-                    short_name=f'size|lifetime{decom_value}',
-                )
-            else:
-                # Single investment maps to this decommissioning period
-                inv_period = investment_list[0][0]
-                self.add_constraints(
-                    self.investment_occurs.sel(period=inv_period)
-                    == self.decommissioning_occurs.sel(period=available_decommissioning_period),
-                    short_name=f'size|lifetime{inv_period}',
-                )
+            mask = (avail_decom == decom_val) & valid
+            self.add_constraints(
+                self.investment_occurs.where(mask, 0).sum('period')
+                == self.decommissioning_occurs.sel(period=decom_val),
+                short_name=f'size|lifetime{int(decom_val)}',
+            )
 
     def _apply_investment_period_constraints(self):
         # Constraint: Apply allow_investment restrictions
