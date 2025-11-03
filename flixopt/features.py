@@ -254,56 +254,14 @@ class InvestmentModel(_SizeModel):
             coord='period',
         )
 
-    def _select_best_investment_periods(self, periods):
-        """Select investment periods that don't conflict, preferring those with minimal lifetime extension."""
-        # Map decommissioning_period -> (investment_period, extension, available_decommissioning_period)
-        decom_to_best = {}
-
-        for i, period in enumerate(periods.values):
-            decommissioning_period = (
-                period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
-            )
-            if (decommissioning_period > self._model.flow_system.periods.values[-1]).all():
-                continue
-
-            available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
-            extension = (available_decommissioning_period - decommissioning_period).max().item()
-            decom_value = available_decommissioning_period.item()
-
-            # Check if this decommissioning period already has a candidate
-            if decom_value in decom_to_best:
-                prev_period, prev_ext, prev_decom = decom_to_best[decom_value]
-                if extension < prev_ext:
-                    # Current investment is better (smaller extension)
-                    decom_to_best[decom_value] = (period, extension, available_decommissioning_period)
-                    logger.warning(
-                        f'Investment in period {fx_io._format_value_for_repr(prev_period)} conflicts with period '
-                        f'{fx_io._format_value_for_repr(period)} (both map to decommissioning period '
-                        f'{fx_io._format_value_for_repr(decom_value)}). Disabling period {fx_io._format_value_for_repr(prev_period)} '
-                        f'as it requires more lifetime extension ({prev_ext:.1f} vs {extension:.1f} periods).'
-                    )
-                else:
-                    # Previous investment is better
-                    logger.warning(
-                        f'Investment in period {fx_io._format_value_for_repr(period)} conflicts with period '
-                        f'{fx_io._format_value_for_repr(prev_period)} (both map to decommissioning period '
-                        f'{fx_io._format_value_for_repr(decom_value)}). Disabling period {fx_io._format_value_for_repr(period)} '
-                        f'as it requires more lifetime extension ({extension:.1f} vs {prev_ext:.1f} periods).'
-                    )
-            else:
-                decom_to_best[decom_value] = (period, extension, available_decommissioning_period)
-
-        return {period for period, _, _ in decom_to_best.values()}
-
     def _track_lifetime(self):
         periods = self._model.flow_system.fit_to_model_coords(
             'periods', self._model.flow_system.periods.values, dims=['period', 'scenario']
         )
 
-        # Determine which investment periods to allow (avoiding conflicts)
-        selected_periods = self._select_best_investment_periods(periods)
+        # Group investment periods by their decommissioning period
+        decom_to_investments = {}
 
-        # Add constraints for each period
         for i, period in enumerate(periods.values):
             decommissioning_period = (
                 period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
@@ -311,28 +269,42 @@ class InvestmentModel(_SizeModel):
             if (decommissioning_period > self._model.flow_system.periods.values[-1]).all():
                 continue
 
-            # Disable investment if this period conflicts with a better choice
-            if period not in selected_periods:
-                self.add_constraints(
-                    self.investment_occurs.sel(period=period) == 0,
-                    short_name=f'size|no_investment_due_to_lifetime_conflict{period}',
-                )
-                continue
-
-            # Link investment to decommissioning
             available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
+            decom_value = available_decommissioning_period.item()
 
+            if decom_value not in decom_to_investments:
+                decom_to_investments[decom_value] = []
+
+            decom_to_investments[decom_value].append((period, decommissioning_period, available_decommissioning_period))
+
+            # Warn about lifetime extension
             if (decommissioning_period != available_decommissioning_period).any():
                 logger.warning(
                     f'For an Investment in period {period}, the decommissioning period would be {fx_io._format_value_for_repr(decommissioning_period)}. '
                     f'As this period is not part of the Model horizon, the lifetime will be extended until the next period ({fx_io._format_value_for_repr(available_decommissioning_period)}), which will effectively extend the lifetime by +{fx_io._format_value_for_repr(available_decommissioning_period - decommissioning_period)} periods.'
                 )
 
-            self.add_constraints(
-                self.investment_occurs.sel(period=period)
-                == self.decommissioning_occurs.sel(period=available_decommissioning_period),
-                short_name=f'size|lifetime{period}',
-            )
+        # Add constraints: sum of investments equals decommissioning
+        for decom_value, investment_list in decom_to_investments.items():
+            available_decommissioning_period = investment_list[0][2]
+
+            if len(investment_list) > 1:
+                # Multiple investments map to same decommissioning period - sum them
+                investment_sum = sum(
+                    self.investment_occurs.sel(period=inv_period) for inv_period, _, _ in investment_list
+                )
+                self.add_constraints(
+                    investment_sum == self.decommissioning_occurs.sel(period=available_decommissioning_period),
+                    short_name=f'size|lifetime{decom_value}',
+                )
+            else:
+                # Single investment maps to this decommissioning period
+                inv_period = investment_list[0][0]
+                self.add_constraints(
+                    self.investment_occurs.sel(period=inv_period)
+                    == self.decommissioning_occurs.sel(period=available_decommissioning_period),
+                    short_name=f'size|lifetime{inv_period}',
+                )
 
     def _apply_investment_period_constraints(self):
         # Constraint: Apply allow_investment restrictions
