@@ -254,24 +254,26 @@ class InvestmentModel(_SizeModel):
         )
 
     def _track_lifetime(self):
-        for i, period in enumerate(self._model.flow_system.periods.values()):
+        periods = self._model.flow_system.fit_to_model_coords(
+            'periods', self._model.flow_system.periods.values, dims=['period', 'scenario']
+        )
+        for i, period in enumerate(periods.values):
             decommissioning_period = (
-                period + self.parameters.lifetime - self.parameters.previous_lifetime if i == 0 else 0
+                period + self.parameters.lifetime - (self.parameters.previous_lifetime if i == 0 else 0)
             )
-            available_decommissioning_period = self._model.flow_system.periods.get_indexer(
-                [decommissioning_period],
-                method='bfill',
-            )[0]
-            if decommissioning_period != available_decommissioning_period:
+            if (decommissioning_period > self._model.flow_system.periods.values[-1]).all():
+                continue
+            available_decommissioning_period = periods.sel(period=decommissioning_period, method='bfill')
+            if (decommissioning_period != available_decommissioning_period).any():
                 logger.warning(
                     f'For an Investment in period {period}, the decommissioning period would be {decommissioning_period}.'
                     f'As this period is not part of the Model horizon, the lifetime will effectively be extended until the next period (+{available_decommissioning_period - decommissioning_period}).'
                 )
 
             self.add_constraints(
-                self.size_increase.sel(period=period)
-                == self.size_decrease.sel(period=available_decommissioning_period),
-                short_name='size|lifetime',
+                self.investment_occurs.sel(period=period)
+                == self.decommissioning_occurs.sel(period=available_decommissioning_period),
+                short_name=f'size|lifetime{period}',
             )
 
     def _apply_investment_period_constraints(self):
