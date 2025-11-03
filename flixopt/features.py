@@ -267,7 +267,7 @@ class InvestmentModel(_SizeModel):
             if (decommissioning_period != available_decommissioning_period).any():
                 logger.warning(
                     f'For an Investment in period {period}, the decommissioning period would be {decommissioning_period}.'
-                    f'As this period is not part of the Model horizon, the lifetime will effectively be extended until the next period (+{available_decommissioning_period - decommissioning_period}).'
+                    f'As this period is not part of the Model horizon, the lifetime will be extended until the next period ({available_decommissioning_period}), which will effectively extend the lifetime by +{available_decommissioning_period - decommissioning_period} periods.'
                 )
 
             self.add_constraints(
