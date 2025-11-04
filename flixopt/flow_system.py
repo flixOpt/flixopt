@@ -1096,6 +1096,102 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self.__class__.from_dataset(resampled_dataset)
 
+    def sel_and_resample(
+        self,
+        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
+        period: int | slice | list[int] | pd.Index | None = None,
+        scenario: str | slice | list[str] | pd.Index | None = None,
+        freq: str | None = None,
+        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        **kwargs: Any,
+    ) -> FlowSystem:
+        """
+        Select a subset and resample in a single operation (more efficient than chaining sel().resample()).
+
+        Selection is performed BEFORE resampling to reduce computational effort.
+        If only selection parameters are provided (no freq), only selection is performed.
+        If only resampling parameters are provided (freq without selection), only resampling is performed.
+
+        Args:
+            time: Time selection (e.g., '2020-01', slice('2020-01-01', '2020-06-30'))
+            period: Period selection (e.g., 2020, slice(2020, 2022))
+            scenario: Scenario selection (e.g., 'Base Case', ['Base Case', 'High Demand'])
+            freq: Resampling frequency (e.g., '2h', '1D', '1M'). If None, only selection is performed.
+            method: Resampling method (e.g., 'mean', 'sum', 'first')
+            hours_of_last_timestep: New duration of the last time step
+            hours_of_previous_timesteps: New duration of previous timesteps
+            **kwargs: Additional arguments passed to xarray.resample()
+
+        Returns:
+            FlowSystem: New FlowSystem with selected and resampled data
+
+        Examples:
+            # Select January 2020 and resample to 2-hour intervals
+            >>> result = flow_system.sel_and_resample(time='2020-01', freq='2h', method='mean')
+
+            # Select multiple dimensions and resample
+            >>> result = flow_system.sel_and_resample(
+            ...     time=slice('2020-01', '2020-06'),
+            ...     period=2020,
+            ...     scenario='Base Case',
+            ...     freq='1D',
+            ...     method='sum'
+            ... )
+
+            # Only selection (same as sel())
+            >>> result = flow_system.sel_and_resample(time='2020-01', period=2020)
+
+            # Only resampling (same as resample())
+            >>> result = flow_system.sel_and_resample(freq='2h', method='mean')
+        """
+        if not self.connected_and_transformed:
+            self.connect_and_transform()
+
+        # Validate method before processing
+        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+        if method not in available_methods:
+            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
+
+        dataset = self.to_dataset()
+
+        # Step 1: Apply selection if any selection parameters provided
+        indexers = {}
+        if time is not None:
+            indexers['time'] = time
+        if period is not None:
+            indexers['period'] = period
+        if scenario is not None:
+            indexers['scenario'] = scenario
+
+        if indexers:
+            dataset = dataset.sel(**indexers)
+
+        # Step 2: Apply resampling if freq provided
+        if freq is not None:
+            time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+            non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+
+            # Only resample variables that have time dimension
+            time_dataset = dataset[time_var_names]
+
+            # Resample with dimension grouping to avoid broadcasting
+            resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
+
+            # Combine resampled time variables with non-time variables
+            if non_time_var_names:
+                non_time_dataset = dataset[non_time_var_names]
+                dataset = xr.merge([resampled_time_dataset, non_time_dataset])
+            else:
+                dataset = resampled_time_dataset
+
+            # Update time-related attributes
+            dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
+            dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+
+        return self.__class__.from_dataset(dataset)
+
     @property
     def connected_and_transformed(self) -> bool:
         return self._connected_and_transformed
