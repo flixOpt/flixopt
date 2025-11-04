@@ -1067,6 +1067,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if not self.connected_and_transformed:
             self.connect_and_transform()
 
+        # Validate method before resampling
+        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+        if method not in available_methods:
+            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
+
         dataset = self.to_dataset()
 
         time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
@@ -1074,11 +1079,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Only resample variables that have time dimension
         time_dataset = dataset[time_var_names]
-
-        # Validate method before resampling
-        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
-        if method not in available_methods:
-            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
         # Resample with dimension grouping to avoid broadcasting
         resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, time, method, **kwargs)
