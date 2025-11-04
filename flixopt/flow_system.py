@@ -175,9 +175,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
         # Element collections
-        self.components: ElementContainer[Component] = ElementContainer(element_type_name='components')
-        self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses')
-        self.effects: EffectCollection = EffectCollection()
+        self.components: ElementContainer[Component] = ElementContainer(
+            element_type_name='components', truncate_repr=True
+        )
+        self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses', truncate_repr=True)
+        self.effects: EffectCollection = EffectCollection(truncate_repr=True)
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
@@ -799,7 +801,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flows = [f for c in self.components.values() for f in c.inputs + c.outputs]
             # Deduplicate by id and sort for reproducibility
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
-            self._flows_cache = ElementContainer(flows, element_type_name='flows')
+            self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=True)
         return self._flows_cache
 
     @property

@@ -458,8 +458,8 @@ class EffectCollection(ElementContainer[Effect]):
 
     submodel: EffectCollectionModel | None
 
-    def __init__(self, *effects: Effect):
-        super().__init__(element_type_name='effects')
+    def __init__(self, *effects: Effect, truncate_repr: bool = False):
+        super().__init__(element_type_name='effects', truncate_repr=truncate_repr)
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
 
