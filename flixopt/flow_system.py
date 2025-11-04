@@ -1114,11 +1114,43 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if not dim_groups:
             return getattr(time_dataset.resample(time=time, **kwargs), method)()
 
-        # Resample each group separately
+        # Resample each group separately with dask chunking for parallel computation
         resampled_groups = []
         for var_names in dim_groups.values():
             grouped_dataset = time_dataset[var_names]
-            resampled_group = getattr(grouped_dataset.resample(time=time, **kwargs), method)()
+
+            try:
+                # Get non-time dimensions
+                non_time_dims = [d for d in grouped_dataset.dims if d != 'time']
+
+                # Only chunk if we have non-time dimensions and dataset is reasonably large
+                if not non_time_dims or len(grouped_dataset.time) < 500:
+                    # No chunking needed: small dataset or only time dimension
+                    resampled_group = getattr(grouped_dataset.resample(time=time, **kwargs), method)()
+                else:
+                    # Build chunk dict: keep time dimension intact, chunk others
+                    chunks = {'time': -1}  # -1 means don't chunk (keep full time series)
+
+                    # Chunk other dimensions to enable parallel resampling of independent time series
+                    for dim in non_time_dims:
+                        dim_size = grouped_dataset.sizes[dim]
+                        if dim_size > 1:  # Only chunk if dimension has multiple values
+                            # Aim for 2-4 chunks per dimension for good parallelization
+                            chunk_size = max(1, dim_size // 3)
+                            chunks[dim] = chunk_size
+
+                    # Apply chunking
+                    grouped_dataset = grouped_dataset.chunk(chunks)
+
+                    # Resample (lazy, dask-backed - parallel across non-time chunks)
+                    resampled_group = getattr(grouped_dataset.resample(time=time, **kwargs), method)()
+
+                    # Compute (triggers parallel execution via dask)
+                    resampled_group = resampled_group.compute()
+            except (ImportError, AttributeError, ValueError):
+                # Fallback if dask not available or chunking fails
+                resampled_group = getattr(grouped_dataset.resample(time=time, **kwargs), method)()
+
             resampled_groups.append(resampled_group)
 
         return xr.merge(resampled_groups)
