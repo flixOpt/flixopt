@@ -1132,38 +1132,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 combine_attrs='drop_conflicts',
             )
 
-            # Apply dask chunking for parallel resampling (if beneficial)
-            try:
-                # Get non-time dimensions (excluding 'variable' which we just created)
-                non_time_dims = [d for d in stacked.dims if d not in ('time', 'variable')]
-
-                # Only chunk if we have non-time dimensions and dataset is reasonably large
-                if non_time_dims and len(stacked.time) >= 500:
-                    # Build chunk dict: keep time and variable dimensions intact, chunk others
-                    chunks = {'time': -1, 'variable': -1}
-
-                    # Chunk other dimensions to enable parallel resampling of independent time series
-                    for dim in non_time_dims:
-                        dim_size = stacked.sizes[dim]
-                        if dim_size > 1:  # Only chunk if dimension has multiple values
-                            # Aim for 2-4 chunks per dimension for good parallelization
-                            chunk_size = max(1, dim_size // 3)
-                            chunks[dim] = chunk_size
-
-                    # Apply chunking
-                    stacked = stacked.chunk(chunks)
-
-                    # Resample (lazy, dask-backed - parallel across non-time chunks)
-                    resampled = getattr(stacked.resample(time=time, **kwargs), method)()
-
-                    # Compute (triggers parallel execution via dask)
-                    resampled = resampled.compute()
-                else:
-                    # No chunking needed: small dataset or only time dimension
-                    resampled = getattr(stacked.resample(time=time, **kwargs), method)()
-            except (ImportError, AttributeError, ValueError):
-                # Fallback if dask not available or chunking fails
-                resampled = getattr(stacked.resample(time=time, **kwargs), method)()
+            # Resample the DataArray (faster than resampling Dataset)
+            resampled = getattr(stacked.resample(time=time, **kwargs), method)()
 
             # Convert back to Dataset using the 'variable' dimension
             resampled_dataset = resampled.to_dataset(dim='variable')
