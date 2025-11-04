@@ -925,8 +925,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
         self._scenario_independent_flow_rates = value
 
-    @staticmethod
+    @classmethod
     def _dataset_sel(
+        cls,
         dataset: xr.Dataset,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
         period: int | slice | list[int] | pd.Index | None = None,
@@ -1000,8 +1001,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         ds = self._dataset_sel(ds, time=time, period=period, scenario=scenario)
         return self.__class__.from_dataset(ds)
 
-    @staticmethod
+    @classmethod
     def _dataset_isel(
+        cls,
         dataset: xr.Dataset,
         time: int | slice | list[int] | None = None,
         period: int | slice | list[int] | None = None,
@@ -1064,8 +1066,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         ds = self._dataset_isel(ds, time=time, period=period, scenario=scenario)
         return self.__class__.from_dataset(ds)
 
+    @classmethod
     def _resample_by_dimension_groups(
-        self,
+        cls,
         time_dataset: xr.Dataset,
         time: str,
         method: str,
@@ -1155,8 +1158,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return xr.merge(resampled_groups)
 
+    @classmethod
     def _dataset_resample(
-        self,
+        cls,
         dataset: xr.Dataset,
         freq: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
@@ -1194,7 +1198,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         time_dataset = dataset[time_var_names]
 
         # Resample with dimension grouping to avoid broadcasting
-        resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
+        resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
         # Combine resampled time variables with non-time variables
         if non_time_var_names:
