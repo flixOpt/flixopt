@@ -1009,18 +1009,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         dataset = self.to_dataset()
 
-        # Separate variables with and without time dimension
-        time_vars = {}
-        non_time_vars = {}
-
-        for var_name, var in dataset.data_vars.items():
-            if 'time' in var.dims:
-                time_vars[var_name] = var
-            else:
-                non_time_vars[var_name] = var
+        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
 
         # Only resample variables that have time dimension
-        time_dataset = dataset[list(time_vars.keys())]
+        time_dataset = dataset[time_var_names]
 
         time_dataarray = xr.concat(
             [time_dataset[name] for name in time_dataset.data_vars],
@@ -1035,11 +1028,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
             raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
-        resampled_time_dataset = resampled_time_dataarray.to_dataset()
+        resampled_time_dataset = resampled_time_dataarray.to_dataset(dim='variable')
 
         # Combine resampled time variables with non-time variables
-        if non_time_vars:
-            non_time_dataset = dataset[list(non_time_vars.keys())]
+        if non_time_var_names:
+            non_time_dataset = dataset[non_time_var_names]
             resampled_dataset = xr.merge([resampled_time_dataset, non_time_dataset])
         else:
             resampled_dataset = resampled_time_dataset
