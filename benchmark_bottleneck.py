@@ -103,11 +103,88 @@ def bench_sel(**context):
     return lambda: fx.FlowSystem._dataset_sel(dataset, time=sel_slice)
 
 
-@registry.add('resample', category='transform')
-def bench_resample(**context):
-    """Resample dataset to 4-hour frequency."""
+@registry.add('resample_current', category='resample_methods')
+def bench_resample_current(**context):
+    """Current resample implementation (Dataset with dask chunking)."""
     dataset = context['dataset']
     return lambda: fx.FlowSystem._dataset_resample(dataset, '4h')
+
+
+@registry.add('resample_dataarray', category='resample_methods')
+def bench_resample_dataarray(**context):
+    """Old resample implementation using DataArray concat (fast but had bugs)."""
+    dataset = context['dataset']
+
+    def resample_with_dataarray():
+        # Separate time and non-time variables
+        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+        time_dataset = dataset[time_var_names]
+
+        # Group variables by dimensions (excluding time)
+        from collections import defaultdict
+        dim_groups = defaultdict(list)
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+            dim_groups[dims_key].append(var_name)
+
+        # Resample each group using DataArray concat
+        resampled_groups = []
+        for var_names in dim_groups.values():
+            stacked = xr.concat(
+                [time_dataset[name] for name in var_names],
+                dim=pd.Index(var_names, name='variable'),
+            )
+            resampled = stacked.resample(time='4h').mean()
+            resampled_groups.append(resampled.to_dataset(dim='variable'))
+
+        result = xr.merge(resampled_groups)
+
+        # Combine with non-time variables
+        if non_time_var_names:
+            non_time_dataset = dataset[non_time_var_names]
+            result = xr.merge([result, non_time_dataset])
+
+        return result
+
+    return resample_with_dataarray
+
+
+@registry.add('resample_dataset_no_dask', category='resample_methods')
+def bench_resample_dataset_no_dask(**context):
+    """Current approach but without dask chunking."""
+    dataset = context['dataset']
+
+    def resample_without_dask():
+        # Separate time and non-time variables
+        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+        time_dataset = dataset[time_var_names]
+
+        # Group variables by dimensions (excluding time)
+        from collections import defaultdict
+        dim_groups = defaultdict(list)
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+            dim_groups[dims_key].append(var_name)
+
+        # Resample each group using Dataset directly (no dask)
+        resampled_groups = []
+        for var_names in dim_groups.values():
+            grouped_dataset = time_dataset[var_names]
+            resampled_group = grouped_dataset.resample(time='4h').mean()
+            resampled_groups.append(resampled_group)
+
+        result = xr.merge(resampled_groups)
+
+        # Combine with non-time variables
+        if non_time_var_names:
+            non_time_dataset = dataset[non_time_var_names]
+            result = xr.merge([result, non_time_dataset])
+
+        return result
+
+    return resample_without_dask
 
 
 @registry.add('coarsen', category='reference')
