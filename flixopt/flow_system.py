@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections import defaultdict
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
@@ -982,6 +983,46 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         selected_dataset = ds.isel(**indexers)
         return self.__class__.from_dataset(selected_dataset)
 
+    def _resample_by_dimension_groups(
+        self,
+        time_dataset: xr.Dataset,
+        time: str,
+        method: str,
+        **kwargs: Any,
+    ) -> xr.Dataset:
+        """
+        Resample variables grouped by their dimension structure to avoid broadcasting.
+
+        Variables with different dimensions (beyond time) are resampled separately
+        to prevent xarray from broadcasting them into a larger shape with NaNs.
+
+        Args:
+            time_dataset: Dataset containing only variables with time dimension
+            time: Resampling frequency
+            method: Resampling method name
+            **kwargs: Additional arguments for resample()
+
+        Returns:
+            Resampled dataset
+        """
+        # Group variables by dimensions (excluding time)
+        dim_groups = defaultdict(list)
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+            dim_groups[dims_key].append(var_name)
+
+        # Resample each group separately
+        resampled_groups = []
+        for var_names in dim_groups.values():
+            stacked = xr.concat(
+                [time_dataset[name] for name in var_names],
+                dim=pd.Index(var_names, name='variable'),
+            )
+            resampled = getattr(stacked.resample(time=time, **kwargs), method)()
+            resampled_groups.append(resampled.to_dataset(dim='variable'))
+
+        return xr.merge(resampled_groups)
+
     def resample(
         self,
         time: str,
@@ -1015,20 +1056,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Only resample variables that have time dimension
         time_dataset = dataset[time_var_names]
 
-        time_dataarray = xr.concat(
-            [time_dataset[name] for name in time_dataset.data_vars],
-            dim=pd.Index([name for name in time_dataset], name='variable'),
-        )
-
-        resampler = time_dataarray.resample(time=time, **kwargs)
-
-        if hasattr(resampler, method):
-            resampled_time_dataarray = getattr(resampler, method)()
-        else:
-            available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+        # Validate method before resampling
+        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+        if method not in available_methods:
             raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
-        resampled_time_dataset = resampled_time_dataarray.to_dataset(dim='variable')
+        # Resample with dimension grouping to avoid broadcasting
+        resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, time, method, **kwargs)
 
         # Combine resampled time variables with non-time variables
         if non_time_var_names:
