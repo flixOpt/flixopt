@@ -395,8 +395,7 @@ class DataConverter:
                     )
 
         # Create target template for broadcasting
-        target_shape = [len(target_coords[dim]) for dim in target_dims]
-        target_template = xr.DataArray(np.empty(target_shape), coords=target_coords, dims=target_dims)
+        target_template = xr.DataArray(coords=target_coords, dims=target_dims)
 
         # Perform broadcasting and ensure proper dimension ordering
         broadcasted = source_data.broadcast_like(target_template)
