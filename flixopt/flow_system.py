@@ -991,7 +991,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         **kwargs: Any,
     ) -> xr.Dataset:
         """
-        Resample variables grouped by their dimension structure to avoid broadcasting.
+        Resample all variables of a Dataset, but speed up by grouping them into dataarrays based on their dimension structure before resampling.
+        This greatly speeds up the resampling for Datasets with many variables
 
         Variables with different dimensions (beyond time) are resampled separately
         to prevent xarray from broadcasting them into a larger shape with NaNs.
