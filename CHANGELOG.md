@@ -82,6 +82,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [3.4.1] - 2025-11-04
+
+**Summary**: Speed up resampling by 20-40 times.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ♻️ Changed
+- Greatly sped up the resampling of a FlowSystem (x20 - x40) by converting to dataarray internally
+
+---
+
 ## [3.4.0] - 2025-11-01
 
 **Summary**: Enhanced solver configuration with new CONFIG.Solving section for centralized solver parameter management.
