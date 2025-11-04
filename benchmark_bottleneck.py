@@ -11,8 +11,8 @@ import flixopt as fx
 
 # Configuration
 CONFIG = {
-    'timestep_sizes': [100, 500, 1000],#, 2000, 5000, 8760],  # Number of timesteps to test
-    'component_counts': [1, 5, 10],#, 20, 50],  # Number of boilers to test
+    'timestep_sizes': [100, 500, 1000, 3000, 8760],#, 2000, 5000, 8760],  # Number of timesteps to test
+    'component_counts': [1, 5, 10, 20, 50],#, 20, 50],  # Number of boilers to test
     'n_runs': 1,  # Number of timing iterations for each configuration
 }
 
@@ -55,14 +55,18 @@ def create_flow_system(n_timesteps, n_components):
 
 def benchmark_operations(flow_system, n_runs):
     """
-    Benchmark individual operations and return timing results.
+    Benchmark individual operations to identify bottlenecks.
 
-    Measures:
-    - Conversion overhead: to_dataset(), from_dataset()
-    - Dataset operations: Using optimized _resample_by_dimension_groups()
-    - Full workflows: OLD (double conversion) vs NEW (single conversion)
+    Measures only individual steps:
+    1. to_dataset() - FlowSystem to xarray conversion
+    2. from_dataset() - xarray to FlowSystem conversion
+    3. sel() - xarray selection operation
+    4. resample() - optimized resampling using _resample_by_dimension_groups()
     """
     results = {}
+
+    # Get dataset once for operations that need it
+    ds = flow_system.to_dataset()
 
     # 1. Benchmark to_dataset()
     results['to_dataset'] = timeit.timeit(
@@ -70,23 +74,20 @@ def benchmark_operations(flow_system, n_runs):
         number=n_runs
     ) / n_runs
 
-    # Get dataset once for subsequent operations
-    ds = flow_system.to_dataset()
-
     # 2. Benchmark from_dataset()
     results['from_dataset'] = timeit.timeit(
         lambda: fx.FlowSystem.from_dataset(ds),
         number=n_runs
     ) / n_runs
 
-    # 3. Benchmark dataset.sel()
+    # 3. Benchmark dataset.sel() (select half the timesteps)
     sel_slice = slice('2020-01-01', ds.indexes['time'][len(ds.indexes['time'])//2])
-    results['dataset_sel'] = timeit.timeit(
+    results['sel'] = timeit.timeit(
         lambda: ds.sel(time=sel_slice),
         number=n_runs
     ) / n_runs
 
-    # 4. Benchmark optimized dataset.resample() (using _resample_by_dimension_groups)
+    # 4. Benchmark optimized resample (using _resample_by_dimension_groups)
     def optimized_resample():
         time_var_names = [v for v in ds.data_vars if 'time' in ds[v].dims]
         non_time_var_names = [v for v in ds.data_vars if v not in time_var_names]
@@ -97,51 +98,23 @@ def benchmark_operations(flow_system, n_runs):
             return xr.merge([resampled_time_dataset, non_time_dataset])
         return resampled_time_dataset
 
-    results['dataset_resample'] = timeit.timeit(optimized_resample, number=n_runs) / n_runs
-
-    # 5. Benchmark sel + optimized resample on dataset
-    def optimized_sel_resample():
-        ds_selected = ds.sel(time=sel_slice)
-        time_var_names = [v for v in ds_selected.data_vars if 'time' in ds_selected[v].dims]
-        non_time_var_names = [v for v in ds_selected.data_vars if v not in time_var_names]
-        time_dataset = ds_selected[time_var_names]
-        resampled_time_dataset = flow_system._resample_by_dimension_groups(time_dataset, '2h', 'mean')
-        if non_time_var_names:
-            non_time_dataset = ds_selected[non_time_var_names]
-            return xr.merge([resampled_time_dataset, non_time_dataset])
-        return resampled_time_dataset
-
-    results['dataset_sel_resample'] = timeit.timeit(optimized_sel_resample, number=n_runs) / n_runs
-
-    # 6. Benchmark OLD FlowSystem.sel().resample() (double conversion)
-    def old_approach():
-        ds1 = flow_system.to_dataset()
-        ds1_sel = ds1.sel(time=sel_slice)
-        fs_sel = fx.FlowSystem.from_dataset(ds1_sel)
-        return fs_sel.resample('2h', method='mean')
-
-    results['old_sel_resample'] = timeit.timeit(old_approach, number=n_runs) / n_runs
-
-    # 7. Benchmark NEW FlowSystem.sel_and_resample() (single conversion)
-    results['new_sel_and_resample'] = timeit.timeit(
-        lambda: flow_system.sel_and_resample(time=sel_slice, freq='2h', method='mean'),
-        number=n_runs
-    ) / n_runs
+    results['resample'] = timeit.timeit(optimized_resample, number=n_runs) / n_runs
 
     return results
 
 
 def run_benchmark(config):
     """Run benchmark for all configurations and return results as xarray Dataset."""
-    print("Starting benchmark...")
+    print("Starting bottleneck benchmark...")
     print(f"Timestep sizes: {config['timestep_sizes']}")
     print(f"Component counts: {config['component_counts']}")
     print(f"Runs per configuration: {config['n_runs']}")
+    print("\nMeasuring individual operations: to_dataset, from_dataset, sel, resample")
     print()
 
-    # Storage for results
-    data_arrays = {}
-    operation_names = []
+    # Storage for results - only 4 operations now
+    operations = ['to_dataset', 'from_dataset', 'sel', 'resample']
+    data_arrays = {op: [] for op in operations}
 
     total_configs = len(config['timestep_sizes']) * len(config['component_counts'])
     current = 0
@@ -158,11 +131,8 @@ def run_benchmark(config):
             results = benchmark_operations(flow_system, config['n_runs'])
 
             # Store results
-            for op_name, time_value in results.items():
-                if op_name not in data_arrays:
-                    data_arrays[op_name] = []
-                    operation_names.append(op_name)
-                data_arrays[op_name].append(time_value)
+            for op_name in operations:
+                data_arrays[op_name].append(results[op_name])
 
     # Convert to xarray Dataset
     coords = {
@@ -174,15 +144,16 @@ def run_benchmark(config):
     shape = (len(config['timestep_sizes']), len(config['component_counts']))
     dataset_vars = {}
 
-    for op_name, values in data_arrays.items():
+    for op_name in operations:
         dataset_vars[op_name] = (
             ['timesteps', 'components'],
-            np.array(values).reshape(shape)
+            np.array(data_arrays[op_name]).reshape(shape)
         )
 
     ds = xr.Dataset(dataset_vars, coords=coords)
     ds.attrs['n_runs'] = config['n_runs']
-    ds.attrs['description'] = 'Benchmark of FlowSystem sel/resample operations'
+    ds.attrs['description'] = 'Bottleneck analysis of individual FlowSystem operations'
+    ds.attrs['operations'] = ', '.join(operations)
 
     return ds
 
@@ -190,76 +161,61 @@ def run_benchmark(config):
 def analyze_results(ds):
     """Analyze and print benchmark results."""
     print("\n" + "=" * 80)
-    print("BENCHMARK RESULTS")
+    print("BOTTLENECK ANALYSIS - Individual Operation Timings")
     print("=" * 80)
 
-    # Calculate conversion overhead
-    conversion_overhead = ds['to_dataset'] + ds['from_dataset']
-    dataset_operation = ds['dataset_sel_resample']
-
-    # OLD approach breakdown
-    old_total = ds['old_sel_resample']
-    old_conversion_pct = (2 * conversion_overhead / old_total * 100)
-    old_operation_pct = (dataset_operation / old_total * 100)
-
-    # NEW approach breakdown
-    new_total = ds['new_sel_and_resample']
-    new_conversion_pct = (conversion_overhead / new_total * 100)
-    new_operation_pct = (dataset_operation / new_total * 100)
-
-    # Speedup
-    speedup = old_total / new_total
-
-    print("\nBottleneck Analysis (averaged across all configurations):")
+    # Overall statistics
+    print("\nOverall averages (across all configurations):")
     print("-" * 80)
+    for var in ['to_dataset', 'from_dataset', 'sel', 'resample']:
+        avg_time = float(ds[var].mean())
+        print(f"  {var:15s}: {avg_time:.4f}s ({avg_time*1000:.1f}ms)")
 
-    print(f"\nOLD approach (sel().resample()):")
-    print(f"  Total time:           {float(old_total.mean()):.4f}s")
-    print(f"  Conversion overhead:  {float((2 * conversion_overhead).mean()):.4f}s ({float(old_conversion_pct.mean()):.1f}%)")
-    print(f"  Dataset operations:   {float(dataset_operation.mean()):.4f}s ({float(old_operation_pct.mean()):.1f}%)")
-
-    print(f"\nNEW approach (sel_and_resample()):")
-    print(f"  Total time:           {float(new_total.mean()):.4f}s")
-    print(f"  Conversion overhead:  {float(conversion_overhead.mean()):.4f}s ({float(new_conversion_pct.mean()):.1f}%)")
-    print(f"  Dataset operations:   {float(dataset_operation.mean()):.4f}s ({float(new_operation_pct.mean()):.1f}%)")
-
-    print(f"\nPerformance improvement:")
-    print(f"  Average speedup:      {float(speedup.mean()):.2f}x")
-    print(f"  Time saved:           {float((old_total - new_total).mean() * 1000):.1f}ms per operation")
-
+    # Find the bottleneck
     print("\n" + "=" * 80)
-    print("Detailed breakdown (mean times in seconds):")
-    print("=" * 80)
-    for var in ds.data_vars:
-        print(f"  {var:25s}: {float(ds[var].mean()):.4f}s")
+    print("Bottleneck identification:")
+    print("-" * 80)
+    means = {var: float(ds[var].mean()) for var in ['to_dataset', 'from_dataset', 'sel', 'resample']}
+    total = sum(means.values())
+    sorted_ops = sorted(means.items(), key=lambda x: x[1], reverse=True)
 
+    for i, (op, time) in enumerate(sorted_ops, 1):
+        pct = (time / total) * 100
+        print(f"  {i}. {op:15s}: {time:.4f}s ({pct:5.1f}% of total)")
+
+    print(f"\nTotal time for all operations: {total:.4f}s")
+
+    # Scaling analysis by timesteps
     print("\n" + "=" * 80)
-    print("How FlowSystem size affects bottleneck:")
+    print("Scaling by timesteps (averaged over components):")
     print("=" * 80)
-
-    # Show scaling by timesteps (averaged over components)
-    print("\nScaling by timesteps (averaged over components):")
-    print(f"{'Timesteps':>10} {'to_dataset':>12} {'from_dataset':>13} {'dataset_op':>12} {'speedup':>10}")
-    print("-" * 60)
+    print(f"{'Timesteps':>10} {'to_dataset':>12} {'from_dataset':>13} {'sel':>10} {'resample':>12} {'Bottleneck':>15}")
+    print("-" * 80)
     for n_ts in ds.coords['timesteps'].values:
         subset = ds.sel(timesteps=n_ts)
         to_ds = float(subset['to_dataset'].mean())
         from_ds = float(subset['from_dataset'].mean())
-        ds_op = float(subset['dataset_sel_resample'].mean())
-        sp = float(subset['old_sel_resample'].mean() / subset['new_sel_and_resample'].mean())
-        print(f"{n_ts:10d} {to_ds:12.4f}s {from_ds:13.4f}s {ds_op:12.4f}s {sp:10.2f}x")
+        sel = float(subset['sel'].mean())
+        resample = float(subset['resample'].mean())
+        times = {'to_dataset': to_ds, 'from_dataset': from_ds, 'sel': sel, 'resample': resample}
+        bottleneck = max(times.items(), key=lambda x: x[1])[0]
+        print(f"{n_ts:10d} {to_ds:12.4f}s {from_ds:13.4f}s {sel:10.4f}s {resample:12.4f}s {bottleneck:>15s}")
 
-    # Show scaling by components (averaged over timesteps)
-    print("\nScaling by components (averaged over timesteps):")
-    print(f"{'Components':>11} {'to_dataset':>12} {'from_dataset':>13} {'dataset_op':>12} {'speedup':>10}")
-    print("-" * 60)
+    # Scaling analysis by components
+    print("\n" + "=" * 80)
+    print("Scaling by components (averaged over timesteps):")
+    print("=" * 80)
+    print(f"{'Components':>11} {'to_dataset':>12} {'from_dataset':>13} {'sel':>10} {'resample':>12} {'Bottleneck':>15}")
+    print("-" * 80)
     for n_comp in ds.coords['components'].values:
         subset = ds.sel(components=n_comp)
         to_ds = float(subset['to_dataset'].mean())
         from_ds = float(subset['from_dataset'].mean())
-        ds_op = float(subset['dataset_sel_resample'].mean())
-        sp = float(subset['old_sel_resample'].mean() / subset['new_sel_and_resample'].mean())
-        print(f"{n_comp:11d} {to_ds:12.4f}s {from_ds:13.4f}s {ds_op:12.4f}s {sp:10.2f}x")
+        sel = float(subset['sel'].mean())
+        resample = float(subset['resample'].mean())
+        times = {'to_dataset': to_ds, 'from_dataset': from_ds, 'sel': sel, 'resample': resample}
+        bottleneck = max(times.items(), key=lambda x: x[1])[0]
+        print(f"{n_comp:11d} {to_ds:12.4f}s {from_ds:13.4f}s {sel:10.4f}s {resample:12.4f}s {bottleneck:>15s}")
 
 
 if __name__ == '__main__':
