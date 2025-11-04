@@ -921,13 +921,13 @@ class ContainerMixin(dict[str, T]):
         self,
         elements: list[T] | dict[str, T] | None = None,
         element_type_name: str = 'elements',
-        truncate_repr: bool = False,
+        truncate_repr: int | None = None,
     ):
         """
         Args:
             elements: Initial elements to add (list or dict)
             element_type_name: Name for display (e.g., 'components', 'buses')
-            truncate_repr: If True, limit repr to first 10 items. Default: False
+            truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
         """
         super().__init__()
         self._element_type_name = element_type_name
@@ -1002,17 +1002,20 @@ class ContainerMixin(dict[str, T]):
                     error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
             raise KeyError(error_msg) from None
 
-    def _get_repr(self, truncate: bool = False, max_items: int = 10) -> str:
+    def _get_repr(self, max_items: int | None = None) -> str:
         """
         Get string representation with optional truncation.
 
         Args:
-            truncate: If True, limit output to first max_items
-            max_items: Maximum number of items to show when truncating
+            max_items: Maximum number of items to show. If None, uses instance default (self._truncate_repr).
+                      If still None, shows all items.
 
         Returns:
             Formatted string representation
         """
+        # Use provided max_items, or fall back to instance default
+        limit = max_items if max_items is not None else self._truncate_repr
+
         count = len(self)
         title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
 
@@ -1023,11 +1026,11 @@ class ContainerMixin(dict[str, T]):
             r = fx_io.format_title_with_underline(title)
             sorted_names = sorted(self.keys(), key=_natural_sort_key)
 
-            if truncate and len(sorted_names) > max_items:
+            if limit is not None and limit > 0 and len(sorted_names) > limit:
                 # Show truncated list
-                for name in sorted_names[:max_items]:
+                for name in sorted_names[:limit]:
                     r += f' * {name}\n'
-                r += f' ... (+{len(sorted_names) - max_items} more)\n'
+                r += f' ... (+{len(sorted_names) - limit} more)\n'
             else:
                 # Show all items
                 for name in sorted_names:
@@ -1036,8 +1039,8 @@ class ContainerMixin(dict[str, T]):
         return r
 
     def __repr__(self) -> str:
-        """Return a string representation showing all elements (never truncated)."""
-        return self._get_repr(truncate=False)
+        """Return a string representation using the instance's truncate_repr setting."""
+        return self._get_repr()
 
 
 class ElementContainer(ContainerMixin[T]):
@@ -1240,11 +1243,8 @@ class CompositeContainerMixin(Generic[T_element]):
             if container:  # Only show non-empty groups
                 if parts:  # Add spacing between sections
                     parts.append('')
-                # Use truncated repr if container has _truncate_repr flag set
-                if hasattr(container, '_truncate_repr') and container._truncate_repr:
-                    parts.append(container._get_repr(truncate=True).rstrip('\n'))
-                else:
-                    parts.append(repr(container).rstrip('\n'))
+                # Use container's __repr__ which respects its truncate_repr setting
+                parts.append(repr(container).rstrip('\n'))
 
         return '\n'.join(parts)
 

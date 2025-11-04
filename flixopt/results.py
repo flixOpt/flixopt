@@ -247,14 +247,14 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
         self.components = ResultsContainer(
-            elements=components_dict, element_type_name='component results', truncate_repr=True
+            elements=components_dict, element_type_name='component results', truncate_repr=10
         )
 
         buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
-        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=True)
+        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
 
         effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
-        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=True)
+        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -269,7 +269,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
             self._has_flow_data = True
-        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=True)
+        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
