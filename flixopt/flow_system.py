@@ -1029,15 +1029,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
             dim_groups[dims_key].append(var_name)
 
+        # Handle empty case: no time-dependent variables
+        if not dim_groups:
+            return getattr(time_dataset.resample(time=time, **kwargs), method)()
+
         # Resample each group separately
         resampled_groups = []
         for var_names in dim_groups.values():
-            stacked = xr.concat(
-                [time_dataset[name] for name in var_names],
-                dim=pd.Index(var_names, name='variable'),
-            )
-            resampled = getattr(stacked.resample(time=time, **kwargs), method)()
-            resampled_groups.append(resampled.to_dataset(dim='variable'))
+            grouped_dataset = time_dataset[var_names]
+            resampled_group = getattr(grouped_dataset.resample(time=time, **kwargs), method)()
+            resampled_groups.append(resampled_group)
 
         return xr.merge(resampled_groups)
 
