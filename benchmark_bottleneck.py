@@ -11,9 +11,9 @@ import flixopt as fx
 
 # Configuration
 CONFIG = {
-    'timestep_sizes': [100, 5000],#, 2000, 5000, 8760],  # Number of timesteps to test
-    'component_counts': [50], #20, 50],#, 20, 50],  # Number of boilers to test
-    'n_runs': 1,  # Number of timing iterations for each configuration
+    'timestep_sizes': [100, 5000, 8760],  # Number of timesteps to test
+    'component_counts': [10],  # Number of boilers to test
+    'n_runs': 3,  # Number of timing iterations for each configuration
 }
 
 
@@ -56,12 +56,7 @@ def create_flow_system(n_timesteps, n_components):
 def benchmark_operations(flow_system, n_runs):
     """
     Benchmark individual operations to identify bottlenecks.
-
-    Measures only individual steps:
-    1. to_dataset() - FlowSystem to xarray conversion
-    2. from_dataset() - xarray to FlowSystem conversion
-    3. sel() - xarray selection operation
-    4. resample() - optimized resampling using _resample_by_dimension_groups()
+    Returns a dict with operation names as keys and timing results as values.
     """
     results = {}
 
@@ -87,24 +82,30 @@ def benchmark_operations(flow_system, n_runs):
         number=n_runs
     ) / n_runs
 
+    # 4. Benchmark resample
+    results['resample'] = timeit.timeit(
+        lambda: fx.FlowSystem._dataset_resample(ds, '4h'),
+        number=n_runs
+    ) / n_runs
 
-    results['resample'] = timeit.timeit(lambda: fx.FlowSystem._dataset_resample(ds, '4h'),  number=n_runs) / n_runs
+    # 5. Benchmark coarsen (reference)
+    results['coarsen'] = timeit.timeit(
+        lambda: ds.coarsen(time=4).mean(),
+        number=n_runs
+    ) / n_runs
 
     return results
 
 
 def run_benchmark(config):
-    """Run benchmark for all configurations and return results as xarray Dataset."""
+    """Run benchmark for all configurations and return results as DataFrame."""
     print("Starting bottleneck benchmark...")
     print(f"Timestep sizes: {config['timestep_sizes']}")
     print(f"Component counts: {config['component_counts']}")
-    print(f"Runs per configuration: {config['n_runs']}")
-    print("\nMeasuring individual operations: to_dataset, from_dataset, sel, resample")
-    print()
+    print(f"Runs per configuration: {config['n_runs']}\n")
 
-    # Storage for results - only 4 operations now
-    operations = ['to_dataset', 'from_dataset', 'sel', 'resample']
-    data_arrays = {op: [] for op in operations}
+    # Collect all results
+    rows = []
 
     total_configs = len(config['timestep_sizes']) * len(config['component_counts'])
     current = 0
@@ -120,106 +121,133 @@ def run_benchmark(config):
             # Benchmark operations
             results = benchmark_operations(flow_system, config['n_runs'])
 
-            # Store results
-            for op_name in operations:
-                data_arrays[op_name].append(results[op_name])
+            # Create row with all metadata and results
+            row = {
+                'timesteps': n_timesteps,
+                'components': n_components,
+                **results  # Unpack all operation timings
+            }
+            rows.append(row)
 
-    # Convert to xarray Dataset
-    coords = {
-        'timesteps': config['timestep_sizes'],
-        'components': config['component_counts'],
-    }
+    # Create DataFrame
+    df = pd.DataFrame(rows)
 
-    # Reshape data for xarray
-    shape = (len(config['timestep_sizes']), len(config['component_counts']))
-    dataset_vars = {}
+    # Add derived columns
+    df['total'] = df[['to_dataset', 'from_dataset', 'sel', 'resample', 'coarsen']].sum(axis=1)
 
-    for op_name in operations:
-        dataset_vars[op_name] = (
-            ['timesteps', 'components'],
-            np.array(data_arrays[op_name]).reshape(shape)
+    return df
+
+
+def print_summary(df):
+    """Print summary statistics."""
+    print("\n" + "=" * 100)
+    print("SUMMARY: Average timing across all configurations")
+    print("=" * 100)
+
+    # Calculate means for operation columns
+    operation_cols = ['to_dataset', 'from_dataset', 'sel', 'resample', 'coarsen', 'total']
+    summary = df[operation_cols].mean().to_frame(name='avg_time_s')
+    summary['avg_time_ms'] = summary['avg_time_s'] * 1000
+    summary['pct_of_total'] = (summary['avg_time_s'] / summary.loc['total', 'avg_time_s'] * 100).fillna(0)
+
+    # Sort by time (excluding total)
+    summary_sorted = summary.drop('total').sort_values('avg_time_s', ascending=False)
+    summary_sorted = pd.concat([summary_sorted, summary.loc[['total']]])
+
+    print(summary_sorted.to_string(float_format=lambda x: f'{x:.4f}'))
+
+
+def print_by_timesteps(df):
+    """Print results grouped by timesteps."""
+    print("\n" + "=" * 100)
+    print("SCALING BY TIMESTEPS (averaged over components)")
+    print("=" * 100)
+
+    operation_cols = ['to_dataset', 'from_dataset', 'sel', 'resample', 'coarsen']
+
+    # Group by timesteps and calculate mean
+    grouped = df.groupby('timesteps')[operation_cols].mean()
+
+    # Add bottleneck column
+    grouped['bottleneck'] = grouped.idxmax(axis=1)
+
+    print(grouped.to_string(float_format=lambda x: f'{x:.4f}'))
+
+
+def print_by_components(df):
+    """Print results grouped by components."""
+    print("\n" + "=" * 100)
+    print("SCALING BY COMPONENTS (averaged over timesteps)")
+    print("=" * 100)
+
+    operation_cols = ['to_dataset', 'from_dataset', 'sel', 'resample', 'coarsen']
+
+    # Group by components and calculate mean
+    grouped = df.groupby('components')[operation_cols].mean()
+
+    # Add bottleneck column
+    grouped['bottleneck'] = grouped.idxmax(axis=1)
+
+    print(grouped.to_string(float_format=lambda x: f'{x:.4f}'))
+
+
+def print_detailed_results(df):
+    """Print full detailed results table."""
+    print("\n" + "=" * 100)
+    print("DETAILED RESULTS (all configurations)")
+    print("=" * 100)
+
+    # Select columns to display
+    display_cols = ['timesteps', 'components', 'to_dataset', 'from_dataset',
+                    'sel', 'resample', 'coarsen', 'total']
+
+    print(df[display_cols].to_string(index=False, float_format=lambda x: f'{x:.4f}'))
+
+
+def save_results(df, base_filename='benchmark_results'):
+    """Save results to multiple formats."""
+    # Save as CSV
+    csv_file = f'{base_filename}.csv'
+    df.to_csv(csv_file, index=False, float_format='%.6f')
+    print(f"\n✓ Results saved to {csv_file}")
+
+    # Save as NetCDF (via xarray)
+    # Pivot to create a proper multidimensional structure
+    operation_cols = ['to_dataset', 'from_dataset', 'sel', 'resample', 'coarsen']
+
+    # If we have multiple timesteps and components, create proper coordinates
+    timesteps = sorted(df['timesteps'].unique())
+    components = sorted(df['components'].unique())
+
+    if len(timesteps) > 1 or len(components) > 1:
+        # Create xarray dataset
+        ds = xr.Dataset(
+            coords={
+                'timesteps': timesteps,
+                'components': components,
+            }
         )
 
-    ds = xr.Dataset(dataset_vars, coords=coords)
-    ds.attrs['n_runs'] = config['n_runs']
-    ds.attrs['description'] = 'Bottleneck analysis of individual FlowSystem operations'
-    ds.attrs['operations'] = ', '.join(operations)
+        # Add each operation as a data variable
+        for op in operation_cols:
+            # Pivot the dataframe
+            pivoted = df.pivot(index='timesteps', columns='components', values=op)
+            ds[op] = (('timesteps', 'components'), pivoted.values)
 
-    return ds
-
-
-def analyze_results(ds):
-    """Analyze and print benchmark results."""
-    print("\n" + "=" * 80)
-    print("BOTTLENECK ANALYSIS - Individual Operation Timings")
-    print("=" * 80)
-
-    # Overall statistics
-    print("\nOverall averages (across all configurations):")
-    print("-" * 80)
-    for var in ['to_dataset', 'from_dataset', 'sel', 'resample']:
-        avg_time = float(ds[var].mean())
-        print(f"  {var:15s}: {avg_time:.4f}s ({avg_time*1000:.1f}ms)")
-
-    # Find the bottleneck
-    print("\n" + "=" * 80)
-    print("Bottleneck identification:")
-    print("-" * 80)
-    means = {var: float(ds[var].mean()) for var in ['to_dataset', 'from_dataset', 'sel', 'resample']}
-    total = sum(means.values())
-    sorted_ops = sorted(means.items(), key=lambda x: x[1], reverse=True)
-
-    for i, (op, time) in enumerate(sorted_ops, 1):
-        pct = (time / total) * 100
-        print(f"  {i}. {op:15s}: {time:.4f}s ({pct:5.1f}% of total)")
-
-    print(f"\nTotal time for all operations: {total:.4f}s")
-
-    # Scaling analysis by timesteps
-    print("\n" + "=" * 80)
-    print("Scaling by timesteps (averaged over components):")
-    print("=" * 80)
-    print(f"{'Timesteps':>10} {'to_dataset':>12} {'from_dataset':>13} {'sel':>10} {'resample':>12} {'Bottleneck':>15}")
-    print("-" * 80)
-    for n_ts in ds.coords['timesteps'].values:
-        subset = ds.sel(timesteps=n_ts)
-        to_ds = float(subset['to_dataset'].mean())
-        from_ds = float(subset['from_dataset'].mean())
-        sel = float(subset['sel'].mean())
-        resample = float(subset['resample'].mean())
-        times = {'to_dataset': to_ds, 'from_dataset': from_ds, 'sel': sel, 'resample': resample}
-        bottleneck = max(times.items(), key=lambda x: x[1])[0]
-        print(f"{n_ts:10d} {to_ds:12.4f}s {from_ds:13.4f}s {sel:10.4f}s {resample:12.4f}s {bottleneck:>15s}")
-
-    # Scaling analysis by components
-    print("\n" + "=" * 80)
-    print("Scaling by components (averaged over timesteps):")
-    print("=" * 80)
-    print(f"{'Components':>11} {'to_dataset':>12} {'from_dataset':>13} {'sel':>10} {'resample':>12} {'Bottleneck':>15}")
-    print("-" * 80)
-    for n_comp in ds.coords['components'].values:
-        subset = ds.sel(components=n_comp)
-        to_ds = float(subset['to_dataset'].mean())
-        from_ds = float(subset['from_dataset'].mean())
-        sel = float(subset['sel'].mean())
-        resample = float(subset['resample'].mean())
-        times = {'to_dataset': to_ds, 'from_dataset': from_ds, 'sel': sel, 'resample': resample}
-        bottleneck = max(times.items(), key=lambda x: x[1])[0]
-        print(f"{n_comp:11d} {to_ds:12.4f}s {from_ds:13.4f}s {sel:10.4f}s {resample:12.4f}s {bottleneck:>15s}")
+        nc_file = f'{base_filename}.nc'
+        ds.to_netcdf(nc_file)
+        print(f"✓ Results saved to {nc_file}")
 
 
 if __name__ == '__main__':
     # Run benchmark
-    results = run_benchmark(CONFIG)
+    results_df = run_benchmark(CONFIG)
+
+    # Print all analyses
+    print_summary(results_df)
+    print_by_timesteps(results_df)
+    print_by_components(results_df)
+    print_detailed_results(results_df)
 
     # Save results
-    results.to_netcdf('benchmark_results.nc')
-    print("\n✓ Results saved to benchmark_results.nc")
-
-    # Analyze and display
-    analyze_results(results)
-
-    # Also save as CSV for easy viewing
-    df = results.to_dataframe()
-    df.to_csv('benchmark_results.csv')
-    print("✓ Results saved to benchmark_results.csv")
+    save_results(results_df)
