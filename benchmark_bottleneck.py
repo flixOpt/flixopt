@@ -112,7 +112,7 @@ def bench_resample_current(**context):
 
 @registry.add('resample_dataarray', category='resample_methods')
 def bench_resample_dataarray(**context):
-    """Old resample implementation using DataArray concat (fast but had bugs)."""
+    """DataArray concat without dask chunking."""
     dataset = context['dataset']
 
     def resample_with_dataarray():
@@ -128,17 +128,20 @@ def bench_resample_dataarray(**context):
             dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
             dim_groups[dims_key].append(var_name)
 
-        # Resample each group using DataArray concat
+        # Resample each group using DataArray concat (no dask)
         resampled_groups = []
         for var_names in dim_groups.values():
+            if not var_names:
+                continue
             stacked = xr.concat(
                 [time_dataset[name] for name in var_names],
                 dim=pd.Index(var_names, name='variable'),
+                combine_attrs='drop_conflicts',
             )
             resampled = stacked.resample(time='4h').mean()
             resampled_groups.append(resampled.to_dataset(dim='variable'))
 
-        result = xr.merge(resampled_groups)
+        result = xr.merge(resampled_groups, combine_attrs='drop_conflicts') if resampled_groups else time_dataset
 
         # Combine with non-time variables
         if non_time_var_names:
@@ -148,6 +151,71 @@ def bench_resample_dataarray(**context):
         return result
 
     return resample_with_dataarray
+
+
+@registry.add('resample_dataarray_with_dask', category='resample_methods')
+def bench_resample_dataarray_dask(**context):
+    """DataArray concat WITH dask chunking (best of both worlds)."""
+    dataset = context['dataset']
+
+    def resample_with_dataarray_dask():
+        # Separate time and non-time variables
+        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+        time_dataset = dataset[time_var_names]
+
+        # Group variables by dimensions (excluding time)
+        from collections import defaultdict
+        dim_groups = defaultdict(list)
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+            dim_groups[dims_key].append(var_name)
+
+        # Resample each group using DataArray concat with dask chunking
+        resampled_groups = []
+        for var_names in dim_groups.values():
+            if not var_names:
+                continue
+
+            stacked = xr.concat(
+                [time_dataset[name] for name in var_names],
+                dim=pd.Index(var_names, name='variable'),
+                combine_attrs='drop_conflicts',
+            )
+
+            try:
+                # Get non-time dimensions (excluding 'variable')
+                non_time_dims = [d for d in stacked.dims if d not in ('time', 'variable')]
+
+                # Only chunk if we have non-time dimensions and dataset is reasonably large
+                if non_time_dims and len(stacked.time) >= 500:
+                    chunks = {'time': -1, 'variable': -1}
+                    for dim in non_time_dims:
+                        dim_size = stacked.sizes[dim]
+                        if dim_size > 1:
+                            chunk_size = max(1, dim_size // 3)
+                            chunks[dim] = chunk_size
+
+                    stacked = stacked.chunk(chunks)
+                    resampled = stacked.resample(time='4h').mean()
+                    resampled = resampled.compute()
+                else:
+                    resampled = stacked.resample(time='4h').mean()
+            except (ImportError, AttributeError, ValueError):
+                resampled = stacked.resample(time='4h').mean()
+
+            resampled_groups.append(resampled.to_dataset(dim='variable'))
+
+        result = xr.merge(resampled_groups, combine_attrs='drop_conflicts') if resampled_groups else time_dataset
+
+        # Combine with non-time variables
+        if non_time_var_names:
+            non_time_dataset = dataset[non_time_var_names]
+            result = xr.merge([result, non_time_dataset])
+
+        return result
+
+    return resample_with_dataarray_dask
 
 
 @registry.add('resample_dataset_no_dask', category='resample_methods')
@@ -430,14 +498,14 @@ def save_results(df: pd.DataFrame, filename: str = 'benchmark_results', param_co
 # Configuration for FlowSystem benchmarks
 CONFIG = {
     'param_grid': {
-        'n_timesteps': [100, 5000],
-        'n_components': [10],
+        'n_timesteps': [100, 1000, 5000, 10_000],
+        'n_components': [10, 50, 200],
     },
     'param_display_names': {
         'n_timesteps': 'timesteps',
         'n_components': 'components',
     },
-    'n_runs': 1,
+    'n_runs': 3,
 }
 
 
@@ -447,9 +515,22 @@ def flow_system_setup_factory(n_timesteps: int, n_components: int) -> Callable:
 
 
 if __name__ == '__main__':
-    # Optional: Customize which operations to run
-    # registry.enable_only(['to_dataset', 'from_dataset', 'sel'])
-    # registry.disable(['coarsen'])
+    # Focus on comparing resample methods
+    registry.enable_only([
+        'resample_current',
+        'resample_dataarray',
+        'resample_dataarray_with_dask',
+        #'resample_dataset_no_dask',
+    ])
+
+    print("=" * 100)
+    print("RESAMPLE METHOD COMPARISON BENCHMARK")
+    print("=" * 100)
+    print("\nComparing four resample implementations:")
+    print("  1. resample_current:             Current method (DataArray + dask)")
+    print("  2. resample_dataarray:           DataArray concat without dask")
+    print("  3. resample_dataarray_with_dask: DataArray concat WITH dask")
+    print("  4. resample_dataset_no_dask:     Old Dataset approach (very slow)\n")
 
     # Run benchmark
     results_df = run_all_configs(CONFIG, flow_system_setup_factory)
@@ -458,7 +539,22 @@ if __name__ == '__main__':
     analyze_and_report(results_df)
 
     # Save results
-    save_results(results_df)
+    save_results(results_df, 'resample_comparison')
+
+    # Print winner summary
+    print("\n" + "=" * 100)
+    print("WINNER SUMMARY")
+    print("=" * 100)
+    methods = ['resample_current', 'resample_dataarray', 'resample_dataarray_with_dask']
+    fastest = results_df[methods].mean().idxmin()
+    times = results_df[methods].mean()
+    print(f"\nFastest method overall: {fastest}")
+    print(f"Average times across all configs:")
+    for method, time in times.items():
+        speedup = times[fastest] / time
+        print(f"  {method:35s}: {time:.4f}s  ({speedup:.2f}x)")
+
+    # To run all benchmarks instead, comment out the enable_only line above
 
 
 # ============================================================================
