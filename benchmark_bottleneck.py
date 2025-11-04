@@ -11,9 +11,9 @@ import flixopt as fx
 
 # Configuration
 CONFIG = {
-    'timestep_sizes': [100, 500, 1000, 2000, 5000, 8760],  # Number of timesteps to test
-    'component_counts': [1, 5, 10, 20, 50],  # Number of boilers to test
-    'n_runs': 3,  # Number of timing iterations for each configuration
+    'timestep_sizes': [100, 500, 1000],#, 2000, 5000, 8760],  # Number of timesteps to test
+    'component_counts': [1, 5, 10],#, 20, 50],  # Number of boilers to test
+    'n_runs': 1,  # Number of timing iterations for each configuration
 }
 
 
@@ -54,7 +54,14 @@ def create_flow_system(n_timesteps, n_components):
 
 
 def benchmark_operations(flow_system, n_runs):
-    """Benchmark individual operations and return timing results."""
+    """
+    Benchmark individual operations and return timing results.
+
+    Measures:
+    - Conversion overhead: to_dataset(), from_dataset()
+    - Dataset operations: Using optimized _resample_by_dimension_groups()
+    - Full workflows: OLD (double conversion) vs NEW (single conversion)
+    """
     results = {}
 
     # 1. Benchmark to_dataset()
@@ -79,17 +86,32 @@ def benchmark_operations(flow_system, n_runs):
         number=n_runs
     ) / n_runs
 
-    # 4. Benchmark dataset.resample()
-    results['dataset_resample'] = timeit.timeit(
-        lambda: ds.resample(time='2h').mean(),
-        number=n_runs
-    ) / n_runs
+    # 4. Benchmark optimized dataset.resample() (using _resample_by_dimension_groups)
+    def optimized_resample():
+        time_var_names = [v for v in ds.data_vars if 'time' in ds[v].dims]
+        non_time_var_names = [v for v in ds.data_vars if v not in time_var_names]
+        time_dataset = ds[time_var_names]
+        resampled_time_dataset = flow_system._resample_by_dimension_groups(time_dataset, '2h', 'mean')
+        if non_time_var_names:
+            non_time_dataset = ds[non_time_var_names]
+            return xr.merge([resampled_time_dataset, non_time_dataset])
+        return resampled_time_dataset
 
-    # 5. Benchmark sel + resample on dataset
-    results['dataset_sel_resample'] = timeit.timeit(
-        lambda: ds.sel(time=sel_slice).resample(time='2h').mean(),
-        number=n_runs
-    ) / n_runs
+    results['dataset_resample'] = timeit.timeit(optimized_resample, number=n_runs) / n_runs
+
+    # 5. Benchmark sel + optimized resample on dataset
+    def optimized_sel_resample():
+        ds_selected = ds.sel(time=sel_slice)
+        time_var_names = [v for v in ds_selected.data_vars if 'time' in ds_selected[v].dims]
+        non_time_var_names = [v for v in ds_selected.data_vars if v not in time_var_names]
+        time_dataset = ds_selected[time_var_names]
+        resampled_time_dataset = flow_system._resample_by_dimension_groups(time_dataset, '2h', 'mean')
+        if non_time_var_names:
+            non_time_dataset = ds_selected[non_time_var_names]
+            return xr.merge([resampled_time_dataset, non_time_dataset])
+        return resampled_time_dataset
+
+    results['dataset_sel_resample'] = timeit.timeit(optimized_sel_resample, number=n_runs) / n_runs
 
     # 6. Benchmark OLD FlowSystem.sel().resample() (double conversion)
     def old_approach():
