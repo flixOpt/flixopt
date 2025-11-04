@@ -926,25 +926,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             FlowSystem: New FlowSystem with selected data
         """
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
+        # Special case: no selection parameters means return a copy
+        if time is None and period is None and scenario is None:
+            return self.copy()
 
-        ds = self.to_dataset()
-
-        # Build indexers dict from non-None parameters
-        indexers = {}
-        if time is not None:
-            indexers['time'] = time
-        if period is not None:
-            indexers['period'] = period
-        if scenario is not None:
-            indexers['scenario'] = scenario
-
-        if not indexers:
-            return self.copy()  # Return a copy when no selection
-
-        selected_dataset = ds.sel(**indexers)
-        return self.__class__.from_dataset(selected_dataset)
+        return self.sel_and_resample(time=time, period=period, scenario=scenario)
 
     def isel(
         self,
@@ -1064,37 +1050,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             FlowSystem: New resampled FlowSystem
         """
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-
-        # Validate method before resampling
-        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
-        if method not in available_methods:
-            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
-
-        dataset = self.to_dataset()
-
-        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
-        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
-
-        # Only resample variables that have time dimension
-        time_dataset = dataset[time_var_names]
-
-        # Resample with dimension grouping to avoid broadcasting
-        resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, time, method, **kwargs)
-
-        # Combine resampled time variables with non-time variables
-        if non_time_var_names:
-            non_time_dataset = dataset[non_time_var_names]
-            resampled_dataset = xr.merge([resampled_time_dataset, non_time_dataset])
-        else:
-            resampled_dataset = resampled_time_dataset
-
-        # Let FlowSystem recalculate or use explicitly set value
-        resampled_dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-        resampled_dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
-
-        return self.__class__.from_dataset(resampled_dataset)
+        return self.sel_and_resample(
+            freq=time,
+            method=method,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+            **kwargs,
+        )
 
     def sel_and_resample(
         self,
