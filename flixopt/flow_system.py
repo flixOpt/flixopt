@@ -1021,20 +1021,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Only resample variables that have time dimension
         time_dataset = dataset[list(time_vars.keys())]
-        resampler = time_dataset.resample(time=time, **kwargs)
+
+        time_dataarray = xr.concat(
+            [time_dataset[name] for name in time_dataset.data_vars],
+            dim=pd.Index([name for name in time_dataset], name='variable'),
+        )
+
+        resampler = time_dataarray.resample(time=time, **kwargs)
 
         if hasattr(resampler, method):
-            resampled_time_data = getattr(resampler, method)()
+            resampled_time_dataarray = getattr(resampler, method)()
         else:
             available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
             raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
+        resampled_time_dataset = resampled_time_dataarray.to_dataset()
+
         # Combine resampled time variables with non-time variables
         if non_time_vars:
             non_time_dataset = dataset[list(non_time_vars.keys())]
-            resampled_dataset = xr.merge([resampled_time_data, non_time_dataset])
+            resampled_dataset = xr.merge([resampled_time_dataset, non_time_dataset])
         else:
-            resampled_dataset = resampled_time_data
+            resampled_dataset = resampled_time_dataset
 
         # Let FlowSystem recalculate or use explicitly set value
         resampled_dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
