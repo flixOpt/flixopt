@@ -991,20 +991,37 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         **kwargs: Any,
     ) -> xr.Dataset:
         """
-        Resample all variables of a Dataset, but speed up by grouping them into dataarrays based on their dimension structure before resampling.
-        This greatly speeds up the resampling for Datasets with many variables
+        Resample variables grouped by their dimension structure to avoid broadcasting.
 
-        Variables with different dimensions (beyond time) are resampled separately
-        to prevent xarray from broadcasting them into a larger shape with NaNs.
+        This method groups variables by their non-time dimensions before resampling,
+        which provides two key benefits:
+
+        1. **Performance**: Resampling many variables with the same dimensions together
+           is significantly faster than resampling each variable individually.
+
+        2. **Safety**: Prevents xarray from broadcasting variables with different
+           dimensions into a larger dimensional space filled with NaNs, which would
+           cause memory bloat and computational inefficiency.
+
+        Example:
+            Without grouping (problematic):
+                var1: (time, location, tech)  shape (8000, 10, 2)
+                var2: (time, region)          shape (8000, 5)
+                concat → (variable, time, location, tech, region)  ← Unwanted broadcasting!
+
+            With grouping (safe and fast):
+                Group 1: [var1, var3, ...] with dims (time, location, tech)
+                Group 2: [var2, var4, ...] with dims (time, region)
+                Each group resampled separately → No broadcasting, optimal performance!
 
         Args:
             time_dataset: Dataset containing only variables with time dimension
-            time: Resampling frequency
-            method: Resampling method name
-            **kwargs: Additional arguments for resample()
+            time: Resampling frequency (e.g., '2h', '1D', '1M')
+            method: Resampling method name (e.g., 'mean', 'sum', 'first')
+            **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
-            Resampled dataset
+            Resampled dataset with original dimension structure preserved
         """
         # Group variables by dimensions (excluding time)
         dim_groups = defaultdict(list)
