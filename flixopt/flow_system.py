@@ -174,19 +174,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
-        self.timesteps_extra = self._create_timesteps_with_extra(self.timesteps, hours_of_last_timestep)
-        self.hours_of_previous_timesteps = self._calculate_hours_of_previous_timesteps(
-            self.timesteps, hours_of_previous_timesteps
-        )
+
+        # Compute all time-related metadata using shared helper
+        (
+            self.timesteps_extra,
+            self.hours_of_last_timestep,
+            self.hours_of_previous_timesteps,
+            hours_per_timestep,
+        ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
         self.weights = weights
-
-        hours_per_timestep = self.calculate_hours_per_timestep(self.timesteps_extra)
-
-        self.hours_of_last_timestep = hours_per_timestep[-1].item()
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
@@ -291,6 +291,44 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return first_interval.total_seconds() / 3600  # Convert to hours
 
     @classmethod
+    def _compute_time_metadata(
+        cls,
+        timesteps: pd.DatetimeIndex,
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+    ) -> tuple[pd.DatetimeIndex, float, float | np.ndarray, xr.DataArray]:
+        """
+        Compute all time-related metadata from timesteps.
+
+        This is the single source of truth for time metadata computation, used by both
+        __init__ and dataset operations (sel/isel/resample) to ensure consistency.
+
+        Args:
+            timesteps: The time index to compute metadata from
+            hours_of_last_timestep: Duration of the last timestep (computed if None)
+            hours_of_previous_timesteps: Duration of previous timesteps (computed if None)
+
+        Returns:
+            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep)
+        """
+        # Create timesteps with extra step at the end
+        timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
+
+        # Calculate hours per timestep
+        hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
+
+        # Extract hours_of_last_timestep if not provided
+        if hours_of_last_timestep is None:
+            hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
+
+        # Compute hours_of_previous_timesteps (handles both None and provided cases)
+        hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
+            timesteps, hours_of_previous_timesteps
+        )
+
+        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
+
+    @classmethod
     def _update_time_metadata(
         cls,
         dataset: xr.Dataset,
@@ -298,11 +336,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
     ) -> xr.Dataset:
         """
-        Update time-related attributes in dataset based on its time index.
+        Update time-related attributes and data variables in dataset based on its time index.
 
-        Recomputes hours_of_last_timestep and hours_of_previous_timesteps from the dataset's
-        time index when these parameters are None. This ensures time metadata stays synchronized
-        with the actual timesteps after operations like resampling or selection.
+        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and hours_per_timestep
+        from the dataset's time index when these parameters are None. This ensures time metadata
+        stays synchronized with the actual timesteps after operations like resampling or selection.
 
         Args:
             dataset: Dataset to update (will be modified in place)
@@ -310,24 +348,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             hours_of_previous_timesteps: Duration of previous timesteps (computed from time index if None)
 
         Returns:
-            The same dataset with updated time-related attributes
+            The same dataset with updated time-related attributes and data variables
         """
         new_time_index = dataset.indexes.get('time')
         if new_time_index is not None and len(new_time_index) >= 2:
-            # Create timesteps_extra - this handles hours_of_last_timestep=None internally
-            timesteps_extra = cls._create_timesteps_with_extra(new_time_index, hours_of_last_timestep)
-
-            # Calculate hours_per_timestep
-            hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
-
-            # If hours_of_last_timestep was None, extract the computed value
-            if hours_of_last_timestep is None:
-                hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
-
-            # Compute hours_of_previous_timesteps (handles both None and provided cases)
-            hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
-                new_time_index, hours_of_previous_timesteps
+            # Use shared helper to compute all time metadata
+            _, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep = cls._compute_time_metadata(
+                new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
             )
+
+            # Update hours_per_timestep DataArray if it exists in the dataset
+            # This prevents stale data after resampling operations
+            if 'hours_per_timestep' in dataset.data_vars:
+                dataset['hours_per_timestep'] = hours_per_timestep
 
         # Update time-related attributes
         dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
