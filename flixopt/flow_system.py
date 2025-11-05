@@ -290,6 +290,51 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
 
+    @classmethod
+    def _update_time_metadata(
+        cls,
+        dataset: xr.Dataset,
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+    ) -> xr.Dataset:
+        """
+        Update time-related attributes in dataset based on its time index.
+
+        Recomputes hours_of_last_timestep and hours_of_previous_timesteps from the dataset's
+        time index when these parameters are None. This ensures time metadata stays synchronized
+        with the actual timesteps after operations like resampling or selection.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+            hours_of_last_timestep: Duration of the last timestep (computed from time index if None)
+            hours_of_previous_timesteps: Duration of previous timesteps (computed from time index if None)
+
+        Returns:
+            The same dataset with updated time-related attributes
+        """
+        new_time_index = dataset.indexes.get('time')
+        if new_time_index is not None and len(new_time_index) >= 2:
+            # Create timesteps_extra - this handles hours_of_last_timestep=None internally
+            timesteps_extra = cls._create_timesteps_with_extra(new_time_index, hours_of_last_timestep)
+
+            # Calculate hours_per_timestep
+            hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
+
+            # If hours_of_last_timestep was None, extract the computed value
+            if hours_of_last_timestep is None:
+                hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
+
+            # Compute hours_of_previous_timesteps (handles both None and provided cases)
+            hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
+                new_time_index, hours_of_previous_timesteps
+            )
+
+        # Update time-related attributes
+        dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
+        dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+
+        return dataset
+
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
@@ -977,28 +1022,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         result = dataset.sel(**indexers)
 
-        # Recompute time-related attributes if time was selected
+        # Update time-related attributes if time was selected
         if 'time' in indexers:
-            new_time_index = result.indexes.get('time')
-            if new_time_index is not None and len(new_time_index) >= 2:
-                # Create timesteps_extra - this handles hours_of_last_timestep=None internally
-                timesteps_extra = cls._create_timesteps_with_extra(new_time_index, hours_of_last_timestep)
-
-                # Calculate hours_per_timestep
-                hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
-
-                # If hours_of_last_timestep was None, extract the computed value
-                if hours_of_last_timestep is None:
-                    hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
-
-                # Compute hours_of_previous_timesteps (handles both None and provided cases)
-                hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
-                    new_time_index, hours_of_previous_timesteps
-                )
-
-            # Update time-related attributes
-            result.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-            result.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+            result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         return result
 
@@ -1071,28 +1097,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         result = dataset.isel(**indexers)
 
-        # Recompute time-related attributes if time was selected
+        # Update time-related attributes if time was selected
         if 'time' in indexers:
-            new_time_index = result.indexes.get('time')
-            if new_time_index is not None and len(new_time_index) >= 2:
-                # Create timesteps_extra - this handles hours_of_last_timestep=None internally
-                timesteps_extra = cls._create_timesteps_with_extra(new_time_index, hours_of_last_timestep)
-
-                # Calculate hours_per_timestep
-                hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
-
-                # If hours_of_last_timestep was None, extract the computed value
-                if hours_of_last_timestep is None:
-                    hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
-
-                # Compute hours_of_previous_timesteps (handles both None and provided cases)
-                hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
-                    new_time_index, hours_of_previous_timesteps
-                )
-
-            # Update time-related attributes
-            result.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-            result.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+            result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         return result
 
@@ -1258,29 +1265,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         else:
             result = resampled_time_dataset
 
-        # Recompute time-related attributes based on new time index
-        new_time_index = result.indexes.get('time')
-        if new_time_index is not None and len(new_time_index) >= 2:
-            # Create timesteps_extra - this handles hours_of_last_timestep=None internally
-            timesteps_extra = cls._create_timesteps_with_extra(new_time_index, hours_of_last_timestep)
-
-            # Calculate hours_per_timestep
-            hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
-
-            # If hours_of_last_timestep was None, extract the computed value
-            if hours_of_last_timestep is None:
-                hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
-
-            # Compute hours_of_previous_timesteps (handles both None and provided cases)
-            hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
-                new_time_index, hours_of_previous_timesteps
-            )
-
-        # Update time-related attributes
-        result.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-        result.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
-
-        return result
+        # Update time-related attributes based on new time index
+        return cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
     def resample(
         self,
