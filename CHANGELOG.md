@@ -60,7 +60,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- Greatly sped up the resampling of a FlowSystem (x20 - x40) by converting to dataarray internally
+- Truncate repr of FlowSystem and CalculationResults to only show the first 10 items of each category
+- Greatly sped up the resampling of a FlowSystem again
 
 ### 🗑️ Deprecated
 
