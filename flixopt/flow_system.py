@@ -361,9 +361,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if 'hours_per_timestep' in dataset.data_vars:
                 dataset['hours_per_timestep'] = hours_per_timestep
 
-        # Update time-related attributes
-        dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-        dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+        # Update time-related attributes only when new values are provided/computed
+        # This preserves existing metadata instead of overwriting with None
+        if hours_of_last_timestep is not None:
+            dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
+        if hours_of_previous_timesteps is not None:
+            dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
 
         return dataset
 
