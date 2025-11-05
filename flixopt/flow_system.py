@@ -58,11 +58,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         timesteps: The timesteps of the model.
         periods: The periods of the model.
         scenarios: The scenarios of the model.
-        hours_of_last_timestep: The duration of the last time step. Uses the last time interval if not specified
-        hours_of_previous_timesteps: The duration of previous timesteps.
-            If None, the first time increment of time_series is used.
-            This is needed to calculate previous durations (for example consecutive_on_hours).
-            If you use an array, take care that its long enough to cover all previous values!
+        hours_of_last_timestep: Duration of the last timestep. If None, computed from the last time interval.
+        hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the first time interval.
+            Can be a scalar (all previous timesteps have same duration) or array (different durations).
+            Used to calculate previous values (e.g., consecutive_on_hours).
         weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
             Its recommended to normalize the weights to sum up to 1.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
@@ -305,8 +304,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Args:
             timesteps: The time index to compute metadata from
-            hours_of_last_timestep: Duration of the last timestep (computed if None)
-            hours_of_previous_timesteps: Duration of previous timesteps (computed if None)
+            hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
+            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
+                Can be a scalar or array.
 
         Returns:
             Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep)
@@ -344,8 +344,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Args:
             dataset: Dataset to update (will be modified in place)
-            hours_of_last_timestep: Duration of the last timestep (computed from time index if None)
-            hours_of_previous_timesteps: Duration of previous timesteps (computed from time index if None)
+            hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
+            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
+                Can be a scalar or array.
 
         Returns:
             The same dataset with updated time-related attributes and data variables
@@ -1036,8 +1037,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             time: Time selection (e.g., '2020-01', slice('2020-01-01', '2020-06-30'))
             period: Period selection (e.g., 2020, slice(2020, 2022))
             scenario: Scenario selection (e.g., 'Base Case', ['Base Case', 'High Demand'])
-            hours_of_last_timestep: Duration of the last time step (computed from time index if None)
-            hours_of_previous_timesteps: Duration of previous timesteps (computed from time index if None)
+            hours_of_last_timestep: Duration of the last timestep. If None, computed from the selected time index.
+            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the selected time index.
+                Can be a scalar or array.
 
         Returns:
             xr.Dataset: Selected dataset
@@ -1111,8 +1113,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             time: Time selection by index (e.g., slice(0, 100), [0, 5, 10])
             period: Period selection by index
             scenario: Scenario selection by index
-            hours_of_last_timestep: Duration of the last time step (computed from time index if None)
-            hours_of_previous_timesteps: Duration of previous timesteps (computed from time index if None)
+            hours_of_last_timestep: Duration of the last timestep. If None, computed from the selected time index.
+            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the selected time index.
+                Can be a scalar or array.
 
         Returns:
             xr.Dataset: Selected dataset
@@ -1269,8 +1272,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             dataset: xarray Dataset from FlowSystem.to_dataset()
             freq: Resampling frequency (e.g., '2h', '1D', '1M')
             method: Resampling method (e.g., 'mean', 'sum', 'first')
-            hours_of_last_timestep: New duration of the last time step
-            hours_of_previous_timesteps: New duration of previous timesteps
+            hours_of_last_timestep: Duration of the last timestep after resampling. If None, computed from the last time interval.
+            hours_of_previous_timesteps: Duration of previous timesteps after resampling. If None, computed from the first time interval.
+                Can be a scalar or array.
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
@@ -1319,8 +1323,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
             method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
-            hours_of_last_timestep: New duration of the last time step. Defaults to the last time interval of the new timesteps
-            hours_of_previous_timesteps: New duration of the previous timestep. Defaults to the first time increment of the new timesteps
+            hours_of_last_timestep: Duration of the last timestep after resampling. If None, computed from the last time interval.
+            hours_of_previous_timesteps: Duration of previous timesteps after resampling. If None, computed from the first time interval.
+                Can be a scalar or array.
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
