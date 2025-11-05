@@ -60,6 +60,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- Truncate repr of FlowSystem and CalculationResults to only show the first 10 items of each category
 
 ### 🗑️ Deprecated
 
