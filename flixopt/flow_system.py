@@ -322,9 +322,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
 
         # Compute hours_of_previous_timesteps (handles both None and provided cases)
-        hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(
-            timesteps, hours_of_previous_timesteps
-        )
+        hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
         return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
 
