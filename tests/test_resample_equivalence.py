@@ -282,10 +282,8 @@ def test_resample_equivalence_with_kwargs():
     ds['var'] = xr.DataArray(np.random.randn(48), dims=['time'])
 
     kwargs = {'label': 'right', 'closed': 'right'}
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(
-        ds, '2h', 'mean', **kwargs
-    )
-    result_naive = getattr(ds.resample(time='2h', **kwargs), 'mean')()
+    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', 'mean', **kwargs)
+    result_naive = ds.resample(time='2h', **kwargs).mean()
 
     xr.testing.assert_allclose(result_optimized, result_naive)
 
