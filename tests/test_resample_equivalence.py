@@ -23,7 +23,7 @@ def naive_dataset_resample(dataset: xr.Dataset, freq: str, method: str) -> xr.Da
     return getattr(dataset.resample(time=freq), method)()
 
 
-def create_dataset_with_mixed_dimensions(n_timesteps=48):
+def create_dataset_with_mixed_dimensions(n_timesteps=48, seed=42):
     """
     Create a dataset with variables having different dimension structures.
 
@@ -32,6 +32,7 @@ def create_dataset_with_mixed_dimensions(n_timesteps=48):
     - Variables with time + one other dimension
     - Variables with time + multiple dimensions
     """
+    np.random.seed(seed)
     timesteps = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
 
     ds = xr.Dataset(
@@ -267,6 +268,26 @@ def test_resample_equivalence_large_dataset():
         result_naive = naive_dataset_resample(ds, '1D', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
+
+
+def test_resample_equivalence_with_kwargs():
+    """
+    Test that kwargs are properly forwarded to resample().
+
+    Verifies that additional arguments like label and closed are correctly
+    passed through the optimization path.
+    """
+    timesteps = pd.date_range('2020-01-01', periods=48, freq='h')
+    ds = xr.Dataset(coords={'time': timesteps})
+    ds['var'] = xr.DataArray(np.random.randn(48), dims=['time'])
+
+    kwargs = {'label': 'right', 'closed': 'right'}
+    result_optimized = fx.FlowSystem._resample_by_dimension_groups(
+        ds, '2h', 'mean', **kwargs
+    )
+    result_naive = getattr(ds.resample(time='2h', **kwargs), 'mean')()
+
+    xr.testing.assert_allclose(result_optimized, result_naive)
 
 
 if __name__ == '__main__':
