@@ -93,9 +93,7 @@ def test_resample_equivalence_mixed_dimensions(method, freq):
     ds = create_dataset_with_mixed_dimensions(n_timesteps=100)
 
     # Method 1: Optimized approach (with dimension grouping)
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(
-        ds, freq, method
-    )
+    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, freq, method)
 
     # Method 2: Naive approach (direct Dataset resampling)
     result_naive = naive_dataset_resample(ds, freq, method)
