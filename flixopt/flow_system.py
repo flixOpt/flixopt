@@ -1265,6 +1265,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     ) -> xr.Dataset:
         """
         Resample dataset along time dimension (for power users to avoid conversion overhead).
+        Preserves only the attrs of the Dataset.
 
         Uses optimized _resample_by_dimension_groups() to avoid broadcasting issues.
         See _dataset_sel() for usage pattern.
@@ -1286,6 +1287,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if method not in available_methods:
             raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
 
+        # Preserve original dataset attributes (especially the reference structure)
+        original_attrs = dict(dataset.attrs)
+
         # Separate time and non-time variables
         time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
         non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
@@ -1302,6 +1306,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             result = xr.merge([resampled_time_dataset, non_time_dataset])
         else:
             result = resampled_time_dataset
+
+        # Restore original attributes (xr.merge can drop them)
+        result.attrs.update(original_attrs)
 
         # Update time-related attributes based on new time index
         return cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
