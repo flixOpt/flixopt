@@ -56,11 +56,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- Added options to resample and select subsets of the flowsystems without converting to and from Dataset each time. Use the new methods `FlowSystem.__dataset_resample()`, `FlowSystem.__dataset_sel()` and `FlowSystem.__dataset_isel()`. All of them expect and return a dataset.
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
 - Truncate repr of FlowSystem and CalculationResults to only show the first 10 items of each category
+- Greatly sped up the resampling of a FlowSystem again
 
 ### 🗑️ Deprecated
 
