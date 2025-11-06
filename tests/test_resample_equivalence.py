@@ -48,36 +48,42 @@ def create_dataset_with_mixed_dimensions(n_timesteps=48, seed=42):
     ds['total_demand'] = xr.DataArray(
         np.random.randn(n_timesteps),
         dims=['time'],
+        coords={'time': ds.time},
     )
 
     # Variable with time + component
     ds['component_flow'] = xr.DataArray(
         np.random.randn(n_timesteps, 2),
         dims=['time', 'component'],
+        coords={'time': ds.time, 'component': ds.component},
     )
 
     # Variable with time + bus
     ds['bus_balance'] = xr.DataArray(
         np.random.randn(n_timesteps, 2),
         dims=['time', 'bus'],
+        coords={'time': ds.time, 'bus': ds.bus},
     )
 
     # Variable with time + component + bus
     ds['flow_on_bus'] = xr.DataArray(
         np.random.randn(n_timesteps, 2, 2),
         dims=['time', 'component', 'bus'],
+        coords={'time': ds.time, 'component': ds.component, 'bus': ds.bus},
     )
 
     # Variable with time + scenario
     ds['scenario_demand'] = xr.DataArray(
         np.random.randn(n_timesteps, 2),
         dims=['time', 'scenario'],
+        coords={'time': ds.time, 'scenario': ds.scenario},
     )
 
     # Variable with time + component + scenario
     ds['component_scenario_flow'] = xr.DataArray(
         np.random.randn(n_timesteps, 2, 2),
         dims=['time', 'component', 'scenario'],
+        coords={'time': ds.time, 'component': ds.component, 'scenario': ds.scenario},
     )
 
     return ds
@@ -111,9 +117,9 @@ def test_resample_equivalence_single_dimension(method):
     timesteps = pd.date_range('2020-01-01', periods=48, freq='h')
 
     ds = xr.Dataset(coords={'time': timesteps})
-    ds['var1'] = xr.DataArray(np.random.randn(48), dims=['time'])
-    ds['var2'] = xr.DataArray(np.random.randn(48) * 10, dims=['time'])
-    ds['var3'] = xr.DataArray(np.random.randn(48) / 5, dims=['time'])
+    ds['var1'] = xr.DataArray(np.random.randn(48), dims=['time'], coords={'time': ds.time})
+    ds['var2'] = xr.DataArray(np.random.randn(48) * 10, dims=['time'], coords={'time': ds.time})
+    ds['var3'] = xr.DataArray(np.random.randn(48) / 5, dims=['time'], coords={'time': ds.time})
 
     # Optimized approach
     result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', method)
@@ -145,7 +151,7 @@ def test_resample_equivalence_single_variable():
     """
     timesteps = pd.date_range('2020-01-01', periods=48, freq='h')
     ds = xr.Dataset(coords={'time': timesteps})
-    ds['single_var'] = xr.DataArray(np.random.randn(48), dims=['time'])
+    ds['single_var'] = xr.DataArray(np.random.randn(48), dims=['time'], coords={'time': ds.time})
 
     # Test multiple methods
     for method in ['mean', 'sum', 'max', 'min']:
@@ -168,7 +174,9 @@ def test_resample_equivalence_with_nans():
     data[5:10, 0] = np.nan
     data[20:25, 1] = np.nan
 
-    ds['var_with_nans'] = xr.DataArray(data, dims=['time', 'component'])
+    ds['var_with_nans'] = xr.DataArray(
+        data, dims=['time', 'component'], coords={'time': ds.time, 'component': ds.component}
+    )
 
     # Test with methods that handle NaNs
     for method in ['mean', 'sum', 'max', 'min', 'first', 'last']:
@@ -196,18 +204,21 @@ def test_resample_equivalence_different_dimension_orders():
     ds['var_time_first'] = xr.DataArray(
         np.random.randn(48, 2, 2),
         dims=['time', 'x', 'y'],
+        coords={'time': ds.time, 'x': ds.x, 'y': ds.y},
     )
 
     # Variable with time in middle
     ds['var_time_middle'] = xr.DataArray(
         np.random.randn(2, 48, 2),
         dims=['x', 'time', 'y'],
+        coords={'x': ds.x, 'time': ds.time, 'y': ds.y},
     )
 
     # Variable with time last
     ds['var_time_last'] = xr.DataArray(
         np.random.randn(2, 2, 48),
         dims=['x', 'y', 'time'],
+        coords={'x': ds.x, 'y': ds.y, 'time': ds.time},
     )
 
     for method in ['mean', 'sum', 'max', 'min']:
@@ -233,6 +244,7 @@ def test_resample_equivalence_multiple_variables_same_dims():
         ds[f'var_{i}'] = xr.DataArray(
             np.random.randn(48, 3),
             dims=['time', 'location'],
+            coords={'time': ds.time, 'location': ds.location},
         )
 
     for method in ['mean', 'sum', 'max', 'min']:
@@ -257,10 +269,16 @@ def test_resample_equivalence_large_dataset():
     )
 
     # Various variable types
-    ds['simple_var'] = xr.DataArray(np.random.randn(168), dims=['time'])
-    ds['component_var'] = xr.DataArray(np.random.randn(168, 5), dims=['time', 'component'])
-    ds['bus_var'] = xr.DataArray(np.random.randn(168, 3), dims=['time', 'bus'])
-    ds['complex_var'] = xr.DataArray(np.random.randn(168, 5, 3), dims=['time', 'component', 'bus'])
+    ds['simple_var'] = xr.DataArray(np.random.randn(168), dims=['time'], coords={'time': ds.time})
+    ds['component_var'] = xr.DataArray(
+        np.random.randn(168, 5), dims=['time', 'component'], coords={'time': ds.time, 'component': ds.component}
+    )
+    ds['bus_var'] = xr.DataArray(np.random.randn(168, 3), dims=['time', 'bus'], coords={'time': ds.time, 'bus': ds.bus})
+    ds['complex_var'] = xr.DataArray(
+        np.random.randn(168, 5, 3),
+        dims=['time', 'component', 'bus'],
+        coords={'time': ds.time, 'component': ds.component, 'bus': ds.bus},
+    )
 
     # Test with a subset of methods (to keep test time reasonable)
     for method in ['mean', 'sum', 'first']:
@@ -279,7 +297,7 @@ def test_resample_equivalence_with_kwargs():
     """
     timesteps = pd.date_range('2020-01-01', periods=48, freq='h')
     ds = xr.Dataset(coords={'time': timesteps})
-    ds['var'] = xr.DataArray(np.random.randn(48), dims=['time'])
+    ds['var'] = xr.DataArray(np.random.randn(48), dims=['time'], coords={'time': ds.time})
 
     kwargs = {'label': 'right', 'closed': 'right'}
     result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', 'mean', **kwargs)
