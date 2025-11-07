@@ -52,9 +52,7 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
-                size=fx.InvestParameters(
-                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500
-                ),
+                size=fx.SizingParameters(effects_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
                 on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
@@ -72,17 +70,15 @@ if __name__ == '__main__':
             Q_fu=fx.Flow(
                 'Q_fu',
                 bus='Kohle',
-                size=fx.InvestParameters(
-                    effects_of_investment_per_size={'costs': 3_000}, minimum_size=10, maximum_size=500
-                ),
+                size=fx.SizingParameters(effects_per_size={'costs': 3_000}, minimum_size=10, maximum_size=500),
                 relative_minimum=0.3,
                 previous_flow_rate=100,
             ),
         ),
         fx.Storage(
             'Speicher',
-            capacity_in_flow_hours=fx.InvestParameters(
-                minimum_size=10, maximum_size=1000, effects_of_investment_per_size={'costs': 60}
+            capacity_in_flow_hours=fx.SizingParameters(
+                minimum_size=10, maximum_size=1000, effects_per_size={'costs': 60}
             ),
             initial_charge_state='lastValueOfSim',
             eta_charge=1,

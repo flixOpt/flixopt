@@ -429,7 +429,7 @@ class Interface:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
 
-        This centralizes the deprecation pattern used across multiple classes (Source, Sink, InvestParameters, etc.).
+        This centralizes the deprecation pattern used across multiple classes (Source, Sink, SizingParameters, etc.).
 
         Args:
             kwargs: Dictionary of keyword arguments to check and modify

@@ -146,7 +146,7 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(fixed_size=1000, effects_of_investment=10, effects_of_investment_per_size=1),
+                size=fx.SizingParameters(fixed_size=1000, effects_of_size=10, effects_per_size=1),
             ),
         )
     )
@@ -187,7 +187,7 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(effects_of_investment=10, effects_of_investment_per_size=1),
+                size=fx.SizingParameters(effects_of_size=10, effects_per_size=1),
             ),
         )
     )
@@ -228,7 +228,7 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1),
+                size=fx.SizingParameters(minimum_size=40, effects_of_size=10, effects_per_size=1),
             ),
         )
     )
@@ -269,9 +269,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(
-                    mandatory=False, minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1
-                ),
+                size=fx.SizingParameters(mandatory=False, minimum_size=40, effects_of_size=10, effects_per_size=1),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -281,9 +279,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
             Q_th=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(
-                    mandatory=False, minimum_size=50, effects_of_investment=10, effects_of_investment_per_size=1
-                ),
+                size=fx.SizingParameters(mandatory=False, minimum_size=50, effects_of_size=10, effects_per_size=1),
             ),
         ),
     )

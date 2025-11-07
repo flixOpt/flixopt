@@ -14,8 +14,8 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
-from .features import InvestmentModel, OnOffModel
-from .interface import InvestParameters, OnOffParameters
+from .features import InvestmentModel, OnOffModel, SizingModel, _SizeModel
+from .interface import InvestmentParameters, OnOffParameters, SizingParameters, _SizeParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
@@ -298,7 +298,7 @@ class Flow(Element):
         **Relative Bounds**: Flow rate limits expressed as fractions of flow size
 
     Integration with Parameter Classes:
-        - **InvestParameters**: Used for `size` when flow Size is an investment decision
+        - **SizingParameters**: Used for `size` when flow Size is an investment decision
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
     Mathematical Formulation:
@@ -308,7 +308,7 @@ class Flow(Element):
     Args:
         label: Unique flow identifier within its component.
         bus: Bus label this flow connects to.
-        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
+        size: Flow capacity. Scalar, SizingParameters, or None (uses CONFIG.Modeling.big).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
         relative_maximum: Maximum flow rate as fraction of size. Default: 1.
         load_factor_min: Minimum average utilization (0-1). Default: 0.
@@ -342,7 +342,7 @@ class Flow(Element):
         battery_flow = Flow(
             label='electricity_storage',
             bus='electricity_grid',
-            size=InvestParameters(
+            size=SizingParameters(
                 minimum_size=10,  # Minimum 10 MWh
                 maximum_size=100,  # Maximum 100 MWh
                 specific_effects={'cost': 150_000},  # €150k/MWh annualized
@@ -419,7 +419,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Scalar | InvestParameters = None,
+        size: Scalar | SizingParameters | InvestmentParameters = None,
         fixed_relative_profile: TemporalDataUser | None = None,
         relative_minimum: TemporalDataUser = 0,
         relative_maximum: TemporalDataUser = 1,
@@ -493,7 +493,7 @@ class Flow(Element):
 
         if self.on_off_parameters is not None:
             self.on_off_parameters.transform_data(flow_system, prefix)
-        if isinstance(self.size, InvestParameters):
+        if isinstance(self.size, _SizeParameters):
             self.size.transform_data(flow_system, prefix)
         else:
             self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
@@ -503,7 +503,7 @@ class Flow(Element):
         if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, InvestParameters) and (
+        if not isinstance(self.size, _SizeParameters) and (
             np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
@@ -543,12 +543,8 @@ class Flow(Element):
 
     @property
     def size_is_fixed(self) -> bool:
-        # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
-        return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
-
-    def _format_invest_params(self, params: InvestParameters) -> str:
-        """Format InvestParameters for display."""
-        return f'size: {params.format_for_repr()}'
+        # Wenn kein SizingParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
+        return False if (isinstance(self.size, SizingParameters) and self.size.fixed_size is None) else True
 
 
 class FlowModel(ElementModel):
@@ -603,15 +599,29 @@ class FlowModel(ElementModel):
         )
 
     def _create_investment_model(self):
-        self.add_submodels(
-            InvestmentModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                parameters=self.element.size,
-                label_of_model=self.label_of_element,
-            ),
-            'investment',
-        )
+        # Check InvestmentParameters first (best practice to check more specific types first)
+        if isinstance(self.element.size, InvestmentParameters):
+            self.add_submodels(
+                InvestmentModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    parameters=self.element.size,
+                    label_of_model=self.label_of_element,
+                ),
+                'investment',
+            )
+        elif isinstance(self.element.size, SizingParameters):
+            self.add_submodels(
+                SizingModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    parameters=self.element.size,
+                    label_of_model=self.label_of_element,
+                ),
+                'investment',
+            )
+        else:
+            raise ValueError(f'Invalid SizingParameters type: {type(self.element.size)}')
 
     def _constraint_flow_rate(self):
         if not self.with_investment and not self.with_on_off:
@@ -661,7 +671,7 @@ class FlowModel(ElementModel):
 
     @property
     def with_investment(self) -> bool:
-        return isinstance(self.element.size, InvestParameters)
+        return isinstance(self.element.size, _SizeParameters)
 
     # Properties for clean access to variables
     @property
@@ -734,7 +744,7 @@ class FlowModel(ElementModel):
             if not self.with_investment:
                 # Basic case without investment and without OnOff
                 lb = lb_relative * self.element.size
-            elif self.with_investment and self.element.size.mandatory:
+            elif self.with_investment and self.element.size.mandatory.all():
                 # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
