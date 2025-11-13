@@ -491,13 +491,12 @@ def _setup_logging(
         except PermissionError as e:
             raise PermissionError(f"Cannot create log directory '{log_path.parent}': Permission denied") from e
 
-        rotation_size = f'{max_file_size / (1024 * 1024):.0f} MB'
         logger.add(
             log_file,
             format='{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}',
             level=default_level.upper(),
             colorize=False,
-            rotation=rotation_size,
+            rotation=max_file_size,
             retention=backup_count,
             encoding='utf-8',
             backtrace=verbose_tracebacks,
