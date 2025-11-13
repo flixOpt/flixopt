@@ -4,7 +4,6 @@ This script shows how to use the flixopt framework to model a more complex energ
 
 import numpy as np
 import pandas as pd
-from rich.pretty import pprint  # Used for pretty printing
 
 import flixopt as fx
 
@@ -188,7 +187,7 @@ if __name__ == '__main__':
     flow_system.add_elements(Costs, CO2, PE, Gaskessel, Waermelast, Gasbezug, Stromverkauf, speicher)
     flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
-    pprint(flow_system)  # Get a string representation of the FlowSystem
+    print(flow_system)  # Get a string representation of the FlowSystem
     try:
         flow_system.start_network_app()  # Start the network app
     except ImportError as e:
