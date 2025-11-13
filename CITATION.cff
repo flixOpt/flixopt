@@ -11,7 +11,7 @@ abstract: "Vector based energy and material flow optimization framework in Pytho
 keywords:
   - optimization
   - energy systems
-  - material flow
+  - energy flow modeling
   - linear programming
   - mixed-integer programming
   - MILP
@@ -19,14 +19,14 @@ keywords:
   - python
   - district heating
   - renewable energy
-  - supply chain optimization
-  - pathway optimization
-  - capacity optimization
-  - sizing optimization
-  - investment optimization
   - multi-period optimization
-  - scenario analysis
-  - energy planning
+  - investment optimization
+  - capacity planning
+  - energy modeling
+  - sector coupling
+  - energy transition
+  - industrial processes
+  - stochastic optimization
   - linopy
   - xarray
 authors:
