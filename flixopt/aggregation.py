@@ -104,7 +104,7 @@ class Aggregation:
         self.aggregated_data = self.tsam.predictOriginalData()
 
         self.clustering_duration_seconds = timeit.default_timer() - start_time  # Zeit messen:
-        logger.opt(lazy=True).info(lambda: self.describe_clusters())
+        logger.opt(lazy=True).info('{result}', result=lambda: self.describe_clusters())
 
     def describe_clusters(self) -> str:
         description = {}
