@@ -398,6 +398,36 @@ class CONFIG:
         return cls
 
 
+def _format_multiline(record):
+    """Format multi-line messages with box-style borders for better readability.
+
+    Single-line messages use standard format.
+    Multi-line messages use boxed format with ┌─, │, └─ characters.
+    """
+    lines = record['message'].split('\n')
+
+    # Single line messages - standard format
+    if len(lines) == 1:
+        return '{time:YYYY-MM-DD HH:mm:ss.SSS} | <level>{level: <8}</level> | <level>{message}</level>\n{exception}'
+
+    # Multi-line messages - boxed format
+    time_str = record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
+    level_str = f'{record["level"].name: <8}'
+    indent = ' ' * len(time_str)  # Match timestamp length
+
+    # Build the boxed output
+    result = f'{time_str} | <level>{level_str}</level> | <level>┌─ {lines[0]}</level>\n'
+    for line in lines[1:-1]:
+        result += f'{indent} | <level>{" " * 8}</level> | <level>│  {line}</level>\n'
+    result += f'{indent} | <level>{" " * 8}</level> | <level>└─ {lines[-1]}</level>\n'
+
+    # Add exception info if present
+    if record['exception']:
+        result += '{exception}'
+
+    return result
+
+
 def _setup_logging(
     default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
@@ -408,6 +438,7 @@ def _setup_logging(
     """Internal function to setup logging - use CONFIG.apply() instead.
 
     Configures loguru logger with console and/or file handlers.
+    Multi-line messages are automatically formatted with box-style borders.
 
     Args:
         default_level: Logging level for the logger.
@@ -419,22 +450,19 @@ def _setup_logging(
     # Remove all existing handlers
     logger.remove()
 
-    # Simple, clean format without module/function/line info
-    log_format = '{time:YYYY-MM-DD HH:mm:ss.SSS} | <level>{level: <8}</level> | <level>{message}</level>'
-
-    # Console handler
+    # Console handler with multi-line formatting
     if console:
         stream = sys.stdout if console is True or console == 'stdout' else sys.stderr
         logger.add(
             stream,
-            format=log_format,
+            format=_format_multiline,
             level=default_level.upper(),
             colorize=True,
             backtrace=True,
             diagnose=True,
         )
 
-    # File handler with rotation
+    # File handler with rotation (plain format for files)
     if log_file:
         log_path = Path(log_file)
         try:
@@ -445,7 +473,7 @@ def _setup_logging(
         rotation_size = f'{max_file_size / (1024 * 1024):.0f} MB'
         logger.add(
             log_file,
-            format=log_format,
+            format='{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}',
             level=default_level.upper(),
             colorize=False,
             rotation=rotation_size,
