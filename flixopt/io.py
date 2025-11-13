@@ -496,7 +496,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     }
 
     if model.status == 'warning':
-        logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
+        logger.warning(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
             import io
             from contextlib import redirect_stdout
@@ -509,7 +509,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
 
             documentation['infeasible_constraints'] = f.getvalue()
         except NotImplementedError:
-            logger.critical(
+            logger.warning(
                 'Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi'
             )
             documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
