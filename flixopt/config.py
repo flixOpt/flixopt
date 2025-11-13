@@ -416,7 +416,7 @@ def _format_multiline(record):
 
     # Single line messages - standard format
     if len(lines) == 1:
-        result = f'{time_str} | <level>{level_str}</level> | <level>{message}</level>\n'
+        result = f'<dim>{time_str}</dim> | <level>{level_str}</level> | <level>{message}</level>\n'
         if record['exception']:
             result += str(record['exception'])
         return result
@@ -425,10 +425,10 @@ def _format_multiline(record):
     indent = ' ' * len(time_str)  # Match timestamp length
 
     # Build the boxed output
-    result = f'{time_str} | <level>{level_str}</level> | <level>┌─ {lines[0]}</level>\n'
+    result = f'<dim>{time_str}</dim> | <level>{level_str}</level> | <level>┌─ {lines[0]}</level>\n'
     for line in lines[1:-1]:
-        result += f'{indent} | <level>{" " * 8}</level> | <level>│  {line}</level>\n'
-    result += f'{indent} | <level>{" " * 8}</level> | <level>└─ {lines[-1]}</level>\n'
+        result += f'<dim>{indent}</dim> | <level>{" " * 8}</level> | <level>│  {line}</level>\n'
+    result += f'<dim>{indent}</dim> | <level>{" " * 8}</level> | <level>└─ {lines[-1]}</level>\n'
 
     # Add exception info if present
     if record['exception']:
