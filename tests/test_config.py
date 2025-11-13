@@ -26,7 +26,6 @@ class TestConfigModule:
         """Test that CONFIG has correct default values."""
         assert CONFIG.Logging.level == 'INFO'
         assert CONFIG.Logging.file is None
-        assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.console is False
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
@@ -69,13 +68,13 @@ class TestConfigModule:
         handler = list(logger._core.handlers.values())[0]
         assert handler._levelno <= 30  # WARNING level is 30 in loguru
 
-    def test_config_apply_rich(self):
-        """Test that rich config option is accepted (no-op with loguru)."""
-        CONFIG.Logging.console = True
-        CONFIG.Logging.rich = True  # This is now ignored with loguru
+    def test_config_apply_console_stderr(self):
+        """Test applying config with console logging to stderr."""
+        CONFIG.Logging.console = 'stderr'
+        CONFIG.Logging.level = 'INFO'
         CONFIG.apply()
 
-        # With loguru, just verify that handler is configured
+        # With loguru, verify that handler is configured
         assert len(logger._core.handlers) > 0
 
     def test_config_apply_multiple_changes(self):
@@ -100,7 +99,6 @@ class TestConfigModule:
         assert config_dict['logging']['level'] == 'DEBUG'
         assert config_dict['logging']['console'] is True
         assert config_dict['logging']['file'] is None
-        assert config_dict['logging']['rich'] is False
         assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
         assert 'solving' in config_dict
@@ -260,7 +258,6 @@ config_name: my_custom_config
 logging:
   level: CRITICAL
   console: true
-  rich: true
   file: /tmp/custom.log
 modeling:
   big: 50000000
@@ -279,7 +276,6 @@ solving:
         assert CONFIG.config_name == 'my_custom_config'
         assert CONFIG.Logging.level == 'CRITICAL'
         assert CONFIG.Logging.console is True
-        assert CONFIG.Logging.rich is True
         assert CONFIG.Logging.file == '/tmp/custom.log'
         assert CONFIG.Modeling.big == 50000000
         assert float(CONFIG.Modeling.epsilon) == 1e-4
@@ -289,8 +285,8 @@ solving:
         assert CONFIG.Solving.log_main_results is False
 
         # Verify logging was applied
-        # With loguru, just verify handlers are configured
-        assert len(logger._core.handlers) > 0
+        # With loguru, should have 2 handlers (console + file)
+        assert len(logger._core.handlers) == 2
 
     def test_config_file_with_console_and_file(self, tmp_path):
         """Test configuration with both console and file logging enabled."""
@@ -300,7 +296,6 @@ solving:
 logging:
   level: INFO
   console: true
-  rich: false
   file: {log_file}
 """
         config_file.write_text(config_content)
@@ -422,8 +417,7 @@ modeling:
         """Test that CONFIG.reset() restores all defaults."""
         # Modify all config values
         CONFIG.Logging.level = 'DEBUG'
-        CONFIG.Logging.console = False
-        CONFIG.Logging.rich = True
+        CONFIG.Logging.console = True
         CONFIG.Logging.file = '/tmp/test.log'
         CONFIG.Modeling.big = 99999999
         CONFIG.Modeling.epsilon = 1e-8
@@ -440,7 +434,6 @@ modeling:
         # Verify all values are back to defaults
         assert CONFIG.Logging.level == 'INFO'
         assert CONFIG.Logging.console is False
-        assert CONFIG.Logging.rich is False
         assert CONFIG.Logging.file is None
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
@@ -463,7 +456,6 @@ modeling:
         # Modify all values to something different
         CONFIG.Logging.level = 'CRITICAL'
         CONFIG.Logging.file = '/tmp/test.log'
-        CONFIG.Logging.rich = True
         CONFIG.Logging.console = True
         CONFIG.Modeling.big = 999999
         CONFIG.Modeling.epsilon = 1e-10
@@ -486,7 +478,6 @@ modeling:
         # Verify reset() restored exactly the _DEFAULTS values
         assert CONFIG.Logging.level == _DEFAULTS['logging']['level']
         assert CONFIG.Logging.file == _DEFAULTS['logging']['file']
-        assert CONFIG.Logging.rich == _DEFAULTS['logging']['rich']
         assert CONFIG.Logging.console == _DEFAULTS['logging']['console']
         assert CONFIG.Modeling.big == _DEFAULTS['modeling']['big']
         assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
