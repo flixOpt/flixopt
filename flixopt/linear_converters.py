@@ -611,11 +611,21 @@ def check_bounds(
         upper_bound = upper_bound.data
     if not np.all(value > lower_bound):
         logger.warning(
-            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
+            "'{}.{}' <= lower bound {}. {}.min={} shape={}",
+            element_label,
+            parameter_label,
+            lower_bound,
+            parameter_label,
+            float(np.min(value)),
+            np.shape(value),
         )
     if not np.all(value < upper_bound):
         logger.warning(
-            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
+            "'{}.{}' >= upper bound {}. {}.max={} shape={}",
+            element_label,
+            parameter_label,
+            upper_bound,
+            parameter_label,
+            float(np.max(value)),
+            np.shape(value),
         )
