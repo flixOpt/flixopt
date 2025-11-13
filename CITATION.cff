@@ -16,14 +16,18 @@ keywords:
   - material flow
   - linear programming
 authors:
-  - name: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
-    email: peter.stange@tu-dresden.de
   - family-names: Bumann
     given-names: Felix
     email: felixbumann387@gmail.com
+    affiliation: "SachsenEnergie AG"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
   - family-names: Panitz
     given-names: Felix
     email: baumbude@googlemail.com
+    affiliation: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
   - family-names: Stange
     given-names: Peter
     email: peter.stange@tu-dresden.de
+    affiliation: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+    orcid: "https://orcid.org/0000-0000-0000-0000"

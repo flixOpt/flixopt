@@ -7,25 +7,24 @@
   "creators": [
     {
       "name": "Bumann, Felix",
-      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+      "affiliation": "SachsenEnergie AG",
+      "orcid": "0000-0000-0000-0000"
     },
     {
       "name": "Panitz, Felix",
-      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden",
+      "orcid": "0000-0000-0000-0000"
     },
     {
       "name": "Stange, Peter",
-      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden",
+      "orcid": "0000-0000-0000-0000"
     }
   ],
   "contributors": [
     {
       "name": "Chair of Building Energy Systems and Heat Supply, TU Dresden",
-      "type": "ResearchGroup"
-    },
-    {
-      "name": "Bumann, Felix",
-      "affiliation": "SachsenEnergie AG"
+      "type": "HostingInstitution"
     }
   ],
   "keywords": [
