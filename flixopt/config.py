@@ -23,6 +23,7 @@ _DEFAULTS = MappingProxyType(
                 'console': False,
                 'max_file_size': 10_485_760,  # 10MB
                 'backup_count': 5,
+                'verbose_tracebacks': False,
             }
         ),
         'modeling': MappingProxyType(
@@ -97,6 +98,7 @@ class CONFIG:
             console: Enable console output (True/'stdout' or 'stderr').
             max_file_size: Max file size in bytes before rotation.
             backup_count: Number of backup files to keep.
+            verbose_tracebacks: Show detailed tracebacks with variable values.
 
         Examples:
             ```python
@@ -132,6 +134,7 @@ class CONFIG:
         console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
         backup_count: int = _DEFAULTS['logging']['backup_count']
+        verbose_tracebacks: bool = _DEFAULTS['logging']['verbose_tracebacks']
 
     class Modeling:
         """Optimization modeling parameters.
@@ -248,6 +251,7 @@ class CONFIG:
             console=cls.Logging.console,
             max_file_size=cls.Logging.max_file_size,
             backup_count=cls.Logging.backup_count,
+            verbose_tracebacks=cls.Logging.verbose_tracebacks,
         )
 
     @classmethod
@@ -311,6 +315,7 @@ class CONFIG:
                 'console': cls.Logging.console,
                 'max_file_size': cls.Logging.max_file_size,
                 'backup_count': cls.Logging.backup_count,
+                'verbose_tracebacks': cls.Logging.verbose_tracebacks,
             },
             'modeling': {
                 'big': cls.Modeling.big,
@@ -352,11 +357,12 @@ class CONFIG:
     def debug(cls) -> type[CONFIG]:
         """Configure for debug mode with verbose output.
 
-        Enables console logging at DEBUG level and all solver output for
-        troubleshooting. Automatically calls apply().
+        Enables console logging at DEBUG level, verbose tracebacks,
+        and all solver output for troubleshooting. Automatically calls apply().
         """
         cls.Logging.console = True
         cls.Logging.level = 'DEBUG'
+        cls.Logging.verbose_tracebacks = True
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
         cls.apply()
@@ -443,6 +449,7 @@ def _setup_logging(
     console: bool | Literal['stdout', 'stderr'] = False,
     max_file_size: int = 10_485_760,
     backup_count: int = 5,
+    verbose_tracebacks: bool = False,
 ) -> None:
     """Internal function to setup logging - use CONFIG.apply() instead.
 
@@ -455,6 +462,7 @@ def _setup_logging(
         console: Enable console logging (True/'stdout' or 'stderr').
         max_file_size: Maximum log file size in bytes before rotation.
         backup_count: Number of backup log files to keep.
+        verbose_tracebacks: If True, show detailed tracebacks with variable values.
     """
     # Remove all existing handlers
     logger.remove()
@@ -467,8 +475,9 @@ def _setup_logging(
             format=_format_multiline,
             level=default_level.upper(),
             colorize=True,
-            backtrace=True,
-            diagnose=True,
+            backtrace=verbose_tracebacks,
+            diagnose=verbose_tracebacks,
+            enqueue=False,
         )
 
     # File handler with rotation (plain format for files)
@@ -488,8 +497,9 @@ def _setup_logging(
             rotation=rotation_size,
             retention=backup_count,
             encoding='utf-8',
-            backtrace=True,
-            diagnose=True,
+            backtrace=verbose_tracebacks,
+            diagnose=verbose_tracebacks,
+            enqueue=False,
         )
 
 
