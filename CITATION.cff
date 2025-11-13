@@ -11,23 +11,37 @@ abstract: "Vector based energy and material flow optimization framework in Pytho
 keywords:
   - optimization
   - energy systems
-  - numerical analysis
-  - python
   - material flow
   - linear programming
+  - mixed-integer programming
+  - MILP
+  - operations research
+  - python
+  - district heating
+  - renewable energy
+  - supply chain optimization
+  - pathway optimization
+  - capacity optimization
+  - sizing optimization
+  - investment optimization
+  - multi-period optimization
+  - scenario analysis
+  - energy planning
+  - linopy
+  - xarray
 authors:
   - family-names: Bumann
     given-names: Felix
     email: felixbumann387@gmail.com
     affiliation: "SachsenEnergie AG"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0009-0006-0765-4789"
   - family-names: Panitz
     given-names: Felix
     email: baumbude@googlemail.com
-    affiliation: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
+    affiliation: "Fraunhofer Research Institution for Energy Infrastructures and Geotechnologies IEG"
+    orcid: "https://orcid.org/0009-0007-7030-6987"
   - family-names: Stange
     given-names: Peter
     email: peter.stange@tu-dresden.de
     affiliation: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0009-0001-6407-1495"
