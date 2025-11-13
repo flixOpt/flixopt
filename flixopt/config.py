@@ -60,6 +60,9 @@ class CONFIG:
 
     Always call ``CONFIG.apply()`` after changes.
 
+    Note:
+        flixopt uses `loguru <https://loguru.readthedocs.io/>`_ for logging.
+
     Attributes:
         Logging: Logging configuration.
         Modeling: Optimization modeling parameters.
