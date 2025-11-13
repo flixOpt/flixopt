@@ -5,9 +5,8 @@ This script shows how load results of a prior calcualtion and how to analyze the
 import flixopt as fx
 
 if __name__ == '__main__':
-    # Enable console logging
-    fx.CONFIG.Logging.console = True
-    fx.CONFIG.apply()
+    fx.CONFIG.exploring()
+
     # --- Load Results ---
     try:
         results = fx.results.CalculationResults.from_file('results', 'complex example')
@@ -19,14 +18,15 @@ if __name__ == '__main__':
         ) from e
 
     # --- Basic overview ---
-    results.plot_network(show=True)
+    results.plot_network()
     results['Fernwärme'].plot_node_balance()
 
     # --- Detailed Plots ---
     # In depth plot for individual flow rates ('__' is used as the delimiter between Component and Flow
     results.plot_heatmap('Wärmelast(Q_th_Last)|flow_rate')
-    for flow_rate in results['BHKW2'].inputs + results['BHKW2'].outputs:
-        results.plot_heatmap(flow_rate)
+    for bus in results.buses.values():
+        bus.plot_node_balance_pie(show=False, save=f'results/{bus.label}--pie.html')
+        bus.plot_node_balance(show=False, save=f'results/{bus.label}--balance.html')
 
     # --- Plotting internal variables manually ---
     results.plot_heatmap('BHKW2(Q_th)|on')

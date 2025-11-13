@@ -6,122 +6,33 @@ body:
 - type: markdown
   attributes:
     value: |
-      Thanks for suggesting a new feature!
-
-      **Before submitting**: Please search [existing issues](https://github.com/flixOpt/flixopt/issues) and check our [roadmap](https://github.com/flixOpt/flixopt/discussions) to avoid duplicates.
-
-- type: checkboxes
-  id: checks
-  attributes:
-    label: Prerequisites
-    options:
-    - label: I have searched existing issues and discussions
-      required: true
-    - label: I have checked the [documentation](https://flixopt.github.io/flixopt/latest/)
-      required: true
-
-- type: dropdown
-  id: feature-type
-  attributes:
-    label: Feature Category
-    description: What type of feature is this?
-    options:
-      - New Component (storage, generation, conversion, etc.)
-      - Enhancement to Existing Component
-      - New Optimization Feature
-      - Data Input/Output Improvement
-      - Results/Visualization Enhancement
-      - Performance/Solver Improvement
-      - API/Usability Improvement
-      - Documentation/Examples
-      - Other
-  validations:
-    required: true
+      **Quick guide**: Describe what you want and why it's useful.
+      Skip optional fields for simple ideas.
 
 - type: textarea
-  id: problem
+  id: description
   attributes:
-    label: Problem Statement
-    description: What problem would this feature solve?
-    placeholder: |
-      Current limitation: "FlixOpt doesn't support [specific energy system component/feature]..."
-
-      Impact: "This prevents users from modeling [specific scenarios]..."
-
-- type: textarea
-  id: solution
-  attributes:
-    label: Proposed Solution
-    description: Describe your proposed solution in detail
-    placeholder: |
-      I propose adding a new component/feature that would...
-
-      Key capabilities:
-      - Feature 1
-      - Feature 2
-      - Feature 3
+    label: What feature or improvement?
+    description: Describe what should be added or changed
   validations:
     required: true
 
 - type: textarea
   id: use-case
   attributes:
-    label: Use Case & Examples
-    description: Provide concrete examples of how this would be used
-    placeholder: |
-      Real-world scenario: "I'm modeling a microgrid with battery storage and need to..."
-
-      Specific requirements:
-      - Must handle [specific constraint]
-      - Should support [specific behavior]
-      - Would benefit [specific user group]
-  validations:
-    required: true
+    label: Use case
+    description: What problem does this solve? What would you use it for?
+    placeholder: "When modeling X, I need to do Y..."
 
 - type: textarea
-  id: code-example
+  id: api-idea
   attributes:
-    label: Desired API (Optional)
-    description: Show how you'd like to use this feature
+    label: API idea (optional)
+    description: How might it work? Sketch a rough API if you have ideas
     placeholder: |
-      # Example of proposed API
-      component = fx.NewComponent(
+      # Example:
+      component = fx.NewThing(
           label='example',
-          parameter1=value1,
-          parameter2=value2
+          param=value
       )
-
-      flow_system.add_component(component)
     render: python
-
-- type: textarea
-  id: alternatives
-  attributes:
-    label: Alternatives Considered
-    description: What workarounds or alternatives have you tried?
-    placeholder: |
-      Current workaround: "I'm currently using [existing component] but it doesn't support..."
-
-      Other approaches considered: "I looked into [alternative] but..."
-
-- type: dropdown
-  id: priority
-  attributes:
-    label: Priority/Impact
-    description: How important is this feature for your work?
-    options:
-      - Critical - Blocking important work
-      - High - Would significantly improve workflow
-      - Medium - Nice to have enhancement
-      - Low - Minor improvement
-
-- type: textarea
-  id: additional-context
-  attributes:
-    label: Additional Context
-    description: References, papers, examples from other tools, etc.
-    placeholder: |
-      References:
-      - Research paper: [Title and link]
-      - Similar feature in [other tool]: [description]
-      - Industry standard: [description]

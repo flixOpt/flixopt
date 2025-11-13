@@ -13,16 +13,16 @@ from __future__ import annotations
 import logging
 import math
 import pathlib
+import sys
 import timeit
 import warnings
 from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
-import yaml
+from tqdm import tqdm
 
 from . import io as fx_io
-from . import utils as utils
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
@@ -53,6 +53,8 @@ class Calculation:
         normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
         active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
+
+    model: FlowSystemModel | None
 
     def __init__(
         self,
@@ -88,7 +90,7 @@ class Calculation:
         flow_system._used_in_calculation = True
 
         self.flow_system = flow_system
-        self.model: FlowSystemModel | None = None
+        self.model = None
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
@@ -113,7 +115,7 @@ class Calculation:
                     'periodic': effect.submodel.periodic.total.solution.values,
                     'total': effect.submodel.total.solution.values,
                 }
-                for effect in self.flow_system.effects
+                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
             },
             'Invest-Decisions': {
                 'Invested': {
@@ -144,7 +146,7 @@ class Calculation:
             ],
         }
 
-        return utils.round_nested_floats(main_results)
+        return fx_io.round_nested_floats(main_results)
 
     @property
     def summary(self):
@@ -226,7 +228,7 @@ class FullCalculation(Calculation):
         return self
 
     def solve(
-        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = True
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
     ) -> FullCalculation:
         t_start = timeit.default_timer()
 
@@ -236,6 +238,8 @@ class FullCalculation(Calculation):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
@@ -249,15 +253,13 @@ class FullCalculation(Calculation):
             )
 
         # Log the formatted output
-        if log_main_results:
+        should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
+        if should_log:
             logger.info(
                 f'{" Main Results ":#^80}\n'
-                + yaml.dump(
-                    utils.round_nested_floats(self.main_results),
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    indent=4,
+                + fx_io.format_yaml_string(
+                    self.main_results,
+                    compact_numeric_lists=True,
                 )
             )
 
@@ -367,7 +369,7 @@ class AggregatedCalculation(FullCalculation):
         )
 
         self.aggregation.cluster()
-        self.aggregation.plot(show=True, save=self.folder / 'aggregation.html')
+        self.aggregation.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'aggregation.html')
         if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.aggregation.aggregated_data.items():
@@ -568,47 +570,110 @@ class SegmentedCalculation(Calculation):
                 f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
             )
 
+    def _solve_single_segment(
+        self,
+        i: int,
+        calculation: FullCalculation,
+        solver: _Solver,
+        log_file: pathlib.Path | None,
+        log_main_results: bool,
+        suppress_output: bool,
+    ) -> None:
+        """Solve a single segment calculation."""
+        if i > 0 and self.nr_of_previous_values > 0:
+            self._transfer_start_values(i)
+
+        calculation.do_modeling()
+
+        # Warn about Investments, but only in first run
+        if i == 0:
+            invest_elements = [
+                model.label_full
+                for component in calculation.flow_system.components.values()
+                for model in component.submodel.all_submodels
+                if isinstance(model, InvestmentModel)
+            ]
+            if invest_elements:
+                logger.critical(
+                    f'Investments are not supported in Segmented Calculation! '
+                    f'Following InvestmentModels were found: {invest_elements}'
+                )
+
+        log_path = pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log'
+
+        if suppress_output:
+            with fx_io.suppress_output():
+                calculation.solve(solver, log_file=log_path, log_main_results=log_main_results)
+        else:
+            calculation.solve(solver, log_file=log_path, log_main_results=log_main_results)
+
     def do_modeling_and_solve(
-        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool = False
+        self,
+        solver: _Solver,
+        log_file: pathlib.Path | None = None,
+        log_main_results: bool = False,
+        show_individual_solves: bool = False,
     ) -> SegmentedCalculation:
+        """Model and solve all segments of the segmented calculation.
+
+        This method creates sub-calculations for each time segment, then iteratively
+        models and solves each segment. It supports two output modes: a progress bar
+        for compact output, or detailed individual solve information.
+
+        Args:
+            solver: The solver instance to use for optimization (e.g., Gurobi, HiGHS).
+            log_file: Optional path to the solver log file. If None, defaults to
+                folder/name.log.
+            log_main_results: Whether to log main results (objective, effects, etc.)
+                after each segment solve. Defaults to False.
+            show_individual_solves: If True, shows detailed output for each segment
+                solve with logger messages. If False (default), shows a compact progress
+                bar with suppressed solver output for cleaner display.
+
+        Returns:
+            Self, for method chaining.
+
+        Note:
+            The method automatically transfers all start values between segments to ensure
+            continuity of storage states and flow rates across segment boundaries.
+        """
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
         self._create_sub_calculations()
 
-        for i, calculation in enumerate(self.sub_calculations):
-            logger.info(
-                f'{self.segment_names[i]} [{i + 1:>2}/{len(self.segment_names):<2}] '
-                f'({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}):'
+        if show_individual_solves:
+            # Path 1: Show individual solves with detailed output
+            for i, calculation in enumerate(self.sub_calculations):
+                logger.info(
+                    f'Solving segment {i + 1}/{len(self.sub_calculations)}: '
+                    f'{calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}'
+                )
+                self._solve_single_segment(i, calculation, solver, log_file, log_main_results, suppress_output=False)
+        else:
+            # Path 2: Show only progress bar with suppressed output
+            progress_bar = tqdm(
+                enumerate(self.sub_calculations),
+                total=len(self.sub_calculations),
+                desc='Solving segments',
+                unit='segment',
+                file=sys.stdout,
+                disable=not CONFIG.Solving.log_to_console,
             )
 
-            if i > 0 and self.nr_of_previous_values > 0:
-                self._transfer_start_values(i)
-
-            calculation.do_modeling()
-
-            # Warn about Investments, but only in fist run
-            if i == 0:
-                invest_elements = [
-                    model.label_full
-                    for component in calculation.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel)
-                ]
-                if invest_elements:
-                    logger.critical(
-                        f'Investments are not supported in Segmented Calculation! '
-                        f'Following InvestmentModels were found: {invest_elements}'
+            try:
+                for i, calculation in progress_bar:
+                    progress_bar.set_description(
+                        f'Solving ({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]})'
                     )
-
-            calculation.solve(
-                solver,
-                log_file=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-                log_main_results=log_main_results,
-            )
+                    self._solve_single_segment(i, calculation, solver, log_file, log_main_results, suppress_output=True)
+            finally:
+                progress_bar.close()
 
         for calc in self.sub_calculations:
             for key, value in calc.durations.items():
                 self.durations[key] += value
+
+        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 

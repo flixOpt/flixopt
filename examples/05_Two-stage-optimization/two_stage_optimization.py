@@ -19,6 +19,8 @@ import flixopt as fx
 logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
+    fx.CONFIG.exploring()
+
     # Data Import
     data_import = pd.read_csv(
         pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
@@ -123,16 +125,16 @@ if __name__ == '__main__':
 
     # Separate optimization of flow sizes and dispatch
     start = timeit.default_timer()
-    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('4h'))
+    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
-    calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
+    calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
     start = timeit.default_timer()
     calculation_dispatch = fx.FullCalculation('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
-    calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
+    calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_dispatch = timeit.default_timer() - start
 
     if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import copy
 import datetime
-import json
 import logging
 import pathlib
 import warnings
@@ -11,11 +11,13 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-import yaml
 
 from . import io as fx_io
 from . import plotting
+from .color_processing import process_colors
+from .config import CONFIG
 from .flow_system import FlowSystem
+from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -29,13 +31,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
+    """Load color mapping from JSON or YAML file.
+
+    Tries loader based on file suffix first, with fallback to the other format.
+
+    Args:
+        path: Path to config file (.json or .yaml/.yml)
+
+    Returns:
+        Dictionary mapping components to colors or colorscales to component lists
+
+    Raises:
+        ValueError: If file cannot be loaded as JSON or YAML
+    """
+    return fx_io.load_config_file(path)
+
+
 class _FlowSystemRestorationError(Exception):
     """Exception raised when a FlowSystem cannot be restored from dataset."""
 
     pass
 
 
-class CalculationResults:
+class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
     """Comprehensive container for optimization calculation results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
@@ -107,6 +126,20 @@ class CalculationResults:
         ).mean()
         ```
 
+        Configure automatic color management for plots:
+
+        ```python
+        # Dict-based configuration:
+        results.setup_colors({'Solar*': 'Oranges', 'Wind*': 'Blues', 'Battery': 'green'})
+
+        # All plots automatically use configured colors (colors=None is the default)
+        results['ElectricityBus'].plot_node_balance()
+        results['Battery'].plot_charge_state()
+
+        # Override when needed
+        results['ElectricityBus'].plot_node_balance(colors='turbo')  # Ignores setup
+        ```
+
     Design Patterns:
         **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
         **Dictionary Access**: Use `results[element_label]` for element-specific results
@@ -114,6 +147,8 @@ class CalculationResults:
         **Unified Interface**: Consistent API across different result types
 
     """
+
+    model: linopy.Model | None
 
     @classmethod
     def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
@@ -137,8 +172,7 @@ class CalculationResults:
             except Exception as e:
                 logger.critical(f'Could not load the linopy model "{name}" from file ("{paths.linopy_model}"): {e}')
 
-        with open(paths.summary, encoding='utf-8') as f:
-            summary = yaml.load(f, Loader=yaml.FullLoader)
+        summary = fx_io.load_yaml(paths.summary)
 
         return cls(
             solution=fx_io.load_dataset_from_netcdf(paths.solution),
@@ -207,13 +241,20 @@ class CalculationResults:
         self.name = name
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.components = {
+
+        # Create ResultsContainers for better access patterns
+        components_dict = {
             label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
         }
+        self.components = ResultsContainer(
+            elements=components_dict, element_type_name='component results', truncate_repr=10
+        )
 
-        self.buses = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
 
-        self.effects = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
 
         if 'Flows' not in self.solution.attrs:
             warnings.warn(
@@ -221,11 +262,14 @@ class CalculationResults:
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
                 stacklevel=2,
             )
-            self.flows = {}
+            flows_dict = {}
+            self._has_flow_data = False
         else:
-            self.flows = {
+            flows_dict = {
                 label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
             }
+            self._has_flow_data = True
+        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
         self.timesteps_extra = self.solution.indexes['time']
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
@@ -240,16 +284,24 @@ class CalculationResults:
         self._sizes = None
         self._effects_per_component = None
 
-    def __getitem__(self, key: str) -> ComponentResults | BusResults | EffectResults:
-        if key in self.components:
-            return self.components[key]
-        if key in self.buses:
-            return self.buses[key]
-        if key in self.effects:
-            return self.effects[key]
-        if key in self.flows:
-            return self.flows[key]
-        raise KeyError(f'No element with label {key} found.')
+        self.colors: dict[str, str] = {}
+
+    def _get_container_groups(self) -> dict[str, ResultsContainer]:
+        """Return ordered container groups for CompositeContainerMixin."""
+        return {
+            'Components': self.components,
+            'Buses': self.buses,
+            'Effects': self.effects,
+            'Flows': self.flows,
+        }
+
+    def __repr__(self) -> str:
+        """Return grouped representation of all results."""
+        r = fx_io.format_title_with_underline(self.__class__.__name__, '=')
+        r += f'Name: "{self.name}"\nFolder: {self.folder}\n'
+        # Add grouped container view
+        r += '\n' + self._format_grouped_containers()
+        return r
 
     @property
     def storages(self) -> list[ComponentResults]:
@@ -305,6 +357,131 @@ class CalculationResults:
             finally:
                 logger.level = old_level
         return self._flow_system
+
+    def setup_colors(
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
+    ) -> dict[str, str]:
+        """
+        Setup colors for all variables across all elements. Overwrites existing ones.
+
+        Args:
+            config: Configuration for color assignment. Can be:
+                - dict: Maps components to colors/colorscales:
+                    * 'component1': 'red'  # Single component to single color
+                    * 'component1': '#FF0000'  # Single component to hex color
+                    - OR maps colorscales to multiple components:
+                    * 'colorscale_name': ['component1', 'component2']  # Colorscale across components
+                - str: Path to a JSON/YAML config file or a colorscale name to apply to all
+                - Path: Path to a JSON/YAML config file
+                - None: Use default_colorscale for all components
+            default_colorscale: Default colorscale for unconfigured components (default: 'turbo')
+
+        Examples:
+            setup_colors({
+                # Direct component-to-color mappings
+                'Boiler1': '#FF0000',
+                'CHP': 'darkred',
+                # Colorscale for multiple components
+                'Oranges': ['Solar1', 'Solar2'],
+                'Blues': ['Wind1', 'Wind2'],
+                'Greens': ['Battery1', 'Battery2', 'Battery3'],
+            })
+
+        Returns:
+            Complete variable-to-color mapping dictionary
+        """
+
+        def get_all_variable_names(comp: str) -> list[str]:
+            """Collect all variables from the component, including flows and flow_hours."""
+            comp_object = self.components[comp]
+            var_names = [comp] + list(comp_object._variable_names)
+            for flow in comp_object.flows:
+                var_names.extend([flow, f'{flow}|flow_hours'])
+            return var_names
+
+        # Set default colorscale if not provided
+        if default_colorscale is None:
+            default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
+
+        # Handle different config input types
+        if config is None:
+            # Apply default colorscale to all components
+            config_dict = {}
+        elif isinstance(config, (str, pathlib.Path)):
+            # Try to load from file first
+            config_path = pathlib.Path(config)
+            if config_path.exists():
+                # Load config from file using helper
+                config_dict = load_mapping_from_file(config_path)
+            else:
+                # Treat as colorscale name to apply to all components
+                all_components = list(self.components.keys())
+                config_dict = {config: all_components}
+        elif isinstance(config, dict):
+            config_dict = config
+        else:
+            raise TypeError(f'config must be dict, str, Path, or None, got {type(config)}')
+
+        # Step 1: Build component-to-color mapping
+        component_colors: dict[str, str] = {}
+
+        # Track which components are configured
+        configured_components = set()
+
+        # Process each configuration entry
+        for key, value in config_dict.items():
+            # Check if value is a list (colorscale -> [components])
+            # or a string (component -> color OR colorscale -> [components])
+
+            if isinstance(value, list):
+                # key is colorscale, value is list of components
+                # Format: 'Blues': ['Wind1', 'Wind2']
+                components = value
+                colorscale_name = key
+
+                # Validate components exist
+                for component in components:
+                    if component not in self.components:
+                        raise ValueError(f"Component '{component}' not found")
+
+                configured_components.update(components)
+
+                # Use process_colors to get one color per component from the colorscale
+                colors_for_components = process_colors(colorscale_name, components)
+                component_colors.update(colors_for_components)
+
+            elif isinstance(value, str):
+                # Check if key is an existing component
+                if key in self.components:
+                    # Format: 'CHP': 'red' (component -> color)
+                    component, color = key, value
+
+                    configured_components.add(component)
+                    component_colors[component] = color
+                else:
+                    raise ValueError(f"Component '{key}' not found")
+            else:
+                raise TypeError(f'Config value must be str or list, got {type(value)}')
+
+        # Step 2: Assign colors to remaining unconfigured components
+        remaining_components = list(set(self.components.keys()) - configured_components)
+        if remaining_components:
+            # Use default colorscale to assign one color per remaining component
+            default_colors = process_colors(default_colorscale, remaining_components)
+            component_colors.update(default_colors)
+
+        # Step 3: Build variable-to-color mapping
+        # Clear existing colors to avoid stale keys
+        self.colors = {}
+        # Each component's variables all get the same color as the component
+        for component, color in component_colors.items():
+            variable_names = get_all_variable_names(component)
+            for var_name in variable_names:
+                self.colors[var_name] = color
+
+        return self.colors
 
     def filter_solution(
         self,
@@ -389,6 +566,8 @@ class CalculationResults:
             To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
                 xr.concat(
@@ -450,6 +629,8 @@ class CalculationResults:
             >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
 
         """
+        if not self._has_flow_data:
+            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
                 xr.concat(
@@ -462,11 +643,12 @@ class CalculationResults:
 
     def _assign_flow_coords(self, da: xr.DataArray):
         # Add start and end coordinates
+        flows_list = list(self.flows.values())
         da = da.assign_coords(
             {
-                'start': ('flow', [flow.start for flow in self.flows.values()]),
-                'end': ('flow', [flow.end for flow in self.flows.values()]),
-                'component': ('flow', [flow.component for flow in self.flows.values()]),
+                'start': ('flow', [flow.start for flow in flows_list]),
+                'end': ('flow', [flow.end for flow in flows_list]),
+                'component': ('flow', [flow.component for flow in flows_list]),
             }
         )
 
@@ -585,8 +767,6 @@ class CalculationResults:
             temporal = temporal.sum('time')
             if periodic.isnull().all():
                 return temporal.rename(f'{element}->{effect}')
-            if 'time' in temporal.indexes:
-                temporal = temporal.sum('time')
             return periodic + temporal
 
         total = xr.DataArray(0)
@@ -705,13 +885,13 @@ class CalculationResults:
         self,
         variable_name: str | list[str],
         save: bool | pathlib.Path = False,
-        show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        show: bool | None = None,
+        colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
@@ -721,6 +901,7 @@ class CalculationResults:
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
         color_map: str | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots a heatmap visualization of a variable using imshow or time-based reshaping.
@@ -754,6 +935,20 @@ class CalculationResults:
                 Supported timeframes: 'YS', 'MS', 'W', 'D', 'h', '15min', 'min'
             fill: Method to fill missing values after reshape: 'ffill' (forward fill) or 'bfill' (backward fill).
                 Default is 'ffill'.
+            **plot_kwargs: Additional plotting customization options.
+                Common options:
+
+                - **dpi** (int): Export resolution for saved plots. Default: 300.
+
+                For heatmaps specifically:
+
+                - **vmin** (float): Minimum value for color scale (both engines).
+                - **vmax** (float): Maximum value for color scale (both engines).
+
+                For Matplotlib heatmaps:
+
+                - **imshow_kwargs** (dict): Additional kwargs for matplotlib's imshow (e.g., interpolation, aspect).
+                - **cbar_kwargs** (dict): Additional kwargs for colorbar customization.
 
         Examples:
             Direct imshow mode (default):
@@ -794,6 +989,18 @@ class CalculationResults:
             ...     animate_by='period',
             ...     reshape_time=('D', 'h'),
             ... )
+
+            High-resolution export with custom color range:
+
+            >>> results.plot_heatmap('Battery|charge_state', save=True, dpi=600, vmin=0, vmax=100)
+
+            Matplotlib heatmap with custom imshow settings:
+
+            >>> results.plot_heatmap(
+            ...     'Boiler(Q_th)|flow_rate',
+            ...     engine='matplotlib',
+            ...     imshow_kwargs={'interpolation': 'bilinear', 'aspect': 'auto'},
+            ... )
         """
         # Delegate to module-level plot_heatmap function
         return plot_heatmap(
@@ -814,6 +1021,7 @@ class CalculationResults:
             heatmap_timeframes=heatmap_timeframes,
             heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
             color_map=color_map,
+            **plot_kwargs,
         )
 
     def plot_network(
@@ -825,14 +1033,14 @@ class CalculationResults:
             ]
         ) = True,
         path: pathlib.Path | None = None,
-        show: bool = False,
+        show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """Plot interactive network visualization of the system.
 
         Args:
             controls: Enable/disable interactive controls.
             path: Save path for network HTML.
-            show: Whether to display the plot.
+            show: Whether to display the plot. If None, uses CONFIG.Plotting.default_show.
         """
         if path is None:
             path = self.folder / f'{self.name}--network.html'
@@ -870,14 +1078,13 @@ class CalculationResults:
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
 
-        with open(paths.summary, 'w', encoding='utf-8') as f:
-            yaml.dump(self.summary, f, allow_unicode=True, sort_keys=False, indent=4, width=1000)
+        fx_io.save_yaml(self.summary, paths.summary, compact_numeric_lists=True)
 
         if save_linopy_model:
             if self.model is None:
                 logger.critical('No model in the CalculationResults. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(paths.linopy_model, engine='h5netcdf')
+                self.model.to_netcdf(paths.linopy_model, engine='netcdf4')
 
         if document_model:
             if self.model is None:
@@ -920,6 +1127,14 @@ class _ElementResults:
         if self._calculation_results.model is None:
             raise ValueError('The linopy model is not available.')
         return self._calculation_results.model.constraints[self._constraint_names]
+
+    def __repr__(self) -> str:
+        """Return string representation with element info and dataset preview."""
+        class_name = self.__class__.__name__
+        header = f'{class_name}: "{self.label}"'
+        sol = self.solution.copy(deep=False)
+        sol.attrs = {}
+        return f'{header}\n{"-" * len(header)}\n{repr(sol)}'
 
     def filter_solution(
         self,
@@ -982,8 +1197,8 @@ class _NodeResults(_ElementResults):
     def plot_node_balance(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        show: bool | None = None,
+        colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
@@ -991,9 +1206,10 @@ class _NodeResults(_ElementResults):
         drop_suffix: bool = True,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
         Plots the node balance of the Component or Bus with optional faceting and animation.
@@ -1021,6 +1237,27 @@ class _NodeResults(_ElementResults):
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
+            **plot_kwargs: Additional plotting customization options passed to underlying plotting functions.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+
+                **For Plotly engine** (`engine='plotly'`):
+
+                - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
+
+                **For Matplotlib engine** (`engine='matplotlib'`):
+
+                - **plot_kwargs** (dict): Customize plot via `ax.bar()` or `ax.step()`.
+                  Example: `plot_kwargs={'linewidth': 3, 'alpha': 0.7, 'edgecolor': 'black'}`
+
+                See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
+                for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Examples:
             Basic plot (current behavior):
@@ -1052,6 +1289,25 @@ class _NodeResults(_ElementResults):
             Time range selection (summer months only):
 
             >>> results['Boiler'].plot_node_balance(select={'time': slice('2024-06', '2024-08')}, facet_by='scenario')
+
+            High-resolution export for publication:
+
+            >>> results['Boiler'].plot_node_balance(engine='matplotlib', save='figure.png', dpi=600)
+
+            Plotly Express customization (e.g., set y-axis range):
+
+            >>> results['Boiler'].plot_node_balance(range_y=[0, 100])
+
+            Custom matplotlib appearance:
+
+            >>> results['Boiler'].plot_node_balance(engine='matplotlib', plot_kwargs={'linewidth': 3, 'alpha': 0.7})
+
+            Further customize Plotly figure after creation:
+
+            >>> fig = results['Boiler'].plot_node_balance(mode='line', show=False)
+            >>> fig.update_traces(line={'width': 5, 'dash': 'dot'})
+            >>> fig.update_layout(template='plotly_dark', width=1200, height=600)
+            >>> fig.show()
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1073,8 +1329,11 @@ class _NodeResults(_ElementResults):
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
         # Don't pass select/indexer to node_balance - we'll apply it afterwards
-        ds = self.node_balance(with_last_timestep=True, unit_type=unit_type, drop_suffix=drop_suffix)
+        ds = self.node_balance(with_last_timestep=False, unit_type=unit_type, drop_suffix=drop_suffix)
 
         ds, suffix_parts = _apply_selection_to_data(ds, select=select, drop=True)
 
@@ -1097,18 +1356,21 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
             default_filetype = '.html'
         else:
             figure_like = plotting.with_matplotlib(
-                ds.to_dataframe(),
-                colors=colors,
+                ds,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
+                **plot_kwargs,
             )
             default_filetype = '.png'
 
@@ -1119,19 +1381,21 @@ class _NodeResults(_ElementResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def plot_node_balance_pie(
         self,
         lower_percentage_group: float = 5,
-        colors: plotting.ColorType = 'viridis',
+        colors: plotting.ColorType | None = None,
         text_info: str = 'percent+label+value',
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
 
@@ -1151,6 +1415,17 @@ class _NodeResults(_ElementResults):
             engine: Plotting engine ('plotly' or 'matplotlib').
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
                 Use this to select specific scenario/period before creating the pie chart.
+            **plot_kwargs: Additional plotting customization options.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+                - **hover_template** (str): Hover text template (Plotly only).
+                  Example: `hover_template='%{label}: %{value} (%{percent})'`
+                - **text_position** (str): Text position ('inside', 'outside', 'auto').
+                - **hole** (float): Size of donut hole (0.0 to 1.0).
+
+                See :func:`flixopt.plotting.dual_pie_with_plotly` for complete reference.
 
         Examples:
             Basic usage (auto-selects first scenario/period if present):
@@ -1160,6 +1435,14 @@ class _NodeResults(_ElementResults):
             Explicitly select a scenario and period:
 
             >>> results['Bus'].plot_node_balance_pie(select={'scenario': 'high_demand', 'period': 2030})
+
+            Create a donut chart with custom hover text:
+
+            >>> results['Bus'].plot_node_balance_pie(hole=0.4, hover_template='%{label}: %{value:.2f} (%{percent})')
+
+            High-resolution export:
+
+            >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1178,6 +1461,9 @@ class _NodeResults(_ElementResults):
             )
             select = indexer
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
         inputs = sanitize_dataset(
             ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
             threshold=1e-5,
@@ -1193,8 +1479,9 @@ class _NodeResults(_ElementResults):
             drop_suffix='|',
         )
 
-        inputs, suffix_parts = _apply_selection_to_data(inputs, select=select, drop=True)
-        outputs, suffix_parts = _apply_selection_to_data(outputs, select=select, drop=True)
+        inputs, suffix_parts_in = _apply_selection_to_data(inputs, select=select, drop=True)
+        outputs, suffix_parts_out = _apply_selection_to_data(outputs, select=select, drop=True)
+        suffix_parts = suffix_parts_in + suffix_parts_out
 
         # Sum over time dimension
         inputs = inputs.sum('time')
@@ -1204,7 +1491,7 @@ class _NodeResults(_ElementResults):
         # Pie charts need scalar data, so we automatically reduce extra dimensions
         extra_dims_inputs = [dim for dim in inputs.dims if dim != 'time']
         extra_dims_outputs = [dim for dim in outputs.dims if dim != 'time']
-        extra_dims = list(set(extra_dims_inputs + extra_dims_outputs))
+        extra_dims = sorted(set(extra_dims_inputs + extra_dims_outputs))
 
         if extra_dims:
             auto_select = {}
@@ -1222,27 +1509,28 @@ class _NodeResults(_ElementResults):
                     f'Use select={{"{dim}": value}} to choose a different value.'
                 )
 
-            # Apply auto-selection
-            inputs = inputs.sel(auto_select)
-            outputs = outputs.sel(auto_select)
+            # Apply auto-selection only for coords present in each dataset
+            inputs = inputs.sel({k: v for k, v in auto_select.items() if k in inputs.coords})
+            outputs = outputs.sel({k: v for k, v in auto_select.items() if k in outputs.coords})
 
             # Update suffix with auto-selected values
             auto_suffix_parts = [f'{dim}={val}' for dim, val in auto_select.items()]
             suffix_parts.extend(auto_suffix_parts)
 
-        suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
+        suffix = '--' + '-'.join(sorted(set(suffix_parts))) if suffix_parts else ''
         title = f'{self.label} (total flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
-                data_left=inputs.to_pandas(),
-                data_right=outputs.to_pandas(),
-                colors=colors,
+                data_left=inputs,
+                data_right=outputs,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
+                **plot_kwargs,
             )
             default_filetype = '.html'
         elif engine == 'matplotlib':
@@ -1250,11 +1538,12 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
                 lower_percentage_group=lower_percentage_group,
+                **plot_kwargs,
             )
             default_filetype = '.png'
         else:
@@ -1267,6 +1556,7 @@ class _NodeResults(_ElementResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def node_balance(
@@ -1363,16 +1653,17 @@ class ComponentResults(_NodeResults):
     def plot_charge_state(
         self,
         save: bool | pathlib.Path = False,
-        show: bool = True,
-        colors: plotting.ColorType = 'viridis',
+        show: bool | None = None,
+        colors: plotting.ColorType | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         mode: Literal['area', 'stacked_bar', 'line'] = 'area',
         select: dict[FlowSystemDimensions, Any] | None = None,
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         # Deprecated parameter (kept for backwards compatibility)
         indexer: dict[FlowSystemDimensions, Any] | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
 
@@ -1389,6 +1680,26 @@ class ComponentResults(_NodeResults):
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
+            **plot_kwargs: Additional plotting customization options passed to underlying plotting functions.
+
+                Common options:
+
+                - **dpi** (int): Export resolution in dots per inch. Default: 300.
+
+                **For Plotly engine:**
+
+                - Any Plotly Express parameter for px.bar()/px.line()/px.area()
+                  Example: `range_y=[0, 100]`, `line_shape='linear'`
+
+                **For Matplotlib engine:**
+
+                - **plot_kwargs** (dict): Customize plot via `ax.bar()` or `ax.step()`.
+
+                See :func:`flixopt.plotting.with_plotly` and :func:`flixopt.plotting.with_matplotlib`
+                for complete parameter reference.
+
+                Note: For Plotly, you can further customize the returned figure using `fig.update_traces()`
+                and `fig.update_layout()` after calling this method.
 
         Raises:
             ValueError: If component is not a storage.
@@ -1409,6 +1720,16 @@ class ComponentResults(_NodeResults):
             Facet by scenario AND animate by period:
 
             >>> results['Storage'].plot_charge_state(facet_by='scenario', animate_by='period')
+
+            Custom layout after creation:
+
+            >>> fig = results['Storage'].plot_charge_state(show=False)
+            >>> fig.update_layout(template='plotly_dark', height=800)
+            >>> fig.show()
+
+            High-resolution export:
+
+            >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
         # Handle deprecated indexer parameter
         if indexer is not None:
@@ -1427,11 +1748,17 @@ class ComponentResults(_NodeResults):
             )
             select = indexer
 
+        # Extract dpi for export_figure
+        dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
+        # Extract charge state line color (for overlay customization)
+        overlay_color = plot_kwargs.pop('charge_state_line_color', 'black')
+
         if not self.is_storage:
             raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
 
         # Get node balance and charge state
-        ds = self.node_balance(with_last_timestep=True)
+        ds = self.node_balance(with_last_timestep=True).fillna(0)
         charge_state_da = self.charge_state
 
         # Apply select filtering
@@ -1447,25 +1774,28 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
 
-            # Create a dataset with just charge_state and plot it as lines
-            # This ensures proper handling of facets and animation
-            charge_state_ds = charge_state_da.to_dataset(name=self._charge_state)
+            # Prepare charge_state as Dataset for plotting
+            charge_state_ds = xr.Dataset({self._charge_state: charge_state_da})
 
             # Plot charge_state with mode='line' to get Scatter traces
             charge_state_fig = plotting.with_plotly(
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
+                xlabel='Time in h',
+                **plot_kwargs,
             )
 
             # Add charge_state traces to the main figure
@@ -1473,6 +1803,7 @@ class ComponentResults(_NodeResults):
             for trace in charge_state_fig.data:
                 trace.line.width = 2  # Make charge_state line more prominent
                 trace.line.shape = 'linear'  # Smooth line for charge state (not stepped like flows)
+                trace.line.color = overlay_color
                 figure_like.add_trace(trace)
 
             # Also add traces from animation frames if they exist
@@ -1484,6 +1815,7 @@ class ComponentResults(_NodeResults):
                         for trace in frame.data:
                             trace.line.width = 2
                             trace.line.shape = 'linear'  # Smooth line for charge state
+                            trace.line.color = overlay_color
                             figure_like.frames[i].data = figure_like.frames[i].data + (trace,)
 
             default_filetype = '.html'
@@ -1497,10 +1829,11 @@ class ComponentResults(_NodeResults):
                 )
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
-                ds.to_dataframe(),
-                colors=colors,
+                ds,
+                colors=colors if colors is not None else self._calculation_results.colors,
                 mode=mode,
                 title=title,
+                **plot_kwargs,
             )
 
             # Add charge_state as a line overlay
@@ -1510,9 +1843,18 @@ class ComponentResults(_NodeResults):
                 charge_state_df.values.flatten(),
                 label=self._charge_state,
                 linewidth=2,
-                color='black',
+                color=overlay_color,
             )
-            ax.legend()
+            # Recreate legend with the same styling as with_matplotlib
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(
+                handles,
+                labels,
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.15),
+                ncol=5,
+                frameon=False,
+            )
             fig.tight_layout()
 
             figure_like = fig, ax
@@ -1525,6 +1867,7 @@ class ComponentResults(_NodeResults):
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
             save=True if save else False,
+            dpi=dpi,
         )
 
     def node_balance_with_charge_state(
@@ -1734,8 +2077,7 @@ class SegmentedCalculationResults:
         folder = pathlib.Path(folder)
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
-        with open(path.with_suffix('.json'), encoding='utf-8') as f:
-            meta_data = json.load(f)
+        meta_data = fx_io.load_json(path.with_suffix('.json'))
         return cls(
             [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
@@ -1763,6 +2105,7 @@ class SegmentedCalculationResults:
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
         self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
+        self._colors = {}
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -1776,6 +2119,64 @@ class SegmentedCalculationResults:
     @property
     def segment_names(self) -> list[str]:
         return [segment.name for segment in self.segment_results]
+
+    @property
+    def colors(self) -> dict[str, str]:
+        return self._colors
+
+    @colors.setter
+    def colors(self, colors: dict[str, str]):
+        """Applies colors to all segments"""
+        self._colors = colors
+        for segment in self.segment_results:
+            segment.colors = copy.deepcopy(colors)
+
+    def setup_colors(
+        self,
+        config: dict[str, str | list[str]] | str | pathlib.Path | None = None,
+        default_colorscale: str | None = None,
+    ) -> dict[str, str]:
+        """
+        Setup colors for all variables across all segment results.
+
+        This method applies the same color configuration to all segments, ensuring
+        consistent visualization across the entire segmented calculation. The color
+        mapping is propagated to each segment's CalculationResults instance.
+
+        Args:
+            config: Configuration for color assignment. Can be:
+                - dict: Maps components to colors/colorscales:
+                    * 'component1': 'red'  # Single component to single color
+                    * 'component1': '#FF0000'  # Single component to hex color
+                    - OR maps colorscales to multiple components:
+                    * 'colorscale_name': ['component1', 'component2']  # Colorscale across components
+                - str: Path to a JSON/YAML config file or a colorscale name to apply to all
+                - Path: Path to a JSON/YAML config file
+                - None: Use default_colorscale for all components
+            default_colorscale: Default colorscale for unconfigured components (default: 'turbo')
+
+        Examples:
+            ```python
+            # Apply colors to all segments
+            segmented_results.setup_colors(
+                {
+                    'CHP': 'red',
+                    'Blues': ['Storage1', 'Storage2'],
+                    'Oranges': ['Solar1', 'Solar2'],
+                }
+            )
+
+            # Use a single colorscale for all components in all segments
+            segmented_results.setup_colors('portland')
+            ```
+
+        Returns:
+            Complete variable-to-color mapping dictionary from the first segment
+            (all segments will have the same mapping)
+        """
+        self.colors = self.segment_results[0].setup_colors(config=config, default_colorscale=default_colorscale)
+
+        return self.colors
 
     def solution_without_overlap(self, variable_name: str) -> xr.DataArray:
         """Get variable solution removing segment overlaps.
@@ -1798,18 +2199,19 @@ class SegmentedCalculationResults:
         reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
         | Literal['auto']
         | None = 'auto',
-        colors: str = 'portland',
+        colors: plotting.ColorType | None = None,
         save: bool | pathlib.Path = False,
-        show: bool = True,
+        show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         facet_by: str | list[str] | None = None,
         animate_by: str | None = None,
-        facet_cols: int = 3,
+        facet_cols: int | None = None,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
         # Deprecated parameters (kept for backwards compatibility)
         heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
         heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
         color_map: str | None = None,
+        **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
 
@@ -1830,6 +2232,17 @@ class SegmentedCalculationResults:
             heatmap_timeframes: (Deprecated) Use reshape_time instead.
             heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
             color_map: (Deprecated) Use colors instead.
+            **plot_kwargs: Additional plotting customization options.
+                Common options:
+
+                - **dpi** (int): Export resolution for saved plots. Default: 300.
+                - **vmin** (float): Minimum value for color scale.
+                - **vmax** (float): Maximum value for color scale.
+
+                For Matplotlib heatmaps:
+
+                - **imshow_kwargs** (dict): Additional kwargs for matplotlib's imshow.
+                - **cbar_kwargs** (dict): Additional kwargs for colorbar customization.
 
         Returns:
             Figure object.
@@ -1857,7 +2270,7 @@ class SegmentedCalculationResults:
 
         if color_map is not None:
             # Check for conflict with new parameter
-            if colors != 'portland':  # Check if user explicitly set colors
+            if colors is not None:  # Check if user explicitly set colors
                 raise ValueError(
                     "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
                 )
@@ -1884,6 +2297,7 @@ class SegmentedCalculationResults:
             animate_by=animate_by,
             facet_cols=facet_cols,
             fill=fill,
+            **plot_kwargs,
         )
 
     def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
@@ -1907,8 +2321,7 @@ class SegmentedCalculationResults:
         for segment in self.segment_results:
             segment.to_file(folder=folder, name=segment.name, compression=compression)
 
-        with open(path.with_suffix('.json'), 'w', encoding='utf-8') as f:
-            json.dump(self.meta_data, f, indent=4, ensure_ascii=False)
+        fx_io.save_json(self.meta_data, path.with_suffix('.json'))
         logger.info(f'Saved calculation "{name}" to {path}')
 
 
@@ -1916,14 +2329,14 @@ def plot_heatmap(
     data: xr.DataArray | xr.Dataset,
     name: str | None = None,
     folder: pathlib.Path | None = None,
-    colors: plotting.ColorType = 'viridis',
+    colors: plotting.ColorType | None = None,
     save: bool | pathlib.Path = False,
-    show: bool = True,
+    show: bool | None = None,
     engine: plotting.PlottingEngine = 'plotly',
     select: dict[str, Any] | None = None,
     facet_by: str | list[str] | None = None,
     animate_by: str | None = None,
-    facet_cols: int = 3,
+    facet_cols: int | None = None,
     reshape_time: tuple[Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'], Literal['W', 'D', 'h', '15min', 'min']]
     | Literal['auto']
     | None = 'auto',
@@ -1933,6 +2346,7 @@ def plot_heatmap(
     heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
     heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
     color_map: str | None = None,
+    **plot_kwargs: Any,
 ):
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
@@ -2003,8 +2417,7 @@ def plot_heatmap(
 
     # Handle deprecated color_map parameter
     if color_map is not None:
-        # Check for conflict with new parameter
-        if colors != 'viridis':  # User explicitly set colors
+        if colors is not None:  # User explicitly set colors
             raise ValueError(
                 "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
             )
@@ -2087,6 +2500,9 @@ def plot_heatmap(
         timeframes, timesteps_per_frame = reshape_time
         title += f' ({timeframes} vs {timesteps_per_frame})'
 
+    # Extract dpi before passing to plotting functions
+    dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
+
     # Plot with appropriate engine
     if engine == 'plotly':
         figure_like = plotting.heatmap_with_plotly(
@@ -2098,6 +2514,7 @@ def plot_heatmap(
             facet_cols=facet_cols,
             reshape_time=reshape_time,
             fill=fill,
+            **plot_kwargs,
         )
         default_filetype = '.html'
     elif engine == 'matplotlib':
@@ -2107,6 +2524,7 @@ def plot_heatmap(
             title=title,
             reshape_time=reshape_time,
             fill=fill,
+            **plot_kwargs,
         )
         default_filetype = '.png'
     else:
@@ -2123,6 +2541,7 @@ def plot_heatmap(
         user_path=None if isinstance(save, bool) else pathlib.Path(save),
         show=show,
         save=True if save else False,
+        dpi=dpi,
     )
 
 

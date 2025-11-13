@@ -24,6 +24,9 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
+  MPLBACKEND: Agg  # Non-interactive matplotlib backend for CI/testing
+  PLOTLY_RENDERER: json  # Headless plotly renderer for CI/testing
+  FLIXOPT_CI: false  # Disable interactive plotting for CI/testing
 
 jobs:
   lint:
@@ -35,7 +38,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -75,7 +78,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -95,7 +98,7 @@ jobs:
     timeout-minutes: 45
     needs: lint
     # Only run examples on releases (tags)
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
 
     steps:
       - name: Check out code
@@ -104,7 +107,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -130,7 +133,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -170,7 +173,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -212,7 +215,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -298,7 +301,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python
@@ -379,7 +382,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.8.23"
+          version: "0.9.5"
           enable-cache: true
 
       - name: Set up Python

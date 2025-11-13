@@ -37,6 +37,6 @@ Working with FlixOpt follows a general pattern:
 
 Now that you've installed FlixOpt and understand the basic workflow, you can:
 
-- Learn about the [core concepts of FlixOpt](user-guide/index.md)
+- Learn about the [core concepts of flixopt](user-guide/core-concepts.md)
 - Explore some [examples](examples/index.md)
 - Check the [API reference](api-reference/index.md) for detailed documentation

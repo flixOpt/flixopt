@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
@@ -159,6 +160,8 @@ class LinearConverter(Component):
         with binary variables determining which piece is active.
 
     """
+
+    submodel: LinearConverterModel | None
 
     def __init__(
         self,
@@ -376,6 +379,8 @@ class Storage(Component):
         With flow rates in m3/h, the charge state is therefore in m3.
     """
 
+    submodel: StorageModel | None
+
     def __init__(
         self,
         label: str,
@@ -528,6 +533,15 @@ class Storage(Component):
                     f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
                 )
 
+    def __repr__(self) -> str:
+        """Return string representation."""
+        # Use build_repr_from_init directly to exclude charging and discharging
+        return fx_io.build_repr_from_init(
+            self,
+            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            skip_default_size=True,
+        ) + fx_io.format_flow_details(self)
+
 
 @register_class_for_io
 class Transmission(Component):
@@ -639,6 +653,8 @@ class Transmission(Component):
         standby power consumption.
 
     """
+
+    submodel: TransmissionModel | None
 
     def __init__(
         self,

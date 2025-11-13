@@ -16,9 +16,10 @@ import linopy
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
-from .structure import Element, ElementModel, FlowSystemModel, Submodel, register_class_for_io
+from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -158,6 +159,8 @@ class Effect(Element):
         - Total = Σ(temporal contributions) + Σ(periodic contributions)
 
     """
+
+    submodel: EffectModel | None
 
     def __init__(
         self,
@@ -448,17 +451,26 @@ PeriodicEffects = dict[str, Scalar]
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
-class EffectCollection:
+class EffectCollection(ElementContainer[Effect]):
     """
     Handling all Effects
     """
 
-    def __init__(self, *effects: Effect):
-        self._effects = {}
+    submodel: EffectCollectionModel | None
+
+    def __init__(self, *effects: Effect, truncate_repr: int | None = None):
+        """
+        Initialize the EffectCollection.
+
+        Args:
+            *effects: Effects to register in the collection.
+            truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
+        """
+        super().__init__(element_type_name='effects', truncate_repr=truncate_repr)
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
 
-        self.submodel: EffectCollectionModel | None = None
+        self.submodel = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> EffectCollectionModel:
@@ -474,7 +486,7 @@ class EffectCollection:
                 self.standard_effect = effect
             if effect.is_objective:
                 self.objective_effect = effect
-            self._effects[effect.label] = effect
+            self.add(effect)  # Use the inherited add() method from ElementContainer
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
@@ -520,10 +532,13 @@ class EffectCollection:
         # Check circular loops in effects:
         temporal, periodic = self.calculate_effect_share_factors()
 
-        # Validate all referenced sources exist
-        unknown = {src for src, _ in list(temporal.keys()) + list(periodic.keys()) if src not in self.effects}
+        # Validate all referenced effects (both sources and targets) exist
+        edges = list(temporal.keys()) + list(periodic.keys())
+        unknown_sources = {src for src, _ in edges if src not in self}
+        unknown_targets = {tgt for _, tgt in edges if tgt not in self}
+        unknown = unknown_sources | unknown_targets
         if unknown:
-            raise KeyError(f'Unknown effects used in in effect share mappings: {sorted(unknown)}')
+            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
 
         temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
         periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
@@ -552,30 +567,22 @@ class EffectCollection:
             else:
                 raise KeyError(f'Effect {effect} not found!')
         try:
-            return self.effects[effect]
+            return super().__getitem__(effect)  # Leverage ContainerMixin suggestions
         except KeyError as e:
-            raise KeyError(f'Effect "{effect}" not found! Add it to the FlowSystem first!') from e
+            # Extract the original message and append context for cleaner output
+            original_msg = str(e).strip('\'"')
+            raise KeyError(f'{original_msg} Add the effect to the FlowSystem first.') from None
 
-    def __iter__(self) -> Iterator[Effect]:
-        return iter(self._effects.values())
-
-    def __len__(self) -> int:
-        return len(self._effects)
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.keys())  # Iterate over keys like a normal dict
 
     def __contains__(self, item: str | Effect) -> bool:
         """Check if the effect exists. Checks for label or object"""
         if isinstance(item, str):
-            return item in self.effects  # Check if the label exists
+            return super().__contains__(item)  # Check if the label exists
         elif isinstance(item, Effect):
-            if item.label_full in self.effects:
-                return True
-            if item in self.effects.values():  # Check if the object exists
-                return True
+            return item.label_full in self and self[item.label_full] is item
         return False
-
-    @property
-    def effects(self) -> dict[str, Effect]:
-        return self._effects
 
     @property
     def standard_effect(self) -> Effect:
@@ -611,7 +618,7 @@ class EffectCollection:
         dict[tuple[str, str], xr.DataArray],
     ]:
         shares_periodic = {}
-        for name, effect in self.effects.items():
+        for name, effect in self.items():
             if effect.share_from_periodic:
                 for source, data in effect.share_from_periodic.items():
                     if source not in shares_periodic:
@@ -620,7 +627,7 @@ class EffectCollection:
         shares_periodic = calculate_all_conversion_paths(shares_periodic)
 
         shares_temporal = {}
-        for name, effect in self.effects.items():
+        for name, effect in self.items():
             if effect.share_from_temporal:
                 for source, data in effect.share_from_temporal.items():
                     if source not in shares_temporal:
@@ -670,7 +677,7 @@ class EffectCollectionModel(Submodel):
 
     def _do_modeling(self):
         super()._do_modeling()
-        for effect in self.effects:
+        for effect in self.effects.values():
             effect.create_model(self._model)
         self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
@@ -684,7 +691,7 @@ class EffectCollectionModel(Submodel):
         )
 
     def _add_share_between_effects(self):
-        for target_effect in self.effects:
+        for target_effect in self.effects.values():
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
                 target_effect.submodel.temporal.add_share(

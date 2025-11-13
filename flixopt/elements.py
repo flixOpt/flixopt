@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .features import InvestmentModel, OnOffModel
@@ -86,9 +87,11 @@ class Component(Element):
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
-        self._check_unique_flow_labels()
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+
+        self._check_unique_flow_labels()
+        self._connect_flows()
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
@@ -114,6 +117,48 @@ class Component(Element):
 
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
+
+    def _connect_flows(self):
+        # Inputs
+        for flow in self.inputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
+            flow.component = self.label_full
+            flow.is_input_in_component = True
+        # Outputs
+        for flow in self.outputs:
+            if flow.component not in ('UnknownComponent', self.label_full):
+                raise ValueError(
+                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
+                    f'Cannot attach to "{self.label_full}".'
+                )
+            flow.component = self.label_full
+            flow.is_input_in_component = False
+
+        # Validate prevent_simultaneous_flows: only allow local flows
+        if self.prevent_simultaneous_flows:
+            # Deduplicate while preserving order
+            seen = set()
+            self.prevent_simultaneous_flows = [
+                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
+            ]
+            local = set(self.inputs + self.outputs)
+            foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
+            if foreign:
+                names = ', '.join(f.label_full for f in foreign)
+                raise ValueError(
+                    f'prevent_simultaneous_flows for "{self.label_full}" must reference its own flows. '
+                    f'Foreign flows detected: {names}'
+                )
+
+    def __repr__(self) -> str:
+        """Return string representation with flow information."""
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -178,6 +223,8 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
+    submodel: BusModel | None
+
     def __init__(
         self,
         label: str,
@@ -215,6 +262,10 @@ class Bus(Element):
     @property
     def with_excess(self) -> bool:
         return False if self.excess_penalty_per_flow_hour is None else True
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return super().__repr__() + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -362,6 +413,8 @@ class Flow(Element):
 
     """
 
+    submodel: FlowModel | None
+
     def __init__(
         self,
         label: str,
@@ -492,6 +545,10 @@ class Flow(Element):
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
+
+    def _format_invest_params(self, params: InvestParameters) -> str:
+        """Format InvestParameters for display."""
+        return f'size: {params.format_for_repr()}'
 
 
 class FlowModel(ElementModel):
