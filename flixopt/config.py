@@ -419,11 +419,15 @@ def _setup_logging(
     # Remove all existing handlers
     logger.remove()
 
-    # Console handler - use loguru's beautiful defaults
+    # Simple, clean format without module/function/line info
+    log_format = '{time:YYYY-MM-DD HH:mm:ss.SSS} | <level>{level: <8}</level> | <level>{message}</level>'
+
+    # Console handler
     if console:
         stream = sys.stdout if console is True or console == 'stdout' else sys.stderr
         logger.add(
             stream,
+            format=log_format,
             level=default_level.upper(),
             colorize=True,
             backtrace=True,
@@ -441,6 +445,7 @@ def _setup_logging(
         rotation_size = f'{max_file_size / (1024 * 1024):.0f} MB'
         logger.add(
             log_file,
+            format=log_format,
             level=default_level.upper(),
             colorize=False,
             rotation=rotation_size,
