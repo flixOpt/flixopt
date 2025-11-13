@@ -403,16 +403,25 @@ def _format_multiline(record):
 
     Single-line messages use standard format.
     Multi-line messages use boxed format with ┌─, │, └─ characters.
+
+    Note: Escapes curly braces in messages to prevent format string errors.
     """
-    lines = record['message'].split('\n')
+    # Escape curly braces in message to prevent format string errors
+    message = record['message'].replace('{', '{{').replace('}', '}}')
+    lines = message.split('\n')
+
+    # Format timestamp and level
+    time_str = record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
+    level_str = f'{record["level"].name: <8}'
 
     # Single line messages - standard format
     if len(lines) == 1:
-        return '{time:YYYY-MM-DD HH:mm:ss.SSS} | <level>{level: <8}</level> | <level>{message}</level>\n{exception}'
+        result = f'{time_str} | <level>{level_str}</level> | <level>{message}</level>\n'
+        if record['exception']:
+            result += str(record['exception'])
+        return result
 
     # Multi-line messages - boxed format
-    time_str = record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
-    level_str = f'{record["level"].name: <8}'
     indent = ' ' * len(time_str)  # Match timestamp length
 
     # Build the boxed output
@@ -423,7 +432,7 @@ def _format_multiline(record):
 
     # Add exception info if present
     if record['exception']:
-        result += '{exception}'
+        result += str(record['exception'])
 
     return result
 
