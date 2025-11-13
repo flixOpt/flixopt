@@ -418,7 +418,7 @@ def _format_multiline(record):
     if len(lines) == 1:
         result = f'<dim>{time_str}</dim> | <level>{level_str}</level> | <level>{message}</level>\n'
         if record['exception']:
-            result += str(record['exception'])
+            result += '{exception}'
         return result
 
     # Multi-line messages - boxed format
@@ -432,7 +432,7 @@ def _format_multiline(record):
 
     # Add exception info if present
     if record['exception']:
-        result += str(record['exception'])
+        result += '\n{exception}'
 
     return result
 
