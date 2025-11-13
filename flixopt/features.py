@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
-from loguru import logger
 
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
