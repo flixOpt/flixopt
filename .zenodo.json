@@ -1,6 +1,6 @@
 {
   "title": "flixOpt: Vector-based Energy and Material Flow Optimization Framework",
-  "description": "FlixOpt is a comprehensive framework for modeling and optimizing energy and material flow systems in Python. It enables optimization of diverse applications including district heating networks, industrial production lines, renewable energy portfolios, and supply chain logistics. Built on modern scientific Python stack (linopy and xarray), it provides a progressive enhancement approach allowing users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints. THe framework simplifies the creation of global constraints and switching objectives through its 'effect' concept. The framework is designed for researchers and engineers in energy systems, industrial process optimization, and operations research.",
+  "description": "FlixOpt is a comprehensive framework for modeling and optimizing energy and material flow systems in Python. It enables optimization of diverse applications including district heating networks, industrial production lines, renewable energy portfolios, and supply chain logistics. Built on modern scientific Python stack (linopy and xarray), it provides a progressive enhancement approach allowing users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints. The framework simplifies the creation of global constraints and switching objectives through its 'effect' concept. The framework is designed for researchers and engineers in energy systems, industrial process optimization, and operations research.",
   "version": "{{VERSION}}",
   "license": "MIT",
   "upload_type": "software",
@@ -30,21 +30,24 @@
   "keywords": [
     "optimization",
     "energy systems",
-    "energy system optimization",
-    "numerical analysis",
-    "python",
     "material flow",
     "linear programming",
-    "mixed-integer linear programming",
+    "mixed-integer programming",
     "MILP",
+    "operations research",
+    "python",
     "district heating",
     "renewable energy",
-    "supply chain",
+    "supply chain optimization",
+    "pathway optimization",
+    "capacity optimization",
+    "sizing optimization",
+    "investment optimization",
+    "multi-period optimization",
+    "scenario analysis",
+    "energy planning",
     "linopy",
-    "xarray",
-    "operations research",
-    "mathematical optimization",
-    "scientific computing"
+    "xarray"
   ],
   "language": "eng",
   "related_identifiers": [
@@ -72,6 +75,9 @@
   "communities": [
     {
       "identifier": "energy"
+    },
+    {
+      "identifier": "zenodo"
     }
   ]
 }
