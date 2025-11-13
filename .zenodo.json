@@ -1,40 +1,78 @@
 {
-  "title": "flixopt",
-  "description": "Vector based energy and material flow optimization framework in Python. FlixOpt is a framework for modeling and optimizing energy and material flow systems - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics. Built on linopy and xarray, it provides a progressive enhancement approach that allows users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints.",
+  "title": "flixOpt: Vector-based Energy and Material Flow Optimization Framework",
+  "description": "FlixOpt is a comprehensive framework for modeling and optimizing energy and material flow systems in Python. It enables optimization of diverse applications including district heating networks, industrial production lines, renewable energy portfolios, and supply chain logistics. Built on modern scientific Python stack (linopy and xarray), it provides a progressive enhancement approach allowing users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints. THe framework simplifies the creation of global constraints and switching objectives through its 'effect' concept. The framework is designed for researchers and engineers in energy systems, industrial process optimization, and operations research.",
+  "version": "{{VERSION}}",
   "license": "MIT",
   "upload_type": "software",
   "creators": [
     {
-      "name": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+      "name": "Bumann, Felix",
+      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
     },
     {
-      "name": "Bumann, Felix"
+      "name": "Panitz, Felix",
+      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
     },
     {
-      "name": "Panitz, Felix"
+      "name": "Stange, Peter",
+      "affiliation": "Chair of Building Energy Systems and Heat Supply, TU Dresden"
+    }
+  ],
+  "contributors": [
+    {
+      "name": "Chair of Building Energy Systems and Heat Supply, TU Dresden",
+      "type": "ResearchGroup"
     },
     {
-      "name": "Stange, Peter"
+      "name": "Bumann, Felix",
+      "affiliation": "SachsenEnergie AG"
     }
   ],
   "keywords": [
     "optimization",
     "energy systems",
+    "energy system optimization",
     "numerical analysis",
     "python",
     "material flow",
     "linear programming",
+    "mixed-integer linear programming",
+    "MILP",
     "district heating",
     "renewable energy",
     "supply chain",
     "linopy",
-    "xarray"
+    "xarray",
+    "operations research",
+    "mathematical optimization",
+    "scientific computing"
   ],
+  "language": "eng",
   "related_identifiers": [
     {
       "identifier": "https://github.com/flixOpt/flixopt",
       "relation": "isSupplementTo",
       "scheme": "url"
+    },
+    {
+      "identifier": "10.18086/eurosun.2022.04.07",
+      "relation": "isDocumentedBy",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "https://flixopt.github.io/flixopt/",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://pypi.org/project/flixopt/",
+      "relation": "isIdenticalTo",
+      "scheme": "url"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "energy"
     }
   ]
 }
