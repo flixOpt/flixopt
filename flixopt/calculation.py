@@ -10,7 +10,6 @@ There are three different Calculation types:
 
 from __future__ import annotations
 
-import logging
 import math
 import pathlib
 import sys
@@ -20,6 +19,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
+from loguru import logger
 from tqdm import tqdm
 
 from . import io as fx_io
@@ -38,8 +38,6 @@ if TYPE_CHECKING:
     from .elements import Component
     from .solvers import _Solver
     from .structure import FlowSystemModel
-
-logger = logging.getLogger('flixopt')
 
 
 class Calculation:

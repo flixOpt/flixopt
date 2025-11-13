@@ -6,11 +6,9 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
-import logging
 import re
 from dataclasses import dataclass
 from difflib import get_close_matches
-from io import StringIO
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,8 +21,7 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from rich.console import Console
-from rich.pretty import Pretty
+from loguru import logger
 
 from . import io as fx_io
 from .core import TimeSeriesData, get_dataarray_stats
@@ -35,8 +32,6 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
-
-logger = logging.getLogger('flixopt')
 
 
 CLASS_REGISTRY = {}

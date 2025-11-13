@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import datetime
-import logging
 import pathlib
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
@@ -11,6 +10,7 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
+from loguru import logger
 
 from . import io as fx_io
 from . import plotting
@@ -26,9 +26,6 @@ if TYPE_CHECKING:
 
     from .calculation import Calculation, SegmentedCalculation
     from .core import FlowSystemDimensions
-
-
-logger = logging.getLogger('flixopt')
 
 
 def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
@@ -344,18 +341,19 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         """The restored flow_system that was used to create the calculation.
         Contains all input parameters."""
         if self._flow_system is None:
-            old_level = logger.level
-            logger.level = logging.CRITICAL
+            # Temporarily disable all logging to suppress messages during restoration
+            logger.disable('flixopt')
             try:
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
                 self._flow_system._connect_network()
             except Exception as e:
+                logger.enable('flixopt')  # Re-enable before logging critical message
                 logger.critical(
                     f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}'
                 )
                 raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
             finally:
-                logger.level = old_level
+                logger.enable('flixopt')
         return self._flow_system
 
     def setup_colors(

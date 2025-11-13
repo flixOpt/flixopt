@@ -3,7 +3,6 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
-import logging
 import warnings
 from itertools import permutations
 from typing import Any, Literal, Union
@@ -11,8 +10,7 @@ from typing import Any, Literal, Union
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-logger = logging.getLogger('flixopt')
+from loguru import logger
 
 Scalar = int | float
 """A single number, either integer or float."""

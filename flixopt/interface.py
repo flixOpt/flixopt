@@ -5,13 +5,13 @@ These are tightly connected to features.py
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from loguru import logger
 
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
@@ -22,9 +22,6 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
     from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
-
-
-logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

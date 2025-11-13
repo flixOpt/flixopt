@@ -5,11 +5,11 @@ Features extend the functionality of Elements.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
+from loguru import logger
 
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
@@ -17,8 +17,6 @@ from .structure import FlowSystemModel, Submodel
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions, Scalar, TemporalData
     from .interface import InvestParameters, OnOffParameters, Piecewise
-
-logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):
