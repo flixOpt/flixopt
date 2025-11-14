@@ -105,17 +105,19 @@ class _BoolDataMeta(type):
 
 class Data(metaclass=_NumericDataMeta):
     """
-    Generic type for data that can have various dimensions.
+    Base type for numeric data that can have various dimensions.
+
+    This is the internal base class. Use `NumericData` publicly for clarity.
 
     Use subscript notation to specify the maximum dimensions:
-    - `Data[Time]`: Time-varying data (at most 'time' dimension)
-    - `Data[Time, Scenario]`: Time-varying with scenarios (at most 'time', 'scenario')
-    - `Data[Period, Scenario]`: Periodic data without time (at most 'period', 'scenario')
-    - `Data[Time, Period, Scenario]`: Full dimensionality (rarely used)
+    - `NumericData[Time]`: Time-varying numeric data (at most 'time' dimension)
+    - `NumericData[Time, Scenario]`: Time-varying with scenarios (at most 'time', 'scenario')
+    - `NumericData[Period, Scenario]`: Periodic data without time (at most 'period', 'scenario')
+    - `NumericData[Time, Period, Scenario]`: Full dimensionality (rarely used)
 
     Semantics: "At Most" Dimensions
     --------------------------------
-    When you see `Data[Time, Scenario]`, it means the data can have:
+    When you see `NumericData[Time, Scenario]`, it means the data can have:
     - No dimensions (scalar): broadcast to all time and scenario values
     - Just 'time': broadcast across scenarios
     - Just 'scenario': broadcast across time
@@ -142,8 +144,11 @@ class Data(metaclass=_NumericDataMeta):
     ----
     This type is for **numeric** data only. For boolean data, use `BoolData`.
 
+    This is the base class - use `NumericData` alias publicly for clarity and symmetry with `BoolData`.
+
     See Also
     --------
+    NumericData : Public alias for this class
     BoolData : For boolean data with dimensions
     DataConverter.to_dataarray : The conversion implementation
     FlowSystem.fit_to_model_coords : Fits data to the model's coordinate system
@@ -204,11 +209,11 @@ class BoolData(metaclass=_BoolDataMeta):
 
     Note
     ----
-    This type is for **boolean** data only. For numeric data, use `Data`.
+    This type is for **boolean** data only. For numeric data, use `NumericData`.
 
     See Also
     --------
-    Data : For numeric data with dimensions
+    NumericData : For numeric data with dimensions
     DataConverter.to_dataarray : The conversion implementation
     """
 
@@ -217,13 +222,18 @@ class BoolData(metaclass=_BoolDataMeta):
         raise TypeError('BoolData is a type hint only and cannot be instantiated')
 
 
+# Public alias for Data (for clarity and symmetry with BoolData)
+NumericData = Data
+"""Public type for numeric data with dimensions. Alias for the internal `Data` class."""
+
 # Simple scalar type for dimension-less numeric values
 Scalar: TypeAlias = int | float | np.integer | np.floating
 
 # Export public API
 __all__ = [
-    'Data',
-    'BoolData',
+    'NumericData',  # Primary public type for numeric data
+    'BoolData',  # Primary public type for boolean data
+    'Data',  # Also exported (internal base class, can be used as shorthand)
     'Time',
     'Period',
     'Scenario',
