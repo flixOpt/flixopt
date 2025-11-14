@@ -243,7 +243,7 @@ class Bus(Element):
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.excess_penalty_per_flow_hour = self.flow_system.fit_to_model_coords(
+        self.excess_penalty_per_flow_hour = self._fit_coords(
             f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
@@ -470,28 +470,20 @@ class Flow(Element):
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_minimum = self.flow_system.fit_to_model_coords(
-            f'{prefix}|relative_minimum', self.relative_minimum
-        )
-        self.relative_maximum = self.flow_system.fit_to_model_coords(
-            f'{prefix}|relative_maximum', self.relative_maximum
-        )
-        self.fixed_relative_profile = self.flow_system.fit_to_model_coords(
-            f'{prefix}|fixed_relative_profile', self.fixed_relative_profile
-        )
-        self.effects_per_flow_hour = self.flow_system.fit_effects_to_model_coords(
-            prefix, self.effects_per_flow_hour, 'per_flow_hour'
-        )
-        self.flow_hours_total_max = self.flow_system.fit_to_model_coords(
+        self.relative_minimum = self._fit_coords(f'{prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = self._fit_coords(f'{prefix}|relative_maximum', self.relative_maximum)
+        self.fixed_relative_profile = self._fit_coords(f'{prefix}|fixed_relative_profile', self.fixed_relative_profile)
+        self.effects_per_flow_hour = self._fit_effect_coords(prefix, self.effects_per_flow_hour, 'per_flow_hour')
+        self.flow_hours_total_max = self._fit_coords(
             f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
         )
-        self.flow_hours_total_min = self.flow_system.fit_to_model_coords(
+        self.flow_hours_total_min = self._fit_coords(
             f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
         )
-        self.load_factor_max = self.flow_system.fit_to_model_coords(
+        self.load_factor_max = self._fit_coords(
             f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
-        self.load_factor_min = self.flow_system.fit_to_model_coords(
+        self.load_factor_min = self._fit_coords(
             f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
@@ -500,7 +492,7 @@ class Flow(Element):
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(prefix)
         else:
-            self.size = self.flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
+            self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound

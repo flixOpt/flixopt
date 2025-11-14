@@ -80,8 +80,8 @@ class Piece(Interface):
 
     def transform_data(self, name_prefix: str = '') -> None:
         dims = None if self.has_time_dim else ['period', 'scenario']
-        self.start = self._flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
-        self.end = self._flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
+        self.start = self._fit_coords(f'{name_prefix}|start', self.start, dims=dims)
+        self.end = self._fit_coords(f'{name_prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
@@ -929,22 +929,22 @@ class InvestParameters(Interface):
         self.linked_periods = linked_periods
 
     def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_of_investment = self._flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+        self.effects_of_investment = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_investment,
-            label_suffix='effects_of_investment',
+            suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
-        self.effects_of_retirement = self._flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+        self.effects_of_retirement = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_retirement,
-            label_suffix='effects_of_retirement',
+            suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
-        self.effects_of_investment_per_size = self._flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+        self.effects_of_investment_per_size = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_investment_per_size,
-            label_suffix='effects_of_investment_per_size',
+            suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
         )
 
@@ -952,10 +952,10 @@ class InvestParameters(Interface):
             self.piecewise_effects_of_investment.has_time_dim = False
             self.piecewise_effects_of_investment.transform_data(f'{name_prefix}|PiecewiseEffects')
 
-        self.minimum_size = self._flow_system.fit_to_model_coords(
+        self.minimum_size = self._fit_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
         )
-        self.maximum_size = self._flow_system.fit_to_model_coords(
+        self.maximum_size = self._fit_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
         # Convert tuple (first_period, last_period) to DataArray if needed
@@ -964,30 +964,28 @@ class InvestParameters(Interface):
                 raise TypeError(
                     f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
-            if self._flow_system.periods is None:
+            if self.flow_system.periods is None:
                 raise ValueError(
                     f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
                     f'Please define periods in FlowSystem or use linked_periods=None.'
                 )
             logger.debug(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
-            if start not in self._flow_system.periods.values:
+            if start not in self.flow_system.periods.values:
                 logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {self._flow_system.periods.values}'
+                    f'Start of linked periods ({start} not found in periods directly: {self.flow_system.periods.values}'
                 )
-            if end not in self._flow_system.periods.values:
+            if end not in self.flow_system.periods.values:
                 logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {self._flow_system.periods.values}'
+                    f'End of linked periods ({end} not found in periods directly: {self.flow_system.periods.values}'
                 )
-            self.linked_periods = self.compute_linked_periods(start, end, self._flow_system.periods)
+            self.linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
             logger.debug(f'Computed {self.linked_periods=}')
 
-        self.linked_periods = self._flow_system.fit_to_model_coords(
+        self.linked_periods = self._fit_coords(
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
-        self.fixed_size = self._flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
-        )
+        self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
 
     @property
     def optional(self) -> bool:
@@ -1295,31 +1293,29 @@ class OnOffParameters(Interface):
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_per_switch_on = self._flow_system.fit_effects_to_model_coords(
-            name_prefix, self.effects_per_switch_on, 'per_switch_on'
-        )
-        self.effects_per_running_hour = self._flow_system.fit_effects_to_model_coords(
+        self.effects_per_switch_on = self._fit_effect_coords(name_prefix, self.effects_per_switch_on, 'per_switch_on')
+        self.effects_per_running_hour = self._fit_effect_coords(
             name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_min = self._flow_system.fit_to_model_coords(
+        self.consecutive_on_hours_min = self._fit_coords(
             f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
         )
-        self.consecutive_on_hours_max = self._flow_system.fit_to_model_coords(
+        self.consecutive_on_hours_max = self._fit_coords(
             f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
         )
-        self.consecutive_off_hours_min = self._flow_system.fit_to_model_coords(
+        self.consecutive_off_hours_min = self._fit_coords(
             f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
         )
-        self.consecutive_off_hours_max = self._flow_system.fit_to_model_coords(
+        self.consecutive_off_hours_max = self._fit_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
-        self.on_hours_total_max = self._flow_system.fit_to_model_coords(
+        self.on_hours_total_max = self._fit_coords(
             f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['period', 'scenario']
         )
-        self.on_hours_total_min = self._flow_system.fit_to_model_coords(
+        self.on_hours_total_min = self._fit_coords(
             f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['period', 'scenario']
         )
-        self.switch_on_total_max = self._flow_system.fit_to_model_coords(
+        self.switch_on_total_max = self._fit_coords(
             f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['period', 'scenario']
         )
 

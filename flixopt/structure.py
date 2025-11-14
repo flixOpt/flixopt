@@ -317,6 +317,54 @@ class Interface:
                     if isinstance(item, Interface):
                         item._set_flow_system(flow_system)
 
+    @property
+    def flow_system(self) -> FlowSystem:
+        """Access the FlowSystem this interface is linked to.
+
+        Returns:
+            The FlowSystem instance this interface belongs to.
+
+        Raises:
+            RuntimeError: If interface has not been linked to a FlowSystem yet.
+
+        Note:
+            For Elements, this is set during add_elements().
+            For parameter classes, this is set recursively when the parent Element is registered.
+        """
+        if not hasattr(self, '_flow_system') or self._flow_system is None:
+            raise RuntimeError(
+                f'{self.__class__.__name__} is not linked to a FlowSystem. '
+                f'Ensure the parent element is registered via flow_system.add_elements() first.'
+            )
+        return self._flow_system
+
+    def _fit_coords(self, name: str, data, dims=None):
+        """Convenience wrapper for FlowSystem.fit_to_model_coords().
+
+        Args:
+            name: The name for the data variable
+            data: The data to transform
+            dims: Optional dimension names
+
+        Returns:
+            Transformed data aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_to_model_coords(name, data, dims=dims)
+
+    def _fit_effect_coords(self, prefix: str, effect_values, suffix: str = None, dims=None):
+        """Convenience wrapper for FlowSystem.fit_effects_to_model_coords().
+
+        Args:
+            prefix: Label prefix for effect names
+            effect_values: The effect values to transform
+            suffix: Optional label suffix
+            dims: Optional dimension names
+
+        Returns:
+            Transformed effect values aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_effects_to_model_coords(prefix, effect_values, suffix, dims=dims)
+
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Convert all DataArrays to references and extract them.
@@ -895,23 +943,6 @@ class Element(Interface):
         self.meta_data = meta_data if meta_data is not None else {}
         self.submodel = None
         self._flow_system: FlowSystem | None = None
-
-    @property
-    def flow_system(self) -> FlowSystem:
-        """Access the FlowSystem this element is registered to.
-
-        Returns:
-            The FlowSystem instance this element belongs to.
-
-        Raises:
-            RuntimeError: If element has not been registered to a FlowSystem yet.
-        """
-        if self._flow_system is None:
-            raise RuntimeError(
-                f'Element "{self.label_full}" is not registered to a FlowSystem. '
-                f'Call flow_system.add_elements() to register this element first.'
-            )
-        return self._flow_system
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
