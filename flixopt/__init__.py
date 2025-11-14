@@ -41,9 +41,6 @@ from .commons import (
     solvers,
 )
 
-# Effect-specific types
-from .effects import PeriodicEffectsUser, TemporalEffectsUser
-
 # Type system for dimension-aware type hints
 from .types import BoolData, EffectData, NumericData, Period, Scalar, Scenario, Time
 

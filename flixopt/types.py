@@ -112,27 +112,12 @@ class _EffectDataMeta(type):
         """
         Create a type hint showing maximum dimensions for effect data.
 
-        Effect data can be either:
-        - A single numeric value (scalar, array, Series, DataFrame, DataArray)
-        - A dict with string keys mapping to numeric values
-
-        This matches the pattern used for effects: either a single contribution or
-        a dictionary of named contributions.
+        Effect data is a dict with string keys mapping to numeric values
         """
         # Return Union[] for better type checker compatibility (especially with | None)
         # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
-        # EffectData = NumericData | dict[str, NumericData]
-        return Union[  # noqa: UP007
-            int,
-            float,
-            np.integer,
-            np.floating,
-            np.ndarray,
-            pd.Series,
-            pd.DataFrame,
-            xr.DataArray,
-            dict[str, Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]],  # noqa: UP007
-        ]
+        # EffectData = dict[str, NumericData]
+        return dict[str, Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]]  # noqa: UP007
 
 
 class NumericData(metaclass=_NumericDataMeta):
@@ -331,8 +316,6 @@ class EffectData(metaclass=_EffectDataMeta):
     --------
     NumericData : General numeric data with dimensions
     BoolData : For boolean data with dimensions
-    TemporalEffectsUser : Effect type for temporal contributions (dict or single value)
-    PeriodicEffectsUser : Effect type for periodic contributions (dict or single value)
     """
 
     # This class is not meant to be instantiated, only used for type hints

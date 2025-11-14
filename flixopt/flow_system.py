@@ -22,14 +22,7 @@ from .core import (
     FlowSystemDimensions,
     TimeSeriesData,
 )
-from .effects import (
-    Effect,
-    EffectCollection,
-    PeriodicEffects,
-    PeriodicEffectsUser,
-    TemporalEffects,
-    TemporalEffectsUser,
-)
+from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
@@ -39,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import BoolData, NumericData, Period, Scenario, Time
+    from .types import BoolData, EffectData, NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -570,11 +563,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: TemporalEffectsUser | PeriodicEffectsUser | None,
+        effect_values: EffectData[Time, Period, Scenario] | NumericData[Time, Period, Scenario] | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
         delimiter: str = '|',
-    ) -> TemporalEffects | PeriodicEffects | None:
+    ) -> EffectData[Time, Period, Scenario] | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """

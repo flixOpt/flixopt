@@ -16,16 +16,14 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from . import io as fx_io
-from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
-from .types import EffectData, NumericData, Period, Scenario, Time
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
+    from .types import EffectData, NumericData, Period, Scalar, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -181,8 +179,8 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        share_from_temporal: TemporalEffectsUser | None = None,
-        share_from_periodic: PeriodicEffectsUser | None = None,
+        share_from_temporal: EffectData[Time, Period, Scenario] | None = None,
+        share_from_periodic: EffectData[Period, Scenario] | None = None,
         minimum_temporal: NumericData[Period, Scenario] | None = None,
         maximum_temporal: NumericData[Period, Scenario] | None = None,
         minimum_periodic: NumericData[Period, Scenario] | None = None,
@@ -198,8 +196,12 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.share_from_temporal: TemporalEffectsUser = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_periodic: PeriodicEffectsUser = share_from_periodic if share_from_periodic is not None else {}
+        self.share_from_temporal: EffectData[Time, Period, Scenario] = (
+            share_from_temporal if share_from_temporal is not None else {}
+        )
+        self.share_from_periodic: EffectData[Period, Scenario] = (
+            share_from_periodic if share_from_periodic is not None else {}
+        )
 
         # Handle backwards compatibility for deprecated parameters using centralized helper
         minimum_temporal = self._handle_deprecated_kwarg(
@@ -447,76 +449,6 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = EffectData[Time, Period, Scenario]
-"""
-Temporal effects data: numeric values that can vary with time, periods, and scenarios.
-
-Type: `EffectData[Time, Period, Scenario]` = `NumericData[Time, Period, Scenario] | dict[str, NumericData[Time, Period, Scenario]]`
-
-Can be:
-- A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Time, Period, Scenario] dimensions
-  → Applied to the standard effect
-- A dictionary mapping effect names to numeric values with at most [Time, Period, Scenario] dimensions
-  → Applied to named effects (e.g., {'costs': 10, 'CO2': 0.5})
-
-Dimensions:
-- Time: Hourly/timestep variation (e.g., varying electricity prices)
-- Period: Multi-period planning horizon (e.g., costs in different years)
-- Scenario: Scenario-based variation (e.g., high/low price scenarios)
-
-Note: Data can have any subset of these dimensions - scalars, 1D, 2D, or 3D arrays.
-
-Examples:
-    >>> # Single value for standard effect (broadcast to all dimensions)
-    >>> effects_per_flow_hour = 10.5
-    >>>
-    >>> # Time-varying costs (same across periods and scenarios)
-    >>> effects_per_flow_hour = np.array([10, 12, 11, 10])
-    >>>
-    >>> # Multiple effects with different dimensions
-    >>> effects_per_flow_hour = {
-    ...     'costs': 10.5,  # Scalar
-    ...     'CO2': np.array([0.3, 0.4, 0.3]),  # Time-varying
-    ... }
-"""
-
-PeriodicEffectsUser = EffectData[Period, Scenario]
-"""
-Periodic effects data: numeric values that can vary with planning periods and scenarios (no time dimension).
-
-Type: `EffectData[Period, Scenario]` = `NumericData[Period, Scenario] | dict[str, NumericData[Period, Scenario]]`
-
-Can be:
-- A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Period, Scenario] dimensions
-  → Applied to the standard effect
-- A dictionary mapping effect names to numeric values with at most [Period, Scenario] dimensions
-  → Applied to named effects (e.g., {'costs': 1000, 'CO2': 50})
-
-Typical uses:
-- Investment costs (vary by period but not time)
-- Fixed operating costs (per period)
-- Retirement effects
-
-Examples:
-    >>> # Fixed cost for investment
-    >>> effects_of_investment = 1000
-    >>>
-    >>> # Period-varying costs (e.g., different years)
-    >>> effects_of_investment = np.array([1000, 1200, 1100])  # Years 2020, 2025, 2030
-    >>>
-    >>> # Multiple periodic effects
-    >>> effects_of_investment = {
-    ...     'costs': 1000,
-    ...     'CO2': 50,
-    ... }
-"""
-
-TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
-""" This datatype is used internally to handle temporal shares to an effect. """
-
-PeriodicEffects = dict[str, Scalar]
-""" This datatype is used internally to handle scalar shares to an effect. """
-
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
@@ -559,8 +491,8 @@ class EffectCollection(ElementContainer[Effect]):
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self, effect_values_user: PeriodicEffectsUser | TemporalEffectsUser
-    ) -> dict[str, Scalar | NumericData[Time, Period, Scenario]] | None:
+        self, effect_values_user: EffectData[Time, Period, Scenario]
+    ) -> dict[str, NumericData[Time, Period, Scenario]] | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:
@@ -920,8 +852,3 @@ def tuples_to_adjacency_list(edges: list[tuple[str, str]]) -> dict[str, list[str
             graph[target] = []
 
     return graph
-
-
-# Backward compatibility aliases
-NonTemporalEffectsUser = PeriodicEffectsUser
-NonTemporalEffects = PeriodicEffects

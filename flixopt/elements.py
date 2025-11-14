@@ -22,9 +22,8 @@ from .structure import Element, ElementModel, FlowSystemModel, register_class_fo
 if TYPE_CHECKING:
     import linopy
 
-    from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import NumericData, Period, Scenario, Time
+    from .types import EffectData, NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -424,7 +423,7 @@ class Flow(Element):
         fixed_relative_profile: NumericData[Time, Period, Scenario] | None = None,
         relative_minimum: NumericData[Time, Period, Scenario] = 0,
         relative_maximum: NumericData[Time, Period, Scenario] = 1,
-        effects_per_flow_hour: TemporalEffectsUser | None = None,
+        effects_per_flow_hour: EffectData[Time, Period, Scenario] | NumericData[Time, Period, Scenario] | None = None,
         on_off_parameters: OnOffParameters | None = None,
         flow_hours_total_max: NumericData[Period, Scenario] | None = None,
         flow_hours_total_min: NumericData[Period, Scenario] | None = None,
