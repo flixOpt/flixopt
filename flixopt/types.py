@@ -71,7 +71,7 @@ class _NumericDataMeta(type):
 
         The dimensions parameter can be:
         - A single dimension: Data[Time]
-        - Multiple dimensions: Data[Time, Scenario]
+        - Multiple dimensions: Data[Time, Period, Scenario]
 
         The type hint communicates that data can have **at most** these dimensions.
         Actual data can be:

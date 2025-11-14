@@ -437,7 +437,7 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = Data[Time, Scenario] | dict[str, Data[Time, Scenario]]  # User-specified Shares to Effects
+TemporalEffectsUser = Data[Time, Period, Scenario] | dict[str, Data[Time, Scenario]]  # User-specified Shares to Effects
 """
 This datatype is used to define a temporal share to an effect by a certain attribute.
 
