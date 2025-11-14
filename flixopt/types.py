@@ -63,7 +63,7 @@ class Scenario:
 
 
 class _NumericDataMeta(type):
-    """Metaclass for Data to enable subscript notation NumericData[Time, Scenario] for numeric data."""
+    """Metaclass for NumericData to enable subscript notation NumericData[Time, Scenario] for numeric data."""
 
     def __getitem__(cls, dimensions):
         """
@@ -98,7 +98,7 @@ class _BoolDataMeta(type):
         """
         Create a type hint showing maximum dimensions for boolean data.
 
-        Same semantics as numeric Data, but for boolean values.
+        Same semantics as NumericData, but for boolean values.
         """
         # Return Union[] for better type checker compatibility (especially with | None)
         # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
@@ -135,7 +135,7 @@ class _EffectDataMeta(type):
         ]
 
 
-class Data(metaclass=_NumericDataMeta):
+class NumericData(metaclass=_NumericDataMeta):
     """
     Base type for numeric data that can have various dimensions.
 
@@ -180,7 +180,6 @@ class Data(metaclass=_NumericDataMeta):
 
     See Also
     --------
-    NumericData : Public alias for this class
     BoolData : For boolean data with dimensions
     DataConverter.to_dataarray : The conversion implementation
     FlowSystem.fit_to_model_coords : Fits data to the model's coordinate system
@@ -188,7 +187,7 @@ class Data(metaclass=_NumericDataMeta):
 
     # This class is not meant to be instantiated, only used for type hints
     def __init__(self):
-        raise TypeError('Data is a type hint only and cannot be instantiated')
+        raise TypeError('NumericData is a type hint only and cannot be instantiated')
 
 
 class BoolData(metaclass=_BoolDataMeta):
@@ -202,7 +201,7 @@ class BoolData(metaclass=_BoolDataMeta):
 
     Semantics: "At Most" Dimensions
     --------------------------------
-    Same semantics as Data, but for boolean values.
+    Same semantics as NumericData, but for boolean values.
     When you see `BoolData[Time, Scenario]`, the data can have:
     - No dimensions (scalar bool): broadcast to all time and scenario values
     - Just 'time': broadcast across scenarios
@@ -341,10 +340,6 @@ class EffectData(metaclass=_EffectDataMeta):
         raise TypeError('EffectData is a type hint only and cannot be instantiated')
 
 
-# Public alias for Data (for clarity and symmetry with BoolData and EffectData)
-NumericData = Data
-"""Public type for numeric data with dimensions. Alias for the internal `Data` class."""
-
 # Simple scalar type for dimension-less numeric values
 Scalar: TypeAlias = int | float | np.integer | np.floating
 
@@ -353,7 +348,6 @@ __all__ = [
     'NumericData',  # Primary public type for numeric data
     'BoolData',  # Primary public type for boolean data
     'EffectData',  # Primary public type for effect data (semantic variant of NumericData)
-    'Data',  # Also exported (internal base class, can be used as shorthand)
     'Time',
     'Period',
     'Scenario',

@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from flixopt.types import Data, NumericData, Period, Scalar, Scenario, Time
+from flixopt.types import NumericData, Period, Scalar, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 

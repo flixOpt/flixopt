@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Data, Period, Scenario, Time
+    from .types import BoolData, NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -166,7 +166,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: Data[Period, Scenario] | None = None,
+        weights: NumericData[Period, Scenario] | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -530,7 +530,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: Data[Time, Period, Scenario] | None,
+        data: NumericData[Time, Period, Scenario] | BoolData[Time, Period, Scenario] | None,
         dims: Collection[FlowSystemDimensions] | None = None,
     ) -> xr.DataArray | None:
         """

@@ -20,7 +20,7 @@ from . import io as fx_io
 from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
-from .types import Data, EffectData, NumericData, Period, Scenario, Time
+from .types import EffectData, NumericData, Period, Scenario, Time
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

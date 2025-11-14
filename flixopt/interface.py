@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
     from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import Data, NumericData, Period, Scenario, Time
+    from .types import NumericData, Period, Scenario, Time
 
 
 logger = logging.getLogger('flixopt')
@@ -1044,11 +1044,11 @@ class InvestParameters(Interface):
         return self.piecewise_effects_of_investment
 
     @property
-    def minimum_or_fixed_size(self) -> Data[Period, Scenario]:
+    def minimum_or_fixed_size(self) -> NumericData[Period, Scenario]:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> Data[Period, Scenario]:
+    def maximum_or_fixed_size(self) -> NumericData[Period, Scenario]:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:

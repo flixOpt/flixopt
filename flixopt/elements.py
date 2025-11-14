@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import Data, NumericData, Period, Scenario, Time
+    from .types import NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
