@@ -48,10 +48,11 @@ class InvestmentModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+        self._create_variables_and_constraints()
+        self._add_effects()
 
-        # Create variables
+    def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
             # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
@@ -71,9 +72,6 @@ class InvestmentModel(Submodel):
                 coords=self._model.get_coords(['period', 'scenario']),
                 short_name='invested',
             )
-
-        # Create constraints
-        if not self.parameters.mandatory:
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
@@ -87,9 +85,6 @@ class InvestmentModel(Submodel):
                 masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
                 short_name='linked_periods',
             )
-
-        # Add effects
-        self._add_effects()
 
     def _add_effects(self):
         """Add investment effects"""
@@ -182,24 +177,11 @@ class OnOffModel(Submodel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        # Create variables
         if self.parameters.use_off:
-            self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
+            off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
+            self.add_constraints(self.on + off == 1, short_name='complementary')
 
-        # Switch tracking variables
-        if self.parameters.use_switch_on:
-            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
-
-            if self.parameters.switch_on_total_max is not None:
-                self.add_variables(
-                    lower=0,
-                    upper=self.parameters.switch_on_total_max,
-                    coords=self._model.get_coords(('period', 'scenario')),
-                    short_name='switch|count',
-                )
-
-        # Total duration tracking (creates variable + constraint)
+        # 3. Total duration tracking using existing pattern
         ModelingPrimitives.expression_tracking_variable(
             self,
             tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
@@ -211,7 +193,31 @@ class OnOffModel(Submodel):
             coords=['period', 'scenario'],
         )
 
-        # Consecutive on duration tracking (creates variable + constraints)
+        # 4. Switch tracking using existing pattern
+        if self.parameters.use_switch_on:
+            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
+            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
+
+            BoundingPatterns.state_transition_bounds(
+                self,
+                state_variable=self.on,
+                switch_on=self.switch_on,
+                switch_off=self.switch_off,
+                name=f'{self.label_of_model}|switch',
+                previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
+                coord='time',
+            )
+
+            if self.parameters.switch_on_total_max is not None:
+                count = self.add_variables(
+                    lower=0,
+                    upper=self.parameters.switch_on_total_max,
+                    coords=self._model.get_coords(('period', 'scenario')),
+                    short_name='switch|count',
+                )
+                self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
+
+        # 5. Consecutive on duration using existing pattern
         if self.parameters.use_consecutive_on_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
@@ -224,7 +230,7 @@ class OnOffModel(Submodel):
                 previous_duration=self._get_previous_on_duration(),
             )
 
-        # Consecutive off duration tracking (creates variable + constraints)
+        # 6. Consecutive off duration using existing pattern
         if self.parameters.use_consecutive_off_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
@@ -236,25 +242,7 @@ class OnOffModel(Submodel):
                 duration_dim='time',
                 previous_duration=self._get_previous_off_duration(),
             )
-
-        # Create constraints
-        if self.parameters.use_off:
-            self.add_constraints(self.on + self.off == 1, short_name='complementary')
-
-        # Switch tracking constraints
-        if self.parameters.use_switch_on:
-            BoundingPatterns.state_transition_bounds(
-                self,
-                state_variable=self.on,
-                switch_on=self.switch_on,
-                switch_off=self.switch_off,
-                name=f'{self.label_of_model}|switch',
-                previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
-                coord='time',
-            )
-
-            if self.parameters.switch_on_total_max is not None:
-                self.add_constraints(self.switch_on_nr == self.switch_on.sum('time'), short_name='switch|count')
+            # TODO:
 
         self._add_effects()
 
@@ -432,17 +420,6 @@ class PiecewiseModel(Submodel):
             )
             self.pieces.append(new_piece)
 
-        # Create zero_point variable if needed
-        if self._zero_point is True:
-            self.zero_point = self.add_variables(
-                coords=self._model.get_coords(self.dims),
-                binary=True,
-                short_name='zero_point',
-            )
-        elif isinstance(self._zero_point, linopy.Variable):
-            self.zero_point = self._zero_point
-
-        # Create constraints
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add_constraints(
@@ -461,7 +438,15 @@ class PiecewiseModel(Submodel):
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
-            if isinstance(self._zero_point, linopy.Variable) or self._zero_point is True:
+            if isinstance(self._zero_point, linopy.Variable):
+                self.zero_point = self._zero_point
+                rhs = self.zero_point
+            elif self._zero_point is True:
+                self.zero_point = self.add_variables(
+                    coords=self._model.get_coords(self.dims),
+                    binary=True,
+                    short_name='zero_point',
+                )
                 rhs = self.zero_point
             else:
                 rhs = 1
@@ -582,6 +567,8 @@ class ShareAllocationModel(Submodel):
             name=self.label_full,
             short_name='total',
         )
+        # eq: sum = sum(share_i) # skalar
+        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
@@ -591,11 +578,6 @@ class ShareAllocationModel(Submodel):
                 short_name='per_timestep',
             )
 
-        # Create constraints
-        # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
-
-        if 'time' in self._dims:
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
             # Add it to the total
