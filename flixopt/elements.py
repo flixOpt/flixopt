@@ -565,6 +565,8 @@ class FlowModel(ElementModel):
             short_name='flow_rate',
         )
 
+        self._constraint_flow_rate()
+
         # Total flow hours tracking (creates variable + constraint)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
