@@ -22,7 +22,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
     from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import Data, Period, Scenario, Time
+    from .types import Data, NumericData, Period, Scenario, Time
 
 
 logger = logging.getLogger('flixopt')
@@ -74,7 +74,7 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: Data[Time, Period, Scenario], end: Data[Time, Period, Scenario]):
+    def __init__(self, start: NumericData[Time, Period, Scenario], end: NumericData[Time, Period, Scenario]):
         self.start = start
         self.end = end
         self.has_time_dim = False
@@ -875,15 +875,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: Data[Period, Scenario] | None = None,
-        minimum_size: Data[Period, Scenario] | None = None,
-        maximum_size: Data[Period, Scenario] | None = None,
+        fixed_size: NumericData[Period, Scenario] | None = None,
+        minimum_size: NumericData[Period, Scenario] | None = None,
+        maximum_size: NumericData[Period, Scenario] | None = None,
         mandatory: bool = False,
         effects_of_investment: PeriodicEffectsUser | None = None,
         effects_of_investment_per_size: PeriodicEffectsUser | None = None,
         effects_of_retirement: PeriodicEffectsUser | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
-        linked_periods: Data[Period, Scenario] | tuple[int, int] | None = None,
+        linked_periods: NumericData[Period, Scenario] | tuple[int, int] | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters using centralized helper
@@ -1273,10 +1273,10 @@ class OnOffParameters(Interface):
         effects_per_running_hour: TemporalEffectsUser | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
-        consecutive_on_hours_min: Data[Time, Period, Scenario] | None = None,
-        consecutive_on_hours_max: Data[Time, Period, Scenario] | None = None,
-        consecutive_off_hours_min: Data[Time, Period, Scenario] | None = None,
-        consecutive_off_hours_max: Data[Time, Period, Scenario] | None = None,
+        consecutive_on_hours_min: NumericData[Time, Period, Scenario] | None = None,
+        consecutive_on_hours_max: NumericData[Time, Period, Scenario] | None = None,
+        consecutive_off_hours_min: NumericData[Time, Period, Scenario] | None = None,
+        consecutive_off_hours_max: NumericData[Time, Period, Scenario] | None = None,
         switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
@@ -1286,13 +1286,13 @@ class OnOffParameters(Interface):
         self.effects_per_running_hour: TemporalEffectsUser = (
             effects_per_running_hour if effects_per_running_hour is not None else {}
         )
-        self.on_hours_total_min: Scalar = on_hours_total_min
-        self.on_hours_total_max: Scalar = on_hours_total_max
+        self.on_hours_total_min: NumericData[Period, Scenario] = on_hours_total_min
+        self.on_hours_total_max: NumericData[Period, Scenario] = on_hours_total_max
         self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
         self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
         self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
         self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
-        self.switch_on_total_max: Scalar = switch_on_total_max
+        self.switch_on_total_max: NumericData[Period, Scenario] = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:

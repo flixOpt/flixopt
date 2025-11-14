@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import Data, Period, Scenario, Time
+    from .types import Data, NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -420,17 +420,17 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Scalar | InvestParameters = None,
-        fixed_relative_profile: Data[Time, Period, Scenario] | None = None,
-        relative_minimum: Data[Time, Period, Scenario] = 0,
-        relative_maximum: Data[Time, Period, Scenario] = 1,
+        size: NumericData[Period, Scenario] | InvestParameters = None,
+        fixed_relative_profile: NumericData[Time, Period, Scenario] | None = None,
+        relative_minimum: NumericData[Time, Period, Scenario] = 0,
+        relative_maximum: NumericData[Time, Period, Scenario] = 1,
         effects_per_flow_hour: TemporalEffectsUser | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        flow_hours_total_max: Scalar | None = None,
-        flow_hours_total_min: Scalar | None = None,
-        load_factor_min: Scalar | None = None,
-        load_factor_max: Scalar | None = None,
-        previous_flow_rate: Scalar | list[Scalar] | None = None,
+        flow_hours_total_max: NumericData[Period, Scenario] | None = None,
+        flow_hours_total_min: NumericData[Period, Scenario] | None = None,
+        load_factor_min: NumericData[Period, Scenario] | None = None,
+        load_factor_max: NumericData[Period, Scenario] | None = None,
+        previous_flow_rate: NumericData[Period, Scenario] | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)

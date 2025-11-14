@@ -17,6 +17,7 @@ from .structure import FlowSystemModel, Submodel
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions, Scalar, TemporalData
     from .interface import InvestParameters, OnOffParameters, Piecewise
+    from .types import NumericData, Period, Scenario
 
 logger = logging.getLogger('flixopt')
 
@@ -517,8 +518,8 @@ class ShareAllocationModel(Submodel):
         dims: list[FlowSystemDimensions],
         label_of_element: str | None = None,
         label_of_model: str | None = None,
-        total_max: Scalar | None = None,
-        total_min: Scalar | None = None,
+        total_max: NumericData[Period, Scenario] | None = None,
+        total_min: NumericData[Period, Scenario] | None = None,
         max_per_hour: TemporalData | None = None,
         min_per_hour: TemporalData | None = None,
     ):

@@ -41,8 +41,11 @@ from .commons import (
     solvers,
 )
 
+# Effect-specific types
+from .effects import PeriodicEffectsUser, TemporalEffectsUser
+
 # Type system for dimension-aware type hints
-from .types import BoolData, Data, NumericData, Period, Scalar, Scenario, Time
+from .types import BoolData, Data, EffectData, NumericData, Period, Scalar, Scenario, Time
 
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.

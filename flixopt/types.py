@@ -8,26 +8,26 @@ maintaining maximum flexibility for input formats.
 Key Concepts
 ------------
 - Dimension markers (`Time`, `Period`, `Scenario`) represent the possible dimensions
-- `Data[...]` generic type indicates the **maximum** dimensions data can have
+- `NumericData[...]` generic type indicates the **maximum** dimensions data can have
 - Data can have any subset of the specified dimensions (including being scalar)
 - All standard input formats are supported (scalar, array, Series, DataFrame, DataArray)
 
 Examples
 --------
-Type hint `Data[Time]` accepts:
+Type hint `NumericData[Time]` accepts:
     - Scalar: `0.5` (broadcast to all timesteps)
     - 1D array: `np.array([1, 2, 3])` (matched to time dimension)
     - pandas Series: with DatetimeIndex matching flow system
     - xarray DataArray: with 'time' dimension
 
-Type hint `Data[Time, Scenario]` accepts:
+Type hint `NumericData[Time, Scenario]` accepts:
     - Scalar: `100` (broadcast to all time and scenario combinations)
     - 1D array: matched to time OR scenario dimension
     - 2D array: matched to both dimensions
     - pandas DataFrame: columns as scenarios, index as time
     - xarray DataArray: with any subset of 'time', 'scenario' dimensions
 
-Type hint `Data[Period, Scenario]` (periodic data, no time):
+Type hint `NumericData[Period, Scenario]` (periodic data, no time):
     - Used for investment parameters that vary by planning period
     - Accepts scalars, arrays matching periods/scenarios, or DataArrays
 
@@ -36,7 +36,7 @@ Type hint `Scalar`:
     - Not converted to DataArray, stays as scalar
 """
 
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, Union
 
 import numpy as np
 import pandas as pd
@@ -63,15 +63,15 @@ class Scenario:
 
 
 class _NumericDataMeta(type):
-    """Metaclass for Data to enable subscript notation Data[Time, Scenario] for numeric data."""
+    """Metaclass for Data to enable subscript notation NumericData[Time, Scenario] for numeric data."""
 
     def __getitem__(cls, dimensions):
         """
         Create a type hint showing maximum dimensions for numeric data.
 
         The dimensions parameter can be:
-        - A single dimension: Data[Time]
-        - Multiple dimensions: Data[Time, Period, Scenario]
+        - A single dimension: NumericData[Time]
+        - Multiple dimensions: NumericData[Time, Period, Scenario]
 
         The type hint communicates that data can have **at most** these dimensions.
         Actual data can be:
@@ -86,8 +86,9 @@ class _NumericDataMeta(type):
         # of which dimensions are specified. The dimension parameters serve
         # as documentation rather than runtime validation.
 
-        # Return type that includes all possible numeric input formats
-        return int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+        # Return Union[] for better type checker compatibility (especially with | None)
+        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
+        return Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
 
 
 class _BoolDataMeta(type):
@@ -99,8 +100,24 @@ class _BoolDataMeta(type):
 
         Same semantics as numeric Data, but for boolean values.
         """
-        # Return type that includes all possible boolean input formats
-        return bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+        # Return Union[] for better type checker compatibility (especially with | None)
+        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
+        return Union[bool, np.bool_, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
+
+
+class _EffectDataMeta(type):
+    """Metaclass for EffectData to enable subscript notation EffectData[Time, Period, Scenario] for effect data."""
+
+    def __getitem__(cls, dimensions):
+        """
+        Create a type hint showing maximum dimensions for effect data.
+
+        Effect data is numeric data specifically for effects, with full dimensional support.
+        Same as NumericData but semantically distinct for effect-related parameters.
+        """
+        # Return Union[] for better type checker compatibility (especially with | None)
+        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
+        return Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
 
 
 class Data(metaclass=_NumericDataMeta):
@@ -222,7 +239,80 @@ class BoolData(metaclass=_BoolDataMeta):
         raise TypeError('BoolData is a type hint only and cannot be instantiated')
 
 
-# Public alias for Data (for clarity and symmetry with BoolData)
+class EffectData(metaclass=_EffectDataMeta):
+    """
+    Generic type for effect data that can have various dimensions.
+
+    EffectData is semantically identical to NumericData but specifically intended for
+    effect-related parameters. It supports the full dimensional space including Time,
+    Period, and Scenario dimensions, making it ideal for effect contributions, constraints,
+    and cross-effect relationships.
+
+    Use subscript notation to specify the maximum dimensions:
+    - `EffectData[Time]`: Time-varying effect data
+    - `EffectData[Period, Scenario]`: Periodic effect data
+    - `EffectData[Time, Period, Scenario]`: Full dimensional effect data
+
+    Semantics: "At Most" Dimensions
+    --------------------------------
+    When you see `EffectData[Time, Period, Scenario]`, it means the data can have:
+    - No dimensions (scalar): broadcast to all time, period, and scenario values
+    - Any subset: just time, just period, just scenario, time+period, etc.
+    - All dimensions: full 3D data
+
+    Accepted Input Formats (Numeric)
+    ---------------------------------
+    All dimension combinations accept these formats:
+    - Scalars: int, float (including numpy types)
+    - Arrays: numpy ndarray with numeric dtype (matched by length/shape to dimensions)
+    - pandas Series: matched by index to dimension coordinates
+    - pandas DataFrame: typically columns=scenarios/periods, index=time
+    - xarray DataArray: used directly with dimension validation
+
+    Typical Use Cases
+    -----------------
+    - Effect contributions varying by time, period, and scenario
+    - Per-hour constraints that tighten over planning periods
+    - Cross-effect pricing (e.g., escalating carbon prices)
+    - Multi-period optimization with temporal detail
+
+    Examples
+    --------
+    >>> # Scalar effect cost (broadcast to all dimensions)
+    >>> cost: EffectData[Time, Period, Scenario] = 10.5
+    >>>
+    >>> # Time-varying emissions
+    >>> emissions: EffectData[Time, Period, Scenario] = np.array([100, 120, 110])
+    >>>
+    >>> # Period-varying carbon price (escalating over years)
+    >>> carbon_price: EffectData[Period] = np.array([0.1, 0.2, 0.3])  # €/kg in 2020, 2025, 2030
+    >>>
+    >>> # Full 3D effect data
+    >>> import xarray as xr
+    >>> full_data: EffectData[Time, Period, Scenario] = xr.DataArray(
+    ...     data=np.random.rand(24, 3, 2),  # 24 hours × 3 periods × 2 scenarios
+    ...     dims=['time', 'period', 'scenario'],
+    ... )
+
+    Note
+    ----
+    EffectData is functionally identical to NumericData. The distinction is semantic:
+    use EffectData for effect-related parameters to make code intent clearer.
+
+    See Also
+    --------
+    NumericData : General numeric data with dimensions
+    BoolData : For boolean data with dimensions
+    TemporalEffectsUser : Effect type for temporal contributions (dict or single value)
+    PeriodicEffectsUser : Effect type for periodic contributions (dict or single value)
+    """
+
+    # This class is not meant to be instantiated, only used for type hints
+    def __init__(self):
+        raise TypeError('EffectData is a type hint only and cannot be instantiated')
+
+
+# Public alias for Data (for clarity and symmetry with BoolData and EffectData)
 NumericData = Data
 """Public type for numeric data with dimensions. Alias for the internal `Data` class."""
 
@@ -233,6 +323,7 @@ Scalar: TypeAlias = int | float | np.integer | np.floating
 __all__ = [
     'NumericData',  # Primary public type for numeric data
     'BoolData',  # Primary public type for boolean data
+    'EffectData',  # Primary public type for effect data (semantic variant of NumericData)
     'Data',  # Also exported (internal base class, can be used as shorthand)
     'Time',
     'Period',

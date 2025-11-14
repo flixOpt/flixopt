@@ -20,7 +20,7 @@ from . import io as fx_io
 from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
-from .types import Data, Period, Scenario, Time
+from .types import Data, EffectData, NumericData, Period, Scenario, Time
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,17 +53,27 @@ class Effect(Element):
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
         share_from_temporal: Temporal cross-effect contributions.
-            Maps temporal contributions from other effects to this effect
+            Maps temporal contributions from other effects to this effect.
+            Type: `TemporalEffectsUser` (single value or dict with dimensions [Time, Period, Scenario])
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
+            Type: `PeriodicEffectsUser` (single value or dict with dimensions [Period, Scenario])
         minimum_temporal: Minimum allowed total contribution across all timesteps.
+            Type: `NumericData[Period, Scenario]` (sum over time, can vary by period/scenario)
         maximum_temporal: Maximum allowed total contribution across all timesteps.
+            Type: `NumericData[Period, Scenario]` (sum over time, can vary by period/scenario)
         minimum_per_hour: Minimum allowed contribution per hour.
+            Type: `NumericData[Time, Period, Scenario]` (per-timestep constraint, can vary by period)
         maximum_per_hour: Maximum allowed contribution per hour.
+            Type: `NumericData[Time, Period, Scenario]` (per-timestep constraint, can vary by period)
         minimum_periodic: Minimum allowed total periodic contribution.
+            Type: `NumericData[Period, Scenario]` (periodic constraint)
         maximum_periodic: Maximum allowed total periodic contribution.
+            Type: `NumericData[Period, Scenario]` (periodic constraint)
         minimum_total: Minimum allowed total effect (temporal + periodic combined).
+            Type: `NumericData[Period, Scenario]` (total constraint per period)
         maximum_total: Maximum allowed total effect (temporal + periodic combined).
+            Type: `NumericData[Period, Scenario]` (total constraint per period)
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -173,14 +183,14 @@ class Effect(Element):
         is_objective: bool = False,
         share_from_temporal: TemporalEffectsUser | None = None,
         share_from_periodic: PeriodicEffectsUser | None = None,
-        minimum_temporal: PeriodicEffectsUser | None = None,
-        maximum_temporal: PeriodicEffectsUser | None = None,
-        minimum_periodic: PeriodicEffectsUser | None = None,
-        maximum_periodic: PeriodicEffectsUser | None = None,
-        minimum_per_hour: TemporalDataUser | None = None,
-        maximum_per_hour: TemporalDataUser | None = None,
-        minimum_total: Scalar | None = None,
-        maximum_total: Scalar | None = None,
+        minimum_temporal: NumericData[Period, Scenario] | None = None,
+        maximum_temporal: NumericData[Period, Scenario] | None = None,
+        minimum_periodic: NumericData[Period, Scenario] | None = None,
+        maximum_periodic: NumericData[Period, Scenario] | None = None,
+        minimum_per_hour: NumericData[Time, Period, Scenario] | None = None,
+        maximum_per_hour: NumericData[Time, Period, Scenario] | None = None,
+        minimum_total: NumericData[Period, Scenario] | None = None,
+        maximum_total: NumericData[Period, Scenario] | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -437,22 +447,64 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = Data[Time, Period, Scenario] | dict[str, Data[Time, Scenario]]  # User-specified Shares to Effects
+TemporalEffectsUser = NumericData[Time, Period, Scenario] | dict[str, NumericData[Time, Period, Scenario]]
 """
-This datatype is used to define a temporal share to an effect by a certain attribute.
+Temporal effects data: numeric values that can vary with time, periods, and scenarios.
 
 Can be:
-- A single value (scalar, array, Series, DataFrame, DataArray) with at most [Time, Scenario] dimensions
-- A dictionary mapping effect names to values with at most [Time, Scenario] dimensions
+- A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Time, Period, Scenario] dimensions
+  → Applied to the standard effect
+- A dictionary mapping effect names to numeric values with at most [Time, Period, Scenario] dimensions
+  → Applied to named effects (e.g., {'costs': 10, 'CO2': 0.5})
+
+Dimensions:
+- Time: Hourly/timestep variation (e.g., varying electricity prices)
+- Period: Multi-period planning horizon (e.g., costs in different years)
+- Scenario: Scenario-based variation (e.g., high/low price scenarios)
+
+Note: Data can have any subset of these dimensions - scalars, 1D, 2D, or 3D arrays.
+
+Examples:
+    >>> # Single value for standard effect (broadcast to all dimensions)
+    >>> effects_per_flow_hour = 10.5
+    >>>
+    >>> # Time-varying costs (same across periods and scenarios)
+    >>> effects_per_flow_hour = np.array([10, 12, 11, 10])
+    >>>
+    >>> # Multiple effects with different dimensions
+    >>> effects_per_flow_hour = {
+    ...     'costs': 10.5,  # Scalar
+    ...     'CO2': np.array([0.3, 0.4, 0.3]),  # Time-varying
+    ... }
 """
 
-PeriodicEffectsUser = Data[Period, Scenario] | dict[str, Data[Period, Scenario]]  # User-specified Shares to Effects
+PeriodicEffectsUser = NumericData[Period, Scenario] | dict[str, NumericData[Period, Scenario]]
 """
-This datatype is used to define a periodic share to an effect by a certain attribute.
+Periodic effects data: numeric values that can vary with planning periods and scenarios (no time dimension).
 
 Can be:
-- A single value (scalar, array, Series, DataFrame, DataArray) with at most [Period, Scenario] dimensions
-- A dictionary mapping effect names to values with at most [Period, Scenario] dimensions
+- A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Period, Scenario] dimensions
+  → Applied to the standard effect
+- A dictionary mapping effect names to numeric values with at most [Period, Scenario] dimensions
+  → Applied to named effects (e.g., {'costs': 1000, 'CO2': 50})
+
+Typical uses:
+- Investment costs (vary by period but not time)
+- Fixed operating costs (per period)
+- Retirement effects
+
+Examples:
+    >>> # Fixed cost for investment
+    >>> effects_of_investment = 1000
+    >>>
+    >>> # Period-varying costs (e.g., different years)
+    >>> effects_of_investment = np.array([1000, 1200, 1100])  # Years 2020, 2025, 2030
+    >>>
+    >>> # Multiple periodic effects
+    >>> effects_of_investment = {
+    ...     'costs': 1000,
+    ...     'CO2': 50,
+    ... }
 """
 
 TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
