@@ -734,9 +734,9 @@ class TransmissionModel(ComponentModel):
 
         super().__init__(model, element)
 
-    def _do_modeling(self):
-        """Initiates all FlowModels"""
-        super()._do_modeling()
+    def _create_constraints(self):
+        """Phase 2: Create constraints (FlowModels already created by parent)"""
+        super()._create_constraints()
 
         # first direction
         self.create_transmission_equation('dir1', self.element.in1, self.element.out1)
@@ -775,26 +775,12 @@ class LinearConverterModel(ComponentModel):
         self.piecewise_conversion: PiecewiseConversion | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self):
-        super()._do_modeling()
-        # conversion_factors:
-        if self.element.conversion_factors:
-            all_input_flows = set(self.element.inputs)
-            all_output_flows = set(self.element.outputs)
+    def _create_variables(self):
+        """Phase 1: Create variables (parent creates FlowModels)"""
+        super()._create_variables()
 
-            # für alle linearen Gleichungen:
-            for i, conv_factors in enumerate(self.element.conversion_factors):
-                used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: set[Flow] = all_input_flows & used_flows
-                used_outputs: set[Flow] = all_output_flows & used_flows
-
-                self.add_constraints(
-                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
-                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
-                    short_name=f'conversion_{i}',
-                )
-
-        else:
+        # Create PiecewiseModel if needed (after FlowModels are created)
+        if not self.element.conversion_factors:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
@@ -813,6 +799,27 @@ class LinearConverterModel(ComponentModel):
                 short_name='PiecewiseConversion',
             )
 
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # Create conversion factor constraints if specified
+        if self.element.conversion_factors:
+            all_input_flows = set(self.element.inputs)
+            all_output_flows = set(self.element.outputs)
+
+            # für alle linearen Gleichungen:
+            for i, conv_factors in enumerate(self.element.conversion_factors):
+                used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
+                used_inputs: set[Flow] = all_input_flows & used_flows
+                used_outputs: set[Flow] = all_output_flows & used_flows
+
+                self.add_constraints(
+                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
+                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
+                    short_name=f'conversion_{i}',
+                )
+
 
 class StorageModel(ComponentModel):
     """Submodel of Storage"""
@@ -822,8 +829,9 @@ class StorageModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables (parent creates FlowModels)"""
+        super()._create_variables()
 
         lb, ub = self._absolute_charge_state_bounds
         self.add_variables(
@@ -834,6 +842,22 @@ class StorageModel(ComponentModel):
         )
 
         self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+
+        # Create InvestmentModel for capacity if needed
+        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            self.add_submodels(
+                InvestmentModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=self.label_of_element,
+                    parameters=self.element.capacity_in_flow_hours,
+                ),
+                short_name='investment',
+            )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints (can now access flow.submodel.flow_rate)"""
+        super()._create_constraints()
 
         # netto_discharge:
         # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
@@ -859,17 +883,8 @@ class StorageModel(ComponentModel):
             short_name='charge_state',
         )
 
+        # Bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            self.add_submodels(
-                InvestmentModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=self.label_of_element,
-                    parameters=self.element.capacity_in_flow_hours,
-                ),
-                short_name='investment',
-            )
-
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.charge_state,
@@ -880,6 +895,7 @@ class StorageModel(ComponentModel):
         # Initial charge state
         self._initial_and_final_charge_state()
 
+        # Balanced sizes
         if self.element.balanced:
             self.add_constraints(
                 self.element.charging.submodel._investment.size * 1

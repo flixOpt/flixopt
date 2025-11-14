@@ -47,12 +47,10 @@ class InvestmentModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
-        super()._do_modeling()
-        self._create_variables_and_constraints()
-        self._add_effects()
+    def _create_variables(self):
+        """Phase 1: Create variables only"""
+        super()._create_variables()
 
-    def _create_variables_and_constraints(self):
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
             # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
@@ -72,6 +70,13 @@ class InvestmentModel(Submodel):
                 coords=self._model.get_coords(['period', 'scenario']),
                 short_name='invested',
             )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # Create bounding constraints if not mandatory
+        if not self.parameters.mandatory:
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
@@ -79,12 +84,16 @@ class InvestmentModel(Submodel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
+        # Create linked periods constraints
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
             self.add_constraints(
                 masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
                 short_name='linked_periods',
             )
+
+        # Add effects
+        self._add_effects()
 
     def _add_effects(self):
         """Add investment effects"""
@@ -173,14 +182,34 @@ class OnOffModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables only"""
+        super()._create_variables()
 
         if self.parameters.use_off:
-            off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
-            self.add_constraints(self.on + off == 1, short_name='complementary')
+            self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
 
-        # 3. Total duration tracking using existing pattern
+        # Switch tracking variables
+        if self.parameters.use_switch_on:
+            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
+            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
+
+            if self.parameters.switch_on_total_max is not None:
+                self.add_variables(
+                    lower=0,
+                    upper=self.parameters.switch_on_total_max,
+                    coords=self._model.get_coords(('period', 'scenario')),
+                    short_name='switch|count',
+                )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        if self.parameters.use_off:
+            self.add_constraints(self.on + self.off == 1, short_name='complementary')
+
+        # Total duration tracking
         ModelingPrimitives.expression_tracking_variable(
             self,
             tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
@@ -192,11 +221,8 @@ class OnOffModel(Submodel):
             coords=['period', 'scenario'],
         )
 
-        # 4. Switch tracking using existing pattern
+        # Switch tracking constraints
         if self.parameters.use_switch_on:
-            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
-
             BoundingPatterns.state_transition_bounds(
                 self,
                 state_variable=self.on,
@@ -208,15 +234,9 @@ class OnOffModel(Submodel):
             )
 
             if self.parameters.switch_on_total_max is not None:
-                count = self.add_variables(
-                    lower=0,
-                    upper=self.parameters.switch_on_total_max,
-                    coords=self._model.get_coords(('period', 'scenario')),
-                    short_name='switch|count',
-                )
-                self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
+                self.add_constraints(self.switch_on_nr == self.switch_on.sum('time'), short_name='switch|count')
 
-        # 5. Consecutive on duration using existing pattern
+        # Consecutive on duration tracking
         if self.parameters.use_consecutive_on_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
@@ -229,7 +249,7 @@ class OnOffModel(Submodel):
                 previous_duration=self._get_previous_on_duration(),
             )
 
-        # 6. Consecutive off duration using existing pattern
+        # Consecutive off duration tracking
         if self.parameters.use_consecutive_off_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
@@ -241,7 +261,6 @@ class OnOffModel(Submodel):
                 duration_dim='time',
                 previous_duration=self._get_previous_off_duration(),
             )
-            # TODO:
 
         self._add_effects()
 
@@ -337,8 +356,9 @@ class PieceModel(Submodel):
 
         super().__init__(model, label_of_element, label_of_model)
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables only"""
+        super()._create_variables()
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
@@ -358,6 +378,9 @@ class PieceModel(Submodel):
             coords=self._model.get_coords(dims=self.dims),
         )
 
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
@@ -393,13 +416,16 @@ class PiecewiseModel(Submodel):
         self.zero_point: linopy.Variable | None = None
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables and submodels"""
+        super()._create_variables()
+
         # Validate all piecewise variables have the same number of segments
         segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
         if not all(count == segment_counts[0] for count in segment_counts):
             raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
 
+        # Create PieceModel submodels (which creates their variables)
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
@@ -411,6 +437,20 @@ class PiecewiseModel(Submodel):
                 short_name=f'Piece_{i}',
             )
             self.pieces.append(new_piece)
+
+        # Create zero_point variable if needed
+        if self._zero_point is True:
+            self.zero_point = self.add_variables(
+                coords=self._model.get_coords(self.dims),
+                binary=True,
+                short_name='zero_point',
+            )
+        elif isinstance(self._zero_point, linopy.Variable):
+            self.zero_point = self._zero_point
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
 
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
@@ -430,15 +470,7 @@ class PiecewiseModel(Submodel):
 
             # a) eq: Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 1                Aufenthalt nur in Segmenten erlaubt
             # b) eq: -On(t) + Segment1.onSeg(t) + Segment2.onSeg(t) + ... = 0       zusätzlich kann alles auch Null sein
-            if isinstance(self._zero_point, linopy.Variable):
-                self.zero_point = self._zero_point
-                rhs = self.zero_point
-            elif self._zero_point is True:
-                self.zero_point = self.add_variables(
-                    coords=self._model.get_coords(self.dims),
-                    binary=True,
-                    short_name='zero_point',
-                )
+            if isinstance(self._zero_point, linopy.Variable) or self._zero_point is True:
                 rhs = self.zero_point
             else:
                 rhs = 1
@@ -476,7 +508,10 @@ class PiecewiseEffectsModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _create_variables(self):
+        """Phase 1: Create variables and submodels"""
+        super()._create_variables()
+
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
@@ -502,7 +537,11 @@ class PiecewiseEffectsModel(Submodel):
             short_name='PiecewiseEffects',
         )
 
-        # Shares
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # Add shares to effects
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
@@ -542,8 +581,10 @@ class ShareAllocationModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables"""
+        super()._create_variables()
+
         self.total = self.add_variables(
             lower=self._total_min,
             upper=self._total_max,
@@ -551,8 +592,6 @@ class ShareAllocationModel(Submodel):
             name=self.label_full,
             short_name='total',
         )
-        # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
@@ -562,6 +601,14 @@ class ShareAllocationModel(Submodel):
                 short_name='per_timestep',
             )
 
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # eq: sum = sum(share_i) # skalar
+        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
+
+        if 'time' in self._dims:
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
             # Add it to the total

@@ -393,7 +393,10 @@ class EffectModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _create_variables(self):
+        """Phase 1: Create variables and submodels"""
+        super()._create_variables()
+
         self.total: linopy.Variable | None = None
         self.periodic: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
@@ -427,6 +430,10 @@ class EffectModel(ElementModel):
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
 
         self.add_constraints(
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
@@ -672,17 +679,28 @@ class EffectCollectionModel(Submodel):
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression, dims=())
 
-    def _do_modeling(self):
-        super()._do_modeling()
+    def _create_variables(self):
+        """Phase 1: Create variables and submodels"""
+        super()._create_variables()
+
+        # Create EffectModel for each effect
         for effect in self.effects.values():
             effect.create_model(self._model)
+
+        # Create penalty allocation model
         self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
 
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # Add cross-effect shares
         self._add_share_between_effects()
 
+        # Set objective
         self._model.add_objective(
             (self.effects.objective_effect.submodel.total * self._model.weights).sum() + self.penalty.total.sum()
         )
