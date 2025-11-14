@@ -393,9 +393,9 @@ class EffectModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         self.total: linopy.Variable | None = None
         self.periodic: ShareAllocationModel = self.add_submodels(
@@ -430,14 +430,6 @@ class EffectModel(ElementModel):
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create constraints for share allocation submodels
-        self.periodic._create_constraints()
-        self.temporal._create_constraints()
 
         self.add_constraints(
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
@@ -683,9 +675,9 @@ class EffectCollectionModel(Submodel):
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression, dims=())
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         # Create EffectModel for each effect
         for effect in self.effects.values():
@@ -696,15 +688,6 @@ class EffectCollectionModel(Submodel):
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create constraints for all effect submodels and penalty
-        for effect in self.effects.values():
-            effect.submodel._create_constraints()
-        self.penalty._create_constraints()
 
         # Add cross-effect shares
         self._add_share_between_effects()

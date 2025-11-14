@@ -47,10 +47,11 @@ class InvestmentModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables only"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
+        # Create variables
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
             # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
@@ -71,11 +72,7 @@ class InvestmentModel(Submodel):
                 short_name='invested',
             )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create bounding constraints if not mandatory
+        # Create constraints
         if not self.parameters.mandatory:
             BoundingPatterns.bounds_with_state(
                 self,
@@ -84,7 +81,6 @@ class InvestmentModel(Submodel):
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
-        # Create linked periods constraints
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
             self.add_constraints(
@@ -139,8 +135,6 @@ class InvestmentModel(Submodel):
                 ),
                 short_name='segments',
             )
-            # Create constraints for piecewise effects model
-            self.piecewise_effects._create_constraints()
 
     @property
     def size(self) -> linopy.Variable:
@@ -184,10 +178,11 @@ class OnOffModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element, label_of_model=label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables only"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
+        # Create variables
         if self.parameters.use_off:
             self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
 
@@ -242,10 +237,7 @@ class OnOffModel(Submodel):
                 previous_duration=self._get_previous_off_duration(),
             )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
+        # Create constraints
         if self.parameters.use_off:
             self.add_constraints(self.on + self.off == 1, short_name='complementary')
 
@@ -358,9 +350,11 @@ class PieceModel(Submodel):
 
         super().__init__(model, label_of_element, label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables only"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
+
+        # Create variables
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
@@ -380,9 +374,7 @@ class PieceModel(Submodel):
             coords=self._model.get_coords(dims=self.dims),
         )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
+        # Create constraints
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
@@ -418,16 +410,16 @@ class PiecewiseModel(Submodel):
         self.zero_point: linopy.Variable | None = None
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         # Validate all piecewise variables have the same number of segments
         segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
         if not all(count == segment_counts[0] for count in segment_counts):
             raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
 
-        # Create PieceModel submodels (which creates their variables)
+        # Create PieceModel submodels (which creates their variables and constraints)
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
@@ -450,14 +442,7 @@ class PiecewiseModel(Submodel):
         elif isinstance(self._zero_point, linopy.Variable):
             self.zero_point = self._zero_point
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create constraints for all piece submodels
-        for piece in self.pieces:
-            piece._create_constraints()
-
+        # Create constraints
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add_constraints(
@@ -514,10 +499,11 @@ class PiecewiseEffectsModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
+        # Create variables
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
@@ -531,6 +517,7 @@ class PiecewiseEffectsModel(Submodel):
             },
         }
 
+        # Create piecewise model (which creates its variables and constraints)
         self.piecewise_model = self.add_submodels(
             PiecewiseModel(
                 model=self._model,
@@ -542,13 +529,6 @@ class PiecewiseEffectsModel(Submodel):
             ),
             short_name='PiecewiseEffects',
         )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create constraints for piecewise model
-        self.piecewise_model._create_constraints()
 
         # Add shares to effects
         self._model.effects.add_share_to_effects(
@@ -590,10 +570,11 @@ class ShareAllocationModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _create_variables(self):
-        """Phase 1: Create variables"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
+        # Create variables
         self.total = self.add_variables(
             lower=self._total_min,
             upper=self._total_max,
@@ -610,10 +591,7 @@ class ShareAllocationModel(Submodel):
                 short_name='per_timestep',
             )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
+        # Create constraints
         # eq: sum = sum(share_i) # skalar
         self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 

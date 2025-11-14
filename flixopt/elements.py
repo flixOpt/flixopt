@@ -553,9 +553,9 @@ class FlowModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         # Main flow rate variable
         self.add_variables(
@@ -565,7 +565,7 @@ class FlowModel(ElementModel):
             short_name='flow_rate',
         )
 
-        # Create investment and/or on_off submodels (creates their variables)
+        # Create investment and/or on_off submodels (creates their variables and constraints)
         if self.with_investment:
             self._create_investment_model()
         if self.with_on_off:
@@ -594,16 +594,6 @@ class FlowModel(ElementModel):
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create constraints for nested submodels
-        if self.with_investment:
-            self._investment._create_constraints()
-        if self.with_on_off:
-            self.on_off._create_constraints()
 
         # Create flow rate bounding constraints
         self._constraint_flow_rate()
@@ -811,9 +801,9 @@ class BusModel(ElementModel):
         self.excess_output: linopy.Variable | None = None
         super().__init__(model, element)
 
-    def _create_variables(self):
-        """Phase 1: Create variables"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         # Create excess variables if needed
         if self.element.with_excess:
@@ -821,10 +811,6 @@ class BusModel(ElementModel):
             self.excess_output = self.add_variables(
                 lower=0, coords=self._model.get_coords(), short_name='excess_output'
             )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints (can now access flow.submodel.flow_rate)"""
-        super()._create_constraints()
 
         # Register flow variables and create balance constraint
         for flow in self.element.inputs + self.element.outputs:
@@ -864,9 +850,9 @@ class ComponentModel(ElementModel):
         self.on_off: OnOffModel | None = None
         super().__init__(model, element)
 
-    def _create_variables(self):
-        """Phase 1: Create variables and submodels"""
-        super()._create_variables()
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
 
         all_flows = self.element.inputs + self.element.outputs
 
@@ -881,7 +867,7 @@ class ComponentModel(ElementModel):
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
 
-        # Create FlowModels (which creates their variables)
+        # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
@@ -900,16 +886,6 @@ class ComponentModel(ElementModel):
                 ),
                 short_name='on_off',
             )
-
-    def _create_constraints(self):
-        """Phase 2: Create constraints (can now access flow.submodel.on_off.on)"""
-        super()._create_constraints()
-
-        all_flows = self.element.inputs + self.element.outputs
-
-        # Create constraints for all flow submodels
-        for flow in all_flows:
-            flow.submodel._create_constraints()
 
         # Link component on to flow on states
         if self.element.on_off_parameters:

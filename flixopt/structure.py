@@ -100,19 +100,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
 
     def do_modeling(self):
-        # Phase 1: Create all models and their variables
+        # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
             component.create_model(self)
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
-
-        # Phase 2: Create all constraints (all variables exist now)
-        self.effects._create_constraints()
-        for component in self.flow_system.components.values():
-            component.submodel._create_constraints()
-        for bus in self.flow_system.buses.values():
-            bus.submodel._create_constraints()
 
         # Add scenario equality constraints after all elements are modeled
         self._add_scenario_equality_constraints()
@@ -1361,7 +1354,7 @@ class Submodel(SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
 
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
-        self._create_variables()  # Phase 1: Create variables only
+        self._do_modeling()
 
     def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
         """Create and register a variable in one step"""
@@ -1511,33 +1504,12 @@ class Submodel(SubmodelsMixin):
     def hours_per_step(self):
         return self._model.hours_per_step
 
-    def _create_variables(self):
-        """
-        Phase 1: Create variables only.
-
-        Override in subclasses to create variables and submodels.
-        Do NOT create constraints here - use _create_constraints() for that.
-        """
-        pass
-
-    def _create_constraints(self):
-        """
-        Phase 2: Create constraints.
-
-        Override in subclasses to create constraints.
-        At this point, ALL models and their variables exist, so you can safely
-        reference variables from child models, sibling models, etc.
-        """
-        pass
-
     def _do_modeling(self):
         """
-        DEPRECATED: Use _create_variables() and _create_constraints() instead.
+        Override in subclasses to create variables, constraints, and submodels.
 
-        This method is kept for backward compatibility but will be removed in a future version.
-        If you override this in a subclass, split your logic:
-        - Variable creation → _create_variables()
-        - Constraint creation → _create_constraints()
+        This method is called during __init__. Create all nested submodels first
+        (so their variables exist), then create constraints that reference those variables.
         """
         pass
 
