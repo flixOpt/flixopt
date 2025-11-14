@@ -435,6 +435,10 @@ class EffectModel(ElementModel):
         """Phase 2: Create constraints"""
         super()._create_constraints()
 
+        # Create constraints for share allocation submodels
+        self.periodic._create_constraints()
+        self.temporal._create_constraints()
+
         self.add_constraints(
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
         )
@@ -696,6 +700,11 @@ class EffectCollectionModel(Submodel):
     def _create_constraints(self):
         """Phase 2: Create constraints"""
         super()._create_constraints()
+
+        # Create constraints for all effect submodels and penalty
+        for effect in self.effects.values():
+            effect.submodel._create_constraints()
+        self.penalty._create_constraints()
 
         # Add cross-effect shares
         self._add_share_between_effects()

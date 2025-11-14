@@ -139,6 +139,8 @@ class InvestmentModel(Submodel):
                 ),
                 short_name='segments',
             )
+            # Create constraints for piecewise effects model
+            self.piecewise_effects._create_constraints()
 
     @property
     def size(self) -> linopy.Variable:
@@ -452,6 +454,10 @@ class PiecewiseModel(Submodel):
         """Phase 2: Create constraints"""
         super()._create_constraints()
 
+        # Create constraints for all piece submodels
+        for piece in self.pieces:
+            piece._create_constraints()
+
         for var_name in self._piecewise_variables:
             variable = self._model.variables[var_name]
             self.add_constraints(
@@ -540,6 +546,9 @@ class PiecewiseEffectsModel(Submodel):
     def _create_constraints(self):
         """Phase 2: Create constraints"""
         super()._create_constraints()
+
+        # Create constraints for piecewise model
+        self.piecewise_model._create_constraints()
 
         # Add shares to effects
         self._model.effects.add_share_to_effects(

@@ -901,6 +901,10 @@ class ComponentModel(ElementModel):
 
         all_flows = self.element.inputs + self.element.outputs
 
+        # Create constraints for all flow submodels
+        for flow in all_flows:
+            flow.submodel._create_constraints()
+
         # Link component on to flow on states
         if self.element.on_off_parameters:
             on = self['on']
