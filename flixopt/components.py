@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .flow_system import FlowSystem
+    from .types import Data, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -169,7 +170,7 @@ class LinearConverter(Component):
         inputs: list[Flow],
         outputs: list[Flow],
         on_off_parameters: OnOffParameters | None = None,
-        conversion_factors: list[dict[str, TemporalDataUser]] | None = None,
+        conversion_factors: list[dict[str, Data[Time, Scenario]]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
@@ -386,17 +387,17 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: PeriodicDataUser | InvestParameters,
-        relative_minimum_charge_state: TemporalDataUser = 0,
-        relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
-        minimal_final_charge_state: PeriodicDataUser | None = None,
-        maximal_final_charge_state: PeriodicDataUser | None = None,
-        relative_minimum_final_charge_state: PeriodicDataUser | None = None,
-        relative_maximum_final_charge_state: PeriodicDataUser | None = None,
-        eta_charge: TemporalDataUser = 1,
-        eta_discharge: TemporalDataUser = 1,
-        relative_loss_per_hour: TemporalDataUser = 0,
+        capacity_in_flow_hours: Data[Period, Scenario] | InvestParameters,
+        relative_minimum_charge_state: Data[Time, Scenario] = 0,
+        relative_maximum_charge_state: Data[Time, Scenario] = 1,
+        initial_charge_state: Data[Period, Scenario] | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: Data[Period, Scenario] | None = None,
+        maximal_final_charge_state: Data[Period, Scenario] | None = None,
+        relative_minimum_final_charge_state: Data[Period, Scenario] | None = None,
+        relative_maximum_final_charge_state: Data[Period, Scenario] | None = None,
+        eta_charge: Data[Time, Scenario] = 1,
+        eta_discharge: Data[Time, Scenario] = 1,
+        relative_loss_per_hour: Data[Time, Scenario] = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -663,8 +664,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Flow | None = None,
         out2: Flow | None = None,
-        relative_losses: TemporalDataUser | None = None,
-        absolute_losses: TemporalDataUser | None = None,
+        relative_losses: Data[Time, Scenario] | None = None,
+        absolute_losses: Data[Time, Scenario] | None = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,

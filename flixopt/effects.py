@@ -20,6 +20,7 @@ from . import io as fx_io
 from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
+from .types import Data, Period, Scenario, Time
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -436,11 +437,23 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
-""" This datatype is used to define a temporal share to an effect by a certain attribute. """
+TemporalEffectsUser = Data[Time, Scenario] | dict[str, Data[Time, Scenario]]  # User-specified Shares to Effects
+"""
+This datatype is used to define a temporal share to an effect by a certain attribute.
 
-PeriodicEffectsUser = PeriodicDataUser | dict[str, PeriodicDataUser]  # User-specified Shares to Effects
-""" This datatype is used to define a scalar share to an effect by a certain attribute. """
+Can be:
+- A single value (scalar, array, Series, DataFrame, DataArray) with at most [Time, Scenario] dimensions
+- A dictionary mapping effect names to values with at most [Time, Scenario] dimensions
+"""
+
+PeriodicEffectsUser = Data[Period, Scenario] | dict[str, Data[Period, Scenario]]  # User-specified Shares to Effects
+"""
+This datatype is used to define a periodic share to an effect by a certain attribute.
+
+Can be:
+- A single value (scalar, array, Series, DataFrame, DataArray) with at most [Period, Scenario] dimensions
+- A dictionary mapping effect names to values with at most [Period, Scenario] dimensions
+"""
 
 TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
 """ This datatype is used internally to handle temporal shares to an effect. """

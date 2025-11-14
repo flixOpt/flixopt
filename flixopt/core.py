@@ -12,13 +12,22 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from flixopt.types import Data, Period, Scalar, Scenario, Time
+
 logger = logging.getLogger('flixopt')
 
-Scalar = int | float
+# Legacy type aliases (kept for backward compatibility)
+# These are being replaced by dimension-aware Data[...] types
+Scalar = Scalar
 """A single number, either integer or float."""
 
-PeriodicDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
-"""User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
+PeriodicDataUser = Data[Period, Scenario]
+"""
+User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension.
+
+.. deprecated::
+    Use dimension-aware types instead: `Data[Period, Scenario]` or `Data[Scenario]`
+"""
 
 PeriodicData = xr.DataArray
 """Internally used datatypes for periodic data."""
@@ -153,7 +162,12 @@ class TimeSeriesData(xr.DataArray):
 TemporalDataUser = (
     int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray | TimeSeriesData
 )
-"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
+"""
+User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension.
+
+.. deprecated::
+    Use dimension-aware types instead: `Data[Time]`, `Data[Time, Scenario]`, or `Data[Time, Period, Scenario]`
+"""
 
 TemporalData = xr.DataArray | TimeSeriesData
 """Internally used datatypes for temporal data (data with a time dimension)."""

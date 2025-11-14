@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
+    from .types import Data, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -420,9 +421,9 @@ class Flow(Element):
         label: str,
         bus: str,
         size: Scalar | InvestParameters = None,
-        fixed_relative_profile: TemporalDataUser | None = None,
-        relative_minimum: TemporalDataUser = 0,
-        relative_maximum: TemporalDataUser = 1,
+        fixed_relative_profile: Data[Time, Scenario] | None = None,
+        relative_minimum: Data[Time, Scenario] = 0,
+        relative_maximum: Data[Time, Scenario] = 1,
         effects_per_flow_hour: TemporalEffectsUser | None = None,
         on_off_parameters: OnOffParameters | None = None,
         flow_hours_total_max: Scalar | None = None,
