@@ -9,7 +9,7 @@ hide:
 
 <h1>flixOpt</h1>
 
-<p class="tagline">Energy and Material Flow Optimization Framework</p>
+<p class="tagline">Progressive Flow System Optimization</p>
 
 <p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
