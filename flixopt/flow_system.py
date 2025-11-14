@@ -604,7 +604,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self._connect_network()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
-            element.transform_data(self)
+            element.transform_data()
         self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
@@ -644,6 +644,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
+        # Validate cross-element references before creating model
+        self._validate_system_integrity()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
@@ -777,13 +779,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
+    def _validate_system_integrity(self) -> None:
+        """
+        Validate cross-element references to ensure system consistency.
+
+        This performs system-level validation that requires knowledge of multiple elements:
+        - Validates that all Flow.bus references point to existing buses
+        - Can be extended for other cross-element validations
+
+        Should be called after connect_and_transform and before create_model.
+
+        Raises:
+            ValueError: If any cross-element reference is invalid
+        """
+        # Validate bus references in flows
+        for flow in self.flows.values():
+            if flow.bus not in self.buses:
+                available_buses = list(self.buses.keys())
+                raise ValueError(
+                    f'Flow "{flow.label_full}" references bus "{flow.bus}" which does not exist in FlowSystem. '
+                    f'Available buses: {available_buses}. '
+                    f'Did you forget to add the bus using flow_system.add_elements(Bus("{flow.bus}"))?'
+                )
+
     def _add_effects(self, *args: Effect) -> None:
+        for effect in args:
+            effect._set_flow_system(self)  # Link element to FlowSystem
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
             logger.info(f'Registered new Component: {new_component.label_full}')
             self._check_if_element_is_unique(new_component)  # check if already exists:
+            new_component._set_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
             self._flows_cache = None  # Invalidate flows cache
 
@@ -791,6 +819,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         for new_bus in list(buses):
             logger.info(f'Registered new Bus: {new_bus.label_full}')
             self._check_if_element_is_unique(new_bus)  # check if already exists:
+            new_bus._set_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
             self._flows_cache = None  # Invalidate flows cache
 

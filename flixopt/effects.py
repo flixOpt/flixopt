@@ -340,43 +340,47 @@ class Effect(Element):
         )
         self.maximum_per_hour = value
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.minimum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.minimum_per_hour = self.flow_system.fit_to_model_coords(
+            f'{prefix}|minimum_per_hour', self.minimum_per_hour
+        )
 
-        self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
+        self.maximum_per_hour = self.flow_system.fit_to_model_coords(
+            f'{prefix}|maximum_per_hour', self.maximum_per_hour
+        )
 
-        self.share_from_temporal = flow_system.fit_effects_to_model_coords(
+        self.share_from_temporal = self.flow_system.fit_effects_to_model_coords(
             label_prefix=None,
             effect_values=self.share_from_temporal,
             label_suffix=f'(temporal)->{prefix}(temporal)',
             dims=['time', 'period', 'scenario'],
         )
-        self.share_from_periodic = flow_system.fit_effects_to_model_coords(
+        self.share_from_periodic = self.flow_system.fit_effects_to_model_coords(
             label_prefix=None,
             effect_values=self.share_from_periodic,
             label_suffix=f'(periodic)->{prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
-        self.minimum_temporal = flow_system.fit_to_model_coords(
+        self.minimum_temporal = self.flow_system.fit_to_model_coords(
             f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
-        self.maximum_temporal = flow_system.fit_to_model_coords(
+        self.maximum_temporal = self.flow_system.fit_to_model_coords(
             f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
-        self.minimum_periodic = flow_system.fit_to_model_coords(
+        self.minimum_periodic = self.flow_system.fit_to_model_coords(
             f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
-        self.maximum_periodic = flow_system.fit_to_model_coords(
+        self.maximum_periodic = self.flow_system.fit_to_model_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total = flow_system.fit_to_model_coords(
+        self.minimum_total = self.flow_system.fit_to_model_coords(
             f'{prefix}|minimum_total',
             self.minimum_total,
             dims=['period', 'scenario'],
         )
-        self.maximum_total = flow_system.fit_to_model_coords(
+        self.maximum_total = self.flow_system.fit_to_model_coords(
             f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
 
