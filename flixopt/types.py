@@ -100,9 +100,8 @@ class _BoolDataMeta(type):
 
         Same semantics as NumericData, but for boolean values.
         """
-        # Return Union[] for better type checker compatibility (especially with | None)
-        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
-        return Union[bool, np.bool_, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
+        # Return using | operator for better IDE compatibility
+        return bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 
 
 class _EffectDataMeta(type):
@@ -114,10 +113,9 @@ class _EffectDataMeta(type):
 
         Effect data is a dict with string keys mapping to numeric values
         """
-        # Return Union[] for better type checker compatibility (especially with | None)
-        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
+        # Return using | operator for better IDE compatibility
         # EffectData = dict[str, NumericData]
-        return dict[str, Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]]  # noqa: UP007
+        return dict[str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray]
 
 
 class NumericData(metaclass=_NumericDataMeta):
