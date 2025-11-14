@@ -565,23 +565,6 @@ class FlowModel(ElementModel):
             short_name='flow_rate',
         )
 
-        # Create investment and/or on_off submodels (creates their variables and constraints)
-        if self.with_investment:
-            self._create_investment_model()
-        if self.with_on_off:
-            on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
-            self.add_submodels(
-                OnOffModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    parameters=self.element.on_off_parameters,
-                    on_variable=on,
-                    previous_states=self.previous_states,
-                    label_of_model=self.label_of_element,
-                ),
-                short_name='on_off',
-            )
-
         # Total flow hours tracking (creates variable + constraint)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
@@ -594,9 +577,6 @@ class FlowModel(ElementModel):
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
-
-        # Create flow rate bounding constraints
-        self._constraint_flow_rate()
 
         # Load factor constraints
         self._create_bounds_for_load_factor()
@@ -637,6 +617,7 @@ class FlowModel(ElementModel):
 
         elif self.with_on_off and not self.with_investment:
             # OnOff, but no Investment
+            self._create_on_off_model()
             bounds = self.relative_flow_rate_bounds
             BoundingPatterns.bounds_with_state(
                 self,
@@ -647,6 +628,7 @@ class FlowModel(ElementModel):
 
         elif self.with_investment and not self.with_on_off:
             # Investment, but no OnOff
+            self._create_investment_model()
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.flow_rate,
@@ -656,6 +638,9 @@ class FlowModel(ElementModel):
 
         elif self.with_investment and self.with_on_off:
             # Investment and OnOff
+            self._create_investment_model()
+            self._create_on_off_model()
+
             BoundingPatterns.scaled_bounds_with_state(
                 model=self,
                 variable=self.flow_rate,
@@ -804,18 +789,9 @@ class BusModel(ElementModel):
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
-
-        # Create excess variables if needed
-        if self.element.with_excess:
-            self.excess_input = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_input')
-            self.excess_output = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='excess_output'
-            )
-
-        # Register flow variables and create balance constraint
+        # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
-
         inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs])
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
@@ -823,6 +799,13 @@ class BusModel(ElementModel):
         # Add excess to balance and penalty if needed
         if self.element.with_excess:
             excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
+
+            self.excess_input = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_input')
+
+            self.excess_output = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='excess_output'
+            )
+
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
             self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_input * excess_penalty).sum())
@@ -874,6 +857,15 @@ class ComponentModel(ElementModel):
         # Create component on variable and OnOffModel if needed
         if self.element.on_off_parameters:
             on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
+            if len(all_flows) == 1:
+                self.add_constraints(on == all_flows[0].submodel.on_off.on, short_name='on')
+            else:
+                flow_ons = [flow.submodel.on_off.on for flow in all_flows]
+                # TODO: Is the EPSILON even necessary?
+                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
+                self.add_constraints(
+                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
+                )
 
             self.on_off = self.add_submodels(
                 OnOffModel(
@@ -887,20 +879,6 @@ class ComponentModel(ElementModel):
                 short_name='on_off',
             )
 
-        # Link component on to flow on states
-        if self.element.on_off_parameters:
-            on = self['on']
-            if len(all_flows) == 1:
-                self.add_constraints(on == all_flows[0].submodel.on_off.on, short_name='on')
-            else:
-                flow_ons = [flow.submodel.on_off.on for flow in all_flows]
-                # TODO: Is the EPSILON even necessary?
-                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
-                self.add_constraints(
-                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
-                )
-
-        # Prevent simultaneous flows
         if self.element.prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
             ModelingPrimitives.mutual_exclusivity_constraint(
