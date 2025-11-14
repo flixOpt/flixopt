@@ -86,9 +86,8 @@ class _NumericDataMeta(type):
         # of which dimensions are specified. The dimension parameters serve
         # as documentation rather than runtime validation.
 
-        # Return Union[] for better type checker compatibility (especially with | None)
-        # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
-        return Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
+        # Return using | operator for better IDE compatibility
+        return int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 
 
 class _BoolDataMeta(type):
@@ -328,7 +327,7 @@ Scalar: TypeAlias = int | float | np.integer | np.floating
 __all__ = [
     'NumericData',  # Primary public type for numeric data
     'BoolData',  # Primary public type for boolean data
-    'EffectData',  # Primary public type for effect data (semantic variant of NumericData)
+    'EffectData',  # Primary public type for effect data
     'Time',
     'Period',
     'Scenario',
