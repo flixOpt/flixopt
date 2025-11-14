@@ -621,17 +621,29 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
             self._connected_and_transformed = False
+
         for new_element in list(elements):
+            # Validate element type first
+            if not isinstance(new_element, (Component, Effect, Bus)):
+                raise TypeError(
+                    f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
+                )
+
+            # Common validations for all element types (before any state changes)
+            self._check_if_element_already_assigned(new_element)
+            self._check_if_element_is_unique(new_element)
+
+            # Dispatch to type-specific handlers
             if isinstance(new_element, Component):
                 self._add_components(new_element)
             elif isinstance(new_element, Effect):
                 self._add_effects(new_element)
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
-            else:
-                raise TypeError(
-                    f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
-                )
+
+            # Log registration
+            element_type = type(new_element).__name__
+            logger.info(f'Registered new {element_type}: {new_element.label_full}')
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
@@ -779,6 +791,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
+    def _check_if_element_already_assigned(self, element: Element) -> None:
+        """
+        Check if element already belongs to another FlowSystem.
+
+        Args:
+            element: Element to check
+
+        Raises:
+            ValueError: If element is already assigned to a different FlowSystem
+        """
+        if element._flow_system is not None and element._flow_system is not self:
+            raise ValueError(
+                f'Element "{element.label_full}" is already assigned to another FlowSystem. '
+                f'Each element can only belong to one FlowSystem at a time. '
+                f'To use this element in multiple systems, create a copy: '
+                f'flow_system.add_elements(element.copy())'
+            )
+
     def _validate_system_integrity(self) -> None:
         """
         Validate cross-element references to ensure system consistency.
@@ -809,16 +839,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            logger.info(f'Registered new Component: {new_component.label_full}')
-            self._check_if_element_is_unique(new_component)  # check if already exists:
             new_component._set_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
             self._flows_cache = None  # Invalidate flows cache
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            logger.info(f'Registered new Bus: {new_bus.label_full}')
-            self._check_if_element_is_unique(new_bus)  # check if already exists:
             new_bus._set_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
             self._flows_cache = None  # Invalidate flows cache
