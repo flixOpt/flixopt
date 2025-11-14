@@ -204,14 +204,7 @@ class OnOffModel(Submodel):
                     short_name='switch|count',
                 )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        if self.parameters.use_off:
-            self.add_constraints(self.on + self.off == 1, short_name='complementary')
-
-        # Total duration tracking
+        # Total duration tracking (creates variable + constraint)
         ModelingPrimitives.expression_tracking_variable(
             self,
             tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
@@ -222,6 +215,39 @@ class OnOffModel(Submodel):
             short_name='on_hours_total',
             coords=['period', 'scenario'],
         )
+
+        # Consecutive on duration tracking (creates variable + constraints)
+        if self.parameters.use_consecutive_on_hours:
+            ModelingPrimitives.consecutive_duration_tracking(
+                self,
+                state_variable=self.on,
+                short_name='consecutive_on_hours',
+                minimum_duration=self.parameters.consecutive_on_hours_min,
+                maximum_duration=self.parameters.consecutive_on_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
+                previous_duration=self._get_previous_on_duration(),
+            )
+
+        # Consecutive off duration tracking (creates variable + constraints)
+        if self.parameters.use_consecutive_off_hours:
+            ModelingPrimitives.consecutive_duration_tracking(
+                self,
+                state_variable=self.off,
+                short_name='consecutive_off_hours',
+                minimum_duration=self.parameters.consecutive_off_hours_min,
+                maximum_duration=self.parameters.consecutive_off_hours_max,
+                duration_per_step=self.hours_per_step,
+                duration_dim='time',
+                previous_duration=self._get_previous_off_duration(),
+            )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        if self.parameters.use_off:
+            self.add_constraints(self.on + self.off == 1, short_name='complementary')
 
         # Switch tracking constraints
         if self.parameters.use_switch_on:
@@ -237,32 +263,6 @@ class OnOffModel(Submodel):
 
             if self.parameters.switch_on_total_max is not None:
                 self.add_constraints(self.switch_on_nr == self.switch_on.sum('time'), short_name='switch|count')
-
-        # Consecutive on duration tracking
-        if self.parameters.use_consecutive_on_hours:
-            ModelingPrimitives.consecutive_duration_tracking(
-                self,
-                state_variable=self.on,
-                short_name='consecutive_on_hours',
-                minimum_duration=self.parameters.consecutive_on_hours_min,
-                maximum_duration=self.parameters.consecutive_on_hours_max,
-                duration_per_step=self.hours_per_step,
-                duration_dim='time',
-                previous_duration=self._get_previous_on_duration(),
-            )
-
-        # Consecutive off duration tracking
-        if self.parameters.use_consecutive_off_hours:
-            ModelingPrimitives.consecutive_duration_tracking(
-                self,
-                state_variable=self.off,
-                short_name='consecutive_off_hours',
-                minimum_duration=self.parameters.consecutive_off_hours_min,
-                maximum_duration=self.parameters.consecutive_off_hours_max,
-                duration_per_step=self.hours_per_step,
-                duration_dim='time',
-                previous_duration=self._get_previous_off_duration(),
-            )
 
         self._add_effects()
 

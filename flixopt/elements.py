@@ -582,14 +582,7 @@ class FlowModel(ElementModel):
                 short_name='on_off',
             )
 
-    def _create_constraints(self):
-        """Phase 2: Create constraints"""
-        super()._create_constraints()
-
-        # Create flow rate bounding constraints
-        self._constraint_flow_rate()
-
-        # Total flow hours tracking
+        # Total flow hours tracking (creates variable + constraint)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
@@ -601,6 +594,19 @@ class FlowModel(ElementModel):
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
+
+    def _create_constraints(self):
+        """Phase 2: Create constraints"""
+        super()._create_constraints()
+
+        # Create constraints for nested submodels
+        if self.with_investment:
+            self._investment._create_constraints()
+        if self.with_on_off:
+            self.on_off._create_constraints()
+
+        # Create flow rate bounding constraints
+        self._constraint_flow_rate()
 
         # Load factor constraints
         self._create_bounds_for_load_factor()
