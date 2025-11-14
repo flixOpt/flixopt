@@ -1,5 +1,5 @@
 {
-  "title": "flixOpt: Vector-based Energy and Material Flow Optimization Framework",
+  "title": "FlixOpt: Progressive Flow System Optimization",
   "description": "FlixOpt is a comprehensive framework for modeling and optimizing energy and material flow systems in Python. It enables optimization of diverse applications including district heating networks, industrial production lines, renewable energy portfolios, and supply chain logistics. Built on modern scientific Python stack (linopy and xarray), it provides a progressive enhancement approach allowing users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints. The framework simplifies the creation of global constraints and switching objectives through its 'effect' concept. The framework is designed for researchers and engineers in energy systems, industrial process optimization, and operations research.",
   "version": "{{VERSION}}",
   "license": "MIT",

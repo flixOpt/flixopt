@@ -7,7 +7,7 @@ date-released: 2025-10-20
 url: "https://github.com/flixOpt/flixopt"
 repository-code: "https://github.com/flixOpt/flixopt"
 license: MIT
-abstract: "Vector based energy and material flow optimization framework in Python."
+abstract: "Progressive flow system optimization in Python. Build simple models quickly, then incrementally add multi-period planning, stochastic scenarios, and custom constraints without refactoring."
 keywords:
   - optimization
   - energy systems

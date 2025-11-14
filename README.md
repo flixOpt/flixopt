@@ -1,4 +1,4 @@
-# FlixOpt: Energy and Material Flow Optimization Framework
+# FlixOpt: Progressive Flow System Optimization
 
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
 [![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
@@ -18,7 +18,7 @@
 
 ---
 
-**FlixOpt is a Python framework for optimizing energy and material flow systems** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
+**FlixOpt is a Python framework for progressive flow system optimization** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
 
 **Start simple, scale complex:** Build a working optimization model in minutes, then progressively add detail - multi-period investments, stochastic scenarios, custom constraints - without rewriting your code.
 
