@@ -13,7 +13,7 @@ import xarray as xr
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
+from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .flow_system import FlowSystem
-    from .types import EffectData, NumericData, Period, Scenario, Time
+    from .types import EffectData, NumericData, Period, Scalar, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -429,7 +429,7 @@ class Flow(Element):
         flow_hours_total_min: NumericData[Period, Scenario] | None = None,
         load_factor_min: NumericData[Period, Scenario] | None = None,
         load_factor_max: NumericData[Period, Scenario] | None = None,
-        previous_flow_rate: NumericData[Period, Scenario] | list[Scalar] | None = None,
+        previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -716,13 +716,13 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def relative_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
+    def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile
         return self.element.relative_minimum, self.element.relative_maximum
 
     @property
-    def absolute_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
+    def absolute_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Returns the absolute bounds the flow_rate can reach.
         Further constraining might be needed
@@ -765,7 +765,7 @@ class FlowModel(ElementModel):
         return self.submodels['investment']
 
     @property
-    def previous_states(self) -> TemporalData | None:
+    def previous_states(self) -> xr.DataArray | None:
         """Previous states of the flow rate"""
         # TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
         previous_flow_rate = self.element.previous_flow_rate
