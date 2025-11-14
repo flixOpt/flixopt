@@ -51,13 +51,18 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Migration to loguru for improved logging performance and simplified configuration
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- Lazy logging evaluation - expensive log operations only execute when log level is active
+- `CONFIG.Logging.verbose_tracebacks` option for detailed debugging with variable values
 
 ### 💥 Breaking Changes
+- **Logging framework**: Migrated to [loguru](https://loguru.readthedocs.io/)
+    - Removed `CONFIG.Logging` parameters: `rich`, `Colors`, `date_format`, `format`, `console_width`, `show_path`, `show_logger_name`
+    - For advanced formatting, use loguru's API directly after `CONFIG.apply()`
 
 ### ♻️ Changed
 
@@ -70,8 +75,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔒 Security
 
 ### 📦 Dependencies
+- Replaced `rich >= 13.0.0` with `loguru >= 0.7.0` for logging
 
 ### 📝 Docs
+- Updated getting-started guide with loguru examples
+- Updated `config.py` docstrings for loguru integration
 
 ### 👷 Development
 
