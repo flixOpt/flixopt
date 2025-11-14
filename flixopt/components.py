@@ -779,8 +779,24 @@ class LinearConverterModel(ComponentModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        # Create PiecewiseModel if needed (after FlowModels are created)
-        if not self.element.conversion_factors:
+        # Create conversion factor constraints if specified
+        if self.element.conversion_factors:
+            all_input_flows = set(self.element.inputs)
+            all_output_flows = set(self.element.outputs)
+
+            # für alle linearen Gleichungen:
+            for i, conv_factors in enumerate(self.element.conversion_factors):
+                used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
+                used_inputs: set[Flow] = all_input_flows & used_flows
+                used_outputs: set[Flow] = all_output_flows & used_flows
+
+                self.add_constraints(
+                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
+                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
+                    short_name=f'conversion_{i}',
+                )
+
+        else:
             # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
@@ -798,23 +814,6 @@ class LinearConverterModel(ComponentModel):
                 ),
                 short_name='PiecewiseConversion',
             )
-
-        # Create conversion factor constraints if specified
-        if self.element.conversion_factors:
-            all_input_flows = set(self.element.inputs)
-            all_output_flows = set(self.element.outputs)
-
-            # für alle linearen Gleichungen:
-            for i, conv_factors in enumerate(self.element.conversion_factors):
-                used_flows = set([self.element.flows[flow_label] for flow_label in conv_factors])
-                used_inputs: set[Flow] = all_input_flows & used_flows
-                used_outputs: set[Flow] = all_output_flows & used_flows
-
-                self.add_constraints(
-                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
-                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
-                    short_name=f'conversion_{i}',
-                )
 
 
 class StorageModel(ComponentModel):
