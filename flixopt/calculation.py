@@ -198,6 +198,7 @@ class FullCalculation(Calculation):
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
+        self._modeled = True
         return self
 
     def fix_sizes(self, ds: xr.Dataset, decimal_rounding: int | None = 5) -> FullCalculation:
@@ -230,6 +231,11 @@ class FullCalculation(Calculation):
     def solve(
         self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
     ) -> FullCalculation:
+        # Auto-call do_modeling() if not already done
+        if not self._modeled:
+            logger.info('Model not yet created. Calling do_modeling() automatically.')
+            self.do_modeling()
+
         t_start = timeit.default_timer()
 
         self.model.solve(
@@ -328,6 +334,7 @@ class AggregatedCalculation(FullCalculation):
         )
         self.aggregation_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
+        self._modeled = True
         return self
 
     def _perform_aggregation(self):
