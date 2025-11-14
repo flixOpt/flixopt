@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .components import LinearConverter
-from .core import TemporalDataUser, TimeSeriesData
+from .core import TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
+    from .types import NumericData, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -76,7 +77,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
+        eta: NumericData[Time, Period, Scenario],
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -163,7 +164,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
+        eta: NumericData[Time, Period, Scenario],
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -250,7 +251,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
+        COP: NumericData[Time, Period, Scenario],
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -339,7 +340,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: TemporalDataUser,
+        specific_electricity_demand: NumericData[Time, Period, Scenario],
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -437,8 +438,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: TemporalDataUser,
-        eta_el: TemporalDataUser,
+        eta_th: NumericData[Time, Period, Scenario],
+        eta_el: NumericData[Time, Period, Scenario],
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
@@ -551,7 +552,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
+        COP: NumericData[Time, Period, Scenario],
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -589,11 +590,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: TemporalDataUser,
+    value: NumericData[Time, Period, Scenario],
     parameter_label: str,
     element_label: str,
-    lower_bound: TemporalDataUser,
-    upper_bound: TemporalDataUser,
+    lower_bound: NumericData[Time, Period, Scenario],
+    upper_bound: NumericData[Time, Period, Scenario],
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.

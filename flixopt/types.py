@@ -112,12 +112,27 @@ class _EffectDataMeta(type):
         """
         Create a type hint showing maximum dimensions for effect data.
 
-        Effect data is numeric data specifically for effects, with full dimensional support.
-        Same as NumericData but semantically distinct for effect-related parameters.
+        Effect data can be either:
+        - A single numeric value (scalar, array, Series, DataFrame, DataArray)
+        - A dict with string keys mapping to numeric values
+
+        This matches the pattern used for effects: either a single contribution or
+        a dictionary of named contributions.
         """
         # Return Union[] for better type checker compatibility (especially with | None)
         # Using Union[] instead of | to avoid IDE warnings with "Type[...] | None" syntax
-        return Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]  # noqa: UP007
+        # EffectData = NumericData | dict[str, NumericData]
+        return Union[  # noqa: UP007
+            int,
+            float,
+            np.integer,
+            np.floating,
+            np.ndarray,
+            pd.Series,
+            pd.DataFrame,
+            xr.DataArray,
+            dict[str, Union[int, float, np.integer, np.floating, np.ndarray, pd.Series, pd.DataFrame, xr.DataArray]],  # noqa: UP007
+        ]
 
 
 class Data(metaclass=_NumericDataMeta):
@@ -241,17 +256,24 @@ class BoolData(metaclass=_BoolDataMeta):
 
 class EffectData(metaclass=_EffectDataMeta):
     """
-    Generic type for effect data that can have various dimensions.
+    Generic type for effect data that can be a single value or a dictionary of values.
 
-    EffectData is semantically identical to NumericData but specifically intended for
-    effect-related parameters. It supports the full dimensional space including Time,
-    Period, and Scenario dimensions, making it ideal for effect contributions, constraints,
-    and cross-effect relationships.
+    EffectData represents the common pattern for effects: either a single numeric contribution
+    or a dictionary with string keys mapping to numeric contributions. This is useful for
+    specifying effects where you either have a single effect or multiple named effects.
 
     Use subscript notation to specify the maximum dimensions:
     - `EffectData[Time]`: Time-varying effect data
     - `EffectData[Period, Scenario]`: Periodic effect data
     - `EffectData[Time, Period, Scenario]`: Full dimensional effect data
+
+    Type Structure
+    --------------
+    `EffectData[dims]` = `NumericData[dims] | dict[str, NumericData[dims]]`
+
+    This means you can provide:
+    - A single numeric value (scalar, array, Series, DataFrame, DataArray)
+    - A dict mapping effect names to numeric values
 
     Semantics: "At Most" Dimensions
     --------------------------------
@@ -260,44 +282,51 @@ class EffectData(metaclass=_EffectDataMeta):
     - Any subset: just time, just period, just scenario, time+period, etc.
     - All dimensions: full 3D data
 
-    Accepted Input Formats (Numeric)
-    ---------------------------------
-    All dimension combinations accept these formats:
+    Accepted Input Formats
+    ----------------------
+    Single value:
     - Scalars: int, float (including numpy types)
     - Arrays: numpy ndarray with numeric dtype (matched by length/shape to dimensions)
     - pandas Series: matched by index to dimension coordinates
     - pandas DataFrame: typically columns=scenarios/periods, index=time
     - xarray DataArray: used directly with dimension validation
 
+    Dictionary of values:
+    - dict[str, <any of the above formats>]
+
     Typical Use Cases
     -----------------
-    - Effect contributions varying by time, period, and scenario
-    - Per-hour constraints that tighten over planning periods
-    - Cross-effect pricing (e.g., escalating carbon prices)
-    - Multi-period optimization with temporal detail
+    - Single effect: `EffectData[Time] = 10.5` or `np.array([10, 12, 11])`
+    - Multiple effects: `EffectData[Time] = {'CO2': 0.5, 'costs': 100}`
+    - Cross-effect relationships in Effect class
+    - Component effect contributions (effects_per_flow_hour, etc.)
 
     Examples
     --------
-    >>> # Scalar effect cost (broadcast to all dimensions)
-    >>> cost: EffectData[Time, Period, Scenario] = 10.5
+    >>> # Single scalar effect (broadcast to all dimensions)
+    >>> single_cost: EffectData[Time, Period, Scenario] = 10.5
     >>>
-    >>> # Time-varying emissions
-    >>> emissions: EffectData[Time, Period, Scenario] = np.array([100, 120, 110])
+    >>> # Single time-varying effect
+    >>> single_emissions: EffectData[Time] = np.array([100, 120, 110])
     >>>
-    >>> # Period-varying carbon price (escalating over years)
-    >>> carbon_price: EffectData[Period] = np.array([0.1, 0.2, 0.3])  # €/kg in 2020, 2025, 2030
+    >>> # Multiple named effects (dict)
+    >>> multiple_effects: EffectData[Time] = {
+    ...     'CO2': np.array([0.5, 0.6, 0.5]),
+    ...     'costs': 100,  # scalar broadcast to all time
+    ... }
     >>>
-    >>> # Full 3D effect data
-    >>> import xarray as xr
-    >>> full_data: EffectData[Time, Period, Scenario] = xr.DataArray(
-    ...     data=np.random.rand(24, 3, 2),  # 24 hours × 3 periods × 2 scenarios
-    ...     dims=['time', 'period', 'scenario'],
+    >>> # Cross-effect in Effect class
+    >>> cost_effect = Effect(
+    ...     label='total_costs',
+    ...     unit='€',
+    ...     is_objective=True,
+    ...     share_from_temporal={'CO2': 0.1},  # EffectData[Time, Period, Scenario]
     ... )
 
     Note
     ----
-    EffectData is functionally identical to NumericData. The distinction is semantic:
-    use EffectData for effect-related parameters to make code intent clearer.
+    EffectData = NumericData | dict[str, NumericData]. This pattern is specific to effects
+    and different from NumericData which only represents single numeric values.
 
     See Also
     --------

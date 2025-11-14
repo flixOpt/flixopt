@@ -229,7 +229,7 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: TemporalDataUser | None = 1e5,
+        excess_penalty_per_flow_hour: NumericData[Time, Period, Scenario] | None = 1e5,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)

@@ -16,22 +16,6 @@ from flixopt.types import Data, NumericData, Period, Scalar, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
-# Legacy type aliases (kept for backward compatibility)
-# These are being replaced by dimension-aware NumericData[...] types
-Scalar = Scalar
-"""A single number, either integer or float."""
-
-PeriodicDataUser = NumericData[Period, Scenario]
-"""
-User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension.
-
-.. deprecated::
-    Use dimension-aware types instead: `NumericData[Period, Scenario]` or `NumericData[Scenario]`
-"""
-
-PeriodicData = xr.DataArray
-"""Internally used datatypes for periodic data."""
-
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
@@ -159,14 +143,19 @@ class TimeSeriesData(xr.DataArray):
         return self.aggregation_weight
 
 
-TemporalDataUser = (
-    int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray | TimeSeriesData
-)
+TemporalDataUser = NumericData[Time, Scenario]
 """
 User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension.
 
-.. deprecated::
-    Use dimension-aware types instead: `NumericData[Time]`, `NumericData[Time, Scenario]`, or `NumericData[Time, Period, Scenario]`
+Supports data with at most [Time, Scenario] dimensions. For periodic data (no time dimension), use PeriodicDataUser.
+For data with all three dimensions [Time, Period, Scenario], use NumericData[Time, Period, Scenario] directly.
+"""
+
+PeriodicDataUser = NumericData[Period, Scenario]
+"""
+User data for periodic parameters (no time dimension). Internally converted to an xr.DataArray.
+
+Supports data with at most [Period, Scenario] dimensions. For temporal data (with time), use TemporalDataUser.
 """
 
 TemporalData = xr.DataArray | TimeSeriesData
@@ -651,9 +640,3 @@ def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_
         )
 
     return ds.drop_vars(drop_vars)
-
-
-# Backward compatibility aliases
-# TODO: Needed?
-NonTemporalDataUser = PeriodicDataUser
-NonTemporalData = PeriodicData

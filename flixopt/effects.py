@@ -17,7 +17,7 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
+from .core import Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 from .types import Data, EffectData, NumericData, Period, Scenario, Time
@@ -447,9 +447,11 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = NumericData[Time, Period, Scenario] | dict[str, NumericData[Time, Period, Scenario]]
+TemporalEffectsUser = EffectData[Time, Period, Scenario]
 """
 Temporal effects data: numeric values that can vary with time, periods, and scenarios.
+
+Type: `EffectData[Time, Period, Scenario]` = `NumericData[Time, Period, Scenario] | dict[str, NumericData[Time, Period, Scenario]]`
 
 Can be:
 - A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Time, Period, Scenario] dimensions
@@ -478,9 +480,11 @@ Examples:
     ... }
 """
 
-PeriodicEffectsUser = NumericData[Period, Scenario] | dict[str, NumericData[Period, Scenario]]
+PeriodicEffectsUser = EffectData[Period, Scenario]
 """
 Periodic effects data: numeric values that can vary with planning periods and scenarios (no time dimension).
+
+Type: `EffectData[Period, Scenario]` = `NumericData[Period, Scenario] | dict[str, NumericData[Period, Scenario]]`
 
 Can be:
 - A single numeric value (scalar, array, Series, DataFrame, DataArray) with at most [Period, Scenario] dimensions
@@ -556,7 +560,7 @@ class EffectCollection(ElementContainer[Effect]):
 
     def create_effect_values_dict(
         self, effect_values_user: PeriodicEffectsUser | TemporalEffectsUser
-    ) -> dict[str, Scalar | TemporalDataUser] | None:
+    ) -> dict[str, Scalar | NumericData[Time, Period, Scenario]] | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:

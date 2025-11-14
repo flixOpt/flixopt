@@ -20,10 +20,6 @@ from .core import (
     ConversionError,
     DataConverter,
     FlowSystemDimensions,
-    PeriodicData,
-    PeriodicDataUser,
-    TemporalData,
-    TemporalDataUser,
     TimeSeriesData,
 )
 from .effects import (
@@ -42,6 +38,8 @@ if TYPE_CHECKING:
     from collections.abc import Collection
 
     import pyvis
+
+    from .types import Data, Period, Scenario, Time
 
 logger = logging.getLogger('flixopt')
 
@@ -168,7 +166,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: PeriodicDataUser | None = None,
+        weights: Data[Period, Scenario] | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -532,9 +530,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: TemporalDataUser | PeriodicDataUser | None,
+        data: Data[Time, Period, Scenario] | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-    ) -> TemporalData | PeriodicData | None:
+    ) -> xr.DataArray | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 

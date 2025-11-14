@@ -19,7 +19,6 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
     from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
     from .types import Data, NumericData, Period, Scenario, Time
@@ -1045,11 +1044,11 @@ class InvestParameters(Interface):
         return self.piecewise_effects_of_investment
 
     @property
-    def minimum_or_fixed_size(self) -> PeriodicData:
+    def minimum_or_fixed_size(self) -> Data[Period, Scenario]:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> PeriodicData:
+    def maximum_or_fixed_size(self) -> Data[Period, Scenario]:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:
@@ -1288,10 +1287,10 @@ class OnOffParameters(Interface):
         )
         self.on_hours_total_min: NumericData[Period, Scenario] = on_hours_total_min
         self.on_hours_total_max: NumericData[Period, Scenario] = on_hours_total_max
-        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
-        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
-        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
-        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
+        self.consecutive_on_hours_min: NumericData[Time, Period, Scenario] = consecutive_on_hours_min
+        self.consecutive_on_hours_max: NumericData[Time, Period, Scenario] = consecutive_on_hours_max
+        self.consecutive_off_hours_min: NumericData[Time, Period, Scenario] = consecutive_off_hours_min
+        self.consecutive_off_hours_max: NumericData[Time, Period, Scenario] = consecutive_off_hours_max
         self.switch_on_total_max: NumericData[Period, Scenario] = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 

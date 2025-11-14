@@ -414,8 +414,8 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: TemporalDataUser = relative_minimum_charge_state
-        self.relative_maximum_charge_state: TemporalDataUser = relative_maximum_charge_state
+        self.relative_minimum_charge_state: NumericData[Time, Period, Scenario] = relative_minimum_charge_state
+        self.relative_maximum_charge_state: NumericData[Time, Period, Scenario] = relative_maximum_charge_state
 
         self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
         self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
@@ -424,9 +424,9 @@ class Storage(Component):
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: TemporalDataUser = eta_charge
-        self.eta_discharge: TemporalDataUser = eta_discharge
-        self.relative_loss_per_hour: TemporalDataUser = relative_loss_per_hour
+        self.eta_charge: NumericData[Time, Period, Scenario] = eta_charge
+        self.eta_discharge: NumericData[Time, Period, Scenario] = eta_discharge
+        self.relative_loss_per_hour: NumericData[Time, Period, Scenario] = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
 
