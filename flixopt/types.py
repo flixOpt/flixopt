@@ -17,17 +17,18 @@ Example:
     ```python
     from flixopt.types import Numeric_TPS, Numeric_PS, Scalar
 
+
     def create_flow(
-        size: Numeric_PS = None,      # Scalar, array, Series, DataFrame, or DataArray
-        profile: Numeric_TPS = 1.0,   # Time-varying data
-        efficiency: Scalar = 0.95,    # Scalars only
-    ):
-        ...
+        size: Numeric_PS = None,  # Scalar, array, Series, DataFrame, or DataArray
+        profile: Numeric_TPS = 1.0,  # Time-varying data
+        efficiency: Scalar = 0.95,  # Scalars only
+    ): ...
+
 
     # All valid:
-    create_flow(size=100)                          # Scalar broadcast
-    create_flow(size=np.array([100, 150]))         # Period-varying
-    create_flow(profile=pd.DataFrame(...))         # Time + scenario
+    create_flow(size=100)  # Scalar broadcast
+    create_flow(size=np.array([100, 150]))  # Period-varying
+    create_flow(profile=pd.DataFrame(...))  # Time + scenario
     ```
 
 Important:
@@ -49,7 +50,9 @@ _Bool: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.
 _Effect: TypeAlias = _Numeric | dict[str, _Numeric]
 
 # Combined type for numeric or boolean data (no dimension information)
-NumericOrBool: TypeAlias = int | float | bool | np.integer | np.floating | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+NumericOrBool: TypeAlias = (
+    int | float | bool | np.integer | np.floating | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+)
 """Numeric or boolean data without dimension metadata. For internal utilities."""
 
 

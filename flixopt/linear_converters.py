@@ -92,7 +92,7 @@ class Boiler(LinearConverter):
         )
         self.Q_fu = Q_fu
         self.Q_th = Q_th
-        self.eta = eta  #Uses setter
+        self.eta = eta  # Uses setter
 
     @property
     def eta(self):
