@@ -1090,7 +1090,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             else:
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.info(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
+        logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
 class _ElementResults:
