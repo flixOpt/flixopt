@@ -1265,13 +1265,13 @@ class OnOffParameters(Interface):
         self,
         effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
         effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_hours_total_min: int | None = None,
-        on_hours_total_max: int | None = None,
+        on_hours_total_min: Numeric_PS | None = None,
+        on_hours_total_max: Numeric_PS | None = None,
         consecutive_on_hours_min: Numeric_TPS | None = None,
         consecutive_on_hours_max: Numeric_TPS | None = None,
         consecutive_off_hours_min: Numeric_TPS | None = None,
         consecutive_off_hours_max: Numeric_TPS | None = None,
-        switch_on_total_max: int | None = None,
+        switch_on_total_max: Numeric_PS | None = None,
         force_switch_on: bool = False,
     ):
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
