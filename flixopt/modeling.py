@@ -118,7 +118,7 @@ class ModelingUtilitiesAbstract:
 class ModelingUtilities:
     @staticmethod
     def compute_consecutive_hours_in_state(
-        binary_values: TemporalData,
+        binary_values: xr.DataArray,
         hours_per_timestep: int | float,
         epsilon: float = None,
     ) -> float:
@@ -202,7 +202,7 @@ class ModelingPrimitives:
         tracked_expression,
         name: str = None,
         short_name: str = None,
-        bounds: tuple[TemporalData, TemporalData] = None,
+        bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
         """
@@ -241,11 +241,11 @@ class ModelingPrimitives:
         state_variable: linopy.Variable,
         name: str = None,
         short_name: str = None,
-        minimum_duration: TemporalData | None = None,
-        maximum_duration: TemporalData | None = None,
+        minimum_duration: xr.DataArray | None = None,
+        maximum_duration: xr.DataArray | None = None,
         duration_dim: str = 'time',
-        duration_per_step: int | float | TemporalData = None,
-        previous_duration: TemporalData = 0,
+        duration_per_step: int | float | xr.DataArray = None,
+        previous_duration: xr.DataArray = 0,
     ) -> tuple[linopy.Variable, tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
         """
         Creates consecutive duration tracking for a binary state variable.
@@ -393,7 +393,7 @@ class BoundingPatterns:
     def basic_bounds(
         model: Submodel,
         variable: linopy.Variable,
-        bounds: tuple[TemporalData, TemporalData],
+        bounds: tuple[xr.DataArray, xr.DataArray],
         name: str = None,
     ) -> list[linopy.constraints.Constraint]:
         """Create simple bounds.
@@ -425,7 +425,7 @@ class BoundingPatterns:
     def bounds_with_state(
         model: Submodel,
         variable: linopy.Variable,
-        bounds: tuple[TemporalData, TemporalData],
+        bounds: tuple[xr.DataArray, xr.DataArray],
         variable_state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
@@ -472,7 +472,7 @@ class BoundingPatterns:
         model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
-        relative_bounds: tuple[TemporalData, TemporalData],
+        relative_bounds: tuple[xr.DataArray, xr.DataArray],
         name: str = None,
     ) -> list[linopy.Constraint]:
         """Constraint a variable by scaling bounds, dependent on another variable.
@@ -515,8 +515,8 @@ class BoundingPatterns:
         model: Submodel,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
-        relative_bounds: tuple[TemporalData, TemporalData],
-        scaling_bounds: tuple[TemporalData, TemporalData],
+        relative_bounds: tuple[xr.DataArray, xr.DataArray],
+        scaling_bounds: tuple[xr.DataArray, xr.DataArray],
         variable_state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
