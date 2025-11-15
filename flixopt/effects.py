@@ -52,26 +52,15 @@ class Effect(Element):
             Only one effect can be marked as objective per optimization.
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect.
-            Type: `Effect_TPS` (single value or dict with dimensions [Time, Period, Scenario])
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
-            Type: `Effect_PS` (single value or dict with dimensions [Period, Scenario])
         minimum_temporal: Minimum allowed total contribution across all timesteps.
-            Type: `Numeric_PS` (sum over time, can vary by period/scenario)
         maximum_temporal: Maximum allowed total contribution across all timesteps.
-            Type: `Numeric_PS` (sum over time, can vary by period/scenario)
         minimum_per_hour: Minimum allowed contribution per hour.
-            Type: `Numeric_TPS` (per-timestep constraint, can vary by period)
         maximum_per_hour: Maximum allowed contribution per hour.
-            Type: `Numeric_TPS` (per-timestep constraint, can vary by period)
         minimum_periodic: Minimum allowed total periodic contribution.
-            Type: `Numeric_PS` (periodic constraint)
         maximum_periodic: Maximum allowed total periodic contribution.
-            Type: `Numeric_PS` (periodic constraint)
         minimum_total: Minimum allowed total effect (temporal + periodic combined).
-            Type: `Numeric_PS` (total constraint per period)
-        maximum_total: Maximum allowed total effect (temporal + periodic combined).
-            Type: `Numeric_PS` (total constraint per period)
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
