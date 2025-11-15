@@ -4,7 +4,7 @@ import pytest
 from linopy.testing import assert_linequal
 
 import flixopt as fx
-from flixopt.commons import Effect, InvestParameters, Sink, Source, Storage
+from flixopt import Effect, InvestParameters, Sink, Source, Storage
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
