@@ -615,13 +615,19 @@ def check_bounds(
         lower_bound = lower_bound.data
     if isinstance(upper_bound, TimeSeriesData):
         upper_bound = upper_bound.data
-    if not np.all(value > lower_bound):
+
+    # Convert to NumPy arrays to handle xr.DataArray, pd.Series, pd.DataFrame
+    value_arr = np.asarray(value)
+    lower_arr = np.asarray(lower_bound)
+    upper_arr = np.asarray(upper_bound)
+
+    if not np.all(value_arr > lower_arr):
         logger.warning(
             f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
+            f'    {parameter_label}.min={np.min(value_arr)};    {parameter_label}={value}'
         )
-    if not np.all(value < upper_bound):
+    if not np.all(value_arr < upper_arr):
         logger.warning(
             f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
+            f'    {parameter_label}.max={np.max(value_arr)};    {parameter_label}={value}'
         )
