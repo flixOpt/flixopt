@@ -10,13 +10,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .components import LinearConverter
-from .core import TimeSeriesData
+from .core import TemporalDataUser, TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
-    from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -77,7 +76,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: Numeric_TPS,
+        eta: TemporalDataUser,
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -87,12 +86,12 @@ class Boiler(LinearConverter):
             label,
             inputs=[Q_fu],
             outputs=[Q_th],
+            conversion_factors=[{Q_fu.label: eta, Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.Q_fu = Q_fu
         self.Q_th = Q_th
-        self.eta = eta  # Uses setter
 
     @property
     def eta(self):
@@ -101,7 +100,7 @@ class Boiler(LinearConverter):
     @eta.setter
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors = [{self.Q_fu.label: value, self.Q_th.label: 1}]
+        self.conversion_factors[0][self.Q_fu.label] = value
 
 
 @register_class_for_io
@@ -164,7 +163,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: Numeric_TPS,
+        eta: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -174,13 +173,13 @@ class Power2Heat(LinearConverter):
             label,
             inputs=[P_el],
             outputs=[Q_th],
+            conversion_factors=[{P_el.label: eta, Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
         self.P_el = P_el
         self.Q_th = Q_th
-        self.eta = eta  # Uses setter
 
     @property
     def eta(self):
@@ -189,7 +188,7 @@ class Power2Heat(LinearConverter):
     @eta.setter
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors = [{self.P_el.label: value, self.Q_th.label: 1}]
+        self.conversion_factors[0][self.P_el.label] = value
 
 
 @register_class_for_io
@@ -251,7 +250,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: Numeric_TPS,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -261,13 +260,13 @@ class HeatPump(LinearConverter):
             label,
             inputs=[P_el],
             outputs=[Q_th],
-            conversion_factors=[],
+            conversion_factors=[{P_el.label: COP, Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.P_el = P_el
         self.Q_th = Q_th
-        self.COP = COP  # Uses setter
+        self.COP = COP
 
     @property
     def COP(self):  # noqa: N802
@@ -276,7 +275,7 @@ class HeatPump(LinearConverter):
     @COP.setter
     def COP(self, value):  # noqa: N802
         check_bounds(value, 'COP', self.label_full, 1, 20)
-        self.conversion_factors = [{self.P_el.label: value, self.Q_th.label: 1}]
+        self.conversion_factors[0][self.P_el.label] = value
 
 
 @register_class_for_io
@@ -340,7 +339,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: Numeric_TPS,
+        specific_electricity_demand: TemporalDataUser,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -350,13 +349,15 @@ class CoolingTower(LinearConverter):
             label,
             inputs=[P_el, Q_th],
             outputs=[],
+            conversion_factors=[{P_el.label: -1, Q_th.label: specific_electricity_demand}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
         self.P_el = P_el
         self.Q_th = Q_th
-        self.specific_electricity_demand = specific_electricity_demand  # Uses setter
+
+        check_bounds(specific_electricity_demand, 'specific_electricity_demand', self.label_full, 0, 1)
 
     @property
     def specific_electricity_demand(self):
@@ -365,7 +366,7 @@ class CoolingTower(LinearConverter):
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors = [{self.P_el.label: -1, self.Q_th.label: value}]
+        self.conversion_factors[0][self.Q_th.label] = value
 
 
 @register_class_for_io
@@ -436,19 +437,22 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: Numeric_TPS,
-        eta_el: Numeric_TPS,
+        eta_th: TemporalDataUser,
+        eta_el: TemporalDataUser,
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
     ):
+        heat = {Q_fu.label: eta_th, Q_th.label: 1}
+        electricity = {Q_fu.label: eta_el, P_el.label: 1}
+
         super().__init__(
             label,
             inputs=[Q_fu],
             outputs=[Q_th, P_el],
-            conversion_factors=[],
+            conversion_factors=[heat, electricity],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -456,8 +460,6 @@ class CHP(LinearConverter):
         self.Q_fu = Q_fu
         self.P_el = P_el
         self.Q_th = Q_th
-        self.eta_th = eta_th  # Uses setter
-        self.eta_el = eta_el  # Uses setter
 
         check_bounds(eta_el + eta_th, 'eta_th+eta_el', self.label_full, 0, 1)
 
@@ -468,11 +470,7 @@ class CHP(LinearConverter):
     @eta_th.setter
     def eta_th(self, value):
         check_bounds(value, 'eta_th', self.label_full, 0, 1)
-        if len(self.conversion_factors) < 2:
-            # Initialize structure if not yet set
-            self.conversion_factors = [{self.Q_fu.label: value, self.Q_th.label: 1}, {}]
-        else:
-            self.conversion_factors[0] = {self.Q_fu.label: value, self.Q_th.label: 1}
+        self.conversion_factors[0][self.Q_fu.label] = value
 
     @property
     def eta_el(self):
@@ -481,11 +479,7 @@ class CHP(LinearConverter):
     @eta_el.setter
     def eta_el(self, value):
         check_bounds(value, 'eta_el', self.label_full, 0, 1)
-        if len(self.conversion_factors) < 2:
-            # Initialize structure if not yet set
-            self.conversion_factors = [{}, {self.Q_fu.label: value, self.P_el.label: 1}]
-        else:
-            self.conversion_factors[1] = {self.Q_fu.label: value, self.P_el.label: 1}
+        self.conversion_factors[1][self.Q_fu.label] = value
 
 
 @register_class_for_io
@@ -557,7 +551,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: Numeric_TPS,
+        COP: TemporalDataUser,
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -568,14 +562,16 @@ class HeatPumpWithSource(LinearConverter):
             label,
             inputs=[P_el, Q_ab],
             outputs=[Q_th],
-            conversion_factors=[],
+            conversion_factors=[{P_el.label: COP, Q_th.label: 1}, {Q_ab.label: COP / (COP - 1), Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.P_el = P_el
         self.Q_ab = Q_ab
         self.Q_th = Q_th
-        self.COP = COP  # Uses setter
+
+        if np.any(np.asarray(self.COP) <= 1):
+            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
 
     @property
     def COP(self):  # noqa: N802
@@ -593,11 +589,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: Numeric_TPS,
+    value: TemporalDataUser,
     parameter_label: str,
     element_label: str,
-    lower_bound: Numeric_TPS,
-    upper_bound: Numeric_TPS,
+    lower_bound: TemporalDataUser,
+    upper_bound: TemporalDataUser,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.
@@ -615,19 +611,13 @@ def check_bounds(
         lower_bound = lower_bound.data
     if isinstance(upper_bound, TimeSeriesData):
         upper_bound = upper_bound.data
-
-    # Convert to NumPy arrays to handle xr.DataArray, pd.Series, pd.DataFrame
-    value_arr = np.asarray(value)
-    lower_arr = np.asarray(lower_bound)
-    upper_arr = np.asarray(upper_bound)
-
-    if not np.all(value_arr > lower_arr):
+    if not np.all(value > lower_bound):
         logger.warning(
             f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value_arr)};    {parameter_label}={value}'
+            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
         )
-    if not np.all(value_arr < upper_arr):
+    if not np.all(value < upper_bound):
         logger.warning(
             f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value_arr)};    {parameter_label}={value}'
+            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
         )

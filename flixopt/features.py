@@ -15,9 +15,8 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
-    from .core import FlowSystemDimensions
+    from .core import FlowSystemDimensions, Scalar, TemporalData
     from .interface import InvestParameters, OnOffParameters, Piecewise
-    from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -154,7 +153,7 @@ class OnOffModel(Submodel):
         label_of_element: str,
         parameters: OnOffParameters,
         on_variable: linopy.Variable,
-        previous_states: Numeric_TPS | None,
+        previous_states: TemporalData | None,
         label_of_model: str | None = None,
     ):
         """
@@ -518,10 +517,10 @@ class ShareAllocationModel(Submodel):
         dims: list[FlowSystemDimensions],
         label_of_element: str | None = None,
         label_of_model: str | None = None,
-        total_max: Numeric_PS | None = None,
-        total_min: Numeric_PS | None = None,
-        max_per_hour: Numeric_TPS | None = None,
-        min_per_hour: Numeric_TPS | None = None,
+        total_max: Scalar | None = None,
+        total_min: Scalar | None = None,
+        max_per_hour: TemporalData | None = None,
+        min_per_hour: TemporalData | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
             raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
@@ -536,18 +535,18 @@ class ShareAllocationModel(Submodel):
         self._eq_total: linopy.Constraint | None = None
 
         # Parameters
-        self._total_max = total_max
-        self._total_min = total_min
-        self._max_per_hour = max_per_hour
-        self._min_per_hour = min_per_hour
+        self._total_max = total_max if total_max is not None else np.inf
+        self._total_min = total_min if total_min is not None else -np.inf
+        self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
+        self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
         self.total = self.add_variables(
-            lower=self._total_min if self._total_min is not None else -np.inf,
-            upper=self._total_max if self._total_max is not None else np.inf,
+            lower=self._total_min,
+            upper=self._total_max,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
             name=self.label_full,
             short_name='total',

@@ -12,7 +12,7 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .core import PlausibilityError
+from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     import linopy
 
     from .flow_system import FlowSystem
-    from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -170,7 +169,7 @@ class LinearConverter(Component):
         inputs: list[Flow],
         outputs: list[Flow],
         on_off_parameters: OnOffParameters | None = None,
-        conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
+        conversion_factors: list[dict[str, TemporalDataUser]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
@@ -387,17 +386,17 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Numeric_PS | InvestParameters,
-        relative_minimum_charge_state: Numeric_TPS = 0,
-        relative_maximum_charge_state: Numeric_TPS = 1,
-        initial_charge_state: Numeric_PS | Literal['lastValueOfSim'] = 0,
-        minimal_final_charge_state: Numeric_PS | None = None,
-        maximal_final_charge_state: Numeric_PS | None = None,
-        relative_minimum_final_charge_state: Numeric_PS | None = None,
-        relative_maximum_final_charge_state: Numeric_PS | None = None,
-        eta_charge: Numeric_TPS = 1,
-        eta_discharge: Numeric_TPS = 1,
-        relative_loss_per_hour: Numeric_TPS = 0,
+        capacity_in_flow_hours: PeriodicDataUser | InvestParameters,
+        relative_minimum_charge_state: TemporalDataUser = 0,
+        relative_maximum_charge_state: TemporalDataUser = 1,
+        initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
+        minimal_final_charge_state: PeriodicDataUser | None = None,
+        maximal_final_charge_state: PeriodicDataUser | None = None,
+        relative_minimum_final_charge_state: PeriodicDataUser | None = None,
+        relative_maximum_final_charge_state: PeriodicDataUser | None = None,
+        eta_charge: TemporalDataUser = 1,
+        eta_discharge: TemporalDataUser = 1,
+        relative_loss_per_hour: TemporalDataUser = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -414,8 +413,8 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: Numeric_TPS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: Numeric_TPS = relative_maximum_charge_state
+        self.relative_minimum_charge_state: TemporalDataUser = relative_minimum_charge_state
+        self.relative_maximum_charge_state: TemporalDataUser = relative_maximum_charge_state
 
         self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
         self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
@@ -424,9 +423,9 @@ class Storage(Component):
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: Numeric_TPS = eta_charge
-        self.eta_discharge: Numeric_TPS = eta_discharge
-        self.relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
+        self.eta_charge: TemporalDataUser = eta_charge
+        self.eta_discharge: TemporalDataUser = eta_discharge
+        self.relative_loss_per_hour: TemporalDataUser = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
 
@@ -664,8 +663,8 @@ class Transmission(Component):
         out1: Flow,
         in2: Flow | None = None,
         out2: Flow | None = None,
-        relative_losses: Numeric_TPS | None = None,
-        absolute_losses: Numeric_TPS | None = None,
+        relative_losses: TemporalDataUser | None = None,
+        absolute_losses: TemporalDataUser | None = None,
         on_off_parameters: OnOffParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
@@ -917,7 +916,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+    def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (

@@ -13,7 +13,7 @@ import xarray as xr
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import PlausibilityError
+from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
@@ -22,19 +22,8 @@ from .structure import Element, ElementModel, FlowSystemModel, register_class_fo
 if TYPE_CHECKING:
     import linopy
 
+    from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
-    from .types import (
-        Bool_PS,
-        Bool_S,
-        Bool_TPS,
-        Effect_PS,
-        Effect_S,
-        Effect_TPS,
-        Numeric_PS,
-        Numeric_S,
-        Numeric_TPS,
-        Scalar,
-    )
 
 logger = logging.getLogger('flixopt')
 
@@ -239,7 +228,7 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
+        excess_penalty_per_flow_hour: TemporalDataUser | None = 1e5,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -430,16 +419,16 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Numeric_PS | InvestParameters = None,
-        fixed_relative_profile: Numeric_TPS | None = None,
-        relative_minimum: Numeric_TPS = 0,
-        relative_maximum: Numeric_TPS = 1,
-        effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
+        size: Scalar | InvestParameters = None,
+        fixed_relative_profile: TemporalDataUser | None = None,
+        relative_minimum: TemporalDataUser = 0,
+        relative_maximum: TemporalDataUser = 1,
+        effects_per_flow_hour: TemporalEffectsUser | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        flow_hours_total_max: Numeric_PS | None = None,
-        flow_hours_total_min: Numeric_PS | None = None,
-        load_factor_min: Numeric_PS | None = None,
-        load_factor_max: Numeric_PS | None = None,
+        flow_hours_total_max: Scalar | None = None,
+        flow_hours_total_min: Scalar | None = None,
+        load_factor_min: Scalar | None = None,
+        load_factor_max: Scalar | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):
@@ -727,13 +716,13 @@ class FlowModel(ElementModel):
             )
 
     @property
-    def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+    def relative_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile
         return self.element.relative_minimum, self.element.relative_maximum
 
     @property
-    def absolute_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+    def absolute_flow_rate_bounds(self) -> tuple[TemporalData, TemporalData]:
         """
         Returns the absolute bounds the flow_rate can reach.
         Further constraining might be needed
@@ -776,7 +765,7 @@ class FlowModel(ElementModel):
         return self.submodels['investment']
 
     @property
-    def previous_states(self) -> xr.DataArray | None:
+    def previous_states(self) -> TemporalData | None:
         """Previous states of the flow rate"""
         # TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
         previous_flow_rate = self.element.previous_flow_rate

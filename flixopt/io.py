@@ -19,8 +19,6 @@ import yaml
 if TYPE_CHECKING:
     import linopy
 
-    from .types import Numeric_TPS
-
 logger = logging.getLogger('flixopt')
 
 
@@ -653,7 +651,7 @@ class CalculationResultsPaths:
 
 
 def numeric_to_str_for_repr(
-    value: Numeric_TPS,
+    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
     precision: int = 1,
     atol: float = 1e-10,
 ) -> str:

@@ -12,9 +12,16 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .types import NumericOrBool
-
 logger = logging.getLogger('flixopt')
+
+Scalar = int | float
+"""A single number, either integer or float."""
+
+PeriodicDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+"""User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
+
+PeriodicData = xr.DataArray
+"""Internally used datatypes for periodic data."""
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
@@ -141,6 +148,15 @@ class TimeSeriesData(xr.DataArray):
     def agg_weight(self):
         warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
         return self.aggregation_weight
+
+
+TemporalDataUser = (
+    int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray | TimeSeriesData
+)
+"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
+
+TemporalData = xr.DataArray | TimeSeriesData
+"""Internally used datatypes for temporal data (data with a time dimension)."""
 
 
 class DataConverter:
@@ -389,7 +405,16 @@ class DataConverter:
     @classmethod
     def to_dataarray(
         cls,
-        data: NumericOrBool,
+        data: int
+        | float
+        | bool
+        | np.integer
+        | np.floating
+        | np.bool_
+        | np.ndarray
+        | pd.Series
+        | pd.DataFrame
+        | xr.DataArray,
         coords: dict[str, pd.Index] | None = None,
     ) -> xr.DataArray:
         """
@@ -612,3 +637,9 @@ def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_
         )
 
     return ds.drop_vars(drop_vars)
+
+
+# Backward compatibility aliases
+# TODO: Needed?
+NonTemporalDataUser = PeriodicDataUser
+NonTemporalData = PeriodicData
