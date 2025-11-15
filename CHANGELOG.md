@@ -70,9 +70,18 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### ♻️ Changed
 - **Type handling improvements**: Updated internal data handling to work seamlessly with the new type system
 
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
 ### 🐛 Fixed
 - Fixed `ShareAllocationModel` inconsistency where None/inf conversion happened in `__init__` instead of during modeling, which could cause issues with parameter validation
 - Fixed numerous type hint inconsistencies across the codebase
+
+### 🔒 Security
+
+### 📦 Dependencies
+- Updated `mkdocs-material` to v9.6.23
 
 ### 📝 Docs
 - Enhanced documentation in `flixopt/types.py` with comprehensive examples and dimension explanation table
@@ -80,11 +89,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Added clarifying comments in `effects.py` explaining parameter handling and transformation
 - Improved OnOffParameters attribute documentation
 
-### 📦 Dependencies
-- Updated `mkdocs-material` to v9.6.23
 
 ### 👷 Development
 - Added test for FlowSystem resampling
+
+### 🚧 Known Issues
 
 ---
 
