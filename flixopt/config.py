@@ -96,7 +96,7 @@ class CONFIG:
         Silent by default. Enable via ``console=True`` or ``file='path'``.
 
         Attributes:
-            level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            level: Logging level (DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL).
             file: Log file path for file logging (None to disable).
             console: Enable console output (True/'stdout' or 'stderr').
             max_file_size: Max file size in bytes before rotation.
@@ -132,7 +132,7 @@ class CONFIG:
             ```
         """
 
-        level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
+        level: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
         file: str | None = _DEFAULTS['logging']['file']
         console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
         max_file_size: int = _DEFAULTS['logging']['max_file_size']
@@ -235,7 +235,7 @@ class CONFIG:
     @classmethod
     def apply(cls):
         """Apply current configuration to logging system."""
-        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        valid_levels = ['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']
         if cls.Logging.level.upper() not in valid_levels:
             raise ValueError(f"Invalid log level '{cls.Logging.level}'. Must be one of: {', '.join(valid_levels)}")
 
@@ -447,7 +447,7 @@ def _format_multiline(record):
 
 
 def _setup_logging(
-    default_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
+    default_level: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
     log_file: str | None = None,
     console: bool | Literal['stdout', 'stderr'] = False,
     max_file_size: int = 10_485_760,
@@ -505,7 +505,7 @@ def _setup_logging(
         )
 
 
-def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']):
+def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']):
     """Change the logging level for the flixopt logger.
 
     .. deprecated:: 2.1.11
