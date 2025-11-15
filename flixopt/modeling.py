@@ -5,7 +5,6 @@ import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .core import TemporalData
 from .structure import Submodel
 
 logger = logging.getLogger('flixopt')

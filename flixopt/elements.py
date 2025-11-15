@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .flow_system import FlowSystem
-    from .types import EffectData, NumericData, Period, Scalar, Scenario, Time
+    from .types import Numeric_TPS, Numeric_PS, Numeric_S, Bool_TPS, Bool_PS, Bool_S, Effect_TPS, Effect_PS, Effect_S, Scalar
 
 logger = logging.getLogger('flixopt')
 
@@ -228,7 +228,7 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: NumericData[Time, Period, Scenario] | None = 1e5,
+        excess_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -419,16 +419,16 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: NumericData[Period, Scenario] | InvestParameters = None,
-        fixed_relative_profile: NumericData[Time, Period, Scenario] | None = None,
-        relative_minimum: NumericData[Time, Period, Scenario] = 0,
-        relative_maximum: NumericData[Time, Period, Scenario] = 1,
-        effects_per_flow_hour: EffectData[Time, Period, Scenario] | NumericData[Time, Period, Scenario] | None = None,
+        size: Numeric_PS | InvestParameters = None,
+        fixed_relative_profile: Numeric_TPS | None = None,
+        relative_minimum: Numeric_TPS = 0,
+        relative_maximum: Numeric_TPS = 1,
+        effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        flow_hours_total_max: NumericData[Period, Scenario] | None = None,
-        flow_hours_total_min: NumericData[Period, Scenario] | None = None,
-        load_factor_min: NumericData[Period, Scenario] | None = None,
-        load_factor_max: NumericData[Period, Scenario] | None = None,
+        flow_hours_total_max: Numeric_PS | None = None,
+        flow_hours_total_min: Numeric_PS | None = None,
+        load_factor_min: Numeric_PS | None = None,
+        load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):

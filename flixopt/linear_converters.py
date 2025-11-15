@@ -77,7 +77,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericData[Time, Period, Scenario],
+        eta: Numeric_TPS,
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -164,7 +164,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: NumericData[Time, Period, Scenario],
+        eta: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -251,7 +251,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericData[Time, Period, Scenario],
+        COP: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -340,7 +340,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: NumericData[Time, Period, Scenario],
+        specific_electricity_demand: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -438,8 +438,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: NumericData[Time, Period, Scenario],
-        eta_el: NumericData[Time, Period, Scenario],
+        eta_th: Numeric_TPS,
+        eta_el: Numeric_TPS,
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
@@ -552,7 +552,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: NumericData[Time, Period, Scenario],
+        COP: Numeric_TPS,
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -590,11 +590,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: NumericData[Time, Period, Scenario],
+    value: Numeric_TPS,
     parameter_label: str,
     element_label: str,
-    lower_bound: NumericData[Time, Period, Scenario],
-    upper_bound: NumericData[Time, Period, Scenario],
+    lower_bound: Numeric_TPS,
+    upper_bound: Numeric_TPS,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.

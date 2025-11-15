@@ -12,8 +12,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from flixopt.types import NumericData, Period, Scenario, Time
-
 logger = logging.getLogger('flixopt')
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
@@ -141,25 +139,6 @@ class TimeSeriesData(xr.DataArray):
     def agg_weight(self):
         warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
         return self.aggregation_weight
-
-
-TemporalDataUser = NumericData[Time, Scenario]
-"""
-User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension.
-
-Supports data with at most [Time, Scenario] dimensions. For periodic data (no time dimension), use PeriodicDataUser.
-For data with all three dimensions [Time, Period, Scenario], use NumericData[Time, Period, Scenario] directly.
-"""
-
-PeriodicDataUser = NumericData[Period, Scenario]
-"""
-User data for periodic parameters (no time dimension). Internally converted to an xr.DataArray.
-
-Supports data with at most [Period, Scenario] dimensions. For temporal data (with time), use TemporalDataUser.
-"""
-
-TemporalData = xr.DataArray | TimeSeriesData
-"""Internally used datatypes for temporal data (data with a time dimension)."""
 
 
 class DataConverter:

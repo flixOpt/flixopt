@@ -57,21 +57,21 @@ class Effect(Element):
             Maps periodic contributions from other effects to this effect.
             Type: `PeriodicEffectsUser` (single value or dict with dimensions [Period, Scenario])
         minimum_temporal: Minimum allowed total contribution across all timesteps.
-            Type: `NumericData[Period, Scenario]` (sum over time, can vary by period/scenario)
+            Type: `Numeric_PS` (sum over time, can vary by period/scenario)
         maximum_temporal: Maximum allowed total contribution across all timesteps.
-            Type: `NumericData[Period, Scenario]` (sum over time, can vary by period/scenario)
+            Type: `Numeric_PS` (sum over time, can vary by period/scenario)
         minimum_per_hour: Minimum allowed contribution per hour.
-            Type: `NumericData[Time, Period, Scenario]` (per-timestep constraint, can vary by period)
+            Type: `Numeric_TPS` (per-timestep constraint, can vary by period)
         maximum_per_hour: Maximum allowed contribution per hour.
-            Type: `NumericData[Time, Period, Scenario]` (per-timestep constraint, can vary by period)
+            Type: `Numeric_TPS` (per-timestep constraint, can vary by period)
         minimum_periodic: Minimum allowed total periodic contribution.
-            Type: `NumericData[Period, Scenario]` (periodic constraint)
+            Type: `Numeric_PS` (periodic constraint)
         maximum_periodic: Maximum allowed total periodic contribution.
-            Type: `NumericData[Period, Scenario]` (periodic constraint)
+            Type: `Numeric_PS` (periodic constraint)
         minimum_total: Minimum allowed total effect (temporal + periodic combined).
-            Type: `NumericData[Period, Scenario]` (total constraint per period)
+            Type: `Numeric_PS` (total constraint per period)
         maximum_total: Maximum allowed total effect (temporal + periodic combined).
-            Type: `NumericData[Period, Scenario]` (total constraint per period)
+            Type: `Numeric_PS` (total constraint per period)
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -179,16 +179,16 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        share_from_temporal: EffectData[Time, Period, Scenario] | None = None,
-        share_from_periodic: EffectData[Period, Scenario] | None = None,
-        minimum_temporal: NumericData[Period, Scenario] | None = None,
-        maximum_temporal: NumericData[Period, Scenario] | None = None,
-        minimum_periodic: NumericData[Period, Scenario] | None = None,
-        maximum_periodic: NumericData[Period, Scenario] | None = None,
-        minimum_per_hour: NumericData[Time, Period, Scenario] | None = None,
-        maximum_per_hour: NumericData[Time, Period, Scenario] | None = None,
-        minimum_total: NumericData[Period, Scenario] | None = None,
-        maximum_total: NumericData[Period, Scenario] | None = None,
+        share_from_temporal: Effect_TPS | None = None,
+        share_from_periodic: Effect_PS | None = None,
+        minimum_temporal: Numeric_PS | None = None,
+        maximum_temporal: Numeric_PS | None = None,
+        minimum_periodic: Numeric_PS | None = None,
+        maximum_periodic: Numeric_PS | None = None,
+        minimum_per_hour: Numeric_TPS | None = None,
+        maximum_per_hour: Numeric_TPS | None = None,
+        minimum_total: Numeric_PS | None = None,
+        maximum_total: Numeric_PS | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -196,10 +196,10 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.share_from_temporal: EffectData[Time, Period, Scenario] = (
+        self.share_from_temporal: Effect_TPS = (
             share_from_temporal if share_from_temporal is not None else {}
         )
-        self.share_from_periodic: EffectData[Period, Scenario] = (
+        self.share_from_periodic: Effect_PS = (
             share_from_periodic if share_from_periodic is not None else {}
         )
 
@@ -491,8 +491,8 @@ class EffectCollection(ElementContainer[Effect]):
             logger.info(f'Registered new Effect: {effect.label}')
 
     def create_effect_values_dict(
-        self, effect_values_user: EffectData[Time, Period, Scenario]
-    ) -> dict[str, NumericData[Time, Period, Scenario]] | None:
+        self, effect_values_user: Effect_TPS
+    ) -> dict[str, Numeric_TPS] | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:

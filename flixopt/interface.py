@@ -72,7 +72,7 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: NumericData[Time, Period, Scenario], end: NumericData[Time, Period, Scenario]):
+    def __init__(self, start: Numeric_TPS, end: Numeric_TPS):
         self.start = start
         self.end = end
         self.has_time_dim = False
@@ -873,15 +873,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: NumericData[Period, Scenario] | None = None,
-        minimum_size: NumericData[Period, Scenario] | None = None,
-        maximum_size: NumericData[Period, Scenario] | None = None,
+        fixed_size: Numeric_PS | None = None,
+        minimum_size: Numeric_PS | None = None,
+        maximum_size: Numeric_PS | None = None,
         mandatory: bool = False,
-        effects_of_investment: EffectData[Period, Scenario] | NumericData[Period, Scenario] | None = None,
-        effects_of_investment_per_size: EffectData[Period, Scenario] | NumericData[Period, Scenario] | None = None,
-        effects_of_retirement: EffectData[Period, Scenario] | NumericData[Period, Scenario] | None = None,
+        effects_of_investment: Effect_PS | Numeric_PS | None = None,
+        effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None,
+        effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
-        linked_periods: NumericData[Period, Scenario] | tuple[int, int] | None = None,
+        linked_periods: Numeric_PS | tuple[int, int] | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters using centralized helper
@@ -999,7 +999,7 @@ class InvestParameters(Interface):
         self.mandatory = not value
 
     @property
-    def fix_effects(self) -> EffectData[Period, Scenario] | NumericData[Period, Scenario]:
+    def fix_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment instead."""
         warnings.warn(
             'The fix_effects property is deprecated. Use effects_of_investment instead.',
@@ -1009,7 +1009,7 @@ class InvestParameters(Interface):
         return self.effects_of_investment
 
     @property
-    def specific_effects(self) -> EffectData[Period, Scenario] | NumericData[Period, Scenario]:
+    def specific_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment_per_size instead."""
         warnings.warn(
             'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
@@ -1019,7 +1019,7 @@ class InvestParameters(Interface):
         return self.effects_of_investment_per_size
 
     @property
-    def divest_effects(self) -> EffectData[Period, Scenario] | NumericData[Period, Scenario]:
+    def divest_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_retirement instead."""
         warnings.warn(
             'The divest_effects property is deprecated. Use effects_of_retirement instead.',
@@ -1039,11 +1039,11 @@ class InvestParameters(Interface):
         return self.piecewise_effects_of_investment
 
     @property
-    def minimum_or_fixed_size(self) -> NumericData[Period, Scenario]:
+    def minimum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> NumericData[Period, Scenario]:
+    def maximum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:
@@ -1263,28 +1263,28 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: EffectData[Time, Period, Scenario] | NumericData[Time, Period, Scenario] | None = None,
-        effects_per_running_hour: EffectData[Time, Period, Scenario]
-        | NumericData[Time, Period, Scenario]
+        effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
+        effects_per_running_hour: Effect_TPS
+        | Numeric_TPS
         | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
-        consecutive_on_hours_min: NumericData[Time, Period, Scenario] | None = None,
-        consecutive_on_hours_max: NumericData[Time, Period, Scenario] | None = None,
-        consecutive_off_hours_min: NumericData[Time, Period, Scenario] | None = None,
-        consecutive_off_hours_max: NumericData[Time, Period, Scenario] | None = None,
+        consecutive_on_hours_min: Numeric_TPS | None = None,
+        consecutive_on_hours_max: Numeric_TPS | None = None,
+        consecutive_off_hours_min: Numeric_TPS | None = None,
+        consecutive_off_hours_max: Numeric_TPS | None = None,
         switch_on_total_max: int | None = None,
         force_switch_on: bool = False,
     ):
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_total_min: NumericData[Period, Scenario] = on_hours_total_min
-        self.on_hours_total_max: NumericData[Period, Scenario] = on_hours_total_max
-        self.consecutive_on_hours_min: NumericData[Time, Period, Scenario] = consecutive_on_hours_min
-        self.consecutive_on_hours_max: NumericData[Time, Period, Scenario] = consecutive_on_hours_max
-        self.consecutive_off_hours_min: NumericData[Time, Period, Scenario] = consecutive_off_hours_min
-        self.consecutive_off_hours_max: NumericData[Time, Period, Scenario] = consecutive_off_hours_max
-        self.switch_on_total_max: NumericData[Period, Scenario] = switch_on_total_max
+        self.on_hours_total_min: Numeric_PS = on_hours_total_min
+        self.on_hours_total_max: Numeric_PS = on_hours_total_max
+        self.consecutive_on_hours_min: Numeric_TPS = consecutive_on_hours_min
+        self.consecutive_on_hours_max: Numeric_TPS = consecutive_on_hours_max
+        self.consecutive_off_hours_min: Numeric_TPS = consecutive_off_hours_min
+        self.consecutive_off_hours_max: Numeric_TPS = consecutive_off_hours_max
+        self.switch_on_total_max: Numeric_PS = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:

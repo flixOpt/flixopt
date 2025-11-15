@@ -51,37 +51,33 @@ _Bool: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.
 _Effect: TypeAlias = _Numeric | dict[str, _Numeric]
 
 # Numeric data with dimension combinations
-Numeric_T: TypeAlias = _Numeric  # Time
-Numeric_TS: TypeAlias = _Numeric  # Time, Scenario
-Numeric_PS: TypeAlias = _Numeric  # Period, Scenario
 Numeric_TPS: TypeAlias = _Numeric  # Time, Period, Scenario
+Numeric_PS: TypeAlias = _Numeric  # Period, Scenario
+Numeric_S: TypeAlias = _Numeric  # Scenario
 
 # Boolean data with dimension combinations
-Bool_T: TypeAlias = _Bool
-Bool_TS: TypeAlias = _Bool
-Bool_PS: TypeAlias = _Bool
+Bool_TPS: TypeAlias = _Bool  # Time, Period, Scenario
+Bool_PS: TypeAlias = _Bool  # Period, Scenario
+Bool_S: TypeAlias = _Bool  # Scenario
 
 # Effect data with dimension combinations
-Effect_T: TypeAlias = _Effect
-Effect_TS: TypeAlias = _Effect
-Effect_PS: TypeAlias = _Effect
-Effect_TPS: TypeAlias = _Effect
+Effect_TPS: TypeAlias = _Effect  # Time, Period, Scenario
+Effect_PS: TypeAlias = _Effect  # Period, Scenario
+Effect_S: TypeAlias = _Effect  # Scenario
 
 # Scalar (no dimensions)
 Scalar: TypeAlias = int | float | np.integer | np.floating
 
 # Export public API
 __all__ = [
-    'Numeric_T',
-    'Numeric_TS',
-    'Numeric_PS',
     'Numeric_TPS',
-    'Bool_T',
-    'Bool_TS',
+    'Numeric_PS',
+    'Numeric_S',
+    'Bool_TPS',
     'Bool_PS',
-    'Effect_T',
-    'Effect_TS',
-    'Effect_PS',
+    'Bool_S',
     'Effect_TPS',
+    'Effect_PS',
+    'Effect_S',
     'Scalar',
 ]

@@ -42,7 +42,7 @@ from .commons import (
 )
 
 # Type system for dimension-aware type hints
-from .types import BoolData, EffectData, NumericData, Period, Scalar, Scenario, Time
+from .types import Numeric_TPS, Numeric_PS, Numeric_S, Bool_TPS, Bool_PS, Bool_S, Effect_TPS, Effect_PS, Effect_S, Scalar
 
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.

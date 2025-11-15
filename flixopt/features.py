@@ -518,8 +518,8 @@ class ShareAllocationModel(Submodel):
         dims: list[FlowSystemDimensions],
         label_of_element: str | None = None,
         label_of_model: str | None = None,
-        total_max: NumericData[Period, Scenario] | None = None,
-        total_min: NumericData[Period, Scenario] | None = None,
+        total_max: Numeric_PS | None = None,
+        total_min: Numeric_PS | None = None,
         max_per_hour: TemporalData | None = None,
         min_per_hour: TemporalData | None = None,
     ):

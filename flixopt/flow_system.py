@@ -159,7 +159,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: NumericData[Period, Scenario] | None = None,
+        weights: Numeric_PS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -523,7 +523,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: NumericData[Time, Period, Scenario] | BoolData[Time, Period, Scenario] | None,
+        data: Numeric_TPS | Bool_TPS | None,
         dims: Collection[FlowSystemDimensions] | None = None,
     ) -> xr.DataArray | None:
         """
@@ -563,11 +563,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: EffectData[Time, Period, Scenario] | NumericData[Time, Period, Scenario] | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
         delimiter: str = '|',
-    ) -> EffectData[Time, Period, Scenario] | None:
+    ) -> Effect_TPS | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
