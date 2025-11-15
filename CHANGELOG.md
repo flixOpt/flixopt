@@ -68,6 +68,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
+- **Code structure**: Removed `commons.py` module and moved all imports directly to `__init__.py` for cleaner code organization (no public API changes)
 - **Type handling improvements**: Updated internal data handling to work seamlessly with the new type system
 
 ### 🗑️ Deprecated
