@@ -353,7 +353,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        cop: Numeric_TPS,
+        cop: Numeric_TPS | None = None,
         power_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
@@ -371,6 +371,8 @@ class HeatPump(LinearConverter):
             raise ValueError(f"'{label}': power_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if cop is None:
+            raise ValueError(f"'{label}': cop is required and cannot be None")
 
         super().__init__(
             label,
@@ -844,7 +846,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        cop: Numeric_TPS,
+        cop: Numeric_TPS | None = None,
         power_flow: Flow | None = None,
         heat_source_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
@@ -866,6 +868,8 @@ class HeatPumpWithSource(LinearConverter):
             raise ValueError(f"'{label}': heat_source_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if cop is None:
+            raise ValueError(f"'{label}': cop is required and cannot be None")
 
         super().__init__(
             label,
@@ -986,7 +990,7 @@ def check_bounds(
     # Convert to array for shape and statistics
     value_arr = np.asarray(value)
 
-    if not np.all(value > lower_bound):
+    if not np.all(value_arr > lower_bound):
         logger.warning(
             "'{}.{}' <= lower bound {}. {}.min={}, shape={}",
             element_label,
@@ -996,7 +1000,7 @@ def check_bounds(
             float(np.min(value_arr)),
             np.shape(value_arr),
         )
-    if not np.all(value < upper_bound):
+    if not np.all(value_arr < upper_bound):
         logger.warning(
             "'{}.{}' >= upper bound {}. {}.max={}, shape={}",
             element_label,
