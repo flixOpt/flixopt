@@ -41,20 +41,6 @@ from .commons import (
     solvers,
 )
 
-# Type system for dimension-aware type hints
-from .types import (
-    Bool_PS,
-    Bool_S,
-    Bool_TPS,
-    Effect_PS,
-    Effect_S,
-    Effect_TPS,
-    Numeric_PS,
-    Numeric_S,
-    Numeric_TPS,
-    Scalar,
-)
-
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
 # They are suppressed at runtime to provide a cleaner user experience.
