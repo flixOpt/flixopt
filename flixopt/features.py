@@ -536,18 +536,18 @@ class ShareAllocationModel(Submodel):
         self._eq_total: linopy.Constraint | None = None
 
         # Parameters
-        self._total_max = total_max if total_max is not None else np.inf
-        self._total_min = total_min if total_min is not None else -np.inf
-        self._max_per_hour = max_per_hour if max_per_hour is not None else np.inf
-        self._min_per_hour = min_per_hour if min_per_hour is not None else -np.inf
+        self._total_max = total_max
+        self._total_min = total_min
+        self._max_per_hour = max_per_hour
+        self._min_per_hour = min_per_hour
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
         self.total = self.add_variables(
-            lower=self._total_min,
-            upper=self._total_max,
+            lower=self._total_min if self._total_min is not None else -np.inf,
+            upper=self._total_max if self._total_max is not None else np.inf,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
             name=self.label_full,
             short_name='total',
