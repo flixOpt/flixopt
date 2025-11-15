@@ -52,10 +52,10 @@ class Effect(Element):
             Only one effect can be marked as objective per optimization.
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect.
-            Type: `TemporalEffectsUser` (single value or dict with dimensions [Time, Period, Scenario])
+            Type: `Effect_TPS` (single value or dict with dimensions [Time, Period, Scenario])
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
-            Type: `PeriodicEffectsUser` (single value or dict with dimensions [Period, Scenario])
+            Type: `Effect_PS` (single value or dict with dimensions [Period, Scenario])
         minimum_temporal: Minimum allowed total contribution across all timesteps.
             Type: `Numeric_PS` (sum over time, can vary by period/scenario)
         maximum_temporal: Maximum allowed total contribution across all timesteps.

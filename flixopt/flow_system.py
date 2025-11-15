@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
 
@@ -523,7 +523,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: Numeric_TPS | Bool_TPS | None,
+        data: NumericOrBool | None,
         dims: Collection[FlowSystemDimensions] | None = None,
     ) -> xr.DataArray | None:
         """
@@ -531,7 +531,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Args:
             name: Name of the data
-            data: Data to fit to model coordinates
+            data: Data to fit to model coordinates (accepts any dimensionality including scalars)
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
 
         Returns:
