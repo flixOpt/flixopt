@@ -47,7 +47,9 @@ import xarray as xr
 # Internal base types - not exported
 _Numeric: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 _Bool: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
-_Effect: TypeAlias = dict[str, _Numeric]
+_Effect: TypeAlias = dict[
+    str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+]
 
 # Combined type for numeric or boolean data (no dimension information)
 NumericOrBool: TypeAlias = (
@@ -57,38 +59,44 @@ NumericOrBool: TypeAlias = (
 
 
 # Numeric data types
-Numeric_TPS: TypeAlias = _Numeric
+Numeric_TPS: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Time, Period, Scenario dimensions. For time-varying data across all dimensions."""
 
-Numeric_PS: TypeAlias = _Numeric
+Numeric_PS: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Period, Scenario dimensions. For investment parameters (e.g., size, costs)."""
 
-Numeric_S: TypeAlias = _Numeric
+Numeric_S: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Scenario dimension. For scenario-specific parameters (e.g., discount rates)."""
 
 
 # Boolean data types
-Bool_TPS: TypeAlias = _Bool
+Bool_TPS: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Time, Period, Scenario dimensions. For time-varying binary flags/constraints."""
 
-Bool_PS: TypeAlias = _Bool
+Bool_PS: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Period, Scenario dimensions. For period-specific binary decisions."""
 
-Bool_S: TypeAlias = _Bool
+Bool_S: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Scenario dimension. For scenario-specific binary flags."""
 
 
 # Effect data types
-Effect_TPS: TypeAlias = _Effect
-"""Time, Period, Scenario dimensions. Dict mapping effect names to values.
+Effect_TPS: TypeAlias = dict[
+    str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+]
+"""Time, Period, Scenario dimensions. Dict mapping effect names to numeric values.
 For time-varying effects (costs, emissions). Use `Effect_TPS | Numeric_TPS` to accept single values."""
 
-Effect_PS: TypeAlias = _Effect
-"""Period, Scenario dimensions. Dict mapping effect names to values.
+Effect_PS: TypeAlias = dict[
+    str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+]
+"""Period, Scenario dimensions. Dict mapping effect names to numeric values.
 For period-specific effects (investment costs). Use `Effect_PS | Numeric_PS` to accept single values."""
 
-Effect_S: TypeAlias = _Effect
-"""Scenario dimension. Dict mapping effect names to values.
+Effect_S: TypeAlias = dict[
+    str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+]
+"""Scenario dimension. Dict mapping effect names to numeric values.
 For scenario-specific effects (carbon prices). Use `Effect_S | Numeric_S` to accept single values."""
 
 
