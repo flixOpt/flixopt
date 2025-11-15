@@ -48,6 +48,10 @@ _Numeric: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.S
 _Bool: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 _Effect: TypeAlias = _Numeric | dict[str, _Numeric]
 
+# Combined type for numeric or boolean data (no dimension information)
+NumericOrBool: TypeAlias = int | float | bool | np.integer | np.floating | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+"""Numeric or boolean data without dimension metadata. For internal utilities."""
+
 
 # Numeric data types
 Numeric_TPS: TypeAlias = _Numeric
@@ -101,4 +105,5 @@ __all__ = [
     'Effect_PS',
     'Effect_S',
     'Scalar',
+    'NumericOrBool',
 ]

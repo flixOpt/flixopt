@@ -15,7 +15,7 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
-    from .core import FlowSystemDimensions, Scalar, TemporalData
+    from .core import FlowSystemDimensions
     from .interface import InvestParameters, OnOffParameters, Piecewise
     from .types import Numeric_PS, Numeric_TPS
 

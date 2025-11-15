@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .types import NumericOrBool
+
 logger = logging.getLogger('flixopt')
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
@@ -387,16 +389,7 @@ class DataConverter:
     @classmethod
     def to_dataarray(
         cls,
-        data: int
-        | float
-        | bool
-        | np.integer
-        | np.floating
-        | np.bool_
-        | np.ndarray
-        | pd.Series
-        | pd.DataFrame
-        | xr.DataArray,
+        data: NumericOrBool,
         coords: dict[str, pd.Index] | None = None,
     ) -> xr.DataArray:
         """
