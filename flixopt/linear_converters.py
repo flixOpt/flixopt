@@ -997,7 +997,7 @@ def check_bounds(
 
     if not np.all(value > lower_bound):
         logger.warning(
-            "'{}.{}' <= lower bound {}. {}.min={} shape={}",
+            "'{}.{}' <= lower bound {}. {}.min={}, shape={}",
             element_label,
             parameter_label,
             lower_bound,
@@ -1007,7 +1007,7 @@ def check_bounds(
         )
     if not np.all(value < upper_bound):
         logger.warning(
-            "'{}.{}' >= upper bound {}. {}.max={} shape={}",
+            "'{}.{}' >= upper bound {}. {}.max={}, shape={}",
             element_label,
             parameter_label,
             upper_bound,
