@@ -5,6 +5,7 @@ This Module contains high-level classes to easily model a FlowSystem.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -637,6 +638,15 @@ class HeatPumpWithSource(LinearConverter):
             {self.power_flow.label: value, self.thermal_flow.label: 1},
             {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
 
 
 def check_bounds(
