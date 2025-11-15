@@ -7,7 +7,6 @@ which are then transformed into the internal data structure.
 
 from __future__ import annotations
 
-import logging
 import warnings
 from collections import deque
 from typing import TYPE_CHECKING, Literal
@@ -15,6 +14,7 @@ from typing import TYPE_CHECKING, Literal
 import linopy
 import numpy as np
 import xarray as xr
+from loguru import logger
 
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -24,8 +24,6 @@ if TYPE_CHECKING:
 
     from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS, Scalar
-
-logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

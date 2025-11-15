@@ -22,6 +22,24 @@ For all features including interactive network visualizations and time series ag
 pip install "flixopt[full]"
 ```
 
+## Logging
+
+FlixOpt uses [loguru](https://loguru.readthedocs.io/) for logging. Logging is silent by default but can be easily configured. For beginners, use our internal convenience methods. Experts can use loguru directly.
+
+```python
+from flixopt import CONFIG
+
+# Enable console logging
+CONFIG.Logging.console = True
+CONFIG.Logging.level = 'INFO'
+CONFIG.apply()
+
+# Or use a preset configuration for exploring
+CONFIG.exploring()
+```
+
+For more details on logging configuration, see the [`CONFIG.Logging`][flixopt.config.CONFIG.Logging] documentation.
+
 ## Basic Workflow
 
 Working with FlixOpt follows a general pattern:

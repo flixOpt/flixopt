@@ -4,13 +4,12 @@ This module contains the solvers of the flixopt framework, making them available
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
-from flixopt.config import CONFIG
+from loguru import logger
 
-logger = logging.getLogger('flixopt')
+from flixopt.config import CONFIG
 
 
 @dataclass
