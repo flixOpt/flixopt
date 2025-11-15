@@ -886,9 +886,7 @@ class HeatPumpWithSource(LinearConverter):
     @cop.setter
     def cop(self, value):
         check_bounds(value, 'cop', self.label_full, 1, 20)
-        # Unwrap TimeSeriesData before numpy comparison (consistent with check_bounds)
-        ts_value = value.data if isinstance(value, TimeSeriesData) else value
-        if np.any(np.asarray(ts_value) == 1):
+        if np.any(np.asarray(value) == 1):
             raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
             {self.power_flow.label: value, self.thermal_flow.label: 1},
@@ -985,13 +983,6 @@ def check_bounds(
         lower_bound: The lower bound.
         upper_bound: The upper bound.
     """
-    if isinstance(value, TimeSeriesData):
-        value = value.data
-    if isinstance(lower_bound, TimeSeriesData):
-        lower_bound = lower_bound.data
-    if isinstance(upper_bound, TimeSeriesData):
-        upper_bound = upper_bound.data
-
     # Convert to array for shape and statistics
     value_arr = np.asarray(value)
 
