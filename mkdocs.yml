@@ -212,7 +212,7 @@ plugins:
       handlers:
         python:
           paths: [.]
-          import:
+          inventories:
             - https://docs.python.org/3/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://pandas.pydata.org/docs/objects.inv
@@ -259,8 +259,7 @@ plugins:
       fallback_to_build_date: true
 
   # Optional: Add better navigation
-  - tags:
-      tags_file: tags.md
+  - tags
 
   # Optional: Minify HTML in production
   - minify:
