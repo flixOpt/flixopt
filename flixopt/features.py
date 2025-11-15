@@ -5,7 +5,6 @@ Features extend the functionality of Elements.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import linopy
@@ -18,8 +17,6 @@ if TYPE_CHECKING:
     from .core import FlowSystemDimensions
     from .interface import InvestParameters, OnOffParameters, Piecewise
     from .types import Numeric_PS, Numeric_TPS
-
-logger = logging.getLogger('flixopt')
 
 
 class InvestmentModel(Submodel):

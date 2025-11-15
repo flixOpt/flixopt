@@ -4,10 +4,10 @@ This Module contains high-level classes to easily model a FlowSystem.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from loguru import logger
 
 from .components import LinearConverter
 from .core import TimeSeriesData
@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
     from .types import Numeric_TPS
-
-logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -620,11 +618,21 @@ def check_bounds(
 
     if not np.all(value_arr > lower_arr):
         logger.warning(
-            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value_arr)};    {parameter_label}={value}'
+            "'{}.{}' <= lower bound {}. {}.min={} shape={}",
+            element_label,
+            parameter_label,
+            lower_bound,
+            parameter_label,
+            float(np.min(value_arr)),
+            np.shape(value_arr),
         )
     if not np.all(value_arr < upper_arr):
         logger.warning(
-            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value_arr)};    {parameter_label}={value}'
+            "'{}.{}' >= upper bound {}. {}.max={} shape={}",
+            element_label,
+            parameter_label,
+            upper_bound,
+            parameter_label,
+            float(np.max(value_arr)),
+            np.shape(value_arr),
         )

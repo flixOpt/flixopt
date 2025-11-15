@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import logging
 import os
 import pathlib
 import re
@@ -15,13 +14,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
+from loguru import logger
 
 if TYPE_CHECKING:
     import linopy
 
     from .types import Numeric_TPS
-
-logger = logging.getLogger('flixopt')
 
 
 def remove_none_and_empty(obj):
@@ -500,7 +498,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     }
 
     if model.status == 'warning':
-        logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
+        logger.warning(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
             import io
             from contextlib import redirect_stdout
@@ -513,7 +511,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
 
             documentation['infeasible_constraints'] = f.getvalue()
         except NotImplementedError:
-            logger.critical(
+            logger.warning(
                 'Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi'
             )
             documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
