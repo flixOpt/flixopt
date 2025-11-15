@@ -4,11 +4,11 @@ This Module contains high-level classes to easily model a FlowSystem.
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
+from loguru import logger
 
 from .components import LinearConverter
 from .core import TimeSeriesData
@@ -18,8 +18,6 @@ if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
     from .types import Numeric_TPS
-
-logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -958,22 +956,22 @@ def check_bounds(
     value_arr = np.asarray(value)
 
     if not np.all(value > lower_bound):
-        # Log shape and statistics instead of full array to avoid verbose output
-        if value_arr.size > 1:
-            value_info = f'shape={value_arr.shape}, min={np.min(value)}'
-        else:
-            value_info = f'{value}'
         logger.warning(
-            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}. "
-            f'{parameter_label}: {value_info}'
+            "'{}.{}' <= lower bound {}. {}.min={} shape={}",
+            element_label,
+            parameter_label,
+            lower_bound,
+            parameter_label,
+            float(np.min(value_arr)),
+            np.shape(value_arr),
         )
     if not np.all(value < upper_bound):
-        # Log shape and statistics instead of full array to avoid verbose output
-        if value_arr.size > 1:
-            value_info = f'shape={value_arr.shape}, max={np.max(value)}'
-        else:
-            value_info = f'{value}'
         logger.warning(
-            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}. "
-            f'{parameter_label}: {value_info}'
+            "'{}.{}' >= upper bound {}. {}.max={} shape={}",
+            element_label,
+            parameter_label,
+            upper_bound,
+            parameter_label,
+            float(np.max(value_arr)),
+            np.shape(value_arr),
         )
