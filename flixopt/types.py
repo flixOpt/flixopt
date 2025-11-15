@@ -58,7 +58,7 @@ NumericOrBool: TypeAlias = (
 """Numeric or boolean data without dimension metadata. For internal utilities."""
 
 
-# Numeric data types
+# Numeric data types - Repeating types instead of using common var for better docs rendering
 Numeric_TPS: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Time, Period, Scenario dimensions. For time-varying data across all dimensions."""
 
@@ -69,7 +69,7 @@ Numeric_S: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.
 """Scenario dimension. For scenario-specific parameters (e.g., discount rates)."""
 
 
-# Boolean data types
+# Boolean data types - Repeating types instead of using common var for better docs rendering
 Bool_TPS: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 """Time, Period, Scenario dimensions. For time-varying binary flags/constraints."""
 
