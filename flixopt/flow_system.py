@@ -20,20 +20,9 @@ from .core import (
     ConversionError,
     DataConverter,
     FlowSystemDimensions,
-    PeriodicData,
-    PeriodicDataUser,
-    TemporalData,
-    TemporalDataUser,
     TimeSeriesData,
 )
-from .effects import (
-    Effect,
-    EffectCollection,
-    PeriodicEffects,
-    PeriodicEffectsUser,
-    TemporalEffects,
-    TemporalEffectsUser,
-)
+from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
@@ -42,6 +31,8 @@ if TYPE_CHECKING:
     from collections.abc import Collection
 
     import pyvis
+
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
 
@@ -168,7 +159,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: PeriodicDataUser | None = None,
+        weights: Numeric_PS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -532,15 +523,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: TemporalDataUser | PeriodicDataUser | None,
+        data: NumericOrBool | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-    ) -> TemporalData | PeriodicData | None:
+    ) -> xr.DataArray | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
         Args:
             name: Name of the data
-            data: Data to fit to model coordinates
+            data: Data to fit to model coordinates (accepts any dimensionality including scalars)
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
 
         Returns:
@@ -572,11 +563,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: TemporalEffectsUser | PeriodicEffectsUser | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
         delimiter: str = '|',
-    ) -> TemporalEffects | PeriodicEffects | None:
+    ) -> Effect_TPS | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """

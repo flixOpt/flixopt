@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .components import LinearConverter
-from .core import TemporalDataUser, TimeSeriesData
+from .core import TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
+    from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -76,7 +77,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
+        eta: Numeric_TPS,
         Q_fu: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -163,7 +164,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
+        eta: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -250,7 +251,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
+        COP: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -339,7 +340,7 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: TemporalDataUser,
+        specific_electricity_demand: Numeric_TPS,
         P_el: Flow,
         Q_th: Flow,
         on_off_parameters: OnOffParameters | None = None,
@@ -437,8 +438,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: TemporalDataUser,
-        eta_el: TemporalDataUser,
+        eta_th: Numeric_TPS,
+        eta_el: Numeric_TPS,
         Q_fu: Flow,
         P_el: Flow,
         Q_th: Flow,
@@ -551,7 +552,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
+        COP: Numeric_TPS,
         P_el: Flow,
         Q_ab: Flow,
         Q_th: Flow,
@@ -589,11 +590,11 @@ class HeatPumpWithSource(LinearConverter):
 
 
 def check_bounds(
-    value: TemporalDataUser,
+    value: Numeric_TPS,
     parameter_label: str,
     element_label: str,
-    lower_bound: TemporalDataUser,
-    upper_bound: TemporalDataUser,
+    lower_bound: Numeric_TPS,
+    upper_bound: Numeric_TPS,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.
@@ -611,13 +612,19 @@ def check_bounds(
         lower_bound = lower_bound.data
     if isinstance(upper_bound, TimeSeriesData):
         upper_bound = upper_bound.data
-    if not np.all(value > lower_bound):
+
+    # Convert to NumPy arrays to handle xr.DataArray, pd.Series, pd.DataFrame
+    value_arr = np.asarray(value)
+    lower_arr = np.asarray(lower_bound)
+    upper_arr = np.asarray(upper_bound)
+
+    if not np.all(value_arr > lower_arr):
         logger.warning(
             f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
+            f'    {parameter_label}.min={np.min(value_arr)};    {parameter_label}={value}'
         )
-    if not np.all(value < upper_bound):
+    if not np.all(value_arr < upper_arr):
         logger.warning(
             f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
+            f'    {parameter_label}.max={np.max(value_arr)};    {parameter_label}={value}'
         )

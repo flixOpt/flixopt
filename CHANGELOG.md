@@ -51,30 +51,48 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Type system overhaul with comprehensive type hints for better IDE support and code clarity.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- **New type system** (`flixopt/types.py`):
+    - Introduced dimension-aware type aliases using suffix notation (`_TPS`, `_PS`, `_S`) to clearly indicate which dimensions data can have
+    - Added `Numeric_TPS`, `Numeric_PS`, `Numeric_S` for numeric data with Time/Period/Scenario dimensions
+    - Added `Bool_TPS`, `Bool_PS`, `Bool_S` for boolean data with dimension support
+    - Added `Effect_TPS`, `Effect_PS`, `Effect_S` for effect dictionaries with dimension support
+    - Added `Scalar` type for scalar-only numeric values
+    - Added `NumericOrBool` utility type for internal use
+    - Type system supports scalars, numpy arrays, pandas Series/DataFrames, and xarray DataArrays
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
 - **Code structure**: Removed `commons.py` module and moved all imports directly to `__init__.py` for cleaner code organization (no public API changes)
+- **Type handling improvements**: Updated internal data handling to work seamlessly with the new type system
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
 
 ### 🐛 Fixed
+- Fixed `ShareAllocationModel` inconsistency where None/inf conversion happened in `__init__` instead of during modeling, which could cause issues with parameter validation
+- Fixed numerous type hint inconsistencies across the codebase
 
 ### 🔒 Security
 
 ### 📦 Dependencies
+- Updated `mkdocs-material` to v9.6.23
 
 ### 📝 Docs
+- Enhanced documentation in `flixopt/types.py` with comprehensive examples and dimension explanation table
+- Clarified Effect type docstrings - Effect types are dicts, but single numeric values work through union types
+- Added clarifying comments in `effects.py` explaining parameter handling and transformation
+- Improved OnOffParameters attribute documentation
+
 
 ### 👷 Development
+- Added test for FlowSystem resampling
 
 ### 🚧 Known Issues
 
