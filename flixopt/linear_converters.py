@@ -97,18 +97,18 @@ class Boiler(LinearConverter):
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.Q_fu = fuel_flow
-        self.Q_th = thermal_flow
+        self.fuel_flow = fuel_flow
+        self.thermal_flow = thermal_flow
         self.eta = eta  # Uses setter
 
     @property
     def eta(self):
-        return self.conversion_factors[0][self.Q_fu.label]
+        return self.conversion_factors[0][self.fuel_flow.label]
 
     @eta.setter
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors = [{self.Q_fu.label: value, self.Q_th.label: 1}]
+        self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -192,18 +192,18 @@ class Power2Heat(LinearConverter):
             meta_data=meta_data,
         )
 
-        self.P_el = power_flow
-        self.Q_th = thermal_flow
+        self.power_flow = power_flow
+        self.thermal_flow = thermal_flow
         self.eta = eta  # Uses setter
 
     @property
     def eta(self):
-        return self.conversion_factors[0][self.P_el.label]
+        return self.conversion_factors[0][self.power_flow.label]
 
     @eta.setter
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors = [{self.P_el.label: value, self.Q_th.label: 1}]
+        self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -218,7 +218,7 @@ class HeatPump(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+        cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. COP > 1 indicates the heat pump extracts
             additional energy from the environment.
         power_flow: Electrical input-flow representing electricity consumption.
@@ -226,6 +226,7 @@ class HeatPump(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        COP: *Deprecated*. Use `cop` instead.
         P_el: *Deprecated*. Use `power_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
@@ -235,7 +236,7 @@ class HeatPump(LinearConverter):
         ```python
         air_hp = HeatPump(
             label='air_source_heat_pump',
-            COP=3.5,  # COP of 3.5 (350% efficiency)
+            cop=3.5,  # COP of 3.5 (350% efficiency)
             power_flow=electricity_flow,
             thermal_flow=heating_flow,
         )
@@ -246,7 +247,7 @@ class HeatPump(LinearConverter):
         ```python
         ground_hp = HeatPump(
             label='geothermal_heat_pump',
-            COP=temperature_dependent_cop,  # Time-varying COP based on ground temp
+            cop=temperature_dependent_cop,  # Time-varying COP based on ground temp
             power_flow=electricity_flow,
             thermal_flow=radiant_heating_flow,
             on_off_parameters=OnOffParameters(
@@ -267,7 +268,7 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: Numeric_TPS,
+        cop: Numeric_TPS,
         power_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
@@ -277,6 +278,7 @@ class HeatPump(LinearConverter):
         # Handle deprecated parameters
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
 
         super().__init__(
             label,
@@ -286,18 +288,18 @@ class HeatPump(LinearConverter):
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.P_el = power_flow
-        self.Q_th = thermal_flow
-        self.COP = COP  # Uses setter
+        self.power_flow = power_flow
+        self.thermal_flow = thermal_flow
+        self.cop = cop  # Uses setter
 
     @property
     def COP(self):  # noqa: N802
-        return self.conversion_factors[0][self.P_el.label]
+        return self.conversion_factors[0][self.power_flow.label]
 
     @COP.setter
     def COP(self, value):  # noqa: N802
         check_bounds(value, 'COP', self.label_full, 1, 20)
-        self.conversion_factors = [{self.P_el.label: value, self.Q_th.label: 1}]
+        self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -382,18 +384,18 @@ class CoolingTower(LinearConverter):
             meta_data=meta_data,
         )
 
-        self.P_el = power_flow
-        self.Q_th = thermal_flow
+        self.power_flow = power_flow
+        self.thermal_flow = thermal_flow
         self.specific_electricity_demand = specific_electricity_demand  # Uses setter
 
     @property
     def specific_electricity_demand(self):
-        return self.conversion_factors[0][self.Q_th.label]
+        return self.conversion_factors[0][self.thermal_flow.label]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors = [{self.P_el.label: -1, self.Q_th.label: value}]
+        self.conversion_factors = [{self.power_flow.label: -1, self.thermal_flow.label: value}]
 
 
 @register_class_for_io
@@ -490,9 +492,9 @@ class CHP(LinearConverter):
             meta_data=meta_data,
         )
 
-        self.Q_fu = fuel_flow
-        self.P_el = power_flow
-        self.Q_th = thermal_flow
+        self.fuel_flow = fuel_flow
+        self.power_flow = power_flow
+        self.thermal_flow = thermal_flow
         self.eta_th = eta_th  # Uses setter
         self.eta_el = eta_el  # Uses setter
 
@@ -500,29 +502,29 @@ class CHP(LinearConverter):
 
     @property
     def eta_th(self):
-        return self.conversion_factors[0][self.Q_fu.label]
+        return self.conversion_factors[0][self.fuel_flow.label]
 
     @eta_th.setter
     def eta_th(self, value):
         check_bounds(value, 'eta_th', self.label_full, 0, 1)
         if len(self.conversion_factors) < 2:
             # Initialize structure if not yet set
-            self.conversion_factors = [{self.Q_fu.label: value, self.Q_th.label: 1}, {}]
+            self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}, {}]
         else:
-            self.conversion_factors[0] = {self.Q_fu.label: value, self.Q_th.label: 1}
+            self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
     def eta_el(self):
-        return self.conversion_factors[1][self.Q_fu.label]
+        return self.conversion_factors[1][self.fuel_flow.label]
 
     @eta_el.setter
     def eta_el(self, value):
         check_bounds(value, 'eta_el', self.label_full, 0, 1)
         if len(self.conversion_factors) < 2:
             # Initialize structure if not yet set
-            self.conversion_factors = [{}, {self.Q_fu.label: value, self.P_el.label: 1}]
+            self.conversion_factors = [{}, {self.fuel_flow.label: value, self.power_flow.label: 1}]
         else:
-            self.conversion_factors[1] = {self.Q_fu.label: value, self.P_el.label: 1}
+            self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
 
 
 @register_class_for_io
@@ -597,7 +599,7 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: Numeric_TPS,
+        cop: Numeric_TPS,
         power_flow: Flow | None = None,
         heat_source_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
@@ -609,6 +611,7 @@ class HeatPumpWithSource(LinearConverter):
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         heat_source_flow = self._handle_deprecated_kwarg(kwargs, 'Q_ab', 'heat_source_flow', heat_source_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
 
         super().__init__(
             label,
@@ -618,23 +621,23 @@ class HeatPumpWithSource(LinearConverter):
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.P_el = power_flow
-        self.Q_ab = heat_source_flow
-        self.Q_th = thermal_flow
-        self.COP = COP  # Uses setter
+        self.power_flow = power_flow
+        self.heat_source_flow = heat_source_flow
+        self.thermal_flow = thermal_flow
+        self.cop = cop  # Uses setter
 
     @property
-    def COP(self):  # noqa: N802
-        return self.conversion_factors[0][self.P_el.label]
+    def cop(self):  # noqa: N802
+        return self.conversion_factors[0][self.power_flow.label]
 
-    @COP.setter
-    def COP(self, value):  # noqa: N802
-        check_bounds(value, 'COP', self.label_full, 1, 20)
+    @cop.setter
+    def cop(self, value):  # noqa: N802
+        check_bounds(value, 'cop', self.label_full, 1, 20)
         if np.any(np.asarray(value) <= 1):
-            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+            raise ValueError(f'{self.label_full}.cop must be strictly > 1 for HeatPumpWithSource.')
         self.conversion_factors = [
-            {self.P_el.label: value, self.Q_th.label: 1},
-            {self.Q_ab.label: value / (value - 1), self.Q_th.label: 1},
+            {self.power_flow.label: value, self.thermal_flow.label: 1},
+            {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
 
 
