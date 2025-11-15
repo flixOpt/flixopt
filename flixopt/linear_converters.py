@@ -112,6 +112,24 @@ class Boiler(LinearConverter):
         check_bounds(value, 'eta', self.label_full, 0, 1)
         self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
 
+    @property
+    def Q_fu(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_fu" property is deprecated. Use "fuel_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.fuel_flow
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
+
 
 @register_class_for_io
 class Power2Heat(LinearConverter):
@@ -207,6 +225,24 @@ class Power2Heat(LinearConverter):
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
         self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
+
+    @property
+    def P_el(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.power_flow
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
 
 
 @register_class_for_io
@@ -305,6 +341,33 @@ class HeatPump(LinearConverter):
         check_bounds(value, 'cop', self.label_full, 1, 20)
         self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
 
+    @property
+    def COP(self) -> Numeric_TPS:  # noqa: N802
+        warnings.warn(
+            'The "COP" property is deprecated. Use "cop" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.cop
+
+    @property
+    def P_el(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.power_flow
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
+
 
 @register_class_for_io
 class CoolingTower(LinearConverter):
@@ -401,6 +464,24 @@ class CoolingTower(LinearConverter):
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
         self.conversion_factors = [{self.power_flow.label: -1, self.thermal_flow.label: value}]
+
+    @property
+    def P_el(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.power_flow
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
 
 
 @register_class_for_io
@@ -524,6 +605,33 @@ class CHP(LinearConverter):
         check_bounds(value, 'eta_el', self.label_full, 0, 1)
         self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
 
+    @property
+    def Q_fu(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_fu" property is deprecated. Use "fuel_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.fuel_flow
+
+    @property
+    def P_el(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.power_flow
+
+    @property
+    def Q_th(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_flow
+
 
 @register_class_for_io
 class HeatPumpWithSource(LinearConverter):
@@ -638,6 +746,33 @@ class HeatPumpWithSource(LinearConverter):
             {self.power_flow.label: value, self.thermal_flow.label: 1},
             {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
+
+    @property
+    def COP(self) -> Numeric_TPS:  # noqa: N802
+        warnings.warn(
+            'The "COP" property is deprecated. Use "cop" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.cop
+
+    @property
+    def P_el(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.power_flow
+
+    @property
+    def Q_ab(self) -> Flow:  # noqa: N802
+        warnings.warn(
+            'The "Q_ab" property is deprecated. Use "heat_source_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.heat_source_flow
 
     @property
     def Q_th(self) -> Flow:  # noqa: N802
