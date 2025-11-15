@@ -80,16 +80,16 @@ Bool_S: TypeAlias = _Bool
 
 # Effect data types
 Effect_TPS: TypeAlias = _Effect
-"""Time, Period, Scenario dimensions. For time-varying effects (costs, emissions).
-Can be single numeric value or dict mapping effect names to values."""
+"""Time, Period, Scenario dimensions. Dict mapping effect names to values.
+For time-varying effects (costs, emissions). Use `Effect_TPS | Numeric_TPS` to accept single values."""
 
 Effect_PS: TypeAlias = _Effect
-"""Period, Scenario dimensions. For period-specific effects (investment costs).
-Can be single numeric value or dict mapping effect names to values."""
+"""Period, Scenario dimensions. Dict mapping effect names to values.
+For period-specific effects (investment costs). Use `Effect_PS | Numeric_PS` to accept single values."""
 
 Effect_S: TypeAlias = _Effect
-"""Scenario dimension. For scenario-specific effects (carbon prices).
-Can be single numeric value or dict mapping effect names to values."""
+"""Scenario dimension. Dict mapping effect names to values.
+For scenario-specific effects (carbon prices). Use `Effect_S | Numeric_S` to accept single values."""
 
 
 # Scalar type (no dimensions)

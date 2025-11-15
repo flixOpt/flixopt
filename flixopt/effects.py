@@ -196,6 +196,9 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
+        # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
+        # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
+        # Default to {} when None (no shares defined).
         self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
         self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
 
