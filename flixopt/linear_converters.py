@@ -89,6 +89,7 @@ class Boiler(LinearConverter):
         # Handle deprecated parameters
         fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -183,6 +184,7 @@ class Power2Heat(LinearConverter):
         # Handle deprecated parameters
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -279,6 +281,7 @@ class HeatPump(LinearConverter):
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -293,12 +296,12 @@ class HeatPump(LinearConverter):
         self.cop = cop  # Uses setter
 
     @property
-    def COP(self):  # noqa: N802
+    def cop(self):
         return self.conversion_factors[0][self.power_flow.label]
 
-    @COP.setter
-    def COP(self, value):  # noqa: N802
-        check_bounds(value, 'COP', self.label_full, 1, 20)
+    @cop.setter
+    def cop(self, value):
+        check_bounds(value, 'cop', self.label_full, 1, 20)
         self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
 
 
@@ -375,6 +378,7 @@ class CoolingTower(LinearConverter):
         # Handle deprecated parameters
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -482,6 +486,7 @@ class CHP(LinearConverter):
         fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
@@ -539,7 +544,7 @@ class HeatPumpWithSource(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+        cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. The heat source extraction is automatically
             calculated as heat_source_flow = thermal_flow × (COP-1)/COP.
         power_flow: Electrical input-flow representing electricity consumption for compressor.
@@ -549,6 +554,7 @@ class HeatPumpWithSource(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        COP: *Deprecated*. Use `cop` instead.
         P_el: *Deprecated*. Use `power_flow` instead.
         Q_ab: *Deprecated*. Use `heat_source_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
@@ -559,7 +565,7 @@ class HeatPumpWithSource(LinearConverter):
         ```python
         ground_source_hp = HeatPumpWithSource(
             label='geothermal_heat_pump',
-            COP=4.5,  # High COP due to stable ground temperature
+            cop=4.5,  # High COP due to stable ground temperature
             power_flow=electricity_flow,
             heat_source_flow=ground_heat_extraction,  # Heat extracted from ground loop
             thermal_flow=building_heating_flow,
@@ -571,7 +577,7 @@ class HeatPumpWithSource(LinearConverter):
         ```python
         waste_heat_pump = HeatPumpWithSource(
             label='waste_heat_pump',
-            COP=temperature_dependent_cop,  # Varies with temperature of heat source
+            cop=temperature_dependent_cop,  # Varies with temperature of heat source
             power_flow=electricity_consumption,
             heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
             thermal_flow=heat_supply,
@@ -612,6 +618,7 @@ class HeatPumpWithSource(LinearConverter):
         heat_source_flow = self._handle_deprecated_kwarg(kwargs, 'Q_ab', 'heat_source_flow', heat_source_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
+        self._validate_kwargs(kwargs)
 
         super().__init__(
             label,
