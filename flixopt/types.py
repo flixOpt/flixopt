@@ -47,7 +47,7 @@ import xarray as xr
 # Internal base types - not exported
 _Numeric: TypeAlias = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
 _Bool: TypeAlias = bool | np.bool_ | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
-_Effect: TypeAlias = _Numeric | dict[str, _Numeric]
+_Effect: TypeAlias = dict[str, _Numeric]
 
 # Combined type for numeric or boolean data (no dimension information)
 NumericOrBool: TypeAlias = (

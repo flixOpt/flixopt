@@ -179,8 +179,8 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        share_from_temporal: Effect_TPS | None = None,
-        share_from_periodic: Effect_PS | None = None,
+        share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
+        share_from_periodic: Effect_PS | Numeric_PS | None = None,
         minimum_temporal: Numeric_PS | None = None,
         maximum_temporal: Numeric_PS | None = None,
         minimum_periodic: Numeric_PS | None = None,
@@ -196,8 +196,8 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.share_from_temporal: Effect_TPS = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_periodic: Effect_PS = share_from_periodic if share_from_periodic is not None else {}
+        self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
+        self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
 
         # Handle backwards compatibility for deprecated parameters using centralized helper
         minimum_temporal = self._handle_deprecated_kwarg(
