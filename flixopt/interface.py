@@ -1276,13 +1276,13 @@ class OnOffParameters(Interface):
     ):
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_total_min: Numeric_PS = on_hours_total_min
-        self.on_hours_total_max: Numeric_PS = on_hours_total_max
-        self.consecutive_on_hours_min: Numeric_TPS = consecutive_on_hours_min
-        self.consecutive_on_hours_max: Numeric_TPS = consecutive_on_hours_max
-        self.consecutive_off_hours_min: Numeric_TPS = consecutive_off_hours_min
-        self.consecutive_off_hours_max: Numeric_TPS = consecutive_off_hours_max
-        self.switch_on_total_max: Numeric_PS = switch_on_total_max
+        self.on_hours_total_min = on_hours_total_min
+        self.on_hours_total_max = on_hours_total_max
+        self.consecutive_on_hours_min = consecutive_on_hours_min
+        self.consecutive_on_hours_max = consecutive_on_hours_max
+        self.consecutive_off_hours_min = consecutive_off_hours_min
+        self.consecutive_off_hours_max = consecutive_off_hours_max
+        self.switch_on_total_max = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
