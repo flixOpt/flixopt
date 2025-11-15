@@ -492,7 +492,7 @@ class CHP(LinearConverter):
             label,
             inputs=[fuel_flow],
             outputs=[thermal_flow, power_flow],
-            conversion_factors=[],
+            conversion_factors=[{}, {}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -512,11 +512,7 @@ class CHP(LinearConverter):
     @eta_th.setter
     def eta_th(self, value):
         check_bounds(value, 'eta_th', self.label_full, 0, 1)
-        if len(self.conversion_factors) < 2:
-            # Initialize structure if not yet set
-            self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}, {}]
-        else:
-            self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
+        self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
     def eta_el(self):
@@ -525,11 +521,7 @@ class CHP(LinearConverter):
     @eta_el.setter
     def eta_el(self, value):
         check_bounds(value, 'eta_el', self.label_full, 0, 1)
-        if len(self.conversion_factors) < 2:
-            # Initialize structure if not yet set
-            self.conversion_factors = [{}, {self.fuel_flow.label: value, self.power_flow.label: 1}]
-        else:
-            self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
+        self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
 
 
 @register_class_for_io
@@ -624,7 +616,6 @@ class HeatPumpWithSource(LinearConverter):
             label,
             inputs=[power_flow, heat_source_flow],
             outputs=[thermal_flow],
-            conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
@@ -634,14 +625,14 @@ class HeatPumpWithSource(LinearConverter):
         self.cop = cop  # Uses setter
 
     @property
-    def cop(self):  # noqa: N802
+    def cop(self):
         return self.conversion_factors[0][self.power_flow.label]
 
     @cop.setter
-    def cop(self, value):  # noqa: N802
+    def cop(self, value):
         check_bounds(value, 'cop', self.label_full, 1, 20)
-        if np.any(np.asarray(value) <= 1):
-            raise ValueError(f'{self.label_full}.cop must be strictly > 1 for HeatPumpWithSource.')
+        if np.any(np.asarray(value) == 1):
+            raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
             {self.power_flow.label: value, self.thermal_flow.label: 1},
             {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
