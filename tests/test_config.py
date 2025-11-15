@@ -243,7 +243,7 @@ logging:
 
     def test_logging_levels(self, capfd):
         """Test all valid logging levels."""
-        levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        levels = ['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']
 
         for level in levels:
             CONFIG.Logging.level = level
