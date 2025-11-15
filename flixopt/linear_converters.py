@@ -34,11 +34,13 @@ class Boiler(LinearConverter):
         label: The label of the Element. Used to identify it in the FlowSystem.
         eta: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
             output to fuel input energy content.
-        Q_fu: Fuel input-flow representing fuel consumption.
-        Q_th: Thermal output-flow representing heat generation.
+        fuel_flow: Fuel input-flow representing fuel consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        Q_fu: *Deprecated*. Use `fuel_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Natural gas boiler:
@@ -47,8 +49,8 @@ class Boiler(LinearConverter):
         gas_boiler = Boiler(
             label='natural_gas_boiler',
             eta=0.85,  # 85% thermal efficiency
-            Q_fu=natural_gas_flow,
-            Q_th=hot_water_flow,
+            fuel_flow=natural_gas_flow,
+            thermal_flow=hot_water_flow,
         )
         ```
 
@@ -58,8 +60,8 @@ class Boiler(LinearConverter):
         biomass_boiler = Boiler(
             label='wood_chip_boiler',
             eta=seasonal_efficiency_profile,  # Time-varying efficiency
-            Q_fu=biomass_flow,
-            Q_th=district_heat_flow,
+            fuel_flow=biomass_flow,
+            thermal_flow=district_heat_flow,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=4,  # Minimum 4-hour operation
                 effects_per_switch_on={'startup_fuel': 50},  # Startup fuel penalty
@@ -68,7 +70,7 @@ class Boiler(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: Q_th = Q_fu × eta
+        The conversion relationship is: thermal_flow = fuel_flow × eta
 
         Efficiency should be between 0 and 1, where 1 represents perfect conversion
         (100% of fuel energy converted to useful thermal output).
@@ -78,20 +80,25 @@ class Boiler(LinearConverter):
         self,
         label: str,
         eta: Numeric_TPS,
-        Q_fu: Flow,
-        Q_th: Flow,
+        fuel_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[Q_fu],
-            outputs=[Q_th],
+            inputs=[fuel_flow],
+            outputs=[thermal_flow],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.Q_fu = Q_fu
-        self.Q_th = Q_th
+        self.Q_fu = fuel_flow
+        self.Q_th = thermal_flow
         self.eta = eta  # Uses setter
 
     @property
@@ -119,11 +126,13 @@ class Power2Heat(LinearConverter):
         eta: Thermal efficiency factor (0-1 range). For resistance heating this is
             typically close to 1.0 (nearly 100% efficiency), but may be lower for
             electrode boilers or systems with distribution losses.
-        P_el: Electrical input-flow representing electricity consumption.
-        Q_th: Thermal output-flow representing heat generation.
+        power_flow: Electrical input-flow representing electricity consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        P_el: *Deprecated*. Use `power_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Electric resistance heater:
@@ -132,8 +141,8 @@ class Power2Heat(LinearConverter):
         electric_heater = Power2Heat(
             label='resistance_heater',
             eta=0.98,  # 98% efficiency (small losses)
-            P_el=electricity_flow,
-            Q_th=space_heating_flow,
+            power_flow=electricity_flow,
+            thermal_flow=space_heating_flow,
         )
         ```
 
@@ -143,8 +152,8 @@ class Power2Heat(LinearConverter):
         electrode_boiler = Power2Heat(
             label='electrode_steam_boiler',
             eta=0.95,  # 95% efficiency including boiler losses
-            P_el=industrial_electricity,
-            Q_th=process_steam_flow,
+            power_flow=industrial_electricity,
+            thermal_flow=process_steam_flow,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=1,  # Minimum 1-hour operation
                 effects_per_switch_on={'startup_cost': 100},
@@ -153,7 +162,7 @@ class Power2Heat(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: Q_th = P_el × eta
+        The conversion relationship is: thermal_flow = power_flow × eta
 
         Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (eta ≤ 1.0)
         as they only convert electrical energy without extracting additional energy
@@ -165,21 +174,26 @@ class Power2Heat(LinearConverter):
         self,
         label: str,
         eta: Numeric_TPS,
-        P_el: Flow,
-        Q_th: Flow,
+        power_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[P_el],
-            outputs=[Q_th],
+            inputs=[power_flow],
+            outputs=[thermal_flow],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.P_el = power_flow
+        self.Q_th = thermal_flow
         self.eta = eta  # Uses setter
 
     @property
@@ -207,11 +221,13 @@ class HeatPump(LinearConverter):
         COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. COP > 1 indicates the heat pump extracts
             additional energy from the environment.
-        P_el: Electrical input-flow representing electricity consumption.
-        Q_th: Thermal output-flow representing heat generation.
+        power_flow: Electrical input-flow representing electricity consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        P_el: *Deprecated*. Use `power_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Air-source heat pump with constant COP:
@@ -220,8 +236,8 @@ class HeatPump(LinearConverter):
         air_hp = HeatPump(
             label='air_source_heat_pump',
             COP=3.5,  # COP of 3.5 (350% efficiency)
-            P_el=electricity_flow,
-            Q_th=heating_flow,
+            power_flow=electricity_flow,
+            thermal_flow=heating_flow,
         )
         ```
 
@@ -231,8 +247,8 @@ class HeatPump(LinearConverter):
         ground_hp = HeatPump(
             label='geothermal_heat_pump',
             COP=temperature_dependent_cop,  # Time-varying COP based on ground temp
-            P_el=electricity_flow,
-            Q_th=radiant_heating_flow,
+            power_flow=electricity_flow,
+            thermal_flow=radiant_heating_flow,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=2,  # Avoid frequent cycling
                 effects_per_running_hour={'maintenance': 0.5},
@@ -241,7 +257,7 @@ class HeatPump(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: Q_th = P_el × COP
+        The conversion relationship is: thermal_flow = power_flow × COP
 
         COP should be greater than 1 for realistic heat pump operation, with typical
         values ranging from 2-6 depending on technology and operating conditions.
@@ -252,21 +268,26 @@ class HeatPump(LinearConverter):
         self,
         label: str,
         COP: Numeric_TPS,
-        P_el: Flow,
-        Q_th: Flow,
+        power_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[P_el],
-            outputs=[Q_th],
+            inputs=[power_flow],
+            outputs=[thermal_flow],
             conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.P_el = power_flow
+        self.Q_th = thermal_flow
         self.COP = COP  # Uses setter
 
     @property
@@ -294,11 +315,13 @@ class CoolingTower(LinearConverter):
         specific_electricity_demand: Auxiliary electricity demand per unit of cooling
             power (dimensionless, typically 0.01-0.05 range). Represents the fraction
             of thermal power that must be supplied as electricity for fans and pumps.
-        P_el: Electrical input-flow representing electricity consumption for fans/pumps.
-        Q_th: Thermal input-flow representing waste heat to be rejected to environment.
+        power_flow: Electrical input-flow representing electricity consumption for fans/pumps.
+        thermal_flow: Thermal input-flow representing waste heat to be rejected to environment.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        P_el: *Deprecated*. Use `power_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Industrial cooling tower:
@@ -307,8 +330,8 @@ class CoolingTower(LinearConverter):
         cooling_tower = CoolingTower(
             label='process_cooling_tower',
             specific_electricity_demand=0.025,  # 2.5% auxiliary power
-            P_el=cooling_electricity,
-            Q_th=waste_heat_flow,
+            power_flow=cooling_electricity,
+            thermal_flow=waste_heat_flow,
         )
         ```
 
@@ -318,8 +341,8 @@ class CoolingTower(LinearConverter):
         condenser_cooling = CoolingTower(
             label='power_plant_cooling',
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
-            P_el=auxiliary_electricity,
-            Q_th=condenser_waste_heat,
+            power_flow=auxiliary_electricity,
+            thermal_flow=condenser_waste_heat,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=4,  # Minimum operation time
                 effects_per_running_hour={'water_consumption': 2.5},  # m³/h
@@ -328,7 +351,7 @@ class CoolingTower(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: P_el = Q_th × specific_electricity_demand
+        The conversion relationship is: power_flow = thermal_flow × specific_electricity_demand
 
         The cooling tower consumes electrical power proportional to the thermal load.
         No thermal energy is produced - all thermal input is rejected to the environment.
@@ -341,21 +364,26 @@ class CoolingTower(LinearConverter):
         self,
         label: str,
         specific_electricity_demand: Numeric_TPS,
-        P_el: Flow,
-        Q_th: Flow,
+        power_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[P_el, Q_th],
+            inputs=[power_flow, thermal_flow],
             outputs=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.P_el = power_flow
+        self.Q_th = thermal_flow
         self.specific_electricity_demand = specific_electricity_demand  # Uses setter
 
     @property
@@ -384,12 +412,15 @@ class CHP(LinearConverter):
             energy converted to useful thermal output.
         eta_el: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to electrical output.
-        Q_fu: Fuel input-flow representing fuel consumption.
-        P_el: Electrical output-flow representing electricity generation.
-        Q_th: Thermal output-flow representing heat generation.
+        fuel_flow: Fuel input-flow representing fuel consumption.
+        power_flow: Electrical output-flow representing electricity generation.
+        thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        Q_fu: *Deprecated*. Use `fuel_flow` instead.
+        P_el: *Deprecated*. Use `power_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Natural gas CHP unit:
@@ -399,9 +430,9 @@ class CHP(LinearConverter):
             label='natural_gas_chp',
             eta_th=0.45,  # 45% thermal efficiency
             eta_el=0.35,  # 35% electrical efficiency (80% total)
-            Q_fu=natural_gas_flow,
-            P_el=electricity_flow,
-            Q_th=district_heat_flow,
+            fuel_flow=natural_gas_flow,
+            power_flow=electricity_flow,
+            thermal_flow=district_heat_flow,
         )
         ```
 
@@ -412,9 +443,9 @@ class CHP(LinearConverter):
             label='industrial_chp',
             eta_th=0.40,
             eta_el=0.38,
-            Q_fu=fuel_gas_flow,
-            P_el=plant_electricity,
-            Q_th=process_steam,
+            fuel_flow=fuel_gas_flow,
+            power_flow=plant_electricity,
+            thermal_flow=process_steam,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=8,  # Minimum 8-hour operation
                 effects_per_switch_on={'startup_cost': 5000},
@@ -425,8 +456,8 @@ class CHP(LinearConverter):
 
     Note:
         The conversion relationships are:
-        - Q_th = Q_fu × eta_th (thermal output)
-        - P_el = Q_fu × eta_el (electrical output)
+        - thermal_flow = fuel_flow × eta_th (thermal output)
+        - power_flow = fuel_flow × eta_el (electrical output)
 
         Total efficiency (eta_th + eta_el) should be ≤ 1.0, with typical combined
         efficiencies of 80-90% for modern CHP units. This provides significant
@@ -438,24 +469,30 @@ class CHP(LinearConverter):
         label: str,
         eta_th: Numeric_TPS,
         eta_el: Numeric_TPS,
-        Q_fu: Flow,
-        P_el: Flow,
-        Q_th: Flow,
+        fuel_flow: Flow | None = None,
+        power_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
+        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[Q_fu],
-            outputs=[Q_th, P_el],
+            inputs=[fuel_flow],
+            outputs=[thermal_flow, power_flow],
             conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
-        self.Q_fu = Q_fu
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.Q_fu = fuel_flow
+        self.P_el = power_flow
+        self.Q_th = thermal_flow
         self.eta_th = eta_th  # Uses setter
         self.eta_el = eta_el  # Uses setter
 
@@ -502,14 +539,17 @@ class HeatPumpWithSource(LinearConverter):
         label: The label of the Element. Used to identify it in the FlowSystem.
         COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. The heat source extraction is automatically
-            calculated as Q_ab = Q_th × (COP-1)/COP.
-        P_el: Electrical input-flow representing electricity consumption for compressor.
-        Q_ab: Heat source input-flow representing thermal energy extracted from environment
+            calculated as heat_source_flow = thermal_flow × (COP-1)/COP.
+        power_flow: Electrical input-flow representing electricity consumption for compressor.
+        heat_source_flow: Heat source input-flow representing thermal energy extracted from environment
             (ground, air, water source).
-        Q_th: Thermal output-flow representing useful heat delivered to the application.
+        thermal_flow: Thermal output-flow representing useful heat delivered to the application.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        P_el: *Deprecated*. Use `power_flow` instead.
+        Q_ab: *Deprecated*. Use `heat_source_flow` instead.
+        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Ground-source heat pump with explicit ground coupling:
@@ -518,9 +558,9 @@ class HeatPumpWithSource(LinearConverter):
         ground_source_hp = HeatPumpWithSource(
             label='geothermal_heat_pump',
             COP=4.5,  # High COP due to stable ground temperature
-            P_el=electricity_flow,
-            Q_ab=ground_heat_extraction,  # Heat extracted from ground loop
-            Q_th=building_heating_flow,
+            power_flow=electricity_flow,
+            heat_source_flow=ground_heat_extraction,  # Heat extracted from ground loop
+            thermal_flow=building_heating_flow,
         )
         ```
 
@@ -530,9 +570,9 @@ class HeatPumpWithSource(LinearConverter):
         waste_heat_pump = HeatPumpWithSource(
             label='waste_heat_pump',
             COP=temperature_dependent_cop,  # Varies with temperature of heat source
-            P_el=electricity_consumption,
-            Q_ab=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
-            Q_th=heat_supply,
+            power_flow=electricity_consumption,
+            heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
+            thermal_flow=heat_supply,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=0.5,  # 30-minute minimum runtime
                 effects_per_switch_on={'costs': 1000},
@@ -542,9 +582,9 @@ class HeatPumpWithSource(LinearConverter):
 
     Note:
         The conversion relationships are:
-        - Q_th = P_el × COP (thermal output from electrical input)
-        - Q_ab = Q_th × (COP-1)/COP (heat source extraction)
-        - Energy balance: Q_th = P_el + Q_ab
+        - thermal_flow = power_flow × COP (thermal output from electrical input)
+        - heat_source_flow = thermal_flow × (COP-1)/COP (heat source extraction)
+        - Energy balance: thermal_flow = power_flow + heat_source_flow
 
         This formulation explicitly tracks the heat source, which is
         important for systems where the source capacity or temperature is limited,
@@ -558,23 +598,29 @@ class HeatPumpWithSource(LinearConverter):
         self,
         label: str,
         COP: Numeric_TPS,
-        P_el: Flow,
-        Q_ab: Flow,
-        Q_th: Flow,
+        power_flow: Flow | None = None,
+        heat_source_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        heat_source_flow = self._handle_deprecated_kwarg(kwargs, 'Q_ab', 'heat_source_flow', heat_source_flow)
+        thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+
         super().__init__(
             label,
-            inputs=[P_el, Q_ab],
-            outputs=[Q_th],
+            inputs=[power_flow, heat_source_flow],
+            outputs=[thermal_flow],
             conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.P_el = P_el
-        self.Q_ab = Q_ab
-        self.Q_th = Q_th
+        self.P_el = power_flow
+        self.Q_ab = heat_source_flow
+        self.Q_th = thermal_flow
         self.COP = COP  # Uses setter
 
     @property
