@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import BoolData, EffectData, NumericData, Period, Scenario, Time
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 

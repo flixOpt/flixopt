@@ -20,7 +20,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
-    from .types import EffectData, NumericData, Period, Scenario, Time
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
 
 
 logger = logging.getLogger('flixopt')
@@ -1264,9 +1264,7 @@ class OnOffParameters(Interface):
     def __init__(
         self,
         effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
-        effects_per_running_hour: Effect_TPS
-        | Numeric_TPS
-        | None = None,
+        effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
         on_hours_total_min: int | None = None,
         on_hours_total_max: int | None = None,
         consecutive_on_hours_min: Numeric_TPS | None = None,

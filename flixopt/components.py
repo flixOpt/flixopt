@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .flow_system import FlowSystem
-    from .types import NumericData, Period, Scenario, Time
+    from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -170,7 +170,7 @@ class LinearConverter(Component):
         inputs: list[Flow],
         outputs: list[Flow],
         on_off_parameters: OnOffParameters | None = None,
-        conversion_factors: list[dict[str, NumericData[Time, Scenario]]] | None = None,
+        conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
@@ -917,7 +917,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
+    def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (

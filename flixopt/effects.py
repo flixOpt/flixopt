@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
-    from .types import EffectData, NumericData, Period, Scalar, Scenario, Time
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS, Scalar
 
 logger = logging.getLogger('flixopt')
 
@@ -196,12 +196,8 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.share_from_temporal: Effect_TPS = (
-            share_from_temporal if share_from_temporal is not None else {}
-        )
-        self.share_from_periodic: Effect_PS = (
-            share_from_periodic if share_from_periodic is not None else {}
-        )
+        self.share_from_temporal: Effect_TPS = share_from_temporal if share_from_temporal is not None else {}
+        self.share_from_periodic: Effect_PS = share_from_periodic if share_from_periodic is not None else {}
 
         # Handle backwards compatibility for deprecated parameters using centralized helper
         minimum_temporal = self._handle_deprecated_kwarg(
@@ -490,9 +486,7 @@ class EffectCollection(ElementContainer[Effect]):
             self.add(effect)  # Use the inherited add() method from ElementContainer
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(
-        self, effect_values_user: Effect_TPS
-    ) -> dict[str, Numeric_TPS] | None:
+    def create_effect_values_dict(self, effect_values_user: Numeric_TPS | Effect_TPS | None) -> Effect_TPS | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:

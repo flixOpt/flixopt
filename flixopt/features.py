@@ -17,7 +17,7 @@ from .structure import FlowSystemModel, Submodel
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions, Scalar, TemporalData
     from .interface import InvestParameters, OnOffParameters, Piecewise
-    from .types import NumericData, Period, Scenario
+    from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -154,7 +154,7 @@ class OnOffModel(Submodel):
         label_of_element: str,
         parameters: OnOffParameters,
         on_variable: linopy.Variable,
-        previous_states: TemporalData | None,
+        previous_states: Numeric_TPS | None,
         label_of_model: str | None = None,
     ):
         """
@@ -520,8 +520,8 @@ class ShareAllocationModel(Submodel):
         label_of_model: str | None = None,
         total_max: Numeric_PS | None = None,
         total_min: Numeric_PS | None = None,
-        max_per_hour: TemporalData | None = None,
-        min_per_hour: TemporalData | None = None,
+        max_per_hour: Numeric_TPS | None = None,
+        min_per_hour: Numeric_TPS | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
             raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')

@@ -16,7 +16,7 @@ from .structure import register_class_for_io
 if TYPE_CHECKING:
     from .elements import Flow
     from .interface import OnOffParameters
-    from .types import NumericData, Period, Scenario, Time
+    from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
