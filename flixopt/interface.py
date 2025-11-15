@@ -19,9 +19,8 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .core import PeriodicData, PeriodicDataUser, Scalar, TemporalDataUser
-    from .effects import PeriodicEffectsUser, TemporalEffectsUser
     from .flow_system import FlowSystem
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
 
 
 @register_class_for_io
@@ -70,7 +69,7 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: TemporalDataUser, end: TemporalDataUser):
+    def __init__(self, start: Numeric_TPS, end: Numeric_TPS):
         self.start = start
         self.end = end
         self.has_time_dim = False
@@ -871,15 +870,15 @@ class InvestParameters(Interface):
 
     def __init__(
         self,
-        fixed_size: PeriodicDataUser | None = None,
-        minimum_size: PeriodicDataUser | None = None,
-        maximum_size: PeriodicDataUser | None = None,
+        fixed_size: Numeric_PS | None = None,
+        minimum_size: Numeric_PS | None = None,
+        maximum_size: Numeric_PS | None = None,
         mandatory: bool = False,
-        effects_of_investment: PeriodicEffectsUser | None = None,
-        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
-        effects_of_retirement: PeriodicEffectsUser | None = None,
+        effects_of_investment: Effect_PS | Numeric_PS | None = None,
+        effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None,
+        effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
-        linked_periods: PeriodicDataUser | tuple[int, int] | None = None,
+        linked_periods: Numeric_PS | tuple[int, int] | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters using centralized helper
@@ -909,15 +908,11 @@ class InvestParameters(Interface):
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
 
-        self.effects_of_investment: PeriodicEffectsUser = (
-            effects_of_investment if effects_of_investment is not None else {}
-        )
-        self.effects_of_retirement: PeriodicEffectsUser = (
-            effects_of_retirement if effects_of_retirement is not None else {}
-        )
+        self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
+        self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
         self.fixed_size = fixed_size
         self.mandatory = mandatory
-        self.effects_of_investment_per_size: PeriodicEffectsUser = (
+        self.effects_of_investment_per_size = (
             effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
@@ -1001,7 +996,7 @@ class InvestParameters(Interface):
         self.mandatory = not value
 
     @property
-    def fix_effects(self) -> PeriodicEffectsUser:
+    def fix_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment instead."""
         warnings.warn(
             'The fix_effects property is deprecated. Use effects_of_investment instead.',
@@ -1011,7 +1006,7 @@ class InvestParameters(Interface):
         return self.effects_of_investment
 
     @property
-    def specific_effects(self) -> PeriodicEffectsUser:
+    def specific_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment_per_size instead."""
         warnings.warn(
             'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
@@ -1021,7 +1016,7 @@ class InvestParameters(Interface):
         return self.effects_of_investment_per_size
 
     @property
-    def divest_effects(self) -> PeriodicEffectsUser:
+    def divest_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_retirement instead."""
         warnings.warn(
             'The divest_effects property is deprecated. Use effects_of_retirement instead.',
@@ -1041,11 +1036,11 @@ class InvestParameters(Interface):
         return self.piecewise_effects_of_investment
 
     @property
-    def minimum_or_fixed_size(self) -> PeriodicData:
+    def minimum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> PeriodicData:
+    def maximum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:
@@ -1265,30 +1260,26 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: TemporalEffectsUser | None = None,
-        effects_per_running_hour: TemporalEffectsUser | None = None,
-        on_hours_total_min: int | None = None,
-        on_hours_total_max: int | None = None,
-        consecutive_on_hours_min: TemporalDataUser | None = None,
-        consecutive_on_hours_max: TemporalDataUser | None = None,
-        consecutive_off_hours_min: TemporalDataUser | None = None,
-        consecutive_off_hours_max: TemporalDataUser | None = None,
-        switch_on_total_max: int | None = None,
+        effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
+        effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
+        on_hours_total_min: Numeric_PS | None = None,
+        on_hours_total_max: Numeric_PS | None = None,
+        consecutive_on_hours_min: Numeric_TPS | None = None,
+        consecutive_on_hours_max: Numeric_TPS | None = None,
+        consecutive_off_hours_min: Numeric_TPS | None = None,
+        consecutive_off_hours_max: Numeric_TPS | None = None,
+        switch_on_total_max: Numeric_PS | None = None,
         force_switch_on: bool = False,
     ):
-        self.effects_per_switch_on: TemporalEffectsUser = (
-            effects_per_switch_on if effects_per_switch_on is not None else {}
-        )
-        self.effects_per_running_hour: TemporalEffectsUser = (
-            effects_per_running_hour if effects_per_running_hour is not None else {}
-        )
-        self.on_hours_total_min: Scalar = on_hours_total_min
-        self.on_hours_total_max: Scalar = on_hours_total_max
-        self.consecutive_on_hours_min: TemporalDataUser = consecutive_on_hours_min
-        self.consecutive_on_hours_max: TemporalDataUser = consecutive_on_hours_max
-        self.consecutive_off_hours_min: TemporalDataUser = consecutive_off_hours_min
-        self.consecutive_off_hours_max: TemporalDataUser = consecutive_off_hours_max
-        self.switch_on_total_max: Scalar = switch_on_total_max
+        self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
+        self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
+        self.on_hours_total_min = on_hours_total_min
+        self.on_hours_total_max = on_hours_total_max
+        self.consecutive_on_hours_min = consecutive_on_hours_min
+        self.consecutive_on_hours_max = consecutive_on_hours_max
+        self.consecutive_off_hours_min = consecutive_off_hours_min
+        self.consecutive_off_hours_max = consecutive_off_hours_max
+        self.switch_on_total_max = switch_on_total_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:

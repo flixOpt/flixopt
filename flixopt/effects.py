@@ -16,8 +16,6 @@ import numpy as np
 import xarray as xr
 from loguru import logger
 
-from . import io as fx_io
-from .core import PeriodicDataUser, Scalar, TemporalData, TemporalDataUser
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
@@ -25,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS, Scalar
 
 
 @register_class_for_io
@@ -50,7 +49,7 @@ class Effect(Element):
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
         share_from_temporal: Temporal cross-effect contributions.
-            Maps temporal contributions from other effects to this effect
+            Maps temporal contributions from other effects to this effect.
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
         minimum_temporal: Minimum allowed total contribution across all timesteps.
@@ -60,7 +59,6 @@ class Effect(Element):
         minimum_periodic: Minimum allowed total periodic contribution.
         maximum_periodic: Maximum allowed total periodic contribution.
         minimum_total: Minimum allowed total effect (temporal + periodic combined).
-        maximum_total: Maximum allowed total effect (temporal + periodic combined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -168,16 +166,16 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        share_from_temporal: TemporalEffectsUser | None = None,
-        share_from_periodic: PeriodicEffectsUser | None = None,
-        minimum_temporal: PeriodicEffectsUser | None = None,
-        maximum_temporal: PeriodicEffectsUser | None = None,
-        minimum_periodic: PeriodicEffectsUser | None = None,
-        maximum_periodic: PeriodicEffectsUser | None = None,
-        minimum_per_hour: TemporalDataUser | None = None,
-        maximum_per_hour: TemporalDataUser | None = None,
-        minimum_total: Scalar | None = None,
-        maximum_total: Scalar | None = None,
+        share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
+        share_from_periodic: Effect_PS | Numeric_PS | None = None,
+        minimum_temporal: Numeric_PS | None = None,
+        maximum_temporal: Numeric_PS | None = None,
+        minimum_periodic: Numeric_PS | None = None,
+        maximum_periodic: Numeric_PS | None = None,
+        minimum_per_hour: Numeric_TPS | None = None,
+        maximum_per_hour: Numeric_TPS | None = None,
+        minimum_total: Numeric_PS | None = None,
+        maximum_total: Numeric_PS | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -185,8 +183,11 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.share_from_temporal: TemporalEffectsUser = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_periodic: PeriodicEffectsUser = share_from_periodic if share_from_periodic is not None else {}
+        # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
+        # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
+        # Default to {} when None (no shares defined).
+        self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
+        self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
 
         # Handle backwards compatibility for deprecated parameters using centralized helper
         minimum_temporal = self._handle_deprecated_kwarg(
@@ -434,18 +435,6 @@ class EffectModel(ElementModel):
         )
 
 
-TemporalEffectsUser = TemporalDataUser | dict[str, TemporalDataUser]  # User-specified Shares to Effects
-""" This datatype is used to define a temporal share to an effect by a certain attribute. """
-
-PeriodicEffectsUser = PeriodicDataUser | dict[str, PeriodicDataUser]  # User-specified Shares to Effects
-""" This datatype is used to define a scalar share to an effect by a certain attribute. """
-
-TemporalEffects = dict[str, TemporalData]  # User-specified Shares to Effects
-""" This datatype is used internally to handle temporal shares to an effect. """
-
-PeriodicEffects = dict[str, Scalar]
-""" This datatype is used internally to handle scalar shares to an effect. """
-
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
@@ -487,9 +476,7 @@ class EffectCollection(ElementContainer[Effect]):
             self.add(effect)  # Use the inherited add() method from ElementContainer
             logger.info(f'Registered new Effect: {effect.label}')
 
-    def create_effect_values_dict(
-        self, effect_values_user: PeriodicEffectsUser | TemporalEffectsUser
-    ) -> dict[str, Scalar | TemporalDataUser] | None:
+    def create_effect_values_dict(self, effect_values_user: Numeric_TPS | Effect_TPS | None) -> Effect_TPS | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:
@@ -849,8 +836,3 @@ def tuples_to_adjacency_list(edges: list[tuple[str, str]]) -> dict[str, list[str
             graph[target] = []
 
     return graph
-
-
-# Backward compatibility aliases
-NonTemporalEffectsUser = PeriodicEffectsUser
-NonTemporalEffects = PeriodicEffects

@@ -26,7 +26,7 @@ from . import io as fx_io
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
+from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
@@ -101,7 +101,7 @@ class Calculation:
         self._modeled = False
 
     @property
-    def main_results(self) -> dict[str, Scalar | dict]:
+    def main_results(self) -> dict[str, int | float | dict]:
         from flixopt.features import InvestmentModel
 
         main_results = {

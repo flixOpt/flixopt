@@ -19,6 +19,8 @@ from loguru import logger
 if TYPE_CHECKING:
     import linopy
 
+    from .types import Numeric_TPS
+
 
 def remove_none_and_empty(obj):
     """Recursively removes None and empty dicts and lists values from a dictionary or list."""
@@ -649,7 +651,7 @@ class CalculationResultsPaths:
 
 
 def numeric_to_str_for_repr(
-    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+    value: Numeric_TPS,
     precision: int = 1,
     atol: float = 1e-10,
 ) -> str:
