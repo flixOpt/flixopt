@@ -30,9 +30,11 @@ Example:
     create_flow(profile=pd.DataFrame(...))         # Time + scenario
     ```
 
-Note:
-    Data can have **any subset** of specified dimensions. `Numeric_TPS` accepts scalars,
-    1D/2D/3D arrays, or DataArrays with any subset of 'time', 'period', 'scenario' dims.
+Important:
+    Data can have **any subset** of specified dimensions, but **cannot have more
+    dimensions than the FlowSystem**. If the FlowSystem has only time dimension,
+    you cannot pass period or scenario data. The type hints indicate the maximum
+    dimensions that could be used if they exist in the FlowSystem.
 """
 
 from typing import TypeAlias
