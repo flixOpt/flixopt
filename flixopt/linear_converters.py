@@ -121,6 +121,15 @@ class Boiler(LinearConverter):
         )
         return self.fuel_flow
 
+    @Q_fu.setter
+    def Q_fu(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_fu" property is deprecated. Use "fuel_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.fuel_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -129,6 +138,15 @@ class Boiler(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 @register_class_for_io
@@ -235,6 +253,15 @@ class Power2Heat(LinearConverter):
         )
         return self.power_flow
 
+    @P_el.setter
+    def P_el(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.power_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -243,6 +270,15 @@ class Power2Heat(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 @register_class_for_io
@@ -350,6 +386,15 @@ class HeatPump(LinearConverter):
         )
         return self.cop
 
+    @COP.setter
+    def COP(self, value: Numeric_TPS) -> None:  # noqa: N802
+        warnings.warn(
+            'The "COP" property is deprecated. Use "cop" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.cop = value
+
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -359,6 +404,15 @@ class HeatPump(LinearConverter):
         )
         return self.power_flow
 
+    @P_el.setter
+    def P_el(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.power_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -367,6 +421,15 @@ class HeatPump(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 @register_class_for_io
@@ -474,6 +537,15 @@ class CoolingTower(LinearConverter):
         )
         return self.power_flow
 
+    @P_el.setter
+    def P_el(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.power_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -482,6 +554,15 @@ class CoolingTower(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 @register_class_for_io
@@ -614,6 +695,15 @@ class CHP(LinearConverter):
         )
         return self.fuel_flow
 
+    @Q_fu.setter
+    def Q_fu(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_fu" property is deprecated. Use "fuel_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.fuel_flow = value
+
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -623,6 +713,15 @@ class CHP(LinearConverter):
         )
         return self.power_flow
 
+    @P_el.setter
+    def P_el(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.power_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -631,6 +730,15 @@ class CHP(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 @register_class_for_io
@@ -740,7 +848,9 @@ class HeatPumpWithSource(LinearConverter):
     @cop.setter
     def cop(self, value):
         check_bounds(value, 'cop', self.label_full, 1, 20)
-        if np.any(np.asarray(value) == 1):
+        # Unwrap TimeSeriesData before numpy comparison (consistent with check_bounds)
+        ts_value = value.data if isinstance(value, TimeSeriesData) else value
+        if np.any(np.asarray(ts_value) == 1):
             raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
             {self.power_flow.label: value, self.thermal_flow.label: 1},
@@ -756,6 +866,15 @@ class HeatPumpWithSource(LinearConverter):
         )
         return self.cop
 
+    @COP.setter
+    def COP(self, value: Numeric_TPS) -> None:  # noqa: N802
+        warnings.warn(
+            'The "COP" property is deprecated. Use "cop" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.cop = value
+
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -764,6 +883,15 @@ class HeatPumpWithSource(LinearConverter):
             stacklevel=2,
         )
         return self.power_flow
+
+    @P_el.setter
+    def P_el(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.power_flow = value
 
     @property
     def Q_ab(self) -> Flow:  # noqa: N802
@@ -774,6 +902,15 @@ class HeatPumpWithSource(LinearConverter):
         )
         return self.heat_source_flow
 
+    @Q_ab.setter
+    def Q_ab(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_ab" property is deprecated. Use "heat_source_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.heat_source_flow = value
+
     @property
     def Q_th(self) -> Flow:  # noqa: N802
         warnings.warn(
@@ -782,6 +919,15 @@ class HeatPumpWithSource(LinearConverter):
             stacklevel=2,
         )
         return self.thermal_flow
+
+    @Q_th.setter
+    def Q_th(self, value: Flow) -> None:  # noqa: N802
+        warnings.warn(
+            'The "Q_th" property is deprecated. Use "thermal_flow" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_flow = value
 
 
 def check_bounds(
@@ -807,13 +953,27 @@ def check_bounds(
         lower_bound = lower_bound.data
     if isinstance(upper_bound, TimeSeriesData):
         upper_bound = upper_bound.data
+
+    # Convert to array for shape and statistics
+    value_arr = np.asarray(value)
+
     if not np.all(value > lower_bound):
+        # Log shape and statistics instead of full array to avoid verbose output
+        if value_arr.size > 1:
+            value_info = f'shape={value_arr.shape}, min={np.min(value)}'
+        else:
+            value_info = f'{value}'
         logger.warning(
-            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
+            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}. "
+            f'{parameter_label}: {value_info}'
         )
     if not np.all(value < upper_bound):
+        # Log shape and statistics instead of full array to avoid verbose output
+        if value_arr.size > 1:
+            value_info = f'shape={value_arr.shape}, max={np.max(value)}'
+        else:
+            value_info = f'{value}'
         logger.warning(
-            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
+            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}. "
+            f'{parameter_label}: {value_info}'
         )
