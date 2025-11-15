@@ -87,12 +87,12 @@ class Boiler(LinearConverter):
             label,
             inputs=[Q_fu],
             outputs=[Q_th],
-            conversion_factors=[{Q_fu.label: eta, Q_th.label: 1}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.Q_fu = Q_fu
         self.Q_th = Q_th
+        self.eta = eta  #Uses setter
 
     @property
     def eta(self):
@@ -101,7 +101,7 @@ class Boiler(LinearConverter):
     @eta.setter
     def eta(self, value):
         check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_fu.label] = value
+        self.conversion_factors = [{self.Q_fu.label: value, self.Q_th.label: 1}]
 
 
 @register_class_for_io
@@ -563,16 +563,14 @@ class HeatPumpWithSource(LinearConverter):
             label,
             inputs=[P_el, Q_ab],
             outputs=[Q_th],
-            conversion_factors=[{P_el.label: COP, Q_th.label: 1}, {Q_ab.label: COP / (COP - 1), Q_th.label: 1}],
+            conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.P_el = P_el
         self.Q_ab = Q_ab
         self.Q_th = Q_th
-
-        if np.any(np.asarray(self.COP) <= 1):
-            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+        self.COP = COP  # Uses setter
 
     @property
     def COP(self):  # noqa: N802
