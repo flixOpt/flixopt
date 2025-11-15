@@ -530,8 +530,8 @@ class Flow(Element):
         if np.any(self.relative_minimum > 0) and self.on_off_parameters is None:
             logger.warning(
                 f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
-                f'This prevents the flow_rate from switching off (flow_rate = 0). '
-                f'Consider using on_off_parameters to allow the flow to be switched on and off.'
+                f'This prevents the Flow from switching off (flow_rate = 0). '
+                f'Consider using on_off_parameters to allow the Flow to be switched on and off.'
             )
 
         if self.previous_flow_rate is not None:
