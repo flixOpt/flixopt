@@ -90,6 +90,12 @@ class Boiler(LinearConverter):
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         self._validate_kwargs(kwargs)
 
+        # Validate required parameters
+        if fuel_flow is None:
+            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+
         super().__init__(
             label,
             inputs=[fuel_flow],
@@ -220,6 +226,12 @@ class Power2Heat(LinearConverter):
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         self._validate_kwargs(kwargs)
+
+        # Validate required parameters
+        if power_flow is None:
+            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
 
         super().__init__(
             label,
@@ -353,6 +365,12 @@ class HeatPump(LinearConverter):
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
         self._validate_kwargs(kwargs)
+
+        # Validate required parameters
+        if power_flow is None:
+            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
 
         super().__init__(
             label,
@@ -505,6 +523,12 @@ class CoolingTower(LinearConverter):
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         self._validate_kwargs(kwargs)
 
+        # Validate required parameters
+        if power_flow is None:
+            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+
         super().__init__(
             label,
             inputs=[power_flow, thermal_flow],
@@ -648,6 +672,14 @@ class CHP(LinearConverter):
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         self._validate_kwargs(kwargs)
+
+        # Validate required parameters
+        if fuel_flow is None:
+            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+        if power_flow is None:
+            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
 
         super().__init__(
             label,
@@ -826,6 +858,14 @@ class HeatPumpWithSource(LinearConverter):
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
         self._validate_kwargs(kwargs)
+
+        # Validate required parameters
+        if power_flow is None:
+            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if heat_source_flow is None:
+            raise ValueError(f"'{label}': heat_source_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
 
         super().__init__(
             label,
