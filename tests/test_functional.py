@@ -233,29 +233,23 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
 def test_optional_invest(solver_fixture, time_steps_fixture):
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=fx.InvestParameters(
-                    mandatory=False, minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1
-                ),
-            ),
+        BoilerFactory.with_investment(
+            label='Boiler',
+            invest_params={
+                'mandatory': False,
+                'minimum_size': 40,
+                'effects_of_investment': 10,
+                'effects_of_investment_per_size': 1,
+            },
         ),
-        fx.linear_converters.Boiler(
-            'Boiler_optional',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=fx.InvestParameters(
-                    mandatory=False, minimum_size=50, effects_of_investment=10, effects_of_investment_per_size=1
-                ),
-            ),
+        BoilerFactory.with_investment(
+            label='Boiler_optional',
+            invest_params={
+                'mandatory': False,
+                'minimum_size': 50,
+                'effects_of_investment': 10,
+                'effects_of_investment_per_size': 1,
+            },
         ),
     )
 
@@ -304,14 +298,7 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
 def test_on(solver_fixture, time_steps_fixture):
     """Tests if the On Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
-    flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, on_off_parameters=fx.OnOffParameters()),
-        )
-    )
+    flow_system.add_elements(BoilerFactory.with_onoff(size=100))
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system['Boiler']
@@ -343,19 +330,7 @@ def test_on(solver_fixture, time_steps_fixture):
 def test_off(solver_fixture, time_steps_fixture):
     """Tests if the Off Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
-    flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_off_hours_max=100),
-            ),
-        )
-    )
+    flow_system.add_elements(BoilerFactory.with_onoff(size=100, onoff_params={'consecutive_off_hours_max': 100}))
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system['Boiler']
@@ -394,19 +369,7 @@ def test_off(solver_fixture, time_steps_fixture):
 def test_switch_on_off(solver_fixture, time_steps_fixture):
     """Tests if the Switch On/Off Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
-    flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(force_switch_on=True),
-            ),
-        )
-    )
+    flow_system.add_elements(BoilerFactory.with_onoff(size=100, onoff_params={'force_switch_on': True}))
 
     solve_and_load(flow_system, solver_fixture)
     boiler = flow_system['Boiler']
@@ -453,23 +416,8 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     """Tests if the On Total Max Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=1),
-            ),
-        ),
-        fx.linear_converters.Boiler(
-            'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
-        ),
+        BoilerFactory.with_onoff(size=100, onoff_params={'on_hours_total_max': 1}),
+        BoilerFactory.minimal(label='Boiler_backup', eta=0.2),
     )
 
     solve_and_load(flow_system, solver_fixture)
@@ -503,28 +451,8 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     """Tests if the On Hours min and max are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=2),
-            ),
-        ),
-        fx.linear_converters.Boiler(
-            'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_min=3),
-            ),
-        ),
+        BoilerFactory.with_onoff(size=100, onoff_params={'on_hours_total_max': 2}),
+        BoilerFactory.with_onoff(label='Boiler_backup', eta=0.2, size=100, onoff_params={'on_hours_total_min': 3}),
     )
     flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array(
         [0, 10, 20, 0, 12]
@@ -577,23 +505,8 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     """Tests if the consecutive on/off hours are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_max=2, consecutive_on_hours_min=2),
-            ),
-        ),
-        fx.linear_converters.Boiler(
-            'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
-        ),
+        BoilerFactory.with_onoff(size=100, onoff_params={'consecutive_on_hours_max': 2, 'consecutive_on_hours_min': 2}),
+        BoilerFactory.minimal(label='Boiler_backup', eta=0.2),
     )
     flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
     # Else its non deterministic
@@ -638,12 +551,8 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     """Tests if the consecutive on hours are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-        ),
+        BoilerFactory.minimal(),
+        # Note: previous_flow_rate not supported by factory yet, keeping manual creation
         fx.linear_converters.Boiler(
             'Boiler_backup',
             0.2,
