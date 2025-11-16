@@ -1293,9 +1293,15 @@ class OnOffParameters(Interface):
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_per_switch_on = self._fit_effect_coords(name_prefix, self.effects_per_switch_on, 'per_switch_on')
+        self.effects_per_switch_on = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_per_switch_on,
+            suffix='per_switch_on',
+        )
         self.effects_per_running_hour = self._fit_effect_coords(
-            name_prefix, self.effects_per_running_hour, 'per_running_hour'
+            prefix=name_prefix,
+            effect_values=self.effects_per_running_hour,
+            suffix='per_running_hour',
         )
         self.consecutive_on_hours_min = self._fit_coords(
             f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
