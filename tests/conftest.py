@@ -390,6 +390,291 @@ class Sources:
         )
 
 
+class Flows:
+    """Common Flow patterns to reduce inline instantiation"""
+
+    @staticmethod
+    def thermal(label='Q_th', bus='Fernwärme', size=50, **kwargs):
+        """Create a standard thermal flow with customizable parameters"""
+        return fx.Flow(label, bus=bus, size=size, **kwargs)
+
+    @staticmethod
+    def electrical(label='P_el', bus='Strom', size=30, **kwargs):
+        """Create a standard electrical flow with customizable parameters"""
+        return fx.Flow(label, bus=bus, size=size, **kwargs)
+
+    @staticmethod
+    def fuel(label='Q_fu', bus='Gas', size=100, **kwargs):
+        """Create a standard fuel flow with customizable parameters"""
+        return fx.Flow(label, bus=bus, size=size, **kwargs)
+
+    @staticmethod
+    def with_investment(label, bus, invest_params=None, **flow_kwargs):
+        """
+        Create a Flow with investment parameters.
+
+        Args:
+            label: Flow label
+            bus: Bus name
+            invest_params: Dict of InvestParameters kwargs or InvestParameters instance
+            **flow_kwargs: Additional Flow parameters
+        """
+        if invest_params is None:
+            invest_params = {}
+
+        if isinstance(invest_params, dict):
+            size = fx.InvestParameters(**invest_params)
+        else:
+            size = invest_params
+
+        return fx.Flow(label, bus=bus, size=size, **flow_kwargs)
+
+    @staticmethod
+    def with_onoff(label, bus, size=50, onoff_params=None, **flow_kwargs):
+        """
+        Create a Flow with OnOff parameters.
+
+        Args:
+            label: Flow label
+            bus: Bus name
+            size: Flow size
+            onoff_params: Dict of OnOffParameters kwargs or OnOffParameters instance
+            **flow_kwargs: Additional Flow parameters
+        """
+        if onoff_params is None:
+            onoff_params = {}
+
+        if isinstance(onoff_params, dict):
+            on_off_parameters = fx.OnOffParameters(**onoff_params)
+        else:
+            on_off_parameters = onoff_params
+
+        return fx.Flow(label, bus=bus, size=size, on_off_parameters=on_off_parameters, **flow_kwargs)
+
+
+# ============================================================================
+# COMPONENT FACTORY EXTENSIONS
+# ============================================================================
+
+
+class BoilerFactory:
+    """Factory methods for creating Boilers with common test configurations"""
+
+    @staticmethod
+    def with_investment(label='Boiler', eta=0.5, invest_params=None, q_th_label='Q_th', q_fu_label='Q_fu', **kwargs):
+        """
+        Create a Boiler with investment parameters on Q_th flow.
+
+        Args:
+            label: Boiler label
+            eta: Efficiency
+            invest_params: Dict of InvestParameters kwargs or InvestParameters instance
+            q_th_label: Thermal flow label
+            q_fu_label: Fuel flow label
+            **kwargs: Additional Boiler parameters (e.g., on_off_parameters)
+        """
+        if invest_params is None:
+            invest_params = {'minimum_size': 20, 'maximum_size': 100, 'mandatory': False}
+
+        q_th = Flows.with_investment(q_th_label, 'Fernwärme', invest_params)
+        q_fu = Flows.fuel(q_fu_label)
+
+        return fx.linear_converters.Boiler(label, eta=eta, Q_th=q_th, Q_fu=q_fu, **kwargs)
+
+    @staticmethod
+    def with_onoff(label='Boiler', eta=0.5, size=50, onoff_params=None, q_th_label='Q_th', q_fu_label='Q_fu', **kwargs):
+        """
+        Create a Boiler with OnOff parameters.
+
+        Args:
+            label: Boiler label
+            eta: Efficiency
+            size: Q_th flow size
+            onoff_params: Dict of OnOffParameters kwargs or OnOffParameters instance
+            q_th_label: Thermal flow label
+            q_fu_label: Fuel flow label
+            **kwargs: Additional Boiler parameters
+        """
+        if onoff_params is None:
+            onoff_params = {}
+
+        q_th = Flows.with_onoff(q_th_label, 'Fernwärme', size, onoff_params)
+        q_fu = Flows.fuel(q_fu_label)
+
+        return fx.linear_converters.Boiler(label, eta=eta, Q_th=q_th, Q_fu=q_fu, **kwargs)
+
+    @staticmethod
+    def minimal(label='Boiler', eta=0.5):
+        """Create minimal Boiler for basic testing"""
+        return fx.linear_converters.Boiler(
+            label,
+            eta=eta,
+            Q_th=Flows.thermal(),
+            Q_fu=Flows.fuel(),
+        )
+
+
+class CHPFactory:
+    """Factory methods for creating CHPs with common test configurations"""
+
+    @staticmethod
+    def with_investment(label='CHP', eta_th=0.5, eta_el=0.4, invest_params=None, **kwargs):
+        """
+        Create a CHP with investment parameters on P_el flow.
+
+        Args:
+            label: CHP label
+            eta_th: Thermal efficiency
+            eta_el: Electrical efficiency
+            invest_params: Dict of InvestParameters kwargs or InvestParameters instance
+            **kwargs: Additional CHP parameters
+        """
+        if invest_params is None:
+            invest_params = {'minimum_size': 20, 'maximum_size': 100, 'mandatory': False}
+
+        p_el = Flows.with_investment('P_el', 'Strom', invest_params)
+        q_th = Flows.thermal()
+        q_fu = Flows.fuel()
+
+        return fx.linear_converters.CHP(label, eta_th=eta_th, eta_el=eta_el, P_el=p_el, Q_th=q_th, Q_fu=q_fu, **kwargs)
+
+    @staticmethod
+    def with_onoff(label='CHP', eta_th=0.5, eta_el=0.4, size=60, onoff_params=None, **kwargs):
+        """
+        Create a CHP with OnOff parameters.
+
+        Args:
+            label: CHP label
+            eta_th: Thermal efficiency
+            eta_el: Electrical efficiency
+            size: P_el flow size
+            onoff_params: Dict of OnOffParameters kwargs or OnOffParameters instance
+            **kwargs: Additional CHP parameters
+        """
+        if onoff_params is None:
+            onoff_params = {}
+
+        p_el = Flows.with_onoff('P_el', 'Strom', size, onoff_params)
+        q_th = Flows.thermal()
+        q_fu = Flows.fuel()
+
+        return fx.linear_converters.CHP(label, eta_th=eta_th, eta_el=eta_el, P_el=p_el, Q_th=q_th, Q_fu=q_fu, **kwargs)
+
+    @staticmethod
+    def minimal(label='CHP', eta_th=0.5, eta_el=0.4):
+        """Create minimal CHP for basic testing"""
+        return fx.linear_converters.CHP(
+            label,
+            eta_th=eta_th,
+            eta_el=eta_el,
+            P_el=Flows.electrical(),
+            Q_th=Flows.thermal(),
+            Q_fu=Flows.fuel(),
+        )
+
+
+class StorageFactory:
+    """Factory methods for creating Storage with common test configurations"""
+
+    @staticmethod
+    def with_investment(label='Storage', invest_params=None, charging_size=20, discharging_size=20, **kwargs):
+        """
+        Create a Storage with investment parameters on capacity.
+
+        Args:
+            label: Storage label
+            invest_params: Dict of InvestParameters kwargs or InvestParameters instance
+            charging_size: Size of charging flow
+            discharging_size: Size of discharging flow
+            **kwargs: Additional Storage parameters (e.g., eta_charge, prevent_simultaneous_charge_and_discharge)
+        """
+        if invest_params is None:
+            invest_params = {'minimum_size': 20, 'maximum_size': 100, 'mandatory': False}
+
+        if isinstance(invest_params, dict):
+            capacity = fx.InvestParameters(**invest_params)
+        else:
+            capacity = invest_params
+
+        # Set defaults for common parameters if not provided
+        kwargs.setdefault('initial_charge_state', 0)
+        kwargs.setdefault('prevent_simultaneous_charge_and_discharge', True)
+
+        return fx.Storage(
+            label,
+            charging=Flows.thermal('Q_th_in', size=charging_size),
+            discharging=Flows.thermal('Q_th_out', size=discharging_size),
+            capacity_in_flow_hours=capacity,
+            **kwargs,
+        )
+
+    @staticmethod
+    def with_onoff(label='Storage', charging_size=20, discharging_size=20, capacity=30, onoff_params=None, **kwargs):
+        """
+        Create a Storage with OnOff parameters on charging/discharging flows.
+
+        Args:
+            label: Storage label
+            charging_size: Size of charging flow
+            discharging_size: Size of discharging flow
+            capacity: Storage capacity in flow hours
+            onoff_params: Dict of OnOffParameters kwargs or OnOffParameters instance (applied to charging flow)
+            **kwargs: Additional Storage parameters
+        """
+        if onoff_params is None:
+            onoff_params = {}
+
+        # Set defaults
+        kwargs.setdefault('initial_charge_state', 0)
+        kwargs.setdefault('prevent_simultaneous_charge_and_discharge', True)
+
+        charging = Flows.with_onoff('Q_th_in', 'Fernwärme', charging_size, onoff_params)
+        discharging = Flows.thermal('Q_th_out', size=discharging_size)
+
+        return fx.Storage(label, charging=charging, discharging=discharging, capacity_in_flow_hours=capacity, **kwargs)
+
+    @staticmethod
+    def minimal(label='Storage', capacity=30):
+        """Create minimal Storage for basic testing"""
+        return fx.Storage(
+            label,
+            charging=Flows.thermal('Q_th_in', size=20),
+            discharging=Flows.thermal('Q_th_out', size=20),
+            capacity_in_flow_hours=capacity,
+            initial_charge_state=0,
+            prevent_simultaneous_charge_and_discharge=True,
+        )
+
+
+# ============================================================================
+# COMPONENT COLLECTIONS FOR PARAMETRIZED TESTING
+# ============================================================================
+
+
+def get_investable_components():
+    """
+    Get all component types that support investment parameters.
+    Returns a list of tuples (component_name, factory_function).
+    """
+    return [
+        ('Boiler', BoilerFactory.with_investment),
+        ('CHP', CHPFactory.with_investment),
+        ('Storage', StorageFactory.with_investment),
+    ]
+
+
+def get_onoff_components():
+    """
+    Get all component types that support OnOff parameters.
+    Returns a list of tuples (component_name, factory_function).
+    """
+    return [
+        ('Boiler', BoilerFactory.with_onoff),
+        ('CHP', CHPFactory.with_onoff),
+        ('Storage', StorageFactory.with_onoff),
+    ]
+
+
 # ============================================================================
 # RECREATED FIXTURES USING HIERARCHICAL LIBRARY
 # ============================================================================
@@ -680,6 +965,84 @@ def basic_flow_system_linopy_coords(coords_config) -> fx.FlowSystem:
     flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
 
     return flow_system
+
+
+# ============================================================================
+# COMPONENT TEST HELPERS
+# ============================================================================
+
+
+def verify_investment_variables(component, mandatory=False):
+    """
+    Verify that a component with investment parameters has the expected variables.
+
+    Args:
+        component: Component with investment (Flow, Storage, etc.)
+        mandatory: Whether investment is mandatory
+
+    Returns:
+        set: Set of investment-related variable names found
+    """
+    var_names = set(component.submodel.variables.keys())
+
+    # All investable components should have 'size' variable
+    assert 'size' in [v.split('|')[-1] for v in var_names], f"Component {component.label} should have 'size' variable"
+
+    # Optional investment should have 'invested' binary variable
+    if not mandatory:
+        assert 'invested' in [v.split('|')[-1] for v in var_names], (
+            f"Component {component.label} with optional investment should have 'invested' variable"
+        )
+
+    return var_names
+
+
+def verify_onoff_variables(component):
+    """
+    Verify that a component with OnOff parameters has the expected variables.
+
+    Args:
+        component: Component with OnOff parameters
+
+    Returns:
+        set: Set of OnOff-related variable names found
+    """
+    # For components with OnOff, check the flow's submodel
+    if hasattr(component, 'Q_th'):  # Boiler
+        flow_submodel = component.Q_th.submodel
+    elif hasattr(component, 'P_el'):  # CHP
+        flow_submodel = component.P_el.submodel
+    elif hasattr(component, 'charging'):  # Storage
+        flow_submodel = component.charging.submodel
+    else:
+        raise ValueError(f'Cannot determine OnOff flow for component type {type(component)}')
+
+    var_names = set(flow_submodel.variables.keys())
+
+    # Should have 'on' variable for OnOff parameters
+    on_vars = [v for v in var_names if 'on' in v.split('|')[-1].lower()]
+    assert len(on_vars) > 0, f"Component {component.label} with OnOff should have 'on' related variables"
+
+    return var_names
+
+
+def get_component_label_prefix(component):
+    """
+    Get the label prefix used in variable/constraint names for a component.
+
+    Args:
+        component: flixopt component
+
+    Returns:
+        str: Label prefix (e.g., 'Boiler(Q_th)', 'Storage')
+    """
+    # Different component types use different labeling schemes
+    if hasattr(component, 'Q_th') and hasattr(component, 'Q_fu'):  # Boiler/CHP
+        return f'{component.label}({component.Q_th.label})'
+    elif hasattr(component, 'charging'):  # Storage
+        return component.label
+    else:
+        return component.label
 
 
 # ============================================================================
