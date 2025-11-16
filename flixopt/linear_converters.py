@@ -190,13 +190,13 @@ class Power2Heat(LinearConverter):
         thermal_efficiency: Thermal efficiency factor (0-1 range). For resistance heating this is
             typically close to 1.0 (nearly 100% efficiency), but may be lower for
             electrode boilers or systems with distribution losses.
-        power_flow: Electrical input-flow representing electricity consumption.
+        electrical_flow: Electrical input-flow representing electricity consumption.
         thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
         eta: *Deprecated*. Use `thermal_efficiency` instead.
-        P_el: *Deprecated*. Use `power_flow` instead.
+        P_el: *Deprecated*. Use `electrical_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
@@ -206,7 +206,7 @@ class Power2Heat(LinearConverter):
         electric_heater = Power2Heat(
             label='resistance_heater',
             thermal_efficiency=0.98,  # 98% efficiency (small losses)
-            power_flow=electricity_flow,
+            electrical_flow=electricity_flow,
             thermal_flow=space_heating_flow,
         )
         ```
@@ -217,7 +217,7 @@ class Power2Heat(LinearConverter):
         electrode_boiler = Power2Heat(
             label='electrode_steam_boiler',
             thermal_efficiency=0.95,  # 95% efficiency including boiler losses
-            power_flow=industrial_electricity,
+            electrical_flow=industrial_electricity,
             thermal_flow=process_steam_flow,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=1,  # Minimum 1-hour operation
@@ -227,7 +227,7 @@ class Power2Heat(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: thermal_flow = power_flow × thermal_efficiency
+        The conversion relationship is: thermal_flow = electrical_flow × thermal_efficiency
 
         Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (thermal_efficiency ≤ 1.0)
         as they only convert electrical energy without extracting additional energy
@@ -239,21 +239,21 @@ class Power2Heat(LinearConverter):
         self,
         label: str,
         thermal_efficiency: Numeric_TPS | None = None,
-        power_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters
-        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        electrical_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'electrical_flow', electrical_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         thermal_efficiency = self._handle_deprecated_kwarg(kwargs, 'eta', 'thermal_efficiency', thermal_efficiency)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
-        if power_flow is None:
-            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
         if thermal_efficiency is None:
@@ -261,24 +261,24 @@ class Power2Heat(LinearConverter):
 
         super().__init__(
             label,
-            inputs=[power_flow],
+            inputs=[electrical_flow],
             outputs=[thermal_flow],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
-        self.power_flow = power_flow
+        self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
         self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.power_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.label]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
-        self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
+        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
     @property
     def eta(self) -> Numeric_TPS:
@@ -301,20 +301,20 @@ class Power2Heat(LinearConverter):
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.power_flow
+        return self.electrical_flow
 
     @P_el.setter
     def P_el(self, value: Flow) -> None:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        self.power_flow = value
+        self.electrical_flow = value
 
     @property
     def Q_th(self) -> Flow:  # noqa: N802
@@ -350,13 +350,13 @@ class HeatPump(LinearConverter):
         cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. COP > 1 indicates the heat pump extracts
             additional energy from the environment.
-        power_flow: Electrical input-flow representing electricity consumption.
+        electrical_flow: Electrical input-flow representing electricity consumption.
         thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
         COP: *Deprecated*. Use `cop` instead.
-        P_el: *Deprecated*. Use `power_flow` instead.
+        P_el: *Deprecated*. Use `electrical_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
@@ -366,7 +366,7 @@ class HeatPump(LinearConverter):
         air_hp = HeatPump(
             label='air_source_heat_pump',
             cop=3.5,  # COP of 3.5 (350% efficiency)
-            power_flow=electricity_flow,
+            electrical_flow=electricity_flow,
             thermal_flow=heating_flow,
         )
         ```
@@ -377,7 +377,7 @@ class HeatPump(LinearConverter):
         ground_hp = HeatPump(
             label='geothermal_heat_pump',
             cop=temperature_dependent_cop,  # Time-varying COP based on ground temp
-            power_flow=electricity_flow,
+            electrical_flow=electricity_flow,
             thermal_flow=radiant_heating_flow,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=2,  # Avoid frequent cycling
@@ -387,7 +387,7 @@ class HeatPump(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: thermal_flow = power_flow × COP
+        The conversion relationship is: thermal_flow = electrical_flow × COP
 
         COP should be greater than 1 for realistic heat pump operation, with typical
         values ranging from 2-6 depending on technology and operating conditions.
@@ -398,21 +398,21 @@ class HeatPump(LinearConverter):
         self,
         label: str,
         cop: Numeric_TPS | None = None,
-        power_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters
-        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        electrical_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'electrical_flow', electrical_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
-        if power_flow is None:
-            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
         if cop is None:
@@ -420,24 +420,24 @@ class HeatPump(LinearConverter):
 
         super().__init__(
             label,
-            inputs=[power_flow],
+            inputs=[electrical_flow],
             outputs=[thermal_flow],
             conversion_factors=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.power_flow = power_flow
+        self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
         self.cop = cop  # Uses setter
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.power_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.label]
 
     @cop.setter
     def cop(self, value):
         check_bounds(value, 'cop', self.label_full, 1, 20)
-        self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
+        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
     @property
     def COP(self) -> Numeric_TPS:  # noqa: N802
@@ -460,20 +460,20 @@ class HeatPump(LinearConverter):
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.power_flow
+        return self.electrical_flow
 
     @P_el.setter
     def P_el(self, value: Flow) -> None:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        self.power_flow = value
+        self.electrical_flow = value
 
     @property
     def Q_th(self) -> Flow:  # noqa: N802
@@ -509,12 +509,12 @@ class CoolingTower(LinearConverter):
         specific_electricity_demand: Auxiliary electricity demand per unit of cooling
             power (dimensionless, typically 0.01-0.05 range). Represents the fraction
             of thermal power that must be supplied as electricity for fans and pumps.
-        power_flow: Electrical input-flow representing electricity consumption for fans/pumps.
+        electrical_flow: Electrical input-flow representing electricity consumption for fans/pumps.
         thermal_flow: Thermal input-flow representing waste heat to be rejected to environment.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        P_el: *Deprecated*. Use `power_flow` instead.
+        P_el: *Deprecated*. Use `electrical_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
@@ -524,7 +524,7 @@ class CoolingTower(LinearConverter):
         cooling_tower = CoolingTower(
             label='process_cooling_tower',
             specific_electricity_demand=0.025,  # 2.5% auxiliary power
-            power_flow=cooling_electricity,
+            electrical_flow=cooling_electricity,
             thermal_flow=waste_heat_flow,
         )
         ```
@@ -535,7 +535,7 @@ class CoolingTower(LinearConverter):
         condenser_cooling = CoolingTower(
             label='power_plant_cooling',
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
-            power_flow=auxiliary_electricity,
+            electrical_flow=auxiliary_electricity,
             thermal_flow=condenser_waste_heat,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=4,  # Minimum operation time
@@ -545,7 +545,7 @@ class CoolingTower(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: power_flow = thermal_flow × specific_electricity_demand
+        The conversion relationship is: electrical_flow = thermal_flow × specific_electricity_demand
 
         The cooling tower consumes electrical power proportional to the thermal load.
         No thermal energy is produced - all thermal input is rejected to the environment.
@@ -558,32 +558,32 @@ class CoolingTower(LinearConverter):
         self,
         label: str,
         specific_electricity_demand: Numeric_TPS,
-        power_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
         **kwargs,
     ):
         # Handle deprecated parameters
-        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        electrical_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'electrical_flow', electrical_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
-        if power_flow is None:
-            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
 
         super().__init__(
             label,
-            inputs=[power_flow, thermal_flow],
+            inputs=[electrical_flow, thermal_flow],
             outputs=[],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
-        self.power_flow = power_flow
+        self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
         self.specific_electricity_demand = specific_electricity_demand  # Uses setter
 
@@ -594,25 +594,25 @@ class CoolingTower(LinearConverter):
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors = [{self.power_flow.label: -1, self.thermal_flow.label: value}]
+        self.conversion_factors = [{self.electrical_flow.label: -1, self.thermal_flow.label: value}]
 
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.power_flow
+        return self.electrical_flow
 
     @P_el.setter
     def P_el(self, value: Flow) -> None:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        self.power_flow = value
+        self.electrical_flow = value
 
     @property
     def Q_th(self) -> Flow:  # noqa: N802
@@ -650,7 +650,7 @@ class CHP(LinearConverter):
         electrical_efficiency: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to electrical output.
         fuel_flow: Fuel input-flow representing fuel consumption.
-        power_flow: Electrical output-flow representing electricity generation.
+        electrical_flow: Electrical output-flow representing electricity generation.
         thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
@@ -658,7 +658,7 @@ class CHP(LinearConverter):
         eta_th: *Deprecated*. Use `thermal_efficiency` instead.
         eta_el: *Deprecated*. Use `electrical_efficiency` instead.
         Q_fu: *Deprecated*. Use `fuel_flow` instead.
-        P_el: *Deprecated*. Use `power_flow` instead.
+        P_el: *Deprecated*. Use `electrical_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
@@ -670,7 +670,7 @@ class CHP(LinearConverter):
             thermal_efficiency=0.45,  # 45% thermal efficiency
             electrical_efficiency=0.35,  # 35% electrical efficiency (80% total)
             fuel_flow=natural_gas_flow,
-            power_flow=electricity_flow,
+            electrical_flow=electricity_flow,
             thermal_flow=district_heat_flow,
         )
         ```
@@ -683,7 +683,7 @@ class CHP(LinearConverter):
             thermal_efficiency=0.40,
             electrical_efficiency=0.38,
             fuel_flow=fuel_gas_flow,
-            power_flow=plant_electricity,
+            electrical_flow=plant_electricity,
             thermal_flow=process_steam,
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=8,  # Minimum 8-hour operation
@@ -696,7 +696,7 @@ class CHP(LinearConverter):
     Note:
         The conversion relationships are:
         - thermal_flow = fuel_flow × thermal_efficiency (thermal output)
-        - power_flow = fuel_flow × electrical_efficiency (electrical output)
+        - electrical_flow = fuel_flow × electrical_efficiency (electrical output)
 
         Total efficiency (thermal_efficiency + electrical_efficiency) should be ≤ 1.0, with typical combined
         efficiencies of 80-90% for modern CHP units. This provides significant
@@ -709,7 +709,7 @@ class CHP(LinearConverter):
         thermal_efficiency: Numeric_TPS | None = None,
         electrical_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
-        power_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
         meta_data: dict | None = None,
@@ -717,7 +717,7 @@ class CHP(LinearConverter):
     ):
         # Handle deprecated parameters
         fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
-        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        electrical_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'electrical_flow', electrical_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         thermal_efficiency = self._handle_deprecated_kwarg(kwargs, 'eta_th', 'thermal_efficiency', thermal_efficiency)
         electrical_efficiency = self._handle_deprecated_kwarg(
@@ -728,8 +728,8 @@ class CHP(LinearConverter):
         # Validate required parameters
         if fuel_flow is None:
             raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
-        if power_flow is None:
-            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
         if thermal_efficiency is None:
@@ -740,14 +740,14 @@ class CHP(LinearConverter):
         super().__init__(
             label,
             inputs=[fuel_flow],
-            outputs=[thermal_flow, power_flow],
+            outputs=[thermal_flow, electrical_flow],
             conversion_factors=[{}, {}],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
         self.fuel_flow = fuel_flow
-        self.power_flow = power_flow
+        self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
         self.thermal_efficiency = thermal_efficiency  # Uses setter
         self.electrical_efficiency = electrical_efficiency  # Uses setter
@@ -776,7 +776,7 @@ class CHP(LinearConverter):
     @electrical_efficiency.setter
     def electrical_efficiency(self, value):
         check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
-        self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
+        self.conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
 
     @property
     def eta_th(self) -> Numeric_TPS:
@@ -835,20 +835,20 @@ class CHP(LinearConverter):
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.power_flow
+        return self.electrical_flow
 
     @P_el.setter
     def P_el(self, value: Flow) -> None:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        self.power_flow = value
+        self.electrical_flow = value
 
     @property
     def Q_th(self) -> Flow:  # noqa: N802
@@ -884,7 +884,7 @@ class HeatPumpWithSource(LinearConverter):
         cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. The heat source extraction is automatically
             calculated as heat_source_flow = thermal_flow × (COP-1)/COP.
-        power_flow: Electrical input-flow representing electricity consumption for compressor.
+        electrical_flow: Electrical input-flow representing electricity consumption for compressor.
         heat_source_flow: Heat source input-flow representing thermal energy extracted from environment
             (ground, air, water source).
         thermal_flow: Thermal output-flow representing useful heat delivered to the application.
@@ -892,7 +892,7 @@ class HeatPumpWithSource(LinearConverter):
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
         COP: *Deprecated*. Use `cop` instead.
-        P_el: *Deprecated*. Use `power_flow` instead.
+        P_el: *Deprecated*. Use `electrical_flow` instead.
         Q_ab: *Deprecated*. Use `heat_source_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
@@ -903,7 +903,7 @@ class HeatPumpWithSource(LinearConverter):
         ground_source_hp = HeatPumpWithSource(
             label='geothermal_heat_pump',
             cop=4.5,  # High COP due to stable ground temperature
-            power_flow=electricity_flow,
+            electrical_flow=electricity_flow,
             heat_source_flow=ground_heat_extraction,  # Heat extracted from ground loop
             thermal_flow=building_heating_flow,
         )
@@ -915,7 +915,7 @@ class HeatPumpWithSource(LinearConverter):
         waste_heat_pump = HeatPumpWithSource(
             label='waste_heat_pump',
             cop=temperature_dependent_cop,  # Varies with temperature of heat source
-            power_flow=electricity_consumption,
+            electrical_flow=electricity_consumption,
             heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
             thermal_flow=heat_supply,
             on_off_parameters=OnOffParameters(
@@ -927,9 +927,9 @@ class HeatPumpWithSource(LinearConverter):
 
     Note:
         The conversion relationships are:
-        - thermal_flow = power_flow × COP (thermal output from electrical input)
+        - thermal_flow = electrical_flow × COP (thermal output from electrical input)
         - heat_source_flow = thermal_flow × (COP-1)/COP (heat source extraction)
-        - Energy balance: thermal_flow = power_flow + heat_source_flow
+        - Energy balance: thermal_flow = electrical_flow + heat_source_flow
 
         This formulation explicitly tracks the heat source, which is
         important for systems where the source capacity or temperature is limited,
@@ -943,7 +943,7 @@ class HeatPumpWithSource(LinearConverter):
         self,
         label: str,
         cop: Numeric_TPS | None = None,
-        power_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
         heat_source_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
@@ -951,15 +951,15 @@ class HeatPumpWithSource(LinearConverter):
         **kwargs,
     ):
         # Handle deprecated parameters
-        power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
+        electrical_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'electrical_flow', electrical_flow)
         heat_source_flow = self._handle_deprecated_kwarg(kwargs, 'Q_ab', 'heat_source_flow', heat_source_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
         cop = self._handle_deprecated_kwarg(kwargs, 'COP', 'cop', cop)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
-        if power_flow is None:
-            raise ValueError(f"'{label}': power_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
         if heat_source_flow is None:
             raise ValueError(f"'{label}': heat_source_flow is required and cannot be None")
         if thermal_flow is None:
@@ -969,19 +969,19 @@ class HeatPumpWithSource(LinearConverter):
 
         super().__init__(
             label,
-            inputs=[power_flow, heat_source_flow],
+            inputs=[electrical_flow, heat_source_flow],
             outputs=[thermal_flow],
             on_off_parameters=on_off_parameters,
             meta_data=meta_data,
         )
-        self.power_flow = power_flow
+        self.electrical_flow = electrical_flow
         self.heat_source_flow = heat_source_flow
         self.thermal_flow = thermal_flow
         self.cop = cop  # Uses setter
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.power_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.label]
 
     @cop.setter
     def cop(self, value):
@@ -989,7 +989,7 @@ class HeatPumpWithSource(LinearConverter):
         if np.any(np.asarray(value) == 1):
             raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
-            {self.power_flow.label: value, self.thermal_flow.label: 1},
+            {self.electrical_flow.label: value, self.thermal_flow.label: 1},
             {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
 
@@ -1014,20 +1014,20 @@ class HeatPumpWithSource(LinearConverter):
     @property
     def P_el(self) -> Flow:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.power_flow
+        return self.electrical_flow
 
     @P_el.setter
     def P_el(self, value: Flow) -> None:  # noqa: N802
         warnings.warn(
-            'The "P_el" property is deprecated. Use "power_flow" instead.',
+            'The "P_el" property is deprecated. Use "electrical_flow" instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        self.power_flow = value
+        self.electrical_flow = value
 
     @property
     def Q_ab(self) -> Flow:  # noqa: N802

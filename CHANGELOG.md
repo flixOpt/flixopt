@@ -77,11 +77,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Type handling improvements**: Updated internal data handling to work seamlessly with the new type system
 - **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency:
     - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
-    - `Power2Heat`: `P_el` → `power_flow`, `Q_th` → `thermal_flow`
-    - `HeatPump`: `COP` → `cop`, `P_el` → `power_flow`, `Q_th` → `thermal_flow`
-    - `CoolingTower`: `P_el` → `power_flow`, `Q_th` → `thermal_flow`
-    - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `power_flow`, `Q_th` → `thermal_flow`
-    - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `power_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
+    - `Power2Heat`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+    - `HeatPump`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+    - `CoolingTower`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+    - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+    - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
 
 ### 🗑️ Deprecated
 - **Old parameter names in `linear_converters.py`**: The old uppercase parameter names are now deprecated and accessible as properties that emit `DeprecationWarning`. They will be removed in v4.0.0:
