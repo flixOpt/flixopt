@@ -37,14 +37,14 @@ class TestFlowSystem:
 
         # Boiler assertions
         assert_almost_equal_numeric(
-            comps['Boiler'].Q_th.submodel.flow_rate.solution.values,
+            comps['Boiler'].thermal_flow.submodel.flow_rate.solution.values,
             [0, 0, 0, 28.4864, 35, 0, 0, 0, 0],
             'Q_th doesnt match expected value',
         )
 
         # CHP unit assertions
         assert_almost_equal_numeric(
-            comps['CHP_unit'].Q_th.submodel.flow_rate.solution.values,
+            comps['CHP_unit'].thermal_flow.submodel.flow_rate.solution.values,
             [30.0, 26.66666667, 75.0, 75.0, 75.0, 20.0, 20.0, 20.0, 20.0],
             'Q_th doesnt match expected value',
         )
@@ -220,7 +220,7 @@ class TestComplex:
             effects['CO2'].submodel.total.solution.item(), 1278.7939026086956, 'CO2 doesnt match expected value'
         )
         assert_almost_equal_numeric(
-            comps['Kessel'].Q_th.submodel.flow_rate.solution.values,
+            comps['Kessel'].thermal_flow.submodel.flow_rate.solution.values,
             [0, 0, 0, 45, 0, 0, 0, 0, 0],
             'Kessel doesnt match expected value',
         )
