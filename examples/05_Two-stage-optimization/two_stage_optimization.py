@@ -45,9 +45,9 @@ if __name__ == '__main__':
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
         fx.linear_converters.Boiler(
             'Kessel',
-            eta=0.85,
-            Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow(
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow(label='Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
                 size=fx.InvestParameters(
@@ -60,14 +60,14 @@ if __name__ == '__main__':
         ),
         fx.linear_converters.CHP(
             'BHKW2',
-            eta_th=0.58,
-            eta_el=0.22,
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
             on_off_parameters=fx.OnOffParameters(
                 effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10
             ),
-            P_el=fx.Flow('P_el', bus='Strom'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow(
+            electrical_flow=fx.Flow('P_el', bus='Strom'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow(
                 'Q_fu',
                 bus='Kohle',
                 size=fx.InvestParameters(
