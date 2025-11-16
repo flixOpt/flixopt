@@ -296,27 +296,13 @@ class Interface:
         elements to access FlowSystem properties without passing the reference
         through every method call.
 
+        Subclasses with nested Interface objects should override this method
+        to explicitly propagate the reference to their nested interfaces.
+
         Args:
             flow_system: The FlowSystem that this interface belongs to
         """
-        # Always set _flow_system (creates attribute if it doesn't exist)
         self._flow_system = flow_system
-
-        # Recursively set for nested Interface objects
-        for attr_name, attr_value in self.__dict__.items():
-            if attr_name.startswith('_'):
-                continue  # Skip private attributes
-
-            if isinstance(attr_value, Interface):
-                attr_value._set_flow_system(flow_system)
-            elif isinstance(attr_value, list):
-                for item in attr_value:
-                    if isinstance(item, Interface):
-                        item._set_flow_system(flow_system)
-            elif isinstance(attr_value, dict):
-                for item in attr_value.values():
-                    if isinstance(item, Interface):
-                        item._set_flow_system(flow_system)
 
     @property
     def flow_system(self) -> FlowSystem:

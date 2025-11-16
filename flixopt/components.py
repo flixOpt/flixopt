@@ -434,6 +434,12 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
+        super()._set_flow_system(flow_system)
+        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+            self.capacity_in_flow_hours._set_flow_system(flow_system)
+
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         super().transform_data(prefix)

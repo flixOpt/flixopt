@@ -17,7 +17,7 @@ from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
-from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
+from .structure import Element, ElementModel, FlowSystemModel, Interface, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -99,6 +99,14 @@ class Component(Element):
         self._plausibility_checks()
         self.submodel = ComponentModel(model, self)
         return self.submodel
+
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects and flows."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -240,6 +248,12 @@ class Bus(Element):
         self._plausibility_checks()
         self.submodel = BusModel(model, self)
         return self.submodel
+
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested flows."""
+        super()._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -467,6 +481,14 @@ class Flow(Element):
         self._plausibility_checks()
         self.submodel = FlowModel(model, self)
         return self.submodel
+
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        if isinstance(self.size, Interface):
+            self.size._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
