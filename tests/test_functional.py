@@ -23,6 +23,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 import flixopt as fx
+from tests.conftest import BoilerFactory
 
 np.random.seed(45)
 
@@ -82,14 +83,7 @@ def flow_system_base(timesteps: pd.DatetimeIndex) -> fx.FlowSystem:
 
 def flow_system_minimal(timesteps) -> fx.FlowSystem:
     flow_system = flow_system_base(timesteps)
-    flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-        )
-    )
+    flow_system.add_elements(BoilerFactory.minimal())
     return flow_system
 
 
@@ -139,15 +133,8 @@ def test_minimal_model(solver_fixture, time_steps_fixture):
 def test_fixed_size(solver_fixture, time_steps_fixture):
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=fx.InvestParameters(fixed_size=1000, effects_of_investment=10, effects_of_investment_per_size=1),
-            ),
+        BoilerFactory.with_investment(
+            invest_params={'fixed_size': 1000, 'effects_of_investment': 10, 'effects_of_investment_per_size': 1}
         )
     )
 
@@ -180,16 +167,7 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
 def test_optimize_size(solver_fixture, time_steps_fixture):
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=fx.InvestParameters(effects_of_investment=10, effects_of_investment_per_size=1),
-            ),
-        )
+        BoilerFactory.with_investment(invest_params={'effects_of_investment': 10, 'effects_of_investment_per_size': 1})
     )
 
     solve_and_load(flow_system, solver_fixture)
@@ -221,15 +199,8 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
 def test_size_bounds(solver_fixture, time_steps_fixture):
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
-        fx.linear_converters.Boiler(
-            'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
-                'Q_th',
-                bus='Fernwärme',
-                size=fx.InvestParameters(minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1),
-            ),
+        BoilerFactory.with_investment(
+            invest_params={'minimum_size': 40, 'effects_of_investment': 10, 'effects_of_investment_per_size': 1}
         )
     )
 
