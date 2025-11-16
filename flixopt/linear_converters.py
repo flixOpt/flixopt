@@ -31,13 +31,14 @@ class Boiler(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
+        thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
             output to fuel input energy content.
         fuel_flow: Fuel input-flow representing fuel consumption.
         thermal_flow: Thermal output-flow representing heat generation.
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        eta: *Deprecated*. Use `thermal_efficiency` instead.
         Q_fu: *Deprecated*. Use `fuel_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
@@ -47,7 +48,7 @@ class Boiler(LinearConverter):
         ```python
         gas_boiler = Boiler(
             label='natural_gas_boiler',
-            eta=0.85,  # 85% thermal efficiency
+            thermal_efficiency=0.85,  # 85% thermal efficiency
             fuel_flow=natural_gas_flow,
             thermal_flow=hot_water_flow,
         )
@@ -58,7 +59,7 @@ class Boiler(LinearConverter):
         ```python
         biomass_boiler = Boiler(
             label='wood_chip_boiler',
-            eta=seasonal_efficiency_profile,  # Time-varying efficiency
+            thermal_efficiency=seasonal_efficiency_profile,  # Time-varying efficiency
             fuel_flow=biomass_flow,
             thermal_flow=district_heat_flow,
             on_off_parameters=OnOffParameters(
@@ -69,7 +70,7 @@ class Boiler(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: thermal_flow = fuel_flow × eta
+        The conversion relationship is: thermal_flow = fuel_flow × thermal_efficiency
 
         Efficiency should be between 0 and 1, where 1 represents perfect conversion
         (100% of fuel energy converted to useful thermal output).
@@ -78,7 +79,7 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: Numeric_TPS,
+        thermal_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
@@ -88,6 +89,7 @@ class Boiler(LinearConverter):
         # Handle deprecated parameters
         fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        thermal_efficiency = self._handle_deprecated_kwarg(kwargs, 'eta', 'thermal_efficiency', thermal_efficiency)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
@@ -95,6 +97,8 @@ class Boiler(LinearConverter):
             raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
 
         super().__init__(
             label,
@@ -105,16 +109,34 @@ class Boiler(LinearConverter):
         )
         self.fuel_flow = fuel_flow
         self.thermal_flow = thermal_flow
-        self.eta = eta  # Uses setter
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def eta(self):
+    def thermal_efficiency(self):
         return self.conversion_factors[0][self.fuel_flow.label]
 
-    @eta.setter
-    def eta(self, value):
-        check_bounds(value, 'eta', self.label_full, 0, 1)
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
+
+    @property
+    def eta(self) -> Numeric_TPS:
+        warnings.warn(
+            'The "eta" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_efficiency
+
+    @eta.setter
+    def eta(self, value: Numeric_TPS) -> None:
+        warnings.warn(
+            'The "eta" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_efficiency = value
 
     @property
     def Q_fu(self) -> Flow:  # noqa: N802
@@ -165,7 +187,7 @@ class Power2Heat(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta: Thermal efficiency factor (0-1 range). For resistance heating this is
+        thermal_efficiency: Thermal efficiency factor (0-1 range). For resistance heating this is
             typically close to 1.0 (nearly 100% efficiency), but may be lower for
             electrode boilers or systems with distribution losses.
         power_flow: Electrical input-flow representing electricity consumption.
@@ -173,6 +195,7 @@ class Power2Heat(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        eta: *Deprecated*. Use `thermal_efficiency` instead.
         P_el: *Deprecated*. Use `power_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
 
@@ -182,7 +205,7 @@ class Power2Heat(LinearConverter):
         ```python
         electric_heater = Power2Heat(
             label='resistance_heater',
-            eta=0.98,  # 98% efficiency (small losses)
+            thermal_efficiency=0.98,  # 98% efficiency (small losses)
             power_flow=electricity_flow,
             thermal_flow=space_heating_flow,
         )
@@ -193,7 +216,7 @@ class Power2Heat(LinearConverter):
         ```python
         electrode_boiler = Power2Heat(
             label='electrode_steam_boiler',
-            eta=0.95,  # 95% efficiency including boiler losses
+            thermal_efficiency=0.95,  # 95% efficiency including boiler losses
             power_flow=industrial_electricity,
             thermal_flow=process_steam_flow,
             on_off_parameters=OnOffParameters(
@@ -204,9 +227,9 @@ class Power2Heat(LinearConverter):
         ```
 
     Note:
-        The conversion relationship is: thermal_flow = power_flow × eta
+        The conversion relationship is: thermal_flow = power_flow × thermal_efficiency
 
-        Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (eta ≤ 1.0)
+        Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (thermal_efficiency ≤ 1.0)
         as they only convert electrical energy without extracting additional energy
         from the environment. However, they provide fast response times and precise
         temperature control.
@@ -215,7 +238,7 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: Numeric_TPS,
+        thermal_efficiency: Numeric_TPS | None = None,
         power_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         on_off_parameters: OnOffParameters | None = None,
@@ -225,6 +248,7 @@ class Power2Heat(LinearConverter):
         # Handle deprecated parameters
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        thermal_efficiency = self._handle_deprecated_kwarg(kwargs, 'eta', 'thermal_efficiency', thermal_efficiency)
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
@@ -232,6 +256,8 @@ class Power2Heat(LinearConverter):
             raise ValueError(f"'{label}': power_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
 
         super().__init__(
             label,
@@ -243,16 +269,34 @@ class Power2Heat(LinearConverter):
 
         self.power_flow = power_flow
         self.thermal_flow = thermal_flow
-        self.eta = eta  # Uses setter
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def eta(self):
+    def thermal_efficiency(self):
         return self.conversion_factors[0][self.power_flow.label]
 
-    @eta.setter
-    def eta(self, value):
-        check_bounds(value, 'eta', self.label_full, 0, 1)
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors = [{self.power_flow.label: value, self.thermal_flow.label: 1}]
+
+    @property
+    def eta(self) -> Numeric_TPS:
+        warnings.warn(
+            'The "eta" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_efficiency
+
+    @eta.setter
+    def eta(self, value: Numeric_TPS) -> None:
+        warnings.warn(
+            'The "eta" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_efficiency = value
 
     @property
     def P_el(self) -> Flow:  # noqa: N802
@@ -601,9 +645,9 @@ class CHP(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta_th: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
+        thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to useful thermal output.
-        eta_el: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
+        electrical_efficiency: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to electrical output.
         fuel_flow: Fuel input-flow representing fuel consumption.
         power_flow: Electrical output-flow representing electricity generation.
@@ -611,6 +655,8 @@ class CHP(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
+        eta_th: *Deprecated*. Use `thermal_efficiency` instead.
+        eta_el: *Deprecated*. Use `electrical_efficiency` instead.
         Q_fu: *Deprecated*. Use `fuel_flow` instead.
         P_el: *Deprecated*. Use `power_flow` instead.
         Q_th: *Deprecated*. Use `thermal_flow` instead.
@@ -621,8 +667,8 @@ class CHP(LinearConverter):
         ```python
         gas_chp = CHP(
             label='natural_gas_chp',
-            eta_th=0.45,  # 45% thermal efficiency
-            eta_el=0.35,  # 35% electrical efficiency (80% total)
+            thermal_efficiency=0.45,  # 45% thermal efficiency
+            electrical_efficiency=0.35,  # 35% electrical efficiency (80% total)
             fuel_flow=natural_gas_flow,
             power_flow=electricity_flow,
             thermal_flow=district_heat_flow,
@@ -634,8 +680,8 @@ class CHP(LinearConverter):
         ```python
         industrial_chp = CHP(
             label='industrial_chp',
-            eta_th=0.40,
-            eta_el=0.38,
+            thermal_efficiency=0.40,
+            electrical_efficiency=0.38,
             fuel_flow=fuel_gas_flow,
             power_flow=plant_electricity,
             thermal_flow=process_steam,
@@ -649,10 +695,10 @@ class CHP(LinearConverter):
 
     Note:
         The conversion relationships are:
-        - thermal_flow = fuel_flow × eta_th (thermal output)
-        - power_flow = fuel_flow × eta_el (electrical output)
+        - thermal_flow = fuel_flow × thermal_efficiency (thermal output)
+        - power_flow = fuel_flow × electrical_efficiency (electrical output)
 
-        Total efficiency (eta_th + eta_el) should be ≤ 1.0, with typical combined
+        Total efficiency (thermal_efficiency + electrical_efficiency) should be ≤ 1.0, with typical combined
         efficiencies of 80-90% for modern CHP units. This provides significant
         efficiency gains compared to separate heat and power generation.
     """
@@ -660,8 +706,8 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: Numeric_TPS,
-        eta_el: Numeric_TPS,
+        thermal_efficiency: Numeric_TPS | None = None,
+        electrical_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
         power_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
@@ -673,6 +719,10 @@ class CHP(LinearConverter):
         fuel_flow = self._handle_deprecated_kwarg(kwargs, 'Q_fu', 'fuel_flow', fuel_flow)
         power_flow = self._handle_deprecated_kwarg(kwargs, 'P_el', 'power_flow', power_flow)
         thermal_flow = self._handle_deprecated_kwarg(kwargs, 'Q_th', 'thermal_flow', thermal_flow)
+        thermal_efficiency = self._handle_deprecated_kwarg(kwargs, 'eta_th', 'thermal_efficiency', thermal_efficiency)
+        electrical_efficiency = self._handle_deprecated_kwarg(
+            kwargs, 'eta_el', 'electrical_efficiency', electrical_efficiency
+        )
         self._validate_kwargs(kwargs)
 
         # Validate required parameters
@@ -682,6 +732,10 @@ class CHP(LinearConverter):
             raise ValueError(f"'{label}': power_flow is required and cannot be None")
         if thermal_flow is None:
             raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+        if electrical_efficiency is None:
+            raise ValueError(f"'{label}': electrical_efficiency is required and cannot be None")
 
         super().__init__(
             label,
@@ -695,28 +749,70 @@ class CHP(LinearConverter):
         self.fuel_flow = fuel_flow
         self.power_flow = power_flow
         self.thermal_flow = thermal_flow
-        self.eta_th = eta_th  # Uses setter
-        self.eta_el = eta_el  # Uses setter
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
+        self.electrical_efficiency = electrical_efficiency  # Uses setter
 
-        check_bounds(eta_el + eta_th, 'eta_th+eta_el', self.label_full, 0, 1)
+        check_bounds(
+            electrical_efficiency + thermal_efficiency,
+            'thermal_efficiency+electrical_efficiency',
+            self.label_full,
+            0,
+            1,
+        )
 
     @property
-    def eta_th(self):
+    def thermal_efficiency(self):
         return self.conversion_factors[0][self.fuel_flow.label]
 
-    @eta_th.setter
-    def eta_th(self, value):
-        check_bounds(value, 'eta_th', self.label_full, 0, 1)
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
-    def eta_el(self):
+    def electrical_efficiency(self):
         return self.conversion_factors[1][self.fuel_flow.label]
 
-    @eta_el.setter
-    def eta_el(self, value):
-        check_bounds(value, 'eta_el', self.label_full, 0, 1)
+    @electrical_efficiency.setter
+    def electrical_efficiency(self, value):
+        check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
         self.conversion_factors[1] = {self.fuel_flow.label: value, self.power_flow.label: 1}
+
+    @property
+    def eta_th(self) -> Numeric_TPS:
+        warnings.warn(
+            'The "eta_th" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.thermal_efficiency
+
+    @eta_th.setter
+    def eta_th(self, value: Numeric_TPS) -> None:
+        warnings.warn(
+            'The "eta_th" property is deprecated. Use "thermal_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.thermal_efficiency = value
+
+    @property
+    def eta_el(self) -> Numeric_TPS:
+        warnings.warn(
+            'The "eta_el" property is deprecated. Use "electrical_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.electrical_efficiency
+
+    @eta_el.setter
+    def eta_el(self, value: Numeric_TPS) -> None:
+        warnings.warn(
+            'The "eta_el" property is deprecated. Use "electrical_efficiency" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.electrical_efficiency = value
 
     @property
     def Q_fu(self) -> Flow:  # noqa: N802
