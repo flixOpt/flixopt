@@ -182,6 +182,12 @@ class LinearConverter(Component):
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to parent Component and piecewise_conversion."""
+        super()._set_flow_system(flow_system)
+        if self.piecewise_conversion is not None:
+            self.piecewise_conversion._set_flow_system(flow_system)
+
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
         if not self.conversion_factors and not self.piecewise_conversion:
