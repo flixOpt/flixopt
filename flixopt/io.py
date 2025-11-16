@@ -115,7 +115,7 @@ def save_json(
     path: str | pathlib.Path,
     indent: int = 4,
     ensure_ascii: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a JSON file with consistent formatting.
@@ -207,7 +207,7 @@ def save_yaml(
     allow_unicode: bool = True,
     sort_keys: bool = False,
     compact_numeric_lists: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a YAML file with consistent formatting.
@@ -258,7 +258,7 @@ def format_yaml_string(
     allow_unicode: bool = True,
     sort_keys: bool = False,
     compact_numeric_lists: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> str:
     """
     Format data as a YAML string with consistent formatting.
@@ -921,7 +921,7 @@ def build_repr_from_init(
         return f'{obj.__class__.__name__}(<repr_failed>)'
 
 
-def format_flow_details(obj, has_inputs: bool = True, has_outputs: bool = True) -> str:
+def format_flow_details(obj: Any, has_inputs: bool = True, has_outputs: bool = True) -> str:
     """Format inputs and outputs as indented bullet list.
 
     Args:
