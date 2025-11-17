@@ -717,9 +717,7 @@ class LinearConverterModel(ComponentModel):
 
         # Check mutual exclusivity
         if self.element.conversion_factors and self.element.piecewise_conversion:
-            raise PlausibilityError(
-                'Only one of conversion_factors or piecewise_conversion can be defined, not both!'
-            )
+            raise PlausibilityError('Only one of conversion_factors or piecewise_conversion can be defined, not both!')
 
         # Validate conversion_factors
         if self.element.conversion_factors:

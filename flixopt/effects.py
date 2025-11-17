@@ -381,6 +381,7 @@ class Effect(Element):
         self.submodel = EffectModel(model, self)
         return self.submodel
 
+
 class EffectModel(ElementModel):
     element: Effect  # Type hint
 

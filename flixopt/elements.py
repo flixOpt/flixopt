@@ -516,9 +516,7 @@ class FlowModel(ElementModel):
 
         # Check relative_minimum <= relative_maximum
         if (self.element.relative_minimum > self.element.relative_maximum).any():
-            raise PlausibilityError(
-                self.element.label_full + ': Take care, that relative_minimum <= relative_maximum!'
-            )
+            raise PlausibilityError(self.element.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         # Warn about default size with fixed_relative_profile
         if not isinstance(self.element.size, InvestParameters) and (
