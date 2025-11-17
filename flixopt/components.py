@@ -747,7 +747,7 @@ class TransmissionModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
         super()._do_modeling()
 
         # first direction
@@ -788,7 +788,7 @@ class LinearConverterModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
 
         # Create conversion factor constraints if specified
@@ -837,7 +837,7 @@ class StorageModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create charge state variables, energy balance equations, and optional investment submodels"""
         super()._do_modeling()
 
         # Create variables

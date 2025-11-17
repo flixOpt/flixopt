@@ -270,7 +270,7 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(flow_system): Transform data to match FlowSystem dimensions
+        transform_data(name_prefix=''): Transform data to match FlowSystem dimensions
     """
 
     def transform_data(self, name_prefix: str = '') -> None:

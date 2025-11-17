@@ -15,6 +15,8 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from .core import FlowSystemDimensions, Scalar, TemporalData
     from .interface import InvestParameters, OnOffParameters, Piecewise
 
@@ -329,7 +331,7 @@ class PieceModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
@@ -375,7 +377,7 @@ class PiecewiseModel(Submodel):
         label_of_model: str,
         piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -451,6 +453,10 @@ class PiecewiseModel(Submodel):
             else:
                 rhs = 1
 
+            # This constraint ensures at most one segment is active at a time.
+            # When zero_point is a binary variable, it acts as a gate:
+            # - zero_point=1: at most one segment can be active (normal piecewise operation)
+            # - zero_point=0: all segments must be inactive (effectively disables the piecewise)
             self.add_constraints(
                 sum([piece.inside_piece for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}|single_segment',
@@ -536,7 +542,7 @@ class ShareAllocationModel(Submodel):
         min_per_hour: TemporalData | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
-            raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
+            raise ValueError("max_per_hour and min_per_hour require 'time' dimension in dims")
 
         self._dims = dims
         self.total_per_timestep: linopy.Variable | None = None
