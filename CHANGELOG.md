@@ -55,36 +55,33 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
+### ✨ Added
+
+- **New constraint parameters for sum across all periods**:
+  - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
+  - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
+
 ### ♻️ Changed
 
 - **Parameter naming consistency**: Established consistent naming pattern for constraint parameters across `Effect`, `Flow`, and `OnOffParameters`:
-  - Per-period constraints now use no suffix (e.g., `minimum_total`, `flow_hours_max`, `on_hours_min`)
-  - Sum-over-all-periods constraints now use `_over_periods` suffix (e.g., `minimum_over_periods`, `flow_hours_max_over_periods`)
+  - Per-period constraints use no suffix or clarified names (e.g., `minimum_total`, `flow_hours_max`, `on_hours_min`)
+  - Sum-over-all-periods constraints use `_over_periods` suffix (e.g., `minimum_over_periods`, `flow_hours_max_over_periods`)
 
-- **Effect parameters**:
-  - Renamed `minimum_total_per_period` → `minimum_total` (per-period constraint)
-  - Renamed `maximum_total_per_period` → `maximum_total` (per-period constraint)
-  - Renamed `minimum` → `minimum_over_periods` (weighted sum across all periods)
-  - Renamed `maximum` → `maximum_over_periods` (weighted sum across all periods)
+- **Flow parameters** (renamed for consistency):
+  - Renamed `flow_hours_total_max` → `flow_hours_max` (per-period constraint)
+  - Renamed `flow_hours_total_min` → `flow_hours_min` (per-period constraint)
 
-- **Flow parameters**:
-  - Renamed `flow_hours_per_period_max` → `flow_hours_max` (per-period constraint)
-  - Renamed `flow_hours_per_period_min` → `flow_hours_min` (per-period constraint)
-  - Renamed `total_flow_hours_max` → `flow_hours_max_over_periods` (weighted sum across all periods)
-  - Renamed `total_flow_hours_min` → `flow_hours_min_over_periods` (weighted sum across all periods)
-
-- **OnOffParameters**:
+- **OnOffParameters** (renamed for consistency):
   - Renamed `on_hours_total_max` → `on_hours_max` (per-period constraint)
   - Renamed `on_hours_total_min` → `on_hours_min` (per-period constraint)
   - Renamed `switch_on_total_max` → `switch_on_max` (per-period constraint)
 
 ### 🗑️ Deprecated
 
-- **Effect parameters**: `minimum_total_per_period`, `maximum_total_per_period`, `minimum`, `maximum` (use new names listed above)
-- **Flow parameters**: `flow_hours_per_period_max`, `flow_hours_per_period_min`, `total_flow_hours_max`, `total_flow_hours_min`, `flow_hours_total_max`, `flow_hours_total_min` (use new names listed above)
-- **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use new names listed above)
+- **Flow parameters**: `flow_hours_total_max`, `flow_hours_total_min` (use `flow_hours_max`, `flow_hours_min`)
+- **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use `on_hours_max`, `on_hours_min`, `switch_on_max`)
 
-All deprecated parameter names continue to work with deprecation warnings for backward compatibility.
+All deprecated parameter names continue to work with deprecation warnings for backward compatibility. Additional property aliases have been added internally to handle various naming variations that may have been used.
 
 ### 🐛 Fixed
 
