@@ -15,7 +15,7 @@ from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
-from .interface import ActiveInactiveParameters, InvestParameters, PiecewiseConversion
+from .interface import ActivityParameters, InvestParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -50,7 +50,7 @@ class LinearConverter(Component):
         outputs: list of output Flows that are produced by the converter.
         active_inactive_parameters: Information about active and inactive state of LinearConverter.
             Component is active/inactive if all connected Flows are active/inactive. This induces an
-            active-Variable (binary) in all Flows! If possible, use ActiveInactiveParameters in a
+            active-Variable (binary) in all Flows! If possible, use ActivityParameters in a
             single Flow instead to keep the number of binary variables low.
         conversion_factors: Linear relationships between flows expressed as a list of
             dictionaries. Each dictionary maps flow labels to their coefficients in one
@@ -167,7 +167,7 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        active_inactive_parameters: ActiveInactiveParameters | None = None,
+        active_inactive_parameters: ActivityParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
@@ -630,7 +630,7 @@ class Transmission(Component):
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
-            active_inactive_parameters=ActiveInactiveParameters(
+            active_inactive_parameters=ActivityParameters(
                 effects_per_startup={'maintenance': 0.1},
                 consecutive_active_hours_min=2,  # Minimum 2-hour operation
                 startup_total_max=10,  # Maximum 10 starts per day
@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        active_inactive_parameters: ActiveInactiveParameters = None,
+        active_inactive_parameters: ActivityParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -733,7 +733,7 @@ class TransmissionModel(ComponentModel):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
                 if flow.active_inactive_parameters is None:
-                    flow.active_inactive_parameters = ActiveInactiveParameters()
+                    flow.active_inactive_parameters = ActivityParameters()
 
         super().__init__(model, element)
 
@@ -798,7 +798,7 @@ class LinearConverterModel(ComponentModel):
                 )
 
         else:
-            # TODO: Improve Inclusion of ActiveInactiveParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
+            # TODO: Improve Inclusion of ActivityParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
                 for flow, piecewise in self.element.piecewise_conversion.items()

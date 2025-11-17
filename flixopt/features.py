@@ -15,7 +15,7 @@ from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions
-    from .interface import ActiveInactiveParameters, InvestParameters, Piecewise
+    from .interface import ActivityParameters, InvestParameters, Piecewise
     from .types import Numeric_PS, Numeric_TPS
 
 
@@ -142,14 +142,14 @@ class InvestmentModel(Submodel):
         return self._variables['invested']
 
 
-class ActiveInactiveModel(Submodel):
+class ActivityModel(Submodel):
     """Active/Inactive state model using factory patterns"""
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: ActiveInactiveParameters,
+        parameters: ActivityParameters,
         active_variable: linopy.Variable,
         previous_states: Numeric_TPS | None,
         label_of_model: str | None = None,

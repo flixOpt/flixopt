@@ -1077,7 +1077,7 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
-class ActiveInactiveParameters(Interface):
+class ActivityParameters(Interface):
     """Define operational constraints and effects for binary active/inactive equipment behavior.
 
     This class models equipment that operates in discrete states (active/inactive) rather than
@@ -1146,7 +1146,7 @@ class ActiveInactiveParameters(Interface):
         Combined cycle power plant with startup costs and minimum run time:
 
         ```python
-        power_plant_operation = ActiveInactiveParameters(
+        power_plant_operation = ActivityParameters(
             effects_per_startup={
                 'startup_cost': 25000,  # €25,000 per startup
                 'startup_fuel': 150,  # GJ natural gas for startup
@@ -1166,7 +1166,7 @@ class ActiveInactiveParameters(Interface):
         Industrial batch process with cycling limits:
 
         ```python
-        batch_reactor = ActiveInactiveParameters(
+        batch_reactor = ActivityParameters(
             effects_per_startup={
                 'setup_cost': 1500,  # Labor and materials for startup
                 'catalyst_consumption': 5,  # kg catalyst per batch
@@ -1188,7 +1188,7 @@ class ActiveInactiveParameters(Interface):
         HVAC system with thermostat control and maintenance:
 
         ```python
-        hvac_operation = ActiveInactiveParameters(
+        hvac_operation = ActivityParameters(
             effects_per_startup={
                 'compressor_wear': 0.5,  # Hours of compressor life per start
                 'inrush_current': 15,  # kW peak demand on startup
@@ -1208,7 +1208,7 @@ class ActiveInactiveParameters(Interface):
         Backup generator with testing and maintenance requirements:
 
         ```python
-        backup_generator = ActiveInactiveParameters(
+        backup_generator = ActivityParameters(
             effects_per_startup={
                 'fuel_priming': 50,  # L diesel for system priming
                 'wear_factor': 1.0,  # Start cycles impact on maintenance
@@ -1230,7 +1230,7 @@ class ActiveInactiveParameters(Interface):
         Peak shaving battery with cycling degradation:
 
         ```python
-        battery_cycling = ActiveInactiveParameters(
+        battery_cycling = ActivityParameters(
             effects_per_startup={
                 'cycle_degradation': 0.01,  # % capacity loss per cycle
                 'inverter_startup': 0.5,  # kWh losses during startup
