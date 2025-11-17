@@ -3,7 +3,6 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
-import logging
 import warnings
 from itertools import permutations
 from typing import Any, Literal, Union
@@ -11,17 +10,9 @@ from typing import Any, Literal, Union
 import numpy as np
 import pandas as pd
 import xarray as xr
+from loguru import logger
 
-logger = logging.getLogger('flixopt')
-
-Scalar = int | float
-"""A single number, either integer or float."""
-
-PeriodicDataUser = int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
-"""User data which has no time dimension. Internally converted to a Scalar or an xr.DataArray without a time dimension."""
-
-PeriodicData = xr.DataArray
-"""Internally used datatypes for periodic data."""
+from .types import NumericOrBool
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
@@ -148,15 +139,6 @@ class TimeSeriesData(xr.DataArray):
     def agg_weight(self):
         warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
         return self.aggregation_weight
-
-
-TemporalDataUser = (
-    int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray | TimeSeriesData
-)
-"""User data which might have a time dimension. Internally converted to an xr.DataArray with time dimension."""
-
-TemporalData = xr.DataArray | TimeSeriesData
-"""Internally used datatypes for temporal data (data with a time dimension)."""
 
 
 class DataConverter:
@@ -395,8 +377,7 @@ class DataConverter:
                     )
 
         # Create target template for broadcasting
-        target_shape = [len(target_coords[dim]) for dim in target_dims]
-        target_template = xr.DataArray(np.empty(target_shape), coords=target_coords, dims=target_dims)
+        target_template = xr.DataArray(coords=target_coords, dims=target_dims)
 
         # Perform broadcasting and ensure proper dimension ordering
         broadcasted = source_data.broadcast_like(target_template)
@@ -405,16 +386,7 @@ class DataConverter:
     @classmethod
     def to_dataarray(
         cls,
-        data: int
-        | float
-        | bool
-        | np.integer
-        | np.floating
-        | np.bool_
-        | np.ndarray
-        | pd.Series
-        | pd.DataFrame
-        | xr.DataArray,
+        data: NumericOrBool,
         coords: dict[str, pd.Index] | None = None,
     ) -> xr.DataArray:
         """
@@ -637,9 +609,3 @@ def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_
         )
 
     return ds.drop_vars(drop_vars)
-
-
-# Backward compatibility aliases
-# TODO: Needed?
-NonTemporalDataUser = PeriodicDataUser
-NonTemporalData = PeriodicData

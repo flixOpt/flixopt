@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import logging
 import os
 import pathlib
 import re
@@ -15,11 +14,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
+from loguru import logger
 
 if TYPE_CHECKING:
     import linopy
 
-logger = logging.getLogger('flixopt')
+    from .types import Numeric_TPS
 
 
 def remove_none_and_empty(obj):
@@ -115,7 +115,7 @@ def save_json(
     path: str | pathlib.Path,
     indent: int = 4,
     ensure_ascii: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a JSON file with consistent formatting.
@@ -207,7 +207,7 @@ def save_yaml(
     allow_unicode: bool = True,
     sort_keys: bool = False,
     compact_numeric_lists: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a YAML file with consistent formatting.
@@ -258,7 +258,7 @@ def format_yaml_string(
     allow_unicode: bool = True,
     sort_keys: bool = False,
     compact_numeric_lists: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> str:
     """
     Format data as a YAML string with consistent formatting.
@@ -498,7 +498,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     }
 
     if model.status == 'warning':
-        logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
+        logger.warning(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
             import io
             from contextlib import redirect_stdout
@@ -511,7 +511,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
 
             documentation['infeasible_constraints'] = f.getvalue()
         except NotImplementedError:
-            logger.critical(
+            logger.warning(
                 'Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi'
             )
             documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
@@ -651,7 +651,7 @@ class CalculationResultsPaths:
 
 
 def numeric_to_str_for_repr(
-    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+    value: Numeric_TPS,
     precision: int = 1,
     atol: float = 1e-10,
 ) -> str:
@@ -921,7 +921,7 @@ def build_repr_from_init(
         return f'{obj.__class__.__name__}(<repr_failed>)'
 
 
-def format_flow_details(obj, has_inputs: bool = True, has_outputs: bool = True) -> str:
+def format_flow_details(obj: Any, has_inputs: bool = True, has_outputs: bool = True) -> str:
     """Format inputs and outputs as indented bullet list.
 
     Args:
