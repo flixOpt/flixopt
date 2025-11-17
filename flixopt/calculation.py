@@ -10,7 +10,6 @@ There are three different Calculation types:
 
 from __future__ import annotations
 
-import logging
 import math
 import pathlib
 import sys
@@ -20,13 +19,14 @@ from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
+from loguru import logger
 from tqdm import tqdm
 
 from . import io as fx_io
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG
-from .core import DataConverter, Scalar, TimeSeriesData, drop_constant_arrays
+from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
@@ -38,8 +38,6 @@ if TYPE_CHECKING:
     from .elements import Component
     from .solvers import _Solver
     from .structure import FlowSystemModel
-
-logger = logging.getLogger('flixopt')
 
 
 class Calculation:
@@ -101,7 +99,7 @@ class Calculation:
         self.folder.mkdir(parents=False, exist_ok=True)
 
     @property
-    def main_results(self) -> dict[str, Scalar | dict]:
+    def main_results(self) -> dict[str, int | float | dict]:
         from flixopt.features import InvestmentModel
 
         main_results = {
@@ -241,7 +239,7 @@ class FullCalculation(Calculation):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
-        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
         logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
@@ -258,12 +256,10 @@ class FullCalculation(Calculation):
         # Log the formatted output
         should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
         if should_log:
-            logger.info(
-                f'{" Main Results ":#^80}\n'
-                + fx_io.format_yaml_string(
-                    self.main_results,
-                    compact_numeric_lists=True,
-                )
+            logger.opt(lazy=True).info(
+                '{result}',
+                result=lambda: f'{" Main Results ":#^80}\n'
+                + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
 
         self.results = CalculationResults.from_calculation(self)
@@ -676,7 +672,7 @@ class SegmentedCalculation(Calculation):
             for key, value in calc.durations.items():
                 self.durations[key] += value
 
-        logger.info(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 

@@ -4,7 +4,6 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
-import logging
 import warnings
 from collections import defaultdict
 from itertools import chain
@@ -13,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 import numpy as np
 import pandas as pd
 import xarray as xr
+from loguru import logger
 
 from . import io as fx_io
 from .config import CONFIG
@@ -20,20 +20,9 @@ from .core import (
     ConversionError,
     DataConverter,
     FlowSystemDimensions,
-    PeriodicData,
-    PeriodicDataUser,
-    TemporalData,
-    TemporalDataUser,
     TimeSeriesData,
 )
-from .effects import (
-    Effect,
-    EffectCollection,
-    PeriodicEffects,
-    PeriodicEffectsUser,
-    TemporalEffects,
-    TemporalEffectsUser,
-)
+from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
@@ -43,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-logger = logging.getLogger('flixopt')
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS, NumericOrBool
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
@@ -168,7 +157,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: PeriodicDataUser | None = None,
+        weights: Numeric_PS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -532,15 +521,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_to_model_coords(
         self,
         name: str,
-        data: TemporalDataUser | PeriodicDataUser | None,
+        data: NumericOrBool | None,
         dims: Collection[FlowSystemDimensions] | None = None,
-    ) -> TemporalData | PeriodicData | None:
+    ) -> xr.DataArray | None:
         """
         Fit data to model coordinate system (currently time, but extensible).
 
         Args:
             name: Name of the data
-            data: Data to fit to model coordinates
+            data: Data to fit to model coordinates (accepts any dimensionality including scalars)
             dims: Collection of dimension names to use for fitting. If None, all dimensions are used.
 
         Returns:
@@ -572,11 +561,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def fit_effects_to_model_coords(
         self,
         label_prefix: str | None,
-        effect_values: TemporalEffectsUser | PeriodicEffectsUser | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
         label_suffix: str | None = None,
         dims: Collection[FlowSystemDimensions] | None = None,
         delimiter: str = '|',
-    ) -> TemporalEffects | PeriodicEffects | None:
+    ) -> Effect_TPS | None:
         """
         Transform EffectValues from the user to Internal Datatypes aligned with model coordinates.
         """
@@ -605,6 +594,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connect_network()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
+
+        # Validate cross-element references immediately after transformation
+        self._validate_system_integrity()
+
         self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
@@ -656,8 +649,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
-        # Validate cross-element references before creating model
-        self._validate_system_integrity()
+        # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
@@ -841,13 +833,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         for new_component in list(components):
             new_component._set_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if components:
+            self._flows_cache = None
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
             new_bus._set_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if buses:
+            self._flows_cache = None
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -878,9 +874,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     bus.outputs.append(flow)
                 elif not flow.is_input_in_component and flow not in bus.inputs:
                     bus.inputs.append(flow)
+
+        # Count flows manually to avoid triggering cache rebuild
+        flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
         logger.debug(
             f'Connected {len(self.buses)} Buses and {len(self.components)} '
-            f'via {len(self.flows)} Flows inside the FlowSystem.'
+            f'via {flow_count} Flows inside the FlowSystem.'
         )
 
     def __repr__(self) -> str:
