@@ -493,7 +493,7 @@ class Storage(Component):
         initial_equals_final = False
         if isinstance(self.initial_charge_state, str):
             if not self.initial_charge_state == 'equals_final':
-                raise PlausibilityError(f'equals_finalcharge_state has undefined value: {self.initial_charge_state}')
+                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
             initial_equals_final = True
 
         # Use new InvestParameters methods to get capacity bounds
