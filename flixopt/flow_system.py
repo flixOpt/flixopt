@@ -157,6 +157,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        weight_of_last_period: int | float | None = None,
         weights: Numeric_PS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
@@ -174,9 +175,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.weights = weights
+        # Compute all period-related metadata using shared helper
+        (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
+            self.periods, weight_of_last_period
+        )
+
+        # Auto-derive weights from period index if not provided
+        if weights is None and weight_per_period is not None:
+            # Use period weights, broadcast to period×scenario dimensions
+            self.weights = self.fit_to_model_coords('weights', weight_per_period, dims=['period', 'scenario'])
+        else:
+            self.weights = weights
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+        self.weight_per_period = (
+            self.fit_to_model_coords('weight_per_period', weight_per_period, dims=['period'])
+            if weight_per_period is not None
+            else None
+        )
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(
@@ -278,6 +294,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
 
+    @staticmethod
+    def _create_periods_with_extra(periods: pd.Index, weight_of_last_period: int | float | None) -> pd.Index:
+        """Create periods with an extra period at the end.
+
+        Args:
+            periods: The period index (must be monotonically increasing integers)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            Period index with an extra period appended at the end
+        """
+        if weight_of_last_period is None:
+            # Calculate weight from difference between last two periods
+            weight_of_last_period = int(periods[-1]) - int(periods[-2])
+
+        # Create the extra period value
+        last_period_value = int(periods[-1]) + weight_of_last_period
+        periods_extra = periods.append(pd.Index([last_period_value], name='period'))
+        return periods_extra
+
+    @staticmethod
+    def calculate_weight_per_period(periods_extra: pd.Index) -> xr.DataArray:
+        """Calculate weight of each period from period index differences.
+
+        Args:
+            periods_extra: Period index with an extra period at the end
+
+        Returns:
+            DataArray with weights for each period (1D, 'period' dimension)
+        """
+        weights = np.diff(periods_extra.to_numpy().astype(int))
+        return xr.DataArray(weights, coords={'period': periods_extra[:-1]}, dims='period', name='weight_per_period')
+
     @classmethod
     def _compute_time_metadata(
         cls,
@@ -314,6 +363,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
         return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
+
+    @classmethod
+    def _compute_period_metadata(
+        cls, periods: pd.Index | None, weight_of_last_period: int | float | None = None
+    ) -> tuple[pd.Index | None, int | float | None, xr.DataArray | None]:
+        """
+        Compute all period-related metadata from periods.
+
+        This is the single source of truth for period metadata computation, used by both
+        __init__ and dataset operations to ensure consistency.
+
+        Args:
+            periods: The period index to compute metadata from (or None if no periods)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            Tuple of (periods_extra, weight_of_last_period, weight_per_period)
+            All return None if periods is None
+        """
+        if periods is None:
+            return None, None, None
+
+        # Create periods with extra period at the end
+        periods_extra = cls._create_periods_with_extra(periods, weight_of_last_period)
+
+        # Calculate weight per period
+        weight_per_period = cls.calculate_weight_per_period(periods_extra)
+
+        # Extract weight_of_last_period if not provided
+        if weight_of_last_period is None:
+            weight_of_last_period = weight_per_period.isel(period=-1).item()
+
+        return periods_extra, weight_of_last_period, weight_per_period
 
     @classmethod
     def _update_time_metadata(
@@ -436,11 +518,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             timesteps=ds.indexes['time'],
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
+            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
+            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            weight_of_last_period=reference_structure.get('weight_of_last_period'),
             weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
             if 'weights' in reference_structure
             else None,
-            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
-            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
