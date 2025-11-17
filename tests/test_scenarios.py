@@ -85,7 +85,7 @@ def test_system():
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
-        initial_charge_state='lastValueOfSim',
+        initial_charge_state='equals_final',
     )
 
     # Create effects and objective

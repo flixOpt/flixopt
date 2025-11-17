@@ -82,7 +82,7 @@ if __name__ == '__main__':
             capacity_in_flow_hours=fx.InvestParameters(
                 minimum_size=10, maximum_size=1000, effects_of_investment_per_size={'costs': 60}
             ),
-            initial_charge_state='lastValueOfSim',
+            initial_charge_state='equals_final',
             eta_charge=1,
             eta_discharge=1,
             relative_loss_per_hour=0.001,
