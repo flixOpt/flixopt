@@ -666,10 +666,11 @@ class TestInvestmentBehavior:
             var_names = verify_investment_variables(component, mandatory=False)
         else:
             # Boiler and CHP have investment on flows
-            if hasattr(component, 'Q_th'):
-                flow_with_invest = component.Q_th
-            elif hasattr(component, 'P_el'):
+            # CHP has investment on P_el, Boiler has it on Q_th
+            if hasattr(component, 'P_el'):
                 flow_with_invest = component.P_el
+            elif hasattr(component, 'Q_th'):
+                flow_with_invest = component.Q_th
             var_names = verify_investment_variables(flow_with_invest, mandatory=False)
 
         # Verify 'invested' binary variable exists for optional investment
@@ -728,10 +729,11 @@ class TestInvestmentBehavior:
         if component_name == 'Storage':
             _ = verify_investment_variables(component, mandatory=True)
         else:
-            if hasattr(component, 'Q_th'):
-                flow_with_invest = component.Q_th
-            elif hasattr(component, 'P_el'):
+            # CHP has investment on P_el, Boiler has it on Q_th
+            if hasattr(component, 'P_el'):
                 flow_with_invest = component.P_el
+            elif hasattr(component, 'Q_th'):
+                flow_with_invest = component.Q_th
             _ = verify_investment_variables(flow_with_invest, mandatory=True)
 
         # Verify 'invested' binary variable does NOT exist for mandatory investment
@@ -799,12 +801,13 @@ class TestInvestmentBehavior:
         if component_name == 'Storage':
             submodel = component.submodel
         else:
-            if hasattr(component, 'Q_th'):
-                submodel = component.Q_th.submodel
-            elif hasattr(component, 'P_el'):
+            # CHP has investment on P_el, Boiler has it on Q_th
+            if hasattr(component, 'P_el'):
                 submodel = component.P_el.submodel
+            elif hasattr(component, 'Q_th'):
+                submodel = component.Q_th.submodel
 
-        var_names = set(submodel.variables.keys())
+        var_names = set(submodel.variables)
 
         # Expected variables based on parameters
         assert any('size' in v for v in var_names), f"{component_name} should have 'size' variable"
@@ -916,10 +919,11 @@ class TestOnOffBehavior:
         _ = create_linopy_model(flow_system)
 
         # Get flow with OnOff
-        if hasattr(component, 'Q_th'):
-            flow = component.Q_th
-        elif hasattr(component, 'P_el'):
+        # CHP has OnOff on P_el, Boiler on Q_th, Storage on charging
+        if hasattr(component, 'P_el'):
             flow = component.P_el
+        elif hasattr(component, 'Q_th'):
+            flow = component.Q_th
         elif hasattr(component, 'charging'):
             flow = component.charging
 
@@ -966,14 +970,15 @@ class TestOnOffBehavior:
         _ = create_linopy_model(flow_system)
 
         # Verify on_hours_total variable exists
-        if hasattr(component, 'Q_th'):
-            flow = component.Q_th
-        elif hasattr(component, 'P_el'):
+        # CHP has OnOff on P_el, Boiler on Q_th, Storage on charging
+        if hasattr(component, 'P_el'):
             flow = component.P_el
+        elif hasattr(component, 'Q_th'):
+            flow = component.Q_th
         elif hasattr(component, 'charging'):
             flow = component.charging
 
-        var_names = set(flow.submodel.variables.keys())
+        var_names = set(flow.submodel.variables)
         assert any('on_hours_total' in v for v in var_names), (
             f"{component_name} with on_hours limits should have 'on_hours_total' variable"
         )

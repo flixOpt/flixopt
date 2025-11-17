@@ -504,13 +504,21 @@ class BoilerFactory:
         return fx.linear_converters.Boiler(label, eta=eta, Q_th=q_th, Q_fu=q_fu, **kwargs)
 
     @staticmethod
-    def minimal(label='Boiler', eta=0.5):
-        """Create minimal Boiler for basic testing"""
+    def minimal(label='Boiler', eta=0.5, **kwargs):
+        """
+        Create minimal Boiler for basic testing.
+
+        Args:
+            label: Boiler label
+            eta: Thermal efficiency
+            **kwargs: Additional Boiler parameters
+        """
         return fx.linear_converters.Boiler(
             label,
             eta=eta,
             Q_th=Flows.thermal(),
             Q_fu=Flows.fuel(),
+            **kwargs,
         )
 
 
@@ -561,8 +569,16 @@ class CHPFactory:
         return fx.linear_converters.CHP(label, eta_th=eta_th, eta_el=eta_el, P_el=p_el, Q_th=q_th, Q_fu=q_fu, **kwargs)
 
     @staticmethod
-    def minimal(label='CHP', eta_th=0.5, eta_el=0.4):
-        """Create minimal CHP for basic testing"""
+    def minimal(label='CHP', eta_th=0.5, eta_el=0.4, **kwargs):
+        """
+        Create minimal CHP for basic testing.
+
+        Args:
+            label: CHP label
+            eta_th: Thermal efficiency
+            eta_el: Electrical efficiency
+            **kwargs: Additional CHP parameters
+        """
         return fx.linear_converters.CHP(
             label,
             eta_th=eta_th,
@@ -570,6 +586,7 @@ class CHPFactory:
             P_el=Flows.electrical(),
             Q_th=Flows.thermal(),
             Q_fu=Flows.fuel(),
+            **kwargs,
         )
 
 
@@ -634,15 +651,26 @@ class StorageFactory:
         return fx.Storage(label, charging=charging, discharging=discharging, capacity_in_flow_hours=capacity, **kwargs)
 
     @staticmethod
-    def minimal(label='Storage', capacity=30):
-        """Create minimal Storage for basic testing"""
+    def minimal(label='Storage', capacity=30, **kwargs):
+        """
+        Create minimal Storage for basic testing.
+
+        Args:
+            label: Storage label
+            capacity: Storage capacity in flow hours
+            **kwargs: Additional Storage parameters (e.g., initial_charge_state, eta_charge,
+                     relative_maximum_charge_state, relative_minimum_charge_state, etc.)
+        """
+        # Set defaults only if not provided in kwargs
+        kwargs.setdefault('initial_charge_state', 0)
+        kwargs.setdefault('prevent_simultaneous_charge_and_discharge', True)
+
         return fx.Storage(
             label,
             charging=Flows.thermal('Q_th_in', size=20),
             discharging=Flows.thermal('Q_th_out', size=20),
             capacity_in_flow_hours=capacity,
-            initial_charge_state=0,
-            prevent_simultaneous_charge_and_discharge=True,
+            **kwargs,
         )
 
 
@@ -983,7 +1011,7 @@ def verify_investment_variables(component, mandatory=False):
     Returns:
         set: Set of investment-related variable names found
     """
-    var_names = set(component.submodel.variables.keys())
+    var_names = set(component.submodel.variables)
 
     # All investable components should have 'size' variable
     assert 'size' in [v.split('|')[-1] for v in var_names], f"Component {component.label} should have 'size' variable"
@@ -1008,16 +1036,17 @@ def verify_onoff_variables(component):
         set: Set of OnOff-related variable names found
     """
     # For components with OnOff, check the flow's submodel
-    if hasattr(component, 'Q_th'):  # Boiler
-        flow_submodel = component.Q_th.submodel
-    elif hasattr(component, 'P_el'):  # CHP
+    # CHP has OnOff on P_el, Boiler on Q_th, Storage on charging
+    if hasattr(component, 'P_el'):  # CHP
         flow_submodel = component.P_el.submodel
+    elif hasattr(component, 'Q_th'):  # Boiler
+        flow_submodel = component.Q_th.submodel
     elif hasattr(component, 'charging'):  # Storage
         flow_submodel = component.charging.submodel
     else:
         raise ValueError(f'Cannot determine OnOff flow for component type {type(component)}')
 
-    var_names = set(flow_submodel.variables.keys())
+    var_names = set(flow_submodel.variables)
 
     # Should have 'on' variable for OnOff parameters
     on_vars = [v for v in var_names if 'on' in v.split('|')[-1].lower()]
