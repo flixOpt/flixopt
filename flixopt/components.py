@@ -637,15 +637,17 @@ class TransmissionModel(ComponentModel):
 
         # Check bus connections for bidirectional transmission
         if self.element.in2 is not None:
-            assert self.element.in2.bus == self.element.out1.bus, (
-                f'Output 1 and Input 2 do not start/end at the same Bus: '
-                f'{self.element.out1.bus=}, {self.element.in2.bus=}'
-            )
+            if self.element.in2.bus != self.element.out1.bus:
+                raise ValueError(
+                    f'Output 1 and Input 2 do not start/end at the same Bus: '
+                    f'{self.element.out1.bus=}, {self.element.in2.bus=}'
+                )
         if self.element.out2 is not None:
-            assert self.element.out2.bus == self.element.in1.bus, (
-                f'Input 1 and Output 2 do not start/end at the same Bus: '
-                f'{self.element.in1.bus=}, {self.element.out2.bus=}'
-            )
+            if self.element.out2.bus != self.element.in1.bus:
+                raise ValueError(
+                    f'Input 1 and Output 2 do not start/end at the same Bus: '
+                    f'{self.element.in1.bus=}, {self.element.out2.bus=}'
+                )
 
         # Validate balanced transmission requirements
         if self.element.balanced:
@@ -737,7 +739,7 @@ class LinearConverterModel(ComponentModel):
                             f'{self.element.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
                         )
 
-        # Warn about piecewise_conversion with variable InvestParameters
+        # Warn about piecewise_conversion with variable InvestParameters (modeling interaction)
         if self.element.piecewise_conversion:
             for flow in self.element.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
@@ -800,7 +802,7 @@ class StorageModel(ComponentModel):
         """Validate Storage configuration for modeling."""
         super()._validate()
 
-        # Validate string values and set flag
+        # Validate initial_charge_state string value
         initial_is_last = False
         if isinstance(self.element.initial_charge_state, str):
             if self.element.initial_charge_state == 'lastValueOfSim':
