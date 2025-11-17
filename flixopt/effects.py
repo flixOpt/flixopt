@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
-    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS, Scalar
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 
 @register_class_for_io
@@ -56,13 +56,18 @@ class Effect(Element):
             Maps temporal contributions from other effects to this effect.
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
-        minimum_temporal: Minimum allowed total contribution across all timesteps.
-        maximum_temporal: Maximum allowed total contribution across all timesteps.
+        minimum_temporal: Minimum allowed total contribution across all timesteps (per period).
+        maximum_temporal: Maximum allowed total contribution across all timesteps (per period).
         minimum_per_hour: Minimum allowed contribution per hour.
         maximum_per_hour: Maximum allowed contribution per hour.
-        minimum_periodic: Minimum allowed total periodic contribution.
-        maximum_periodic: Maximum allowed total periodic contribution.
-        minimum_total: Minimum allowed total effect (temporal + periodic combined).
+        minimum_periodic: Minimum allowed total periodic contribution (per period).
+        maximum_periodic: Maximum allowed total periodic contribution (per period).
+        minimum_total_per_period: Minimum allowed total effect (temporal + periodic combined) per period.
+        maximum_total_per_period: Maximum allowed total effect (temporal + periodic combined) per period.
+        minimum: Minimum allowed weighted sum of total effect across ALL periods.
+            Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
+        maximum: Maximum allowed weighted sum of total effect across ALL periods.
+            Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -73,6 +78,8 @@ class Effect(Element):
         maximum_invest: Use `maximum_periodic` instead.
         minimum_operation_per_hour: Use `minimum_per_hour` instead.
         maximum_operation_per_hour: Use `maximum_per_hour` instead.
+        minimum_total: Use `minimum_total_per_period` instead.
+        maximum_total: Use `maximum_total_per_period` instead.
 
     Examples:
         Basic cost objective:
@@ -86,14 +93,25 @@ class Effect(Element):
         )
         ```
 
-        CO2 emissions:
+        CO2 emissions with per-period limit:
 
         ```python
         co2_effect = Effect(
             label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            maximum_total=1_000_000,  # 1000 t CO2 annual limit
+            maximum_total_per_period=100_000,  # 100 t CO2 per period
+        )
+        ```
+
+        CO2 emissions with total limit across all periods:
+
+        ```python
+        co2_effect = Effect(
+            label='CO2',
+            unit='kg_CO2',
+            description='Carbon dioxide emissions',
+            maximum=1_000_000,  # 1000 t CO2 total across all periods
         )
         ```
 
@@ -104,7 +122,7 @@ class Effect(Element):
             label='land_usage',
             unit='m²',
             description='Land area requirement',
-            maximum_total=50_000,  # Maximum 5 hectares available
+            maximum_total_per_period=50_000,  # Maximum 5 hectares per period
         )
         ```
 
@@ -179,8 +197,10 @@ class Effect(Element):
         maximum_periodic: Numeric_PS | None = None,
         minimum_per_hour: Numeric_TPS | None = None,
         maximum_per_hour: Numeric_TPS | None = None,
-        minimum_total: Numeric_PS | None = None,
-        maximum_total: Numeric_PS | None = None,
+        minimum_total_per_period: Numeric_PS | None = None,
+        maximum_total_per_period: Numeric_PS | None = None,
+        minimum: Numeric_S | None = None,
+        maximum: Numeric_S | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -210,6 +230,12 @@ class Effect(Element):
         maximum_per_hour = self._handle_deprecated_kwarg(
             kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
         )
+        minimum_total_per_period = self._handle_deprecated_kwarg(
+            kwargs, 'minimum_total', 'minimum_total_per_period', minimum_total_per_period
+        )
+        maximum_total_per_period = self._handle_deprecated_kwarg(
+            kwargs, 'maximum_total', 'maximum_total_per_period', maximum_total_per_period
+        )
 
         # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
@@ -221,8 +247,10 @@ class Effect(Element):
         self.maximum_periodic = maximum_periodic
         self.minimum_per_hour = minimum_per_hour
         self.maximum_per_hour = maximum_per_hour
-        self.minimum_total = minimum_total
-        self.maximum_total = maximum_total
+        self.minimum_total_per_period = minimum_total_per_period
+        self.maximum_total_per_period = maximum_total_per_period
+        self.minimum = minimum
+        self.maximum = maximum
 
     # Backwards compatible properties (deprecated)
     @property
@@ -345,6 +373,46 @@ class Effect(Element):
         )
         self.maximum_per_hour = value
 
+    @property
+    def minimum_total(self):
+        """DEPRECATED: Use 'minimum_total_per_period' property instead."""
+        warnings.warn(
+            "Property 'minimum_total' is deprecated. Use 'minimum_total_per_period' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.minimum_total_per_period
+
+    @minimum_total.setter
+    def minimum_total(self, value):
+        """DEPRECATED: Use 'minimum_total_per_period' property instead."""
+        warnings.warn(
+            "Property 'minimum_total' is deprecated. Use 'minimum_total_per_period' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_total_per_period = value
+
+    @property
+    def maximum_total(self):
+        """DEPRECATED: Use 'maximum_total_per_period' property instead."""
+        warnings.warn(
+            "Property 'maximum_total' is deprecated. Use 'maximum_total_per_period' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_total_per_period
+
+    @maximum_total.setter
+    def maximum_total(self, value):
+        """DEPRECATED: Use 'maximum_total_per_period' property instead."""
+        warnings.warn(
+            "Property 'maximum_total' is deprecated. Use 'maximum_total_per_period' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_total_per_period = value
+
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.minimum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
@@ -376,14 +444,16 @@ class Effect(Element):
         self.maximum_periodic = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_total',
-            self.minimum_total,
+        self.minimum_total_per_period = flow_system.fit_to_model_coords(
+            f'{prefix}|minimum_total_per_period',
+            self.minimum_total_per_period,
             dims=['period', 'scenario'],
         )
-        self.maximum_total = flow_system.fit_to_model_coords(
-            f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
+        self.maximum_total_per_period = flow_system.fit_to_model_coords(
+            f'{prefix}|maximum_total_per_period', self.maximum_total_per_period, dims=['period', 'scenario']
         )
+        self.minimum = flow_system.fit_to_model_coords(f'{prefix}|minimum', self.minimum, dims=['scenario'])
+        self.maximum = flow_system.fit_to_model_coords(f'{prefix}|maximum', self.maximum, dims=['scenario'])
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
         self._plausibility_checks()
@@ -451,8 +521,12 @@ class EffectModel(ElementModel):
         )
 
         self.total = self.add_variables(
-            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
+            lower=self.element.minimum_total_per_period
+            if self.element.minimum_total_per_period is not None
+            else -np.inf,
+            upper=self.element.maximum_total_per_period
+            if self.element.maximum_total_per_period is not None
+            else np.inf,
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
@@ -460,6 +534,21 @@ class EffectModel(ElementModel):
         self.add_constraints(
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
         )
+
+        # Add weighted sum over all periods constraint if minimum or maximum is defined
+        if self.element.minimum is not None or self.element.maximum is not None:
+            # Calculate weighted sum over all periods
+            weighted_total = (self.total * self.weights).sum('period')
+
+            # Create tracking variable for the weighted sum
+            self.total_over_periods = self.add_variables(
+                lower=self.element.minimum if self.element.minimum is not None else -np.inf,
+                upper=self.element.maximum if self.element.maximum is not None else np.inf,
+                coords=self._model.get_coords(['scenario']),
+                short_name='total_over_periods',
+            )
+
+            self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')
 
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares

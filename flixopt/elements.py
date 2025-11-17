@@ -325,8 +325,12 @@ class Flow(Element):
         effects_per_flow_hour: Operational costs/impacts per flow-hour.
             Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
         on_off_parameters: Binary operation constraints (OnOffParameters). Default: None.
-        flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
-        flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
+        flow_hours_per_period_max: Maximum cumulative flow-hours per period. Alternative to load_factor_max.
+        flow_hours_per_period_min: Minimum cumulative flow-hours per period. Alternative to load_factor_min.
+        total_flow_hours_max: Maximum weighted sum of flow-hours across ALL periods.
+            Weighted by FlowSystem period weights.
+        total_flow_hours_min: Minimum weighted sum of flow-hours across ALL periods.
+            Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
         previous_flow_rate: Initial flow state for on/off dynamics. Default: None (off).
@@ -403,8 +407,9 @@ class Flow(Element):
         ```
 
     Design Considerations:
-        **Size vs Load Factors**: Use `flow_hours_total_min/max` for absolute limits,
-        `load_factor_min/max` for utilization-based constraints.
+        **Size vs Load Factors**: Use `flow_hours_per_period_min/max` for absolute limits per period,
+        `load_factor_min/max` for utilization-based constraints, or `total_flow_hours_min/max` for
+        limits across all periods.
 
         **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
         operate below that level. Use `on_off_parameters` for discrete on/off behavior.
@@ -434,12 +439,15 @@ class Flow(Element):
         relative_maximum: Numeric_TPS = 1,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        flow_hours_total_max: Numeric_PS | None = None,
-        flow_hours_total_min: Numeric_PS | None = None,
+        flow_hours_per_period_max: Numeric_PS | None = None,
+        flow_hours_per_period_min: Numeric_PS | None = None,
+        total_flow_hours_max: Numeric_S | None = None,
+        total_flow_hours_min: Numeric_S | None = None,
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.size = CONFIG.Modeling.big if size is None else size
@@ -449,10 +457,24 @@ class Flow(Element):
 
         self.load_factor_min = load_factor_min
         self.load_factor_max = load_factor_max
+
+        # Handle deprecated parameters
+        flow_hours_per_period_max = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_total_max', 'flow_hours_per_period_max', flow_hours_per_period_max
+        )
+        flow_hours_per_period_min = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_total_min', 'flow_hours_per_period_min', flow_hours_per_period_min
+        )
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
-        self.flow_hours_total_max = flow_hours_total_max
-        self.flow_hours_total_min = flow_hours_total_min
+        self.flow_hours_per_period_max = flow_hours_per_period_max
+        self.flow_hours_per_period_min = flow_hours_per_period_min
+        self.total_flow_hours_max = total_flow_hours_max
+        self.total_flow_hours_min = total_flow_hours_min
         self.on_off_parameters = on_off_parameters
 
         self.previous_flow_rate = previous_flow_rate
@@ -487,11 +509,17 @@ class Flow(Element):
         self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
             prefix, self.effects_per_flow_hour, 'per_flow_hour'
         )
-        self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
+        self.flow_hours_per_period_max = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_per_period_max', self.flow_hours_per_period_max, dims=['period', 'scenario']
         )
-        self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
+        self.flow_hours_per_period_min = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_per_period_min', self.flow_hours_per_period_min, dims=['period', 'scenario']
+        )
+        self.total_flow_hours_max = flow_system.fit_to_model_coords(
+            f'{prefix}|total_flow_hours_max', self.total_flow_hours_max, dims=['scenario']
+        )
+        self.total_flow_hours_min = flow_system.fit_to_model_coords(
+            f'{prefix}|total_flow_hours_min', self.total_flow_hours_min, dims=['scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
             f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
@@ -578,18 +606,42 @@ class FlowModel(ElementModel):
 
         self._constraint_flow_rate()
 
-        # Total flow hours tracking
+        # Total flow hours tracking (per period)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
             tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
             bounds=(
-                self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
-                self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
+                self.element.flow_hours_per_period_min if self.element.flow_hours_per_period_min is not None else 0,
+                self.element.flow_hours_per_period_max if self.element.flow_hours_per_period_max is not None else None,
             ),
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
+
+        # Weighted sum over all periods constraint
+        if self.element.total_flow_hours_min is not None or self.element.total_flow_hours_max is not None:
+            # Get period weights from FlowSystem
+            weight_per_period = self._model.flow_system.weight_per_period
+            if weight_per_period is not None:
+                # Calculate weighted sum over all periods
+                weighted_total_flow_hours = (self.total_flow_hours * weight_per_period).sum('period')
+            else:
+                # No period weights defined, use unweighted sum
+                weighted_total_flow_hours = self.total_flow_hours.sum('period')
+
+            # Create tracking variable for the weighted sum
+            ModelingPrimitives.expression_tracking_variable(
+                model=self,
+                name=f'{self.label_full}|total_flow_hours_over_periods',
+                tracked_expression=weighted_total_flow_hours,
+                bounds=(
+                    self.element.total_flow_hours_min if self.element.total_flow_hours_min is not None else 0,
+                    self.element.total_flow_hours_max if self.element.total_flow_hours_max is not None else None,
+                ),
+                coords=['scenario'],
+                short_name='total_flow_hours_over_periods',
+            )
 
         # Load factor constraints
         self._create_bounds_for_load_factor()
