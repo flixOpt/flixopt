@@ -13,7 +13,7 @@ import xarray as xr
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import PlausibilityError, Scalar, TemporalData, TemporalDataUser
+from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
@@ -22,6 +22,7 @@ from .structure import Element, ElementModel, FlowSystemModel, Interface, regist
 if TYPE_CHECKING:
     import linopy
 
+    from .core import Scalar, TemporalData, TemporalDataUser
     from .effects import TemporalEffectsUser
     from .flow_system import FlowSystem
 
@@ -452,6 +453,36 @@ class Flow(Element):
             self.bus = bus
             self._bus_object = None
 
+        # Validate simple data integrity
+        self.validate()
+
+    def validate(self) -> None:
+        """Validate simple data integrity of Flow configuration."""
+        super().validate()
+
+        # Check relative_minimum <= relative_maximum (simple comparison)
+        if hasattr(self.relative_minimum, 'any'):  # numpy array or xarray
+            if (self.relative_minimum > self.relative_maximum).any():
+                raise ValueError(f'{self.label}: relative_minimum must be <= relative_maximum')
+        else:  # scalar
+            if self.relative_minimum > self.relative_maximum:
+                raise ValueError(f'{self.label}: relative_minimum must be <= relative_maximum')
+
+        # Validate previous_flow_rate type (basic type check)
+        if self.previous_flow_rate is not None:
+            valid_type = any(
+                [
+                    isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
+                    isinstance(self.previous_flow_rate, (int, float, list)),
+                ]
+            )
+            if not valid_type:
+                raise TypeError(
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
+                    f'Got {type(self.previous_flow_rate)}. '
+                    f'Different values in different periods or scenarios are not yet supported.'
+                )
+
     def create_model(self, model: FlowSystemModel) -> FlowModel:
         self.submodel = FlowModel(model, self)
         return self.submodel
@@ -511,16 +542,16 @@ class FlowModel(ElementModel):
         super().__init__(model, element)
 
     def _validate(self):
-        """Validate Flow configuration for modeling."""
+        """Validate Flow configuration for modeling (complex modeling concerns only)."""
         super()._validate()
 
-        # Check relative_minimum <= relative_maximum
-        if (self.element.relative_minimum > self.element.relative_maximum).any():
-            raise PlausibilityError(self.element.label_full + ': Take care, that relative_minimum <= relative_maximum!')
+        # Note: Simple data validation (relative_minimum <= relative_maximum, previous_flow_rate type)
+        # is now in Flow.validate()
 
-        # Warn about default size with fixed_relative_profile
+        # Warn about default size with fixed_relative_profile (modeling concern)
         if not isinstance(self.element.size, InvestParameters) and (
-            np.any(self.element.size == CONFIG.Modeling.big) and self.element.fixed_relative_profile is not None
+            np.any(np.asarray(self.element.size == CONFIG.Modeling.big))
+            and self.element.fixed_relative_profile is not None
         ):
             logger.warning(
                 f'Flow "{self.element.label_full}" has no size assigned, but a "fixed_relative_profile". '
@@ -528,35 +559,20 @@ class FlowModel(ElementModel):
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self.element}.'
             )
 
-        # Warn about fixed_relative_profile with on_off_parameters
+        # Warn about fixed_relative_profile with on_off_parameters (modeling interaction)
         if self.element.fixed_relative_profile is not None and self.element.on_off_parameters is not None:
             logger.warning(
                 f'Flow {self.element.label_full} has both a fixed_relative_profile and an on_off_parameters. '
                 f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
             )
 
-        # Warn about relative_minimum > 0 without on_off_parameters
-        if np.any(self.element.relative_minimum > 0) and self.element.on_off_parameters is None:
+        # Warn about relative_minimum > 0 without on_off_parameters (modeling behavior)
+        if np.any(np.asarray(self.element.relative_minimum > 0)) and self.element.on_off_parameters is None:
             logger.warning(
                 f'Flow {self.element.label_full} has a relative_minimum of {self.element.relative_minimum} '
                 f'and no on_off_parameters. This prevents the flow_rate from switching off (flow_rate = 0). '
                 f'Consider using on_off_parameters to allow the flow to be switched on and off.'
             )
-
-        # Validate previous_flow_rate type
-        if self.element.previous_flow_rate is not None:
-            if not any(
-                [
-                    isinstance(self.element.previous_flow_rate, np.ndarray)
-                    and self.element.previous_flow_rate.ndim == 1,
-                    isinstance(self.element.previous_flow_rate, (int, float, list)),
-                ]
-            ):
-                raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
-                    f'Got {type(self.element.previous_flow_rate)}. '
-                    f'Different values in different periods or scenarios are not yet supported.'
-                )
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -799,7 +815,7 @@ class BusModel(ElementModel):
 
         # Check excess penalty value
         if self.element.excess_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.element.excess_penalty_per_flow_hour, 0))
+            zero_penalty = np.all(np.asarray(self.element.excess_penalty_per_flow_hour == 0))
             if zero_penalty:
                 logger.warning(
                     f'In Bus {self.element.label_full}, the excess_penalty_per_flow_hour is 0. '

@@ -289,6 +289,20 @@ class Interface:
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
+    def validate(self) -> None:
+        """Validate simple data integrity of the interface.
+
+        This method checks basic data consistency that doesn't require modeling context:
+        - Type checks
+        - Simple value ranges
+        - Data structure integrity
+        - Basic consistency between parameters
+
+        Override in subclasses to add element-specific validation.
+        Complex modeling validation should be done in Model._validate() instead.
+        """
+        pass
+
     def _set_flow_system(self, flow_system: FlowSystem) -> None:
         """Store flow_system reference and propagate to nested Interface objects.
 
