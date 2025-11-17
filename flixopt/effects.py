@@ -62,11 +62,11 @@ class Effect(Element):
         maximum_per_hour: Maximum allowed contribution per hour.
         minimum_periodic: Minimum allowed total periodic contribution (per period).
         maximum_periodic: Maximum allowed total periodic contribution (per period).
-        minimum_total_per_period: Minimum allowed total effect (temporal + periodic combined) per period.
-        maximum_total_per_period: Maximum allowed total effect (temporal + periodic combined) per period.
-        minimum: Minimum allowed weighted sum of total effect across ALL periods.
+        minimum_total: Minimum allowed total effect (temporal + periodic combined) per period.
+        maximum_total: Maximum allowed total effect (temporal + periodic combined) per period.
+        minimum_over_periods: Minimum allowed weighted sum of total effect across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
-        maximum: Maximum allowed weighted sum of total effect across ALL periods.
+        maximum_over_periods: Maximum allowed weighted sum of total effect across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
@@ -78,8 +78,10 @@ class Effect(Element):
         maximum_invest: Use `maximum_periodic` instead.
         minimum_operation_per_hour: Use `minimum_per_hour` instead.
         maximum_operation_per_hour: Use `maximum_per_hour` instead.
-        minimum_total: Use `minimum_total_per_period` instead.
-        maximum_total: Use `maximum_total_per_period` instead.
+        minimum_total_per_period: Use `minimum_total` instead.
+        maximum_total_per_period: Use `maximum_total` instead.
+        minimum: Use `minimum_over_periods` instead.
+        maximum: Use `maximum_over_periods` instead.
 
     Examples:
         Basic cost objective:
@@ -100,7 +102,7 @@ class Effect(Element):
             label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            maximum_total_per_period=100_000,  # 100 t CO2 per period
+            maximum_total=100_000,  # 100 t CO2 per period
         )
         ```
 
@@ -111,7 +113,7 @@ class Effect(Element):
             label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            maximum=1_000_000,  # 1000 t CO2 total across all periods
+            maximum_over_periods=1_000_000,  # 1000 t CO2 total across all periods
         )
         ```
 
@@ -122,7 +124,7 @@ class Effect(Element):
             label='land_usage',
             unit='m²',
             description='Land area requirement',
-            maximum_total_per_period=50_000,  # Maximum 5 hectares per period
+            maximum_total=50_000,  # Maximum 5 hectares per period
         )
         ```
 
@@ -160,7 +162,7 @@ class Effect(Element):
             description='Industrial water usage',
             minimum_per_hour=10,  # Minimum 10 m³/h for process stability
             maximum_per_hour=500,  # Maximum 500 m³/h capacity limit
-            maximum_total=100_000,  # Annual permit limit: 100,000 m³
+            maximum_over_periods=100_000,  # Annual permit limit: 100,000 m³
         )
         ```
 
@@ -197,10 +199,10 @@ class Effect(Element):
         maximum_periodic: Numeric_PS | None = None,
         minimum_per_hour: Numeric_TPS | None = None,
         maximum_per_hour: Numeric_TPS | None = None,
-        minimum_total_per_period: Numeric_PS | None = None,
-        maximum_total_per_period: Numeric_PS | None = None,
-        minimum: Numeric_S | None = None,
-        maximum: Numeric_S | None = None,
+        minimum_total: Numeric_PS | None = None,
+        maximum_total: Numeric_PS | None = None,
+        minimum_over_periods: Numeric_S | None = None,
+        maximum_over_periods: Numeric_S | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -230,11 +232,17 @@ class Effect(Element):
         maximum_per_hour = self._handle_deprecated_kwarg(
             kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
         )
-        minimum_total_per_period = self._handle_deprecated_kwarg(
-            kwargs, 'minimum_total', 'minimum_total_per_period', minimum_total_per_period
+        minimum_total = self._handle_deprecated_kwarg(
+            kwargs, 'minimum_total_per_period', 'minimum_total', minimum_total
         )
-        maximum_total_per_period = self._handle_deprecated_kwarg(
-            kwargs, 'maximum_total', 'maximum_total_per_period', maximum_total_per_period
+        maximum_total = self._handle_deprecated_kwarg(
+            kwargs, 'maximum_total_per_period', 'maximum_total', maximum_total
+        )
+        minimum_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'minimum', 'minimum_over_periods', minimum_over_periods
+        )
+        maximum_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'maximum', 'maximum_over_periods', maximum_over_periods
         )
 
         # Validate any remaining unexpected kwargs
@@ -247,10 +255,10 @@ class Effect(Element):
         self.maximum_periodic = maximum_periodic
         self.minimum_per_hour = minimum_per_hour
         self.maximum_per_hour = maximum_per_hour
-        self.minimum_total_per_period = minimum_total_per_period
-        self.maximum_total_per_period = maximum_total_per_period
-        self.minimum = minimum
-        self.maximum = maximum
+        self.minimum_total = minimum_total
+        self.maximum_total = maximum_total
+        self.minimum_over_periods = minimum_over_periods
+        self.maximum_over_periods = maximum_over_periods
 
     # Backwards compatible properties (deprecated)
     @property
@@ -374,44 +382,84 @@ class Effect(Element):
         self.maximum_per_hour = value
 
     @property
-    def minimum_total(self):
-        """DEPRECATED: Use 'minimum_total_per_period' property instead."""
+    def minimum_total_per_period(self):
+        """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total' is deprecated. Use 'minimum_total_per_period' instead.",
+            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.minimum_total_per_period
+        return self.minimum_total
 
-    @minimum_total.setter
-    def minimum_total(self, value):
-        """DEPRECATED: Use 'minimum_total_per_period' property instead."""
+    @minimum_total_per_period.setter
+    def minimum_total_per_period(self, value):
+        """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total' is deprecated. Use 'minimum_total_per_period' instead.",
+            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.minimum_total_per_period = value
+        self.minimum_total = value
 
     @property
-    def maximum_total(self):
-        """DEPRECATED: Use 'maximum_total_per_period' property instead."""
+    def maximum_total_per_period(self):
+        """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total' is deprecated. Use 'maximum_total_per_period' instead.",
+            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self.maximum_total_per_period
+        return self.maximum_total
 
-    @maximum_total.setter
-    def maximum_total(self, value):
-        """DEPRECATED: Use 'maximum_total_per_period' property instead."""
+    @maximum_total_per_period.setter
+    def maximum_total_per_period(self, value):
+        """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total' is deprecated. Use 'maximum_total_per_period' instead.",
+            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        self.maximum_total_per_period = value
+        self.maximum_total = value
+
+    @property
+    def minimum(self):
+        """DEPRECATED: Use 'minimum_over_periods' property instead."""
+        warnings.warn(
+            "Property 'minimum' is deprecated. Use 'minimum_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.minimum_over_periods
+
+    @minimum.setter
+    def minimum(self, value):
+        """DEPRECATED: Use 'minimum_over_periods' property instead."""
+        warnings.warn(
+            "Property 'minimum' is deprecated. Use 'minimum_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_over_periods = value
+
+    @property
+    def maximum(self):
+        """DEPRECATED: Use 'maximum_over_periods' property instead."""
+        warnings.warn(
+            "Property 'maximum' is deprecated. Use 'maximum_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_over_periods
+
+    @maximum.setter
+    def maximum(self, value):
+        """DEPRECATED: Use 'maximum_over_periods' property instead."""
+        warnings.warn(
+            "Property 'maximum' is deprecated. Use 'maximum_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_over_periods = value
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -444,16 +492,20 @@ class Effect(Element):
         self.maximum_periodic = flow_system.fit_to_model_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total_per_period = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_total_per_period',
-            self.minimum_total_per_period,
+        self.minimum_total = flow_system.fit_to_model_coords(
+            f'{prefix}|minimum_total',
+            self.minimum_total,
             dims=['period', 'scenario'],
         )
-        self.maximum_total_per_period = flow_system.fit_to_model_coords(
-            f'{prefix}|maximum_total_per_period', self.maximum_total_per_period, dims=['period', 'scenario']
+        self.maximum_total = flow_system.fit_to_model_coords(
+            f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
-        self.minimum = flow_system.fit_to_model_coords(f'{prefix}|minimum', self.minimum, dims=['scenario'])
-        self.maximum = flow_system.fit_to_model_coords(f'{prefix}|maximum', self.maximum, dims=['scenario'])
+        self.minimum_over_periods = flow_system.fit_to_model_coords(
+            f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
+        )
+        self.maximum_over_periods = flow_system.fit_to_model_coords(
+            f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
+        )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
         self._plausibility_checks()
@@ -521,12 +573,8 @@ class EffectModel(ElementModel):
         )
 
         self.total = self.add_variables(
-            lower=self.element.minimum_total_per_period
-            if self.element.minimum_total_per_period is not None
-            else -np.inf,
-            upper=self.element.maximum_total_per_period
-            if self.element.maximum_total_per_period is not None
-            else np.inf,
+            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
+            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
@@ -535,15 +583,15 @@ class EffectModel(ElementModel):
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
         )
 
-        # Add weighted sum over all periods constraint if minimum or maximum is defined
-        if self.element.minimum is not None or self.element.maximum is not None:
+        # Add weighted sum over all periods constraint if minimum_over_periods or maximum_over_periods is defined
+        if self.element.minimum_over_periods is not None or self.element.maximum_over_periods is not None:
             # Calculate weighted sum over all periods
             weighted_total = (self.total * self.weights).sum('period')
 
             # Create tracking variable for the weighted sum
             self.total_over_periods = self.add_variables(
-                lower=self.element.minimum if self.element.minimum is not None else -np.inf,
-                upper=self.element.maximum if self.element.maximum is not None else np.inf,
+                lower=self.element.minimum_over_periods if self.element.minimum_over_periods is not None else -np.inf,
+                upper=self.element.maximum_over_periods if self.element.maximum_over_periods is not None else np.inf,
                 coords=self._model.get_coords(['scenario']),
                 short_name='total_over_periods',
             )

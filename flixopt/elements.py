@@ -325,11 +325,11 @@ class Flow(Element):
         effects_per_flow_hour: Operational costs/impacts per flow-hour.
             Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
         on_off_parameters: Binary operation constraints (OnOffParameters). Default: None.
-        flow_hours_per_period_max: Maximum cumulative flow-hours per period. Alternative to load_factor_max.
-        flow_hours_per_period_min: Minimum cumulative flow-hours per period. Alternative to load_factor_min.
-        total_flow_hours_max: Maximum weighted sum of flow-hours across ALL periods.
+        flow_hours_max: Maximum cumulative flow-hours per period. Alternative to load_factor_max.
+        flow_hours_min: Minimum cumulative flow-hours per period. Alternative to load_factor_min.
+        flow_hours_max_over_periods: Maximum weighted sum of flow-hours across ALL periods.
             Weighted by FlowSystem period weights.
-        total_flow_hours_min: Minimum weighted sum of flow-hours across ALL periods.
+        flow_hours_min_over_periods: Minimum weighted sum of flow-hours across ALL periods.
             Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
@@ -376,7 +376,7 @@ class Flow(Element):
                 effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
                 consecutive_on_hours_min=2,  # Must run at least 2 hours
                 consecutive_off_hours_min=1,  # Must stay off at least 1 hour
-                switch_on_total_max=200,  # Maximum 200 starts per period
+                switch_on_max=200,  # Maximum 200 starts per period
             ),
         )
         ```
@@ -407,8 +407,8 @@ class Flow(Element):
         ```
 
     Design Considerations:
-        **Size vs Load Factors**: Use `flow_hours_per_period_min/max` for absolute limits per period,
-        `load_factor_min/max` for utilization-based constraints, or `total_flow_hours_min/max` for
+        **Size vs Load Factors**: Use `flow_hours_min/max` for absolute limits per period,
+        `load_factor_min/max` for utilization-based constraints, or `flow_hours_min/max_over_periods` for
         limits across all periods.
 
         **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
@@ -439,10 +439,10 @@ class Flow(Element):
         relative_maximum: Numeric_TPS = 1,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
         on_off_parameters: OnOffParameters | None = None,
-        flow_hours_per_period_max: Numeric_PS | None = None,
-        flow_hours_per_period_min: Numeric_PS | None = None,
-        total_flow_hours_max: Numeric_S | None = None,
-        total_flow_hours_min: Numeric_S | None = None,
+        flow_hours_max: Numeric_PS | None = None,
+        flow_hours_min: Numeric_PS | None = None,
+        flow_hours_max_over_periods: Numeric_S | None = None,
+        flow_hours_min_over_periods: Numeric_S | None = None,
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
@@ -459,11 +459,20 @@ class Flow(Element):
         self.load_factor_max = load_factor_max
 
         # Handle deprecated parameters
-        flow_hours_per_period_max = self._handle_deprecated_kwarg(
-            kwargs, 'flow_hours_total_max', 'flow_hours_per_period_max', flow_hours_per_period_max
+        flow_hours_max = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_per_period_max', 'flow_hours_max', flow_hours_max
         )
-        flow_hours_per_period_min = self._handle_deprecated_kwarg(
-            kwargs, 'flow_hours_total_min', 'flow_hours_per_period_min', flow_hours_per_period_min
+        flow_hours_min = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_per_period_min', 'flow_hours_min', flow_hours_min
+        )
+        # Also handle the older deprecated names
+        flow_hours_max = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_max', 'flow_hours_max', flow_hours_max)
+        flow_hours_min = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_min', 'flow_hours_min', flow_hours_min)
+        flow_hours_max_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'total_flow_hours_max', 'flow_hours_max_over_periods', flow_hours_max_over_periods
+        )
+        flow_hours_min_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'total_flow_hours_min', 'flow_hours_min_over_periods', flow_hours_min_over_periods
         )
 
         # Validate any remaining unexpected kwargs
@@ -471,10 +480,10 @@ class Flow(Element):
 
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
-        self.flow_hours_per_period_max = flow_hours_per_period_max
-        self.flow_hours_per_period_min = flow_hours_per_period_min
-        self.total_flow_hours_max = total_flow_hours_max
-        self.total_flow_hours_min = total_flow_hours_min
+        self.flow_hours_max = flow_hours_max
+        self.flow_hours_min = flow_hours_min
+        self.flow_hours_max_over_periods = flow_hours_max_over_periods
+        self.flow_hours_min_over_periods = flow_hours_min_over_periods
         self.on_off_parameters = on_off_parameters
 
         self.previous_flow_rate = previous_flow_rate
@@ -509,17 +518,17 @@ class Flow(Element):
         self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
             prefix, self.effects_per_flow_hour, 'per_flow_hour'
         )
-        self.flow_hours_per_period_max = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_per_period_max', self.flow_hours_per_period_max, dims=['period', 'scenario']
+        self.flow_hours_max = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
         )
-        self.flow_hours_per_period_min = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_per_period_min', self.flow_hours_per_period_min, dims=['period', 'scenario']
+        self.flow_hours_min = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
         )
-        self.total_flow_hours_max = flow_system.fit_to_model_coords(
-            f'{prefix}|total_flow_hours_max', self.total_flow_hours_max, dims=['scenario']
+        self.flow_hours_max_over_periods = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
         )
-        self.total_flow_hours_min = flow_system.fit_to_model_coords(
-            f'{prefix}|total_flow_hours_min', self.total_flow_hours_min, dims=['scenario']
+        self.flow_hours_min_over_periods = flow_system.fit_to_model_coords(
+            f'{prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
         )
         self.load_factor_max = flow_system.fit_to_model_coords(
             f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
@@ -583,6 +592,127 @@ class Flow(Element):
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
+    # Backwards compatible properties (deprecated)
+    @property
+    def flow_hours_per_period_max(self):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_per_period_max' is deprecated. Use 'flow_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_max
+
+    @flow_hours_per_period_max.setter
+    def flow_hours_per_period_max(self, value):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_per_period_max' is deprecated. Use 'flow_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_max = value
+
+    @property
+    def flow_hours_per_period_min(self):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_per_period_min' is deprecated. Use 'flow_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_min
+
+    @flow_hours_per_period_min.setter
+    def flow_hours_per_period_min(self, value):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_per_period_min' is deprecated. Use 'flow_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_min = value
+
+    @property
+    def flow_hours_total_max(self):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_max
+
+    @flow_hours_total_max.setter
+    def flow_hours_total_max(self, value):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_max = value
+
+    @property
+    def flow_hours_total_min(self):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_min
+
+    @flow_hours_total_min.setter
+    def flow_hours_total_min(self, value):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            "Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_min = value
+
+    @property
+    def total_flow_hours_max(self):
+        """DEPRECATED: Use 'flow_hours_max_over_periods' property instead."""
+        warnings.warn(
+            "Property 'total_flow_hours_max' is deprecated. Use 'flow_hours_max_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_max_over_periods
+
+    @total_flow_hours_max.setter
+    def total_flow_hours_max(self, value):
+        """DEPRECATED: Use 'flow_hours_max_over_periods' property instead."""
+        warnings.warn(
+            "Property 'total_flow_hours_max' is deprecated. Use 'flow_hours_max_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_max_over_periods = value
+
+    @property
+    def total_flow_hours_min(self):
+        """DEPRECATED: Use 'flow_hours_min_over_periods' property instead."""
+        warnings.warn(
+            "Property 'total_flow_hours_min' is deprecated. Use 'flow_hours_min_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_min_over_periods
+
+    @total_flow_hours_min.setter
+    def total_flow_hours_min(self, value):
+        """DEPRECATED: Use 'flow_hours_min_over_periods' property instead."""
+        warnings.warn(
+            "Property 'total_flow_hours_min' is deprecated. Use 'flow_hours_min_over_periods' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_min_over_periods = value
+
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
         return f'size: {params.format_for_repr()}'
@@ -612,15 +742,15 @@ class FlowModel(ElementModel):
             name=f'{self.label_full}|total_flow_hours',
             tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
             bounds=(
-                self.element.flow_hours_per_period_min if self.element.flow_hours_per_period_min is not None else 0,
-                self.element.flow_hours_per_period_max if self.element.flow_hours_per_period_max is not None else None,
+                self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
+                self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
             ),
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
 
         # Weighted sum over all periods constraint
-        if self.element.total_flow_hours_min is not None or self.element.total_flow_hours_max is not None:
+        if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
             # Get period weights from FlowSystem
             weight_per_period = self._model.flow_system.weight_per_period
             if weight_per_period is not None:
@@ -636,8 +766,12 @@ class FlowModel(ElementModel):
                 name=f'{self.label_full}|total_flow_hours_over_periods',
                 tracked_expression=weighted_total_flow_hours,
                 bounds=(
-                    self.element.total_flow_hours_min if self.element.total_flow_hours_min is not None else 0,
-                    self.element.total_flow_hours_max if self.element.total_flow_hours_max is not None else None,
+                    self.element.flow_hours_min_over_periods
+                    if self.element.flow_hours_min_over_periods is not None
+                    else 0,
+                    self.element.flow_hours_max_over_periods
+                    if self.element.flow_hours_max_over_periods is not None
+                    else None,
                 ),
                 coords=['scenario'],
                 short_name='total_flow_hours_over_periods',
