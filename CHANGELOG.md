@@ -63,11 +63,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
     - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
         - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
-        - `Power2Heat`: `P_el` → `power_flow` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `HeatPump`: `COP` → `cop`, `P_el` → `power_flow` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `CoolingTower`: `P_el` → `power_flow` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `power_flow` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `power_flow` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
+        - `Power2Heat`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPump`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CoolingTower`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
     - **Efficiency parameters** (abbreviated → descriptive names):
         - `Boiler`: `eta` → `thermal_efficiency`
         - `Power2Heat`: `eta` → `thermal_efficiency`
@@ -78,7 +78,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 🗑️ Deprecated
 - **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
-    - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`, `power_flow` (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
+    - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
     - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
     - **COP parameter**: `COP` (use lowercase `cop` instead)
 
