@@ -24,7 +24,7 @@ import xarray as xr
 from loguru import logger
 
 from . import io as fx_io
-from .core import TimeSeriesData, get_dataarray_stats
+from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib
@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
+    from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
 
 CLASS_REGISTRY = {}
@@ -320,7 +321,9 @@ class Interface:
             )
         return self._flow_system
 
-    def _fit_coords(self, name: str, data, dims=None):
+    def _fit_coords(
+        self, name: str, data: NumericOrBool | None, dims: Collection[FlowSystemDimensions] | None = None
+    ) -> xr.DataArray | None:
         """Convenience wrapper for FlowSystem.fit_to_model_coords().
 
         Args:
@@ -333,7 +336,13 @@ class Interface:
         """
         return self.flow_system.fit_to_model_coords(name, data, dims=dims)
 
-    def _fit_effect_coords(self, prefix: str, effect_values, suffix: str = None, dims=None):
+    def _fit_effect_coords(
+        self,
+        prefix: str | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
+        suffix: str | None = None,
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> Effect_TPS | None:
         """Convenience wrapper for FlowSystem.fit_effects_to_model_coords().
 
         Args:
