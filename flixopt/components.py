@@ -15,7 +15,7 @@ from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
-from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
+from .interface import ActiveInactiveParameters, InvestParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -48,9 +48,9 @@ class LinearConverter(Component):
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
         outputs: list of output Flows that are produced by the converter.
-        on_off_parameters: Information about on and off state of LinearConverter.
-            Component is On/Off if all connected Flows are On/Off. This induces an
-            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+        active_inactive_parameters: Information about active and inactive state of LinearConverter.
+            Component is active/inactive if all connected Flows are active/inactive. This induces an
+            active-Variable (binary) in all Flows! If possible, use ActiveInactiveParameters in a
             single Flow instead to keep the number of binary variables low.
         conversion_factors: Linear relationships between flows expressed as a list of
             dictionaries. Each dictionary maps flow labels to their coefficients in one
@@ -167,12 +167,12 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        on_off_parameters: OnOffParameters | None = None,
+        active_inactive_parameters: ActiveInactiveParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
-        super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, active_inactive_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -566,8 +566,8 @@ class Transmission(Component):
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
-            Automatically creates binary variables for on/off states.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+            Automatically creates binary variables for active/inactive states.
+        active_inactive_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
             reality for most transmission systems. Default is True.
@@ -622,7 +622,7 @@ class Transmission(Component):
         )
         ```
 
-        Material conveyor with on/off operation:
+        Material conveyor with active/inactive operation:
 
         ```python
         conveyor_belt = Transmission(
@@ -630,10 +630,10 @@ class Transmission(Component):
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
-            on_off_parameters=OnOffParameters(
-                effects_per_switch_on={'maintenance': 0.1},
-                consecutive_on_hours_min=2,  # Minimum 2-hour operation
-                switch_on_total_max=10,  # Maximum 10 starts per day
+            active_inactive_parameters=ActiveInactiveParameters(
+                effects_per_startup={'maintenance': 0.1},
+                consecutive_active_hours_min=2,  # Minimum 2-hour operation
+                startup_total_max=10,  # Maximum 10 starts per day
             ),
         )
         ```
@@ -647,7 +647,7 @@ class Transmission(Component):
         When using InvestParameters on in1, the capacity automatically applies to in2
         to maintain consistent bidirectional capacity without additional investment variables.
 
-        Absolute losses force the creation of binary on/off variables, which increases
+        Absolute losses force the creation of binary active/inactive variables, which increases
         computational complexity but enables realistic modeling of equipment with
         standby power consumption.
 
@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        on_off_parameters: OnOffParameters = None,
+        active_inactive_parameters: ActiveInactiveParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -673,7 +673,7 @@ class Transmission(Component):
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
             outputs=[flow for flow in (out1, out2) if flow is not None],
-            on_off_parameters=on_off_parameters,
+            active_inactive_parameters=active_inactive_parameters,
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
@@ -732,8 +732,8 @@ class TransmissionModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+                if flow.active_inactive_parameters is None:
+                    flow.active_inactive_parameters = ActiveInactiveParameters()
 
         super().__init__(model, element)
 
@@ -758,7 +758,7 @@ class TransmissionModel(ComponentModel):
 
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
-        # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
+        # eq: out(t) + active(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
         con_transmission = self.add_constraints(
             out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
@@ -766,7 +766,7 @@ class TransmissionModel(ComponentModel):
         )
 
         if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.submodel.on_off.on * self.element.absolute_losses
+            con_transmission.lhs += in_flow.submodel.active_inactive.active * self.element.absolute_losses
 
         return con_transmission
 
@@ -798,7 +798,7 @@ class LinearConverterModel(ComponentModel):
                 )
 
         else:
-            # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
+            # TODO: Improve Inclusion of ActiveInactiveParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
                 for flow, piecewise in self.element.piecewise_conversion.items()
@@ -810,7 +810,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
-                    zero_point=self.on_off.on if self.on_off is not None else False,
+                    zero_point=self.active_inactive.active if self.active_inactive is not None else False,
                     dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',
@@ -964,7 +964,7 @@ class StorageModel(ComponentModel):
 
     @property
     def investment(self) -> InvestmentModel | None:
-        """OnOff feature"""
+        """Investment feature"""
         if 'investment' not in self.submodels:
             return None
         return self.submodels['investment']

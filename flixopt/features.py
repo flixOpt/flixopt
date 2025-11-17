@@ -15,7 +15,7 @@ from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
     from .core import FlowSystemDimensions
-    from .interface import InvestParameters, OnOffParameters, Piecewise
+    from .interface import ActiveInactiveParameters, InvestParameters, Piecewise
     from .types import Numeric_PS, Numeric_TPS
 
 
@@ -142,31 +142,31 @@ class InvestmentModel(Submodel):
         return self._variables['invested']
 
 
-class OnOffModel(Submodel):
-    """OnOff model using factory patterns"""
+class ActiveInactiveModel(Submodel):
+    """Active/Inactive state model using factory patterns"""
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: OnOffParameters,
-        on_variable: linopy.Variable,
+        parameters: ActiveInactiveParameters,
+        active_variable: linopy.Variable,
         previous_states: Numeric_TPS | None,
         label_of_model: str | None = None,
     ):
         """
-        This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
-        bounded by a size variable or by a hard bound. THe used bound here is the absolute highest/lowest bound!
+        This feature model is used to model the active/inactive state of flow_rate(s). It does not matter if the flow_rates are
+        bounded by a size variable or by a hard bound. The used bound here is the absolute highest/lowest bound!
 
         Args:
             model: The optimization model instance
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             parameters: The parameters of the feature model.
-            on_variable: The variable that determines the on state
+            active_variable: The variable that determines the active state
             previous_states: The previous flow_rates
             label_of_model: The label of the model. This is needed to construct the full label of the model.
         """
-        self.on = on_variable
+        self.active = active_variable
         self._previous_states = previous_states
         self.parameters = parameters
         super().__init__(model, label_of_element, label_of_model=label_of_model)
@@ -174,70 +174,72 @@ class OnOffModel(Submodel):
     def _do_modeling(self):
         super()._do_modeling()
 
-        if self.parameters.use_off:
-            off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
-            self.add_constraints(self.on + off == 1, short_name='complementary')
+        if self.parameters.use_inactive:
+            inactive = self.add_variables(binary=True, short_name='inactive', coords=self._model.get_coords())
+            self.add_constraints(self.active + inactive == 1, short_name='complementary')
 
         # 3. Total duration tracking using existing pattern
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
+            tracked_expression=(self.active * self._model.hours_per_step).sum('time'),
             bounds=(
-                self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
-                self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-            ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
-            short_name='on_hours_total',
+                self.parameters.active_hours_total_min if self.parameters.active_hours_total_min is not None else 0,
+                self.parameters.active_hours_total_max
+                if self.parameters.active_hours_total_max is not None
+                else np.inf,
+            ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_active_duration())
+            short_name='active_hours_total',
             coords=['period', 'scenario'],
         )
 
         # 4. Switch tracking using existing pattern
-        if self.parameters.use_switch_on:
-            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
+        if self.parameters.use_startup:
+            self.add_variables(binary=True, short_name='startup', coords=self.get_coords())
+            self.add_variables(binary=True, short_name='shutdown', coords=self.get_coords())
 
             BoundingPatterns.state_transition_bounds(
                 self,
-                state_variable=self.on,
-                switch_on=self.switch_on,
-                switch_off=self.switch_off,
+                state_variable=self.active,
+                switch_on=self.startup,
+                switch_off=self.shutdown,
                 name=f'{self.label_of_model}|switch',
                 previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
                 coord='time',
             )
 
-            if self.parameters.switch_on_total_max is not None:
+            if self.parameters.startup_total_max is not None:
                 count = self.add_variables(
                     lower=0,
-                    upper=self.parameters.switch_on_total_max,
+                    upper=self.parameters.startup_total_max,
                     coords=self._model.get_coords(('period', 'scenario')),
-                    short_name='switch|count',
+                    short_name='startup_count',
                 )
-                self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
+                self.add_constraints(count == self.startup.sum('time'), short_name='startup_count')
 
-        # 5. Consecutive on duration using existing pattern
-        if self.parameters.use_consecutive_on_hours:
+        # 5. Consecutive active duration using existing pattern
+        if self.parameters.use_consecutive_active_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.on,
-                short_name='consecutive_on_hours',
-                minimum_duration=self.parameters.consecutive_on_hours_min,
-                maximum_duration=self.parameters.consecutive_on_hours_max,
+                state_variable=self.active,
+                short_name='consecutive_active_hours',
+                minimum_duration=self.parameters.consecutive_active_hours_min,
+                maximum_duration=self.parameters.consecutive_active_hours_max,
                 duration_per_step=self.hours_per_step,
                 duration_dim='time',
-                previous_duration=self._get_previous_on_duration(),
+                previous_duration=self._get_previous_active_duration(),
             )
 
-        # 6. Consecutive off duration using existing pattern
-        if self.parameters.use_consecutive_off_hours:
+        # 6. Consecutive inactive duration using existing pattern
+        if self.parameters.use_consecutive_inactive_hours:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.off,
-                short_name='consecutive_off_hours',
-                minimum_duration=self.parameters.consecutive_off_hours_min,
-                maximum_duration=self.parameters.consecutive_off_hours_max,
+                state_variable=self.inactive,
+                short_name='consecutive_inactive_hours',
+                minimum_duration=self.parameters.consecutive_inactive_hours_min,
+                maximum_duration=self.parameters.consecutive_inactive_hours_max,
                 duration_per_step=self.hours_per_step,
                 duration_dim='time',
-                previous_duration=self._get_previous_off_duration(),
+                previous_duration=self._get_previous_inactive_duration(),
             )
             # TODO:
 
@@ -249,17 +251,17 @@ class OnOffModel(Submodel):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.on * factor * self._model.hours_per_step
+                    effect: self.active * factor * self._model.hours_per_step
                     for effect, factor in self.parameters.effects_per_running_hour.items()
                 },
                 target='temporal',
             )
 
-        if self.parameters.effects_per_switch_on:
+        if self.parameters.effects_per_startup:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
+                    effect: self.startup * factor for effect, factor in self.parameters.effects_per_startup.items()
                 },
                 target='temporal',
             )
@@ -267,50 +269,50 @@ class OnOffModel(Submodel):
     # Properties access variables from Submodel's tracking system
 
     @property
-    def on_hours_total(self) -> linopy.Variable:
-        """Total on hours variable"""
-        return self['on_hours_total']
+    def active_hours_total(self) -> linopy.Variable:
+        """Total active hours variable"""
+        return self['active_hours_total']
 
     @property
-    def off(self) -> linopy.Variable | None:
-        """Binary off state variable"""
-        return self.get('off')
+    def inactive(self) -> linopy.Variable | None:
+        """Binary inactive state variable"""
+        return self.get('inactive')
 
     @property
-    def switch_on(self) -> linopy.Variable | None:
-        """Switch on variable"""
-        return self.get('switch|on')
+    def startup(self) -> linopy.Variable | None:
+        """Startup variable"""
+        return self.get('startup')
 
     @property
-    def switch_off(self) -> linopy.Variable | None:
-        """Switch off variable"""
-        return self.get('switch|off')
+    def shutdown(self) -> linopy.Variable | None:
+        """Shutdown variable"""
+        return self.get('shutdown')
 
     @property
-    def switch_on_nr(self) -> linopy.Variable | None:
-        """Number of switch-ons variable"""
-        return self.get('switch|count')
+    def startup_nr(self) -> linopy.Variable | None:
+        """Number of startups variable"""
+        return self.get('startup_count')
 
     @property
-    def consecutive_on_hours(self) -> linopy.Variable | None:
-        """Consecutive on hours variable"""
-        return self.get('consecutive_on_hours')
+    def consecutive_active_hours(self) -> linopy.Variable | None:
+        """Consecutive active hours variable"""
+        return self.get('consecutive_active_hours')
 
     @property
-    def consecutive_off_hours(self) -> linopy.Variable | None:
-        """Consecutive off hours variable"""
-        return self.get('consecutive_off_hours')
+    def consecutive_inactive_hours(self) -> linopy.Variable | None:
+        """Consecutive inactive hours variable"""
+        return self.get('consecutive_inactive_hours')
 
-    def _get_previous_on_duration(self):
-        """Get previous on duration. Previously OFF by default, for one timestep"""
+    def _get_previous_active_duration(self):
+        """Get previous active duration. Previously inactive by default, for one timestep"""
         hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
         if self._previous_states is None:
             return 0
         else:
             return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states, hours_per_step)
 
-    def _get_previous_off_duration(self):
-        """Get previous off duration. Previously OFF by default, for one timestep"""
+    def _get_previous_inactive_duration(self):
+        """Get previous inactive duration. Previously inactive by default, for one timestep"""
         hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
         if self._previous_states is None:
             return hours_per_step

@@ -14,8 +14,8 @@ from loguru import logger
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, OnOffModel
-from .interface import InvestParameters, OnOffParameters
+from .features import ActiveInactiveModel, InvestmentModel
+from .interface import ActiveInactiveParameters, InvestParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
 
@@ -56,9 +56,9 @@ class Component(Element):
             energy/material consumption by the component.
         outputs: list of output Flows leaving the component. These represent
             energy/material production by the component.
-        on_off_parameters: Defines binary operation constraints and costs when the
-            component has discrete on/off states. Creates binary variables for all
-            connected Flows. For better performance, prefer defining OnOffParameters
+        active_inactive_parameters: Defines binary operation constraints and costs when the
+            component has discrete active/inactive states. Creates binary variables for all
+            connected Flows. For better performance, prefer defining ActiveInactiveParameters
             on individual Flows when possible.
         prevent_simultaneous_flows: list of Flows that cannot be active simultaneously.
             Creates binary variables to enforce mutual exclusivity. Use sparingly as
@@ -68,13 +68,13 @@ class Component(Element):
 
     Note:
         Component operational state is determined by its connected Flows:
-        - Component is "on" if ANY of its Flows is active (flow_rate > 0)
-        - Component is "off" only when ALL Flows are inactive (flow_rate = 0)
+        - Component is "active" if ANY of its Flows is active (flow_rate > 0)
+        - Component is "inactive" only when ALL Flows are inactive (flow_rate = 0)
 
         Binary variables and constraints:
-        - on_off_parameters creates binary variables for ALL connected Flows
+        - active_inactive_parameters creates binary variables for ALL connected Flows
         - prevent_simultaneous_flows creates binary variables for specified Flows
-        - For better computational performance, prefer Flow-level OnOffParameters
+        - For better computational performance, prefer Flow-level ActiveInactiveParameters
 
         Component is an abstract base class. In practice, use specialized subclasses:
         - LinearConverter: Linear input/output relationships
@@ -89,14 +89,14 @@ class Component(Element):
         label: str,
         inputs: list[Flow] | None = None,
         outputs: list[Flow] | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        active_inactive_parameters: ActiveInactiveParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
-        self.on_off_parameters = on_off_parameters
+        self.active_inactive_parameters = active_inactive_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
         self._check_unique_flow_labels()
@@ -111,8 +111,8 @@ class Component(Element):
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, prefix)
+        if self.active_inactive_parameters is not None:
+            self.active_inactive_parameters.transform_data(flow_system, prefix)
 
         for flow in self.inputs + self.outputs:
             flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
@@ -308,7 +308,7 @@ class Flow(Element):
 
     Integration with Parameter Classes:
         - **InvestParameters**: Used for `size` when flow Size is an investment decision
-        - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
+        - **ActiveInactiveParameters**: Used for `active_inactive_parameters` when flow has discrete states
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
@@ -324,12 +324,12 @@ class Flow(Element):
         load_factor_max: Maximum average utilization (0-1). Default: 1.
         effects_per_flow_hour: Operational costs/impacts per flow-hour.
             Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
-        on_off_parameters: Binary operation constraints (OnOffParameters). Default: None.
+        active_inactive_parameters: Binary operation constraints (ActiveInactiveParameters). Default: None.
         flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
         flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
-        previous_flow_rate: Initial flow state for on/off dynamics. Default: None (off).
+        previous_flow_rate: Initial flow state for active/inactive dynamics. Default: None (inactive).
         meta_data: Additional info stored in results. Python native types only.
 
     Examples:
@@ -366,13 +366,13 @@ class Flow(Element):
             label='heat_output',
             bus='heating_network',
             size=50,  # 50 kW thermal
-            relative_minimum=0.3,  # Minimum 15 kW output when on
+            relative_minimum=0.3,  # Minimum 15 kW output when active
             effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
-            on_off_parameters=OnOffParameters(
-                effects_per_switch_on={'startup_cost': 100, 'wear': 0.1},
-                consecutive_on_hours_min=2,  # Must run at least 2 hours
-                consecutive_off_hours_min=1,  # Must stay off at least 1 hour
-                switch_on_total_max=200,  # Maximum 200 starts per period
+            active_inactive_parameters=ActiveInactiveParameters(
+                effects_per_startup={'startup_cost': 100, 'wear': 0.1},
+                consecutive_active_hours_min=2,  # Must run at least 2 hours
+                consecutive_inactive_hours_min=1,  # Must stay inactive at least 1 hour
+                startup_total_max=200,  # Maximum 200 starts per period
             ),
         )
         ```
@@ -407,7 +407,7 @@ class Flow(Element):
         `load_factor_min/max` for utilization-based constraints.
 
         **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
-        operate below that level. Use `on_off_parameters` for discrete on/off behavior.
+        operate below that level. Use `active_inactive_parameters` for discrete active/inactive behavior.
 
         **Fixed Profiles**: Use `fixed_relative_profile` for known exact patterns,
         `relative_maximum` for upper bounds on optimization variables.
@@ -433,7 +433,7 @@ class Flow(Element):
         relative_minimum: Numeric_TPS = 0,
         relative_maximum: Numeric_TPS = 1,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        active_inactive_parameters: ActiveInactiveParameters | None = None,
         flow_hours_total_max: Numeric_PS | None = None,
         flow_hours_total_min: Numeric_PS | None = None,
         load_factor_min: Numeric_PS | None = None,
@@ -453,7 +453,7 @@ class Flow(Element):
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
         self.flow_hours_total_max = flow_hours_total_max
         self.flow_hours_total_min = flow_hours_total_min
-        self.on_off_parameters = on_off_parameters
+        self.active_inactive_parameters = active_inactive_parameters
 
         self.previous_flow_rate = previous_flow_rate
 
@@ -500,8 +500,8 @@ class Flow(Element):
             f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
-        if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, prefix)
+        if self.active_inactive_parameters is not None:
+            self.active_inactive_parameters.transform_data(flow_system, prefix)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, prefix)
         else:
@@ -521,17 +521,17 @@ class Flow(Element):
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
-        if self.fixed_relative_profile is not None and self.on_off_parameters is not None:
+        if self.fixed_relative_profile is not None and self.active_inactive_parameters is not None:
             logger.warning(
-                f'Flow {self.label_full} has both a fixed_relative_profile and an on_off_parameters.'
-                f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
+                f'Flow {self.label_full} has both a fixed_relative_profile and active_inactive_parameters.'
+                f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
             )
 
-        if np.any(self.relative_minimum > 0) and self.on_off_parameters is None:
+        if np.any(self.relative_minimum > 0) and self.active_inactive_parameters is None:
             logger.warning(
-                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
-                f'This prevents the Flow from switching off (flow_rate = 0). '
-                f'Consider using on_off_parameters to allow the Flow to be switched on and off.'
+                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no active_inactive_parameters. '
+                f'This prevents the Flow from switching inactive (flow_rate = 0). '
+                f'Consider using active_inactive_parameters to allow the Flow to be switched active and inactive.'
             )
 
         if self.previous_flow_rate is not None:
@@ -597,18 +597,18 @@ class FlowModel(ElementModel):
         # Effects
         self._create_shares()
 
-    def _create_on_off_model(self):
-        on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
+    def _create_active_inactive_model(self):
+        active = self.add_variables(binary=True, short_name='active', coords=self._model.get_coords())
         self.add_submodels(
-            OnOffModel(
+            ActiveInactiveModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                parameters=self.element.on_off_parameters,
-                on_variable=on,
+                parameters=self.element.active_inactive_parameters,
+                active_variable=active,
                 previous_states=self.previous_states,
                 label_of_model=self.label_of_element,
             ),
-            short_name='on_off',
+            short_name='active_inactive',
         )
 
     def _create_investment_model(self):
@@ -623,23 +623,23 @@ class FlowModel(ElementModel):
         )
 
     def _constraint_flow_rate(self):
-        if not self.with_investment and not self.with_on_off:
+        if not self.with_investment and not self.with_active_inactive:
             # Most basic case. Already covered by direct variable bounds
             pass
 
-        elif self.with_on_off and not self.with_investment:
-            # OnOff, but no Investment
-            self._create_on_off_model()
+        elif self.with_active_inactive and not self.with_investment:
+            # ActiveInactive, but no Investment
+            self._create_active_inactive_model()
             bounds = self.relative_flow_rate_bounds
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.flow_rate,
                 bounds=(bounds[0] * self.element.size, bounds[1] * self.element.size),
-                variable_state=self.on_off.on,
+                variable_state=self.active_inactive.active,
             )
 
-        elif self.with_investment and not self.with_on_off:
-            # Investment, but no OnOff
+        elif self.with_investment and not self.with_active_inactive:
+            # Investment, but no ActiveInactive
             self._create_investment_model()
             BoundingPatterns.scaled_bounds(
                 self,
@@ -648,10 +648,10 @@ class FlowModel(ElementModel):
                 relative_bounds=self.relative_flow_rate_bounds,
             )
 
-        elif self.with_investment and self.with_on_off:
-            # Investment and OnOff
+        elif self.with_investment and self.with_active_inactive:
+            # Investment and ActiveInactive
             self._create_investment_model()
-            self._create_on_off_model()
+            self._create_active_inactive_model()
 
             BoundingPatterns.scaled_bounds_with_state(
                 model=self,
@@ -659,14 +659,14 @@ class FlowModel(ElementModel):
                 scaling_variable=self._investment.size,
                 relative_bounds=self.relative_flow_rate_bounds,
                 scaling_bounds=(self.element.size.minimum_or_fixed_size, self.element.size.maximum_or_fixed_size),
-                variable_state=self.on_off.on,
+                variable_state=self.active_inactive.active,
             )
         else:
             raise Exception('Not valid')
 
     @property
-    def with_on_off(self) -> bool:
-        return self.element.on_off_parameters is not None
+    def with_active_inactive(self) -> bool:
+        return self.element.active_inactive_parameters is not None
 
     @property
     def with_investment(self) -> bool:
@@ -739,9 +739,9 @@ class FlowModel(ElementModel):
         lb_relative, ub_relative = self.relative_flow_rate_bounds
 
         lb = 0
-        if not self.with_on_off:
+        if not self.with_active_inactive:
             if not self.with_investment:
-                # Basic case without investment and without OnOff
+                # Basic case without investment and without ActiveInactive
                 lb = lb_relative * self.element.size
             elif self.with_investment and self.element.size.mandatory:
                 # With mandatory Investment
@@ -755,11 +755,11 @@ class FlowModel(ElementModel):
         return lb, ub
 
     @property
-    def on_off(self) -> OnOffModel | None:
-        """OnOff feature"""
-        if 'on_off' not in self.submodels:
+    def active_inactive(self) -> ActiveInactiveModel | None:
+        """ActiveInactive feature"""
+        if 'active_inactive' not in self.submodels:
             return None
-        return self.submodels['on_off']
+        return self.submodels['active_inactive']
 
     @property
     def _investment(self) -> InvestmentModel | None:
@@ -768,7 +768,7 @@ class FlowModel(ElementModel):
 
     @property
     def investment(self) -> InvestmentModel | None:
-        """OnOff feature"""
+        """Investment feature"""
         if 'investment' not in self.submodels:
             return None
         return self.submodels['investment']
@@ -841,55 +841,57 @@ class ComponentModel(ElementModel):
     element: Component  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Component):
-        self.on_off: OnOffModel | None = None
+        self.active_inactive: ActiveInactiveModel | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
         """Initiates all FlowModels"""
         super()._do_modeling()
         all_flows = self.element.inputs + self.element.outputs
-        if self.element.on_off_parameters:
+        if self.element.active_inactive_parameters:
             for flow in all_flows:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+                if flow.active_inactive_parameters is None:
+                    flow.active_inactive_parameters = ActiveInactiveParameters()
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+                if flow.active_inactive_parameters is None:
+                    flow.active_inactive_parameters = ActiveInactiveParameters()
 
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
-        if self.element.on_off_parameters:
-            on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
+        if self.element.active_inactive_parameters:
+            active = self.add_variables(binary=True, short_name='active', coords=self._model.get_coords())
             if len(all_flows) == 1:
-                self.add_constraints(on == all_flows[0].submodel.on_off.on, short_name='on')
+                self.add_constraints(active == all_flows[0].submodel.active_inactive.active, short_name='active')
             else:
-                flow_ons = [flow.submodel.on_off.on for flow in all_flows]
+                flow_actives = [flow.submodel.active_inactive.active for flow in all_flows]
                 # TODO: Is the EPSILON even necessary?
-                self.add_constraints(on <= sum(flow_ons) + CONFIG.Modeling.epsilon, short_name='on|ub')
+                self.add_constraints(active <= sum(flow_actives) + CONFIG.Modeling.epsilon, short_name='active|ub')
                 self.add_constraints(
-                    on >= sum(flow_ons) / (len(flow_ons) + CONFIG.Modeling.epsilon), short_name='on|lb'
+                    active >= sum(flow_actives) / (len(flow_actives) + CONFIG.Modeling.epsilon), short_name='active|lb'
                 )
 
-            self.on_off = self.add_submodels(
-                OnOffModel(
+            self.active_inactive = self.add_submodels(
+                ActiveInactiveModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    parameters=self.element.on_off_parameters,
-                    on_variable=on,
+                    parameters=self.element.active_inactive_parameters,
+                    active_variable=active,
                     label_of_model=self.label_of_element,
                     previous_states=self.previous_states,
                 ),
-                short_name='on_off',
+                short_name='active_inactive',
             )
 
         if self.element.prevent_simultaneous_flows:
-            # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
+            # Simultaneous Usage --> Only One Flow is active at a time, but needs a Binary for every flow
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
-                binary_variables=[flow.submodel.on_off.on for flow in self.element.prevent_simultaneous_flows],
+                binary_variables=[
+                    flow.submodel.active_inactive.active for flow in self.element.prevent_simultaneous_flows
+                ],
                 short_name='prevent_simultaneous_use',
             )
 
@@ -904,10 +906,12 @@ class ComponentModel(ElementModel):
     @property
     def previous_states(self) -> xr.DataArray | None:
         """Previous state of the component, derived from its flows"""
-        if self.element.on_off_parameters is None:
-            raise ValueError(f'OnOffModel not present in \n{self}\nCant access previous_states')
+        if self.element.active_inactive_parameters is None:
+            raise ValueError(f'ActiveInactiveModel not present in \n{self}\nCant access previous_states')
 
-        previous_states = [flow.submodel.on_off._previous_states for flow in self.element.inputs + self.element.outputs]
+        previous_states = [
+            flow.submodel.active_inactive._previous_states for flow in self.element.inputs + self.element.outputs
+        ]
         previous_states = [da for da in previous_states if da is not None]
 
         if not previous_states:  # Empty list

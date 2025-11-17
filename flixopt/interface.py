@@ -1077,10 +1077,10 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
-class OnOffParameters(Interface):
-    """Define operational constraints and effects for binary on/off equipment behavior.
+class ActiveInactiveParameters(Interface):
+    """Define operational constraints and effects for binary active/inactive equipment behavior.
 
-    This class models equipment that operates in discrete states (on/off) rather than
+    This class models equipment that operates in discrete states (active/inactive) rather than
     continuous operation, capturing realistic operational constraints and associated
     costs. It handles complex equipment behavior including startup costs, minimum
     run times, cycling limitations, and maintenance scheduling requirements.
@@ -1103,42 +1103,42 @@ class OnOffParameters(Interface):
         [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
 
     Args:
-        effects_per_switch_on: Costs or impacts incurred for each transition from
-            off state (var_on=0) to on state (var_on=1). Represents startup costs,
+        effects_per_startup: Costs or impacts incurred for each transition from
+            inactive state (var_active=0) to active state (var_active=1). Represents startup costs,
             wear and tear, or other switching impacts. Dictionary mapping effect
             names to values (e.g., {'cost': 500, 'maintenance_hours': 2}).
         effects_per_running_hour: Ongoing costs or impacts while equipment operates
-            in the on state. Includes fuel costs, labor, consumables, or emissions.
+            in the active state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-        on_hours_total_min: Minimum total operating hours across the entire time horizon.
+        active_hours_total_min: Minimum total operating hours across the entire time horizon.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
-        on_hours_total_max: Maximum total operating hours across the entire time horizon.
+        active_hours_total_max: Maximum total operating hours across the entire time horizon.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
-        consecutive_on_hours_min: Minimum continuous operating duration once started.
+        consecutive_active_hours_min: Minimum continuous operating duration once started.
             Models minimum run times due to thermal constraints, process stability,
             or efficiency considerations. Can be time-varying to reflect different
             constraints across the planning horizon.
-        consecutive_on_hours_max: Maximum continuous operating duration in one campaign.
+        consecutive_active_hours_max: Maximum continuous operating duration in one campaign.
             Models mandatory maintenance intervals, process batch sizes, or
             equipment thermal limits requiring periodic shutdowns.
-        consecutive_off_hours_min: Minimum continuous shutdown duration between operations.
+        consecutive_inactive_hours_min: Minimum continuous shutdown duration between operations.
             Models cooling periods, maintenance requirements, or process constraints
             that prevent immediate restart after shutdown.
-        consecutive_off_hours_max: Maximum continuous shutdown duration before mandatory
+        consecutive_inactive_hours_max: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-        switch_on_total_max: Maximum number of startup operations across the time horizon.
+        startup_total_max: Maximum number of startup operations across the time horizon.
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).
-        force_switch_on: When True, creates switch-on variables even without explicit
-            switch_on_total_max constraint. Useful for tracking or reporting startup
+        force_startup: When True, creates startup variables even without explicit
+            startup_total_max constraint. Useful for tracking or reporting startup
             events without enforcing limits.
 
     Note:
         **Time Series Boundary Handling**: The final time period constraints for
-        consecutive_on_hours_min/max and consecutive_off_hours_min/max are not
+        consecutive_active_hours_min/max and consecutive_inactive_hours_min/max are not
         enforced, allowing the optimization to end with ongoing campaigns that
         may be shorter than the specified minimums or longer than maximums.
 
@@ -1146,8 +1146,8 @@ class OnOffParameters(Interface):
         Combined cycle power plant with startup costs and minimum run time:
 
         ```python
-        power_plant_operation = OnOffParameters(
-            effects_per_switch_on={
+        power_plant_operation = ActiveInactiveParameters(
+            effects_per_startup={
                 'startup_cost': 25000,  # €25,000 per startup
                 'startup_fuel': 150,  # GJ natural gas for startup
                 'startup_time': 4,  # Hours to reach full output
@@ -1157,17 +1157,17 @@ class OnOffParameters(Interface):
                 'fixed_om': 125,  # Fixed O&M costs while running
                 'auxiliary_power': 2.5,  # MW parasitic loads
             },
-            consecutive_on_hours_min=8,  # Minimum 8-hour run once started
-            consecutive_off_hours_min=4,  # Minimum 4-hour cooling period
-            on_hours_total_max=6000,  # Annual operating limit
+            consecutive_active_hours_min=8,  # Minimum 8-hour run once started
+            consecutive_inactive_hours_min=4,  # Minimum 4-hour cooling period
+            active_hours_total_max=6000,  # Annual operating limit
         )
         ```
 
         Industrial batch process with cycling limits:
 
         ```python
-        batch_reactor = OnOffParameters(
-            effects_per_switch_on={
+        batch_reactor = ActiveInactiveParameters(
+            effects_per_startup={
                 'setup_cost': 1500,  # Labor and materials for startup
                 'catalyst_consumption': 5,  # kg catalyst per batch
                 'cleaning_chemicals': 200,  # L cleaning solution
@@ -1177,19 +1177,19 @@ class OnOffParameters(Interface):
                 'electricity': 150,  # kWh electrical load
                 'cooling_water': 50,  # m³/h cooling water
             },
-            consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
-            consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
-            consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_total_max=200,  # Maximum 200 batches per period
-            on_hours_total_max=4000,  # Maximum production time
+            consecutive_active_hours_min=12,  # Minimum batch size (12 hours)
+            consecutive_active_hours_max=24,  # Maximum batch size (24 hours)
+            consecutive_inactive_hours_min=6,  # Cleaning and setup time
+            startup_total_max=200,  # Maximum 200 batches per period
+            active_hours_total_max=4000,  # Maximum production time
         )
         ```
 
         HVAC system with thermostat control and maintenance:
 
         ```python
-        hvac_operation = OnOffParameters(
-            effects_per_switch_on={
+        hvac_operation = ActiveInactiveParameters(
+            effects_per_startup={
                 'compressor_wear': 0.5,  # Hours of compressor life per start
                 'inrush_current': 15,  # kW peak demand on startup
             },
@@ -1197,19 +1197,19 @@ class OnOffParameters(Interface):
                 'electricity': 25,  # kW electrical consumption
                 'maintenance': 0.12,  # €/hour maintenance reserve
             },
-            consecutive_on_hours_min=1,  # Minimum 1-hour run to avoid cycling
-            consecutive_off_hours_min=0.5,  # 30-minute minimum off time
-            switch_on_total_max=2000,  # Limit cycling for compressor life
-            on_hours_total_min=2000,  # Minimum operation for humidity control
-            on_hours_total_max=5000,  # Maximum operation for energy budget
+            consecutive_active_hours_min=1,  # Minimum 1-hour run to avoid cycling
+            consecutive_inactive_hours_min=0.5,  # 30-minute minimum off time
+            startup_total_max=2000,  # Limit cycling for compressor life
+            active_hours_total_min=2000,  # Minimum operation for humidity control
+            active_hours_total_max=5000,  # Maximum operation for energy budget
         )
         ```
 
         Backup generator with testing and maintenance requirements:
 
         ```python
-        backup_generator = OnOffParameters(
-            effects_per_switch_on={
+        backup_generator = ActiveInactiveParameters(
+            effects_per_startup={
                 'fuel_priming': 50,  # L diesel for system priming
                 'wear_factor': 1.0,  # Start cycles impact on maintenance
                 'testing_labor': 2,  # Hours technician time per test
@@ -1219,19 +1219,19 @@ class OnOffParameters(Interface):
                 'emissions_permit': 15,  # € emissions allowance cost
                 'noise_penalty': 25,  # € noise compliance cost
             },
-            consecutive_on_hours_min=0.5,  # Minimum test duration (30 min)
-            consecutive_off_hours_max=720,  # Maximum 30 days between tests
-            switch_on_total_max=52,  # Weekly testing limit
-            on_hours_total_min=26,  # Minimum annual testing (0.5h × 52)
-            on_hours_total_max=200,  # Maximum runtime (emergencies + tests)
+            consecutive_active_hours_min=0.5,  # Minimum test duration (30 min)
+            consecutive_inactive_hours_max=720,  # Maximum 30 days between tests
+            startup_total_max=52,  # Weekly testing limit
+            active_hours_total_min=26,  # Minimum annual testing (0.5h × 52)
+            active_hours_total_max=200,  # Maximum runtime (emergencies + tests)
         )
         ```
 
         Peak shaving battery with cycling degradation:
 
         ```python
-        battery_cycling = OnOffParameters(
-            effects_per_switch_on={
+        battery_cycling = ActiveInactiveParameters(
+            effects_per_startup={
                 'cycle_degradation': 0.01,  # % capacity loss per cycle
                 'inverter_startup': 0.5,  # kWh losses during startup
             },
@@ -1240,11 +1240,11 @@ class OnOffParameters(Interface):
                 'cooling': 5,  # kW thermal management
                 'inverter_losses': 8,  # kW conversion losses
             },
-            consecutive_on_hours_min=1,  # Minimum discharge duration
-            consecutive_on_hours_max=4,  # Maximum continuous discharge
-            consecutive_off_hours_min=1,  # Minimum rest between cycles
-            switch_on_total_max=365,  # Daily cycling limit
-            force_switch_on=True,  # Track all cycling events
+            consecutive_active_hours_min=1,  # Minimum discharge duration
+            consecutive_active_hours_max=4,  # Maximum continuous discharge
+            consecutive_inactive_hours_min=1,  # Minimum rest between cycles
+            startup_total_max=365,  # Daily cycling limit
+            force_startup=True,  # Track all cycling events
         )
         ```
 
@@ -1260,82 +1260,86 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
+        effects_per_startup: Effect_TPS | Numeric_TPS | None = None,
         effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_hours_total_min: Numeric_PS | None = None,
-        on_hours_total_max: Numeric_PS | None = None,
-        consecutive_on_hours_min: Numeric_TPS | None = None,
-        consecutive_on_hours_max: Numeric_TPS | None = None,
-        consecutive_off_hours_min: Numeric_TPS | None = None,
-        consecutive_off_hours_max: Numeric_TPS | None = None,
-        switch_on_total_max: Numeric_PS | None = None,
-        force_switch_on: bool = False,
+        active_hours_total_min: Numeric_PS | None = None,
+        active_hours_total_max: Numeric_PS | None = None,
+        consecutive_active_hours_min: Numeric_TPS | None = None,
+        consecutive_active_hours_max: Numeric_TPS | None = None,
+        consecutive_inactive_hours_min: Numeric_TPS | None = None,
+        consecutive_inactive_hours_max: Numeric_TPS | None = None,
+        startup_total_max: Numeric_PS | None = None,
+        force_startup: bool = False,
     ):
-        self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
+        self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_total_min = on_hours_total_min
-        self.on_hours_total_max = on_hours_total_max
-        self.consecutive_on_hours_min = consecutive_on_hours_min
-        self.consecutive_on_hours_max = consecutive_on_hours_max
-        self.consecutive_off_hours_min = consecutive_off_hours_min
-        self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_total_max = switch_on_total_max
-        self.force_switch_on: bool = force_switch_on
+        self.active_hours_total_min = active_hours_total_min
+        self.active_hours_total_max = active_hours_total_max
+        self.consecutive_active_hours_min = consecutive_active_hours_min
+        self.consecutive_active_hours_max = consecutive_active_hours_max
+        self.consecutive_inactive_hours_min = consecutive_inactive_hours_min
+        self.consecutive_inactive_hours_max = consecutive_inactive_hours_max
+        self.startup_total_max = startup_total_max
+        self.force_startup: bool = force_startup
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.effects_per_switch_on = flow_system.fit_effects_to_model_coords(
-            name_prefix, self.effects_per_switch_on, 'per_switch_on'
+        self.effects_per_startup = flow_system.fit_effects_to_model_coords(
+            name_prefix, self.effects_per_startup, 'per_startup'
         )
         self.effects_per_running_hour = flow_system.fit_effects_to_model_coords(
             name_prefix, self.effects_per_running_hour, 'per_running_hour'
         )
-        self.consecutive_on_hours_min = flow_system.fit_to_model_coords(
-            f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
+        self.consecutive_active_hours_min = flow_system.fit_to_model_coords(
+            f'{name_prefix}|consecutive_active_hours_min', self.consecutive_active_hours_min
         )
-        self.consecutive_on_hours_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
+        self.consecutive_active_hours_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|consecutive_active_hours_max', self.consecutive_active_hours_max
         )
-        self.consecutive_off_hours_min = flow_system.fit_to_model_coords(
-            f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
+        self.consecutive_inactive_hours_min = flow_system.fit_to_model_coords(
+            f'{name_prefix}|consecutive_inactive_hours_min', self.consecutive_inactive_hours_min
         )
-        self.consecutive_off_hours_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
+        self.consecutive_inactive_hours_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|consecutive_inactive_hours_max', self.consecutive_inactive_hours_max
         )
-        self.on_hours_total_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['period', 'scenario']
+        self.active_hours_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|active_hours_total_max', self.active_hours_total_max, dims=['period', 'scenario']
         )
-        self.on_hours_total_min = flow_system.fit_to_model_coords(
-            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['period', 'scenario']
+        self.active_hours_total_min = flow_system.fit_to_model_coords(
+            f'{name_prefix}|active_hours_total_min', self.active_hours_total_min, dims=['period', 'scenario']
         )
-        self.switch_on_total_max = flow_system.fit_to_model_coords(
-            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['period', 'scenario']
+        self.startup_total_max = flow_system.fit_to_model_coords(
+            f'{name_prefix}|startup_total_max', self.startup_total_max, dims=['period', 'scenario']
         )
 
     @property
-    def use_off(self) -> bool:
-        """Proxy: whether OFF variable is required"""
-        return self.use_consecutive_off_hours
+    def use_inactive(self) -> bool:
+        """Proxy: whether inactive variable is required"""
+        return self.use_consecutive_inactive_hours
 
     @property
-    def use_consecutive_on_hours(self) -> bool:
-        """Determines whether a Variable for consecutive on hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_on_hours_min, self.consecutive_on_hours_max])
+    def use_consecutive_active_hours(self) -> bool:
+        """Determines whether a Variable for consecutive active hours is needed or not"""
+        return any(
+            param is not None for param in [self.consecutive_active_hours_min, self.consecutive_active_hours_max]
+        )
 
     @property
-    def use_consecutive_off_hours(self) -> bool:
-        """Determines whether a Variable for consecutive off hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_off_hours_min, self.consecutive_off_hours_max])
+    def use_consecutive_inactive_hours(self) -> bool:
+        """Determines whether a Variable for consecutive inactive hours is needed or not"""
+        return any(
+            param is not None for param in [self.consecutive_inactive_hours_min, self.consecutive_inactive_hours_max]
+        )
 
     @property
-    def use_switch_on(self) -> bool:
-        """Determines whether a variable for switch_on is needed or not"""
-        if self.force_switch_on:
+    def use_startup(self) -> bool:
+        """Determines whether a variable for startup is needed or not"""
+        if self.force_startup:
             return True
 
         return any(
             self._has_value(param)
             for param in [
-                self.effects_per_switch_on,
-                self.switch_on_total_max,
+                self.effects_per_startup,
+                self.startup_total_max,
             ]
         )
