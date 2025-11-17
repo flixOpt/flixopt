@@ -74,13 +74,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
         - `CHP`: `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`
         - `HetaPump`: `COP` → `cop`
         - `HetaPumpWithSource`: `COP` → `cop`
-
+    - **Storage Parameters**:
+        - `initial_charge_state="lastValueOfSim"` -> `initial_charge_state="equals_last"`
 
 ### 🗑️ Deprecated
 - **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
     - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
     - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
     - **COP parameter**: `COP` (use lowercase `cop` instead)
+    - **Storage Parameter**: 'initial_charge_state'="lastValueOfSim" (use ="equals_last")
 
 ### 🔥 Removed
 

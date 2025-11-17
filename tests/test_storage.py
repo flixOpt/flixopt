@@ -362,7 +362,7 @@ class TestStorageModel:
             charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
             discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
             capacity_in_flow_hours=30,
-            initial_charge_state='lastValueOfSim',  # Cyclic initialization
+            initial_charge_state='equals_final',  # Cyclic initialization
             eta_charge=0.9,
             eta_discharge=0.9,
             relative_loss_per_hour=0.05,

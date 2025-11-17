@@ -162,14 +162,14 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         1000,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -203,14 +203,14 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         20,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -244,14 +244,14 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -300,14 +300,14 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.thermal_flow.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -315,14 +315,14 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_optional.thermal_flow.submodel._investment.size.solution.item(),
+        boiler_optional.thermal_flow.submodel.investment.size.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler_optional.thermal_flow.submodel._investment.invested.solution.item(),
+        boiler_optional.thermal_flow.submodel.investment.invested.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
