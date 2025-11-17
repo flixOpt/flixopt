@@ -56,7 +56,7 @@ class Component(Element):
             energy/material consumption by the component.
         outputs: list of output Flows leaving the component. These represent
             energy/material production by the component.
-        active_inactive_parameters: Defines binary operation constraints and costs when the
+        activity_parameters: Defines binary operation constraints and costs when the
             component has discrete active/inactive states. Creates binary variables for all
             connected Flows. For better performance, prefer defining ActivityParameters
             on individual Flows when possible.
@@ -72,7 +72,7 @@ class Component(Element):
         - Component is "inactive" only when ALL Flows are inactive (flow_rate = 0)
 
         Binary variables and constraints:
-        - active_inactive_parameters creates binary variables for ALL connected Flows
+        - activity_parameters creates binary variables for ALL connected Flows
         - prevent_simultaneous_flows creates binary variables for specified Flows
         - For better computational performance, prefer Flow-level ActivityParameters
 
@@ -89,14 +89,14 @@ class Component(Element):
         label: str,
         inputs: list[Flow] | None = None,
         outputs: list[Flow] | None = None,
-        active_inactive_parameters: ActivityParameters | None = None,
+        activity_parameters: ActivityParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
-        self.active_inactive_parameters = active_inactive_parameters
+        self.activity_parameters = activity_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
         self._check_unique_flow_labels()
@@ -111,8 +111,8 @@ class Component(Element):
 
     def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        if self.active_inactive_parameters is not None:
-            self.active_inactive_parameters.transform_data(flow_system, prefix)
+        if self.activity_parameters is not None:
+            self.activity_parameters.transform_data(flow_system, prefix)
 
         for flow in self.inputs + self.outputs:
             flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
@@ -308,7 +308,7 @@ class Flow(Element):
 
     Integration with Parameter Classes:
         - **InvestParameters**: Used for `size` when flow Size is an investment decision
-        - **ActivityParameters**: Used for `active_inactive_parameters` when flow has discrete states
+        - **ActivityParameters**: Used for `activity_parameters` when flow has discrete states
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
@@ -324,7 +324,7 @@ class Flow(Element):
         load_factor_max: Maximum average utilization (0-1). Default: 1.
         effects_per_flow_hour: Operational costs/impacts per flow-hour.
             Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
-        active_inactive_parameters: Binary operation constraints (ActivityParameters). Default: None.
+        activity_parameters: Binary operation constraints (ActivityParameters). Default: None.
         flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
         flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
         fixed_relative_profile: Predetermined pattern as fraction of size.
@@ -368,7 +368,7 @@ class Flow(Element):
             size=50,  # 50 kW thermal
             relative_minimum=0.3,  # Minimum 15 kW output when active
             effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
-            active_inactive_parameters=ActivityParameters(
+            activity_parameters=ActivityParameters(
                 effects_per_startup={'startup_cost': 100, 'wear': 0.1},
                 consecutive_active_hours_min=2,  # Must run at least 2 hours
                 consecutive_inactive_hours_min=1,  # Must stay inactive at least 1 hour
@@ -407,7 +407,7 @@ class Flow(Element):
         `load_factor_min/max` for utilization-based constraints.
 
         **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
-        operate below that level. Use `active_inactive_parameters` for discrete active/inactive behavior.
+        operate below that level. Use `activity_parameters` for discrete active/inactive behavior.
 
         **Fixed Profiles**: Use `fixed_relative_profile` for known exact patterns,
         `relative_maximum` for upper bounds on optimization variables.
@@ -433,7 +433,7 @@ class Flow(Element):
         relative_minimum: Numeric_TPS = 0,
         relative_maximum: Numeric_TPS = 1,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
-        active_inactive_parameters: ActivityParameters | None = None,
+        activity_parameters: ActivityParameters | None = None,
         flow_hours_total_max: Numeric_PS | None = None,
         flow_hours_total_min: Numeric_PS | None = None,
         load_factor_min: Numeric_PS | None = None,
@@ -453,7 +453,7 @@ class Flow(Element):
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
         self.flow_hours_total_max = flow_hours_total_max
         self.flow_hours_total_min = flow_hours_total_min
-        self.active_inactive_parameters = active_inactive_parameters
+        self.activity_parameters = activity_parameters
 
         self.previous_flow_rate = previous_flow_rate
 
@@ -500,8 +500,8 @@ class Flow(Element):
             f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
-        if self.active_inactive_parameters is not None:
-            self.active_inactive_parameters.transform_data(flow_system, prefix)
+        if self.activity_parameters is not None:
+            self.activity_parameters.transform_data(flow_system, prefix)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(flow_system, prefix)
         else:
@@ -521,17 +521,17 @@ class Flow(Element):
                 f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
             )
 
-        if self.fixed_relative_profile is not None and self.active_inactive_parameters is not None:
+        if self.fixed_relative_profile is not None and self.activity_parameters is not None:
             logger.warning(
-                f'Flow {self.label_full} has both a fixed_relative_profile and active_inactive_parameters.'
+                f'Flow {self.label_full} has both a fixed_relative_profile and activity_parameters.'
                 f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
             )
 
-        if np.any(self.relative_minimum > 0) and self.active_inactive_parameters is None:
+        if np.any(self.relative_minimum > 0) and self.activity_parameters is None:
             logger.warning(
-                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no active_inactive_parameters. '
+                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no activity_parameters. '
                 f'This prevents the Flow from switching inactive (flow_rate = 0). '
-                f'Consider using active_inactive_parameters to allow the Flow to be switched active and inactive.'
+                f'Consider using activity_parameters to allow the Flow to be switched active and inactive.'
             )
 
         if self.previous_flow_rate is not None:
@@ -603,7 +603,7 @@ class FlowModel(ElementModel):
             ActivityModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
-                parameters=self.element.active_inactive_parameters,
+                parameters=self.element.activity_parameters,
                 active_variable=active,
                 previous_states=self.previous_states,
                 label_of_model=self.label_of_element,
@@ -666,7 +666,7 @@ class FlowModel(ElementModel):
 
     @property
     def with_active_inactive(self) -> bool:
-        return self.element.active_inactive_parameters is not None
+        return self.element.activity_parameters is not None
 
     @property
     def with_investment(self) -> bool:
@@ -848,20 +848,20 @@ class ComponentModel(ElementModel):
         """Initiates all FlowModels"""
         super()._do_modeling()
         all_flows = self.element.inputs + self.element.outputs
-        if self.element.active_inactive_parameters:
+        if self.element.activity_parameters:
             for flow in all_flows:
-                if flow.active_inactive_parameters is None:
-                    flow.active_inactive_parameters = ActivityParameters()
+                if flow.activity_parameters is None:
+                    flow.activity_parameters = ActivityParameters()
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
-                if flow.active_inactive_parameters is None:
-                    flow.active_inactive_parameters = ActivityParameters()
+                if flow.activity_parameters is None:
+                    flow.activity_parameters = ActivityParameters()
 
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
-        if self.element.active_inactive_parameters:
+        if self.element.activity_parameters:
             active = self.add_variables(binary=True, short_name='active', coords=self._model.get_coords())
             if len(all_flows) == 1:
                 self.add_constraints(active == all_flows[0].submodel.active_inactive.active, short_name='active')
@@ -877,7 +877,7 @@ class ComponentModel(ElementModel):
                 ActivityModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    parameters=self.element.active_inactive_parameters,
+                    parameters=self.element.activity_parameters,
                     active_variable=active,
                     label_of_model=self.label_of_element,
                     previous_states=self.previous_states,
@@ -906,7 +906,7 @@ class ComponentModel(ElementModel):
     @property
     def previous_states(self) -> xr.DataArray | None:
         """Previous state of the component, derived from its flows"""
-        if self.element.active_inactive_parameters is None:
+        if self.element.activity_parameters is None:
             raise ValueError(f'ActivityModel not present in \n{self}\nCant access previous_states')
 
         previous_states = [

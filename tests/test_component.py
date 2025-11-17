@@ -82,7 +82,7 @@ class TestComponentModel:
             fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.3, relative_maximum=ub_out2, size=300),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, activity_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -180,7 +180,7 @@ class TestComponentModel:
         ]
         outputs = []
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, activity_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -257,7 +257,7 @@ class TestComponentModel:
             ),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, activity_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -377,7 +377,7 @@ class TestComponentModel:
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
                 previous_flow_rate=in1_previous_flow_rate,
-                active_inactive_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
+                activity_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
             ),
         ]
         outputs = [
@@ -397,7 +397,7 @@ class TestComponentModel:
             'TestComponent',
             inputs=inputs,
             outputs=outputs,
-            active_inactive_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
+            activity_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
         )
         flow_system.add_elements(comp)
         create_linopy_model(flow_system)

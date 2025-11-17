@@ -140,7 +140,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     boiler = fx.linear_converters.Boiler(
         'Kessel',
         eta=0.5,
-        active_inactive_parameters=fx.ActivityParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
+        activity_parameters=fx.ActivityParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
         Q_th=fx.Flow(
             'Q_th',
             bus='Fernwärme',
@@ -155,7 +155,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 mandatory=True,
                 effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 active_hours_total_min=0,
                 active_hours_total_max=1000,
                 consecutive_active_hours_max=10,
@@ -228,7 +228,7 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
                     'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                 }
             ),
-            active_inactive_parameters=fx.ActivityParameters(effects_per_startup=0.01),
+            activity_parameters=fx.ActivityParameters(effects_per_startup=0.01),
         )
     )
 

@@ -338,7 +338,7 @@ def test_on(solver_fixture, time_steps_fixture):
             'Boiler',
             0.5,
             Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, active_inactive_parameters=fx.ActivityParameters()),
+            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, activity_parameters=fx.ActivityParameters()),
         )
     )
 
@@ -381,7 +381,7 @@ def test_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(consecutive_inactive_hours_max=100),
+                activity_parameters=fx.ActivityParameters(consecutive_inactive_hours_max=100),
             ),
         )
     )
@@ -432,7 +432,7 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(force_switch_on=True),
+                activity_parameters=fx.ActivityParameters(force_switch_on=True),
             ),
         )
     )
@@ -490,7 +490,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(active_hours_total_max=1),
+                activity_parameters=fx.ActivityParameters(active_hours_total_max=1),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -540,7 +540,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(active_hours_total_max=2),
+                activity_parameters=fx.ActivityParameters(active_hours_total_max=2),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -551,7 +551,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(active_hours_total_min=3),
+                activity_parameters=fx.ActivityParameters(active_hours_total_min=3),
             ),
         ),
     )
@@ -614,7 +614,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                active_inactive_parameters=fx.ActivityParameters(
+                activity_parameters=fx.ActivityParameters(
                     consecutive_active_hours_max=2, consecutive_active_hours_min=2
                 ),
             ),
@@ -684,7 +684,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
                 bus='Fernwärme',
                 size=100,
                 previous_flow_rate=np.array([20]),  # Otherwise its Off before the start
-                active_inactive_parameters=fx.ActivityParameters(
+                activity_parameters=fx.ActivityParameters(
                     consecutive_inactive_hours_max=2, consecutive_inactive_hours_min=2
                 ),
             ),

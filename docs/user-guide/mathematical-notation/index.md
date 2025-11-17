@@ -59,7 +59,7 @@ Mathematical formulations for optional features (corresponding to parameters in 
 - [ActivityParameters](features/ActivityParameters.md) - Binary on/off operation
 - [Piecewise](features/Piecewise.md) - Piecewise linear approximations
 
-**User API:** When you pass `invest_parameters` or `active_inactive_parameters` to a `Flow` or component, these formulations are applied.
+**User API:** When you pass `invest_parameters` or `activity_parameters` to a `Flow` or component, these formulations are applied.
 
 ### System-Level
 - [Effects, Penalty & Objective](effects-penalty-objective.md) - Cost allocation and objective function

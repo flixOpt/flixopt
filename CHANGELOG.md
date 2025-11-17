@@ -759,7 +759,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - Python 3.13 support added
-- Logger warning if relative_minimum is used without active_inactive_parameters in Flow
+- Logger warning if relative_minimum is used without activity_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
 ### 💥 Breaking Changes
@@ -779,7 +779,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.0.1] - 2025-04-10
 
 ### ✨ Added
-- Logger warning if relative_minimum is used without active_inactive_parameters in Flow
+- Logger warning if relative_minimum is used without activity_parameters in Flow
 
 ### 🐛 Fixed
 - Replace "|" with "__" in filenames when saving figures (Windows compatibility)

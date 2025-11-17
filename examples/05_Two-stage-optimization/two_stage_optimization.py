@@ -55,14 +55,14 @@ if __name__ == '__main__':
                 ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
-                active_inactive_parameters=fx.ActivityParameters(effects_per_startup=300),
+                activity_parameters=fx.ActivityParameters(effects_per_startup=300),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
             eta_th=0.58,
             eta_el=0.22,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 effects_per_startup=1_000, consecutive_active_hours_min=10, consecutive_inactive_hours_min=10
             ),
             P_el=fx.Flow('P_el', bus='Strom'),

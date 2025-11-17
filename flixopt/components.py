@@ -48,7 +48,7 @@ class LinearConverter(Component):
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
         outputs: list of output Flows that are produced by the converter.
-        active_inactive_parameters: Information about active and inactive state of LinearConverter.
+        activity_parameters: Information about active and inactive state of LinearConverter.
             Component is active/inactive if all connected Flows are active/inactive. This induces an
             active-Variable (binary) in all Flows! If possible, use ActivityParameters in a
             single Flow instead to keep the number of binary variables low.
@@ -167,12 +167,12 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        active_inactive_parameters: ActivityParameters | None = None,
+        activity_parameters: ActivityParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
-        super().__init__(label, inputs, outputs, active_inactive_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, activity_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -567,7 +567,7 @@ class Transmission(Component):
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
             Automatically creates binary variables for active/inactive states.
-        active_inactive_parameters: Parameters defining binary operation constraints and costs.
+        activity_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
             reality for most transmission systems. Default is True.
@@ -630,7 +630,7 @@ class Transmission(Component):
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
-            active_inactive_parameters=ActivityParameters(
+            activity_parameters=ActivityParameters(
                 effects_per_startup={'maintenance': 0.1},
                 consecutive_active_hours_min=2,  # Minimum 2-hour operation
                 startup_total_max=10,  # Maximum 10 starts per day
@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        active_inactive_parameters: ActivityParameters = None,
+        activity_parameters: ActivityParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -673,7 +673,7 @@ class Transmission(Component):
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
             outputs=[flow for flow in (out1, out2) if flow is not None],
-            active_inactive_parameters=active_inactive_parameters,
+            activity_parameters=activity_parameters,
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
@@ -732,8 +732,8 @@ class TransmissionModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
-                if flow.active_inactive_parameters is None:
-                    flow.active_inactive_parameters = ActivityParameters()
+                if flow.activity_parameters is None:
+                    flow.activity_parameters = ActivityParameters()
 
         super().__init__(model, element)
 

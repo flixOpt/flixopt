@@ -153,7 +153,7 @@ class TestLinearConverterModel:
             inputs=[input_flow],
             outputs=[output_flow],
             conversion_factors=[{input_flow.label: 0.8, output_flow.label: 1.0}],
-            active_inactive_parameters=on_off_params,
+            activity_parameters=on_off_params,
         )
 
         # Add to flow system
@@ -406,7 +406,7 @@ class TestLinearConverterModel:
             inputs=[input_flow],
             outputs=[output_flow],
             piecewise_conversion=piecewise_conversion,
-            active_inactive_parameters=on_off_params,
+            activity_parameters=on_off_params,
         )
 
         # Add to flow system

@@ -524,7 +524,7 @@ class TestFlowOnModel:
             size=100,
             relative_minimum=0.2,
             relative_maximum=0.8,
-            active_inactive_parameters=fx.ActivityParameters(),
+            activity_parameters=fx.ActivityParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
@@ -594,7 +594,7 @@ class TestFlowOnModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 effects_per_running_hour={'costs': costs_per_running_hour, 'CO2': co2_per_running_hour}
             ),
         )
@@ -626,8 +626,8 @@ class TestFlowOnModel:
         assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
         assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
 
-        costs_per_running_hour = flow.active_inactive_parameters.effects_per_running_hour['costs']
-        co2_per_running_hour = flow.active_inactive_parameters.effects_per_running_hour['CO2']
+        costs_per_running_hour = flow.activity_parameters.effects_per_running_hour['costs']
+        co2_per_running_hour = flow.activity_parameters.effects_per_running_hour['CO2']
 
         assert costs_per_running_hour.dims == tuple(model.get_coords())
         assert co2_per_running_hour.dims == tuple(model.get_coords())
@@ -652,7 +652,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 consecutive_active_hours_min=2,  # Must run for at least 2 hours when turned on
                 consecutive_active_hours_max=8,  # Can't run more than 8 consecutive hours
             ),
@@ -734,7 +734,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 consecutive_active_hours_min=2,  # Must run for at least 2 hours when turned on
                 consecutive_active_hours_max=8,  # Can't run more than 8 consecutive hours
             ),
@@ -815,7 +815,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 consecutive_inactive_hours_min=4,  # Must stay off for at least 4 hours when shut down
                 consecutive_inactive_hours_max=12,  # Can't be off for more than 12 consecutive hours
             ),
@@ -897,7 +897,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 consecutive_inactive_hours_min=4,  # Must stay off for at least 4 hours when shut down
                 consecutive_inactive_hours_max=12,  # Can't be off for more than 12 consecutive hours
             ),
@@ -980,7 +980,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 startup_total_max=5,  # Maximum 5 startups
                 effects_per_startup={'costs': 100},  # 100 EUR startup cost
             ),
@@ -1042,7 +1042,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
-            active_inactive_parameters=fx.ActivityParameters(
+            activity_parameters=fx.ActivityParameters(
                 active_hours_total_min=20,  # Minimum 20 hours of operation
                 active_hours_total_max=100,  # Maximum 100 hours of operation
             ),
@@ -1082,7 +1082,7 @@ class TestFlowOnInvestModel:
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=False),
             relative_minimum=0.2,
             relative_maximum=0.8,
-            active_inactive_parameters=fx.ActivityParameters(),
+            activity_parameters=fx.ActivityParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
@@ -1183,7 +1183,7 @@ class TestFlowOnInvestModel:
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.8,
-            active_inactive_parameters=fx.ActivityParameters(),
+            activity_parameters=fx.ActivityParameters(),
         )
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)

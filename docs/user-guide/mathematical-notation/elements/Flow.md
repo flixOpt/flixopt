@@ -48,7 +48,7 @@ Flow formulation uses the following modeling patterns:
 - `relative_minimum`, `relative_maximum`: Relative bounds $\text{p}^{\text{L}}_{\text{rel}}, \text{p}^{\text{U}}_{\text{rel}}$
 - `effects_per_flow_hour`: Operational effects (costs, emissions, etc.)
 - `invest_parameters`: Optional investment modeling (see [InvestParameters](../features/InvestParameters.md))
-- `active_inactive_parameters`: Optional on/off operation (see [ActivityParameters](../features/ActivityParameters.md))
+- `activity_parameters`: Optional on/off operation (see [ActivityParameters](../features/ActivityParameters.md))
 
 See the [`Flow`][flixopt.elements.Flow] API documentation for complete parameter list and usage examples.
 
