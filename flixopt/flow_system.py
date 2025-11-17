@@ -594,6 +594,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connect_network()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
+
+        # Validate cross-element references immediately after transformation
+        self._validate_system_integrity()
+
         self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
@@ -645,8 +649,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
-        # Validate cross-element references before creating model
-        self._validate_system_integrity()
+        # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
@@ -830,13 +833,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         for new_component in list(components):
             new_component._set_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if components:
+            self._flows_cache = None
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
             new_bus._set_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if buses:
+            self._flows_cache = None
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -867,9 +874,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     bus.outputs.append(flow)
                 elif not flow.is_input_in_component and flow not in bus.inputs:
                     bus.inputs.append(flow)
+
+        # Count flows manually to avoid triggering cache rebuild
+        flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
         logger.debug(
             f'Connected {len(self.buses)} Buses and {len(self.components)} '
-            f'via {len(self.flows)} Flows inside the FlowSystem.'
+            f'via {flow_count} Flows inside the FlowSystem.'
         )
 
     def __repr__(self) -> str:
