@@ -931,11 +931,6 @@ class Element(Interface):
         self.submodel = None
         self._flow_system: FlowSystem | None = None
 
-    def _plausibility_checks(self) -> None:
-        """This function is used to do some basic plausibility checks for each Element during initialization.
-        This is run after all data is transformed to the correct format/type"""
-        raise NotImplementedError('Every Element needs a _plausibility_checks() method')
-
     def create_model(self, model: FlowSystemModel) -> ElementModel:
         raise NotImplementedError('Every Element needs a create_model() method')
 
@@ -1579,6 +1574,27 @@ class ElementModel(Submodel):
         self.element = element
         super().__init__(model, label_of_element=element.label_full, label_of_model=element.label_full)
         self._model.add_submodels(self, short_name=self.label_of_model)
+
+    def _validate(self):
+        """
+        Validate that the element configuration can be properly modeled.
+        Override in subclasses to add element-specific validation.
+
+        This method checks modeling constraints - whether the element's configuration
+        can be translated into a valid optimization model (e.g., feasible constraints,
+        solvable systems, valid objective function terms).
+        """
+        pass
+
+    def _do_modeling(self):
+        """
+        Create variables, constraints, and submodels for this element.
+
+        Calls _validate() first to validate the element configuration
+        before creating any model components.
+        """
+        self._validate()
+        super()._do_modeling()
 
     def results_structure(self):
         return {

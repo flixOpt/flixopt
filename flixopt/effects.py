@@ -378,14 +378,8 @@ class Effect(Element):
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
-        self._plausibility_checks()
         self.submodel = EffectModel(model, self)
         return self.submodel
-
-    def _plausibility_checks(self) -> None:
-        # TODO: Check for plausibility
-        pass
-
 
 class EffectModel(ElementModel):
     element: Effect  # Type hint
@@ -474,7 +468,6 @@ class EffectCollection(ElementContainer[Effect]):
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> EffectCollectionModel:
-        self._plausibility_checks()
         self.submodel = EffectCollectionModel(model, self)
         return self.submodel
 
@@ -527,29 +520,6 @@ class EffectCollection(ElementContainer[Effect]):
         if isinstance(effect_values_user, dict):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
         return {self.standard_effect.label: effect_values_user}
-
-    def _plausibility_checks(self) -> None:
-        # Check circular loops in effects:
-        temporal, periodic = self.calculate_effect_share_factors()
-
-        # Validate all referenced effects (both sources and targets) exist
-        edges = list(temporal.keys()) + list(periodic.keys())
-        unknown_sources = {src for src, _ in edges if src not in self}
-        unknown_targets = {tgt for _, tgt in edges if tgt not in self}
-        unknown = unknown_sources | unknown_targets
-        if unknown:
-            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
-
-        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
-        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
-
-        if temporal_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
-            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
-
-        if periodic_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
-            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
@@ -675,8 +645,34 @@ class EffectCollectionModel(Submodel):
             raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
         self.penalty.add_share(name, expression, dims=())
 
+    def _validate(self):
+        """Validate EffectCollection configuration for modeling."""
+        # Check circular loops in effects
+        temporal, periodic = self.effects.calculate_effect_share_factors()
+
+        # Validate all referenced effects (both sources and targets) exist
+        edges = list(temporal.keys()) + list(periodic.keys())
+        unknown_sources = {src for src, _ in edges if src not in self.effects}
+        unknown_targets = {tgt for _, tgt in edges if tgt not in self.effects}
+        unknown = unknown_sources | unknown_targets
+        if unknown:
+            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
+
+        # Detect circular dependencies
+        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
+        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
+
+        if temporal_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
+            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
+
+        if periodic_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
+            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
+
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
+        self._validate()
         super()._do_modeling()
 
         # Create EffectModel for each effect

@@ -90,13 +90,11 @@ class Component(Element):
         self.on_off_parameters = on_off_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        self._check_unique_flow_labels()
         self._connect_flows()
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
-        self._plausibility_checks()
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
@@ -115,16 +113,6 @@ class Component(Element):
 
         for flow in self.inputs + self.outputs:
             flow.transform_data()  # Flow doesnt need the name_prefix
-
-    def _check_unique_flow_labels(self):
-        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
-
-        if len(set(all_flow_labels)) != len(all_flow_labels):
-            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
-            raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
-
-    def _plausibility_checks(self) -> None:
-        self._check_unique_flow_labels()
 
     def _connect_flows(self):
         # Inputs
@@ -245,7 +233,6 @@ class Bus(Element):
         self.outputs: list[Flow] = []
 
     def create_model(self, model: FlowSystemModel) -> BusModel:
-        self._plausibility_checks()
         self.submodel = BusModel(model, self)
         return self.submodel
 
@@ -260,18 +247,6 @@ class Bus(Element):
         self.excess_penalty_per_flow_hour = self._fit_coords(
             f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
-
-    def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
-            if zero_penalty:
-                logger.warning(
-                    f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
-                )
-        if len(self.inputs) == 0 and len(self.outputs) == 0:
-            raise ValueError(
-                f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
-            )
 
     @property
     def with_excess(self) -> bool:
@@ -478,7 +453,6 @@ class Flow(Element):
             self._bus_object = None
 
     def create_model(self, model: FlowSystemModel) -> FlowModel:
-        self._plausibility_checks()
         self.submodel = FlowModel(model, self)
         return self.submodel
 
@@ -516,45 +490,6 @@ class Flow(Element):
         else:
             self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
-    def _plausibility_checks(self) -> None:
-        # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
-        if (self.relative_minimum > self.relative_maximum).any():
-            raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
-
-        if not isinstance(self.size, InvestParameters) and (
-            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
-        ):  # Default Size --> Most likely by accident
-            logger.warning(
-                f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
-                f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
-            )
-
-        if self.fixed_relative_profile is not None and self.on_off_parameters is not None:
-            logger.warning(
-                f'Flow {self.label_full} has both a fixed_relative_profile and an on_off_parameters.'
-                f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
-            )
-
-        if np.any(self.relative_minimum > 0) and self.on_off_parameters is None:
-            logger.warning(
-                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no on_off_parameters. '
-                f'This prevents the flow_rate from switching off (flow_rate = 0). '
-                f'Consider using on_off_parameters to allow the flow to be switched on and off.'
-            )
-
-        if self.previous_flow_rate is not None:
-            if not any(
-                [
-                    isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
-                    isinstance(self.previous_flow_rate, (int, float, list)),
-                ]
-            ):
-                raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}. '
-                    f'Different values in different periods or scenarios are not yet supported.'
-                )
-
     @property
     def label_full(self) -> str:
         return f'{self.component}({self.label})'
@@ -574,6 +509,56 @@ class FlowModel(ElementModel):
 
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
+
+    def _validate(self):
+        """Validate Flow configuration for modeling."""
+        super()._validate()
+
+        # Check relative_minimum <= relative_maximum
+        if (self.element.relative_minimum > self.element.relative_maximum).any():
+            raise PlausibilityError(
+                self.element.label_full + ': Take care, that relative_minimum <= relative_maximum!'
+            )
+
+        # Warn about default size with fixed_relative_profile
+        if not isinstance(self.element.size, InvestParameters) and (
+            np.any(self.element.size == CONFIG.Modeling.big) and self.element.fixed_relative_profile is not None
+        ):
+            logger.warning(
+                f'Flow "{self.element.label_full}" has no size assigned, but a "fixed_relative_profile". '
+                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
+                f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self.element}.'
+            )
+
+        # Warn about fixed_relative_profile with on_off_parameters
+        if self.element.fixed_relative_profile is not None and self.element.on_off_parameters is not None:
+            logger.warning(
+                f'Flow {self.element.label_full} has both a fixed_relative_profile and an on_off_parameters. '
+                f'This will allow the flow to be switched on and off, effectively differing from the fixed_flow_rate.'
+            )
+
+        # Warn about relative_minimum > 0 without on_off_parameters
+        if np.any(self.element.relative_minimum > 0) and self.element.on_off_parameters is None:
+            logger.warning(
+                f'Flow {self.element.label_full} has a relative_minimum of {self.element.relative_minimum} '
+                f'and no on_off_parameters. This prevents the flow_rate from switching off (flow_rate = 0). '
+                f'Consider using on_off_parameters to allow the flow to be switched on and off.'
+            )
+
+        # Validate previous_flow_rate type
+        if self.element.previous_flow_rate is not None:
+            if not any(
+                [
+                    isinstance(self.element.previous_flow_rate, np.ndarray)
+                    and self.element.previous_flow_rate.ndim == 1,
+                    isinstance(self.element.previous_flow_rate, (int, float, list)),
+                ]
+            ):
+                raise TypeError(
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
+                    f'Got {type(self.element.previous_flow_rate)}. '
+                    f'Different values in different periods or scenarios are not yet supported.'
+                )
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -810,6 +795,25 @@ class BusModel(ElementModel):
         self.excess_output: linopy.Variable | None = None
         super().__init__(model, element)
 
+    def _validate(self):
+        """Validate Bus configuration for modeling."""
+        super()._validate()
+
+        # Check excess penalty value
+        if self.element.excess_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self.element.excess_penalty_per_flow_hour, 0))
+            if zero_penalty:
+                logger.warning(
+                    f'In Bus {self.element.label_full}, the excess_penalty_per_flow_hour is 0. '
+                    f'Use "None" or a value > 0.'
+                )
+
+        # Check bus has connected flows
+        if len(self.element.inputs) == 0 and len(self.element.outputs) == 0:
+            raise ValueError(
+                f'Bus "{self.element.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
+            )
+
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
@@ -856,6 +860,16 @@ class ComponentModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Component):
         self.on_off: OnOffModel | None = None
         super().__init__(model, element)
+
+    def _validate(self):
+        """Validate Component configuration for modeling."""
+        super()._validate()
+
+        # Check unique flow labels
+        all_flow_labels = [flow.label for flow in self.element.inputs + self.element.outputs]
+        if len(set(all_flow_labels)) != len(all_flow_labels):
+            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.element.label_full}" got 2 or more of: {duplicates}')
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""

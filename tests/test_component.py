@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 import flixopt as fx
@@ -16,7 +17,7 @@ from .conftest import (
 
 class TestComponentModel:
     def test_flow_label_check(self):
-        """Test that flow model constraints are correctly generated."""
+        """Test that duplicate flow labels are detected during model creation."""
         inputs = [
             fx.Flow('Q_th_Last', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
             fx.Flow('Q_Gas', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
@@ -25,8 +26,19 @@ class TestComponentModel:
             fx.Flow('Q_th_Last', 'Gas', relative_minimum=np.ones(10) * 0.01),
             fx.Flow('Q_Gas', 'Gas', relative_minimum=np.ones(10) * 0.01),
         ]
-        with pytest.raises(ValueError, match='Flow names must be unique!'):
-            _ = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
+        # Component creation should succeed
+        comp = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
+
+        # But model creation should fail due to duplicate labels
+        timesteps = pd.date_range('2020-01-01', periods=10, freq='h')
+        flow_system = fx.FlowSystem(timesteps=timesteps)
+        bus1 = fx.Bus('Fernwärme')
+        bus2 = fx.Bus('Gas')
+        flow_system.add_elements(bus1, bus2, comp)
+
+        with pytest.raises(ValueError, match='already exists in flows'):
+            calculation = fx.FullCalculation('test', flow_system)
+            calculation.do_modeling()
 
     def test_component(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""

@@ -178,7 +178,6 @@ class LinearConverter(Component):
         self.piecewise_conversion = piecewise_conversion
 
     def create_model(self, model: FlowSystemModel) -> LinearConverterModel:
-        self._plausibility_checks()
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
@@ -187,36 +186,6 @@ class LinearConverter(Component):
         super()._set_flow_system(flow_system)
         if self.piecewise_conversion is not None:
             self.piecewise_conversion._set_flow_system(flow_system)
-
-    def _plausibility_checks(self) -> None:
-        super()._plausibility_checks()
-        if not self.conversion_factors and not self.piecewise_conversion:
-            raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
-        if self.conversion_factors and self.piecewise_conversion:
-            raise PlausibilityError('Only one of conversion_factors or piecewise_conversion can be defined, not both!')
-
-        if self.conversion_factors:
-            if self.degrees_of_freedom <= 0:
-                raise PlausibilityError(
-                    f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
-                    f'then inputs + outputs!! With {len(self.inputs + self.outputs)} inputs and outputs, '
-                    f'use not more than {len(self.inputs + self.outputs) - 1} conversion_factors!'
-                )
-
-            for conversion_factor in self.conversion_factors:
-                for flow in conversion_factor:
-                    if flow not in self.flows:
-                        raise PlausibilityError(
-                            f'{self.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
-                        )
-        if self.piecewise_conversion:
-            for flow in self.flows.values():
-                if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    logger.warning(
-                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
-                        f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
-                        f'({flow.label_full}).'
-                    )
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -436,7 +405,6 @@ class Storage(Component):
         self.balanced = balanced
 
     def create_model(self, model: FlowSystemModel) -> StorageModel:
-        self._plausibility_checks()
         self.submodel = StorageModel(model, self)
         return self.submodel
 
@@ -484,62 +452,6 @@ class Storage(Component):
             self.capacity_in_flow_hours = self._fit_coords(
                 f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
-
-    def _plausibility_checks(self) -> None:
-        """
-        Check for infeasible or uncommon combinations of parameters
-        """
-        super()._plausibility_checks()
-
-        # Validate string values and set flag
-        initial_is_last = False
-        if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state == 'lastValueOfSim':
-                initial_is_last = True
-            else:
-                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
-
-        # Use new InvestParameters methods to get capacity bounds
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
-            maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
-        else:
-            maximum_capacity = self.capacity_in_flow_hours
-            minimum_capacity = self.capacity_in_flow_hours
-
-        # Initial capacity should not constraint investment decision
-        minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-        maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
-
-        # Only perform numeric comparisons if not using 'lastValueOfSim'
-        if not initial_is_last:
-            if (self.initial_charge_state > maximum_initial_capacity).any():
-                raise PlausibilityError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is constraining the investment decision. Chosse a value above {maximum_initial_capacity}'
-                )
-            if (self.initial_charge_state < minimum_initial_capacity).any():
-                raise PlausibilityError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is constraining the investment decision. Chosse a value below {minimum_initial_capacity}'
-                )
-
-        if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                self.discharging.size, InvestParameters
-            ):
-                raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
-                )
-
-            if (self.charging.size.minimum_size > self.discharging.size.maximum_size).any() or (
-                self.charging.size.maximum_size < self.discharging.size.minimum_size
-            ).any():
-                raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
-                    f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
-                    f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
-                )
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -697,34 +609,7 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
         self.balanced = balanced
 
-    def _plausibility_checks(self):
-        super()._plausibility_checks()
-        # check buses:
-        if self.in2 is not None:
-            assert self.in2.bus == self.out1.bus, (
-                f'Output 1 and Input 2 do not start/end at the same Bus: {self.out1.bus=}, {self.in2.bus=}'
-            )
-        if self.out2 is not None:
-            assert self.out2.bus == self.in1.bus, (
-                f'Input 1 and Output 2 do not start/end at the same Bus: {self.in1.bus=}, {self.out2.bus=}'
-            )
-
-        if self.balanced:
-            if self.in2 is None:
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
-                self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
-            ).any():
-                raise ValueError(
-                    f'Balanced Transmission needs compatible minimum and maximum sizes.'
-                    f'Got: {self.in1.size.minimum_size=}, {self.in1.size.maximum_size=}, {self.in1.size.fixed_size=} and '
-                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.'
-                )
-
     def create_model(self, model) -> TransmissionModel:
-        self._plausibility_checks()
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
@@ -745,6 +630,41 @@ class TransmissionModel(ComponentModel):
                     flow.on_off_parameters = OnOffParameters()
 
         super().__init__(model, element)
+
+    def _validate(self):
+        """Validate Transmission configuration for modeling."""
+        super()._validate()
+
+        # Check bus connections for bidirectional transmission
+        if self.element.in2 is not None:
+            assert self.element.in2.bus == self.element.out1.bus, (
+                f'Output 1 and Input 2 do not start/end at the same Bus: '
+                f'{self.element.out1.bus=}, {self.element.in2.bus=}'
+            )
+        if self.element.out2 is not None:
+            assert self.element.out2.bus == self.element.in1.bus, (
+                f'Input 1 and Output 2 do not start/end at the same Bus: '
+                f'{self.element.in1.bus=}, {self.element.out2.bus=}'
+            )
+
+        # Validate balanced transmission requirements
+        if self.element.balanced:
+            if self.element.in2 is None:
+                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+            if not isinstance(self.element.in1.size, InvestParameters) or not isinstance(
+                self.element.in2.size, InvestParameters
+            ):
+                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+            if (self.element.in1.size.minimum_or_fixed_size > self.element.in2.size.maximum_or_fixed_size).any() or (
+                self.element.in1.size.maximum_or_fixed_size < self.element.in2.size.minimum_or_fixed_size
+            ).any():
+                raise ValueError(
+                    f'Balanced Transmission needs compatible minimum and maximum sizes. '
+                    f'Got: {self.element.in1.size.minimum_size=}, {self.element.in1.size.maximum_size=}, '
+                    f'{self.element.in1.size.fixed_size=} and '
+                    f'{self.element.in2.size.minimum_size=}, {self.element.in2.size.maximum_size=}, '
+                    f'{self.element.in2.size.fixed_size=}.'
+                )
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -786,6 +706,48 @@ class LinearConverterModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: LinearConverter):
         self.piecewise_conversion: PiecewiseConversion | None = None
         super().__init__(model, element)
+
+    def _validate(self):
+        """Validate LinearConverter configuration for modeling."""
+        super()._validate()
+
+        # Check that either conversion_factors or piecewise_conversion is defined
+        if not self.element.conversion_factors and not self.element.piecewise_conversion:
+            raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
+
+        # Check mutual exclusivity
+        if self.element.conversion_factors and self.element.piecewise_conversion:
+            raise PlausibilityError(
+                'Only one of conversion_factors or piecewise_conversion can be defined, not both!'
+            )
+
+        # Validate conversion_factors
+        if self.element.conversion_factors:
+            # Check degrees of freedom
+            if self.element.degrees_of_freedom <= 0:
+                raise PlausibilityError(
+                    f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
+                    f'then inputs + outputs!! With {len(self.element.inputs + self.element.outputs)} inputs and outputs, '
+                    f'use not more than {len(self.element.inputs + self.element.outputs) - 1} conversion_factors!'
+                )
+
+            # Validate flow names in conversion_factors
+            for conversion_factor in self.element.conversion_factors:
+                for flow in conversion_factor:
+                    if flow not in self.element.flows:
+                        raise PlausibilityError(
+                            f'{self.element.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
+                        )
+
+        # Warn about piecewise_conversion with variable InvestParameters
+        if self.element.piecewise_conversion:
+            for flow in self.element.flows.values():
+                if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
+                    logger.warning(
+                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'and a piecewise_conversion in {self.element.label_full} is uncommon. Please verify intent '
+                        f'({flow.label_full}).'
+                    )
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -835,6 +797,63 @@ class StorageModel(ComponentModel):
 
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
+
+    def _validate(self):
+        """Validate Storage configuration for modeling."""
+        super()._validate()
+
+        # Validate string values and set flag
+        initial_is_last = False
+        if isinstance(self.element.initial_charge_state, str):
+            if self.element.initial_charge_state == 'lastValueOfSim':
+                initial_is_last = True
+            else:
+                raise PlausibilityError(
+                    f'initial_charge_state has undefined value: {self.element.initial_charge_state}'
+                )
+
+        # Use new InvestParameters methods to get capacity bounds
+        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            minimum_capacity = self.element.capacity_in_flow_hours.minimum_or_fixed_size
+            maximum_capacity = self.element.capacity_in_flow_hours.maximum_or_fixed_size
+        else:
+            maximum_capacity = self.element.capacity_in_flow_hours
+            minimum_capacity = self.element.capacity_in_flow_hours
+
+        # Initial capacity should not constraint investment decision
+        minimum_initial_capacity = maximum_capacity * self.element.relative_minimum_charge_state.isel(time=0)
+        maximum_initial_capacity = minimum_capacity * self.element.relative_maximum_charge_state.isel(time=0)
+
+        # Only perform numeric comparisons if not using 'lastValueOfSim'
+        if not initial_is_last:
+            if (self.element.initial_charge_state > maximum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.element.label_full}: {self.element.initial_charge_state=} '
+                    f'is constraining the investment decision. Chosse a value above {maximum_initial_capacity}'
+                )
+            if (self.element.initial_charge_state < minimum_initial_capacity).any():
+                raise PlausibilityError(
+                    f'{self.element.label_full}: {self.element.initial_charge_state=} '
+                    f'is constraining the investment decision. Chosse a value below {minimum_initial_capacity}'
+                )
+
+        # Validate balanced flow requirements
+        if self.element.balanced:
+            if not isinstance(self.element.charging.size, InvestParameters) or not isinstance(
+                self.element.discharging.size, InvestParameters
+            ):
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.element.label_full} is only possible with Investments.'
+                )
+
+            if (self.element.charging.size.minimum_size > self.element.discharging.size.maximum_size).any() or (
+                self.element.charging.size.maximum_size < self.element.discharging.size.minimum_size
+            ).any():
+                raise PlausibilityError(
+                    f'Balancing charging and discharging Flows in {self.element.label_full} need compatible minimum and maximum sizes. '
+                    f'Got: {self.element.charging.size.minimum_size=}, {self.element.charging.size.maximum_size=} and '
+                    f'{self.element.discharging.size.minimum_size=}, {self.element.discharging.size.maximum_size=}.'
+                )
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
