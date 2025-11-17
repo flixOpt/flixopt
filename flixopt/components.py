@@ -408,7 +408,7 @@ class Storage(Component):
             prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
         )
-        if isinstance(initial_charge_state, str) and initial_charge_state == 'lastValusOfSim':
+        if isinstance(initial_charge_state, str) and initial_charge_state == 'lastValueOfSim':
             warnings.warn(
                 f'{initial_charge_state=} is deprecated. Use "equals_final" instead.',
                 DeprecationWarning,
