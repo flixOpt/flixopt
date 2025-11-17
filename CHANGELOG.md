@@ -77,8 +77,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
     - **Storage Parameters**:
         - `initial_charge_state="lastValueOfSim"` -> `initial_charge_state="equals_last"`
 
-
-
 ### 🗑️ Deprecated
 - **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
     - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`, `power_flow` (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
