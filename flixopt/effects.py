@@ -48,6 +48,10 @@ class Effect(Element):
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
+        weights: Optional custom weights for periods and scenarios (Numeric_PS).
+            If provided, overrides the FlowSystem's default period weights for this effect.
+            Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
+            If None, uses FlowSystem's default weights.
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect.
         share_from_periodic: Periodic cross-effect contributions.
@@ -166,6 +170,7 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
+        weights: Numeric_PS | None = None,
         share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
         share_from_periodic: Effect_PS | Numeric_PS | None = None,
         minimum_temporal: Numeric_PS | None = None,
@@ -183,6 +188,7 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
+        self.weights = weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
         # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
         # Default to {} when None (no shares defined).
@@ -394,6 +400,27 @@ class EffectModel(ElementModel):
 
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
+
+    @property
+    def weights(self) -> int | xr.DataArray:
+        """
+        Get weights for this effect.
+
+        Returns effect-specific weights if defined, otherwise falls back to FlowSystem weights.
+        This allows different effects to have different weighting schemes (e.g., discounting for costs,
+        equal weights for CO2 emissions).
+
+        Returns:
+            Weights for period and scenario dimensions
+        """
+        if self.element.weights is not None:
+            # Use effect-specific weights
+            return self._model.flow_system.fit_to_model_coords(
+                f'weights_{self.element.label}', self.element.weights, dims=['period', 'scenario']
+            )
+        else:
+            # Fall back to FlowSystem weights
+            return self._model.weights
 
     def _do_modeling(self):
         self.total: linopy.Variable | None = None
@@ -671,8 +698,12 @@ class EffectCollectionModel(Submodel):
 
         self._add_share_between_effects()
 
+        # Use effect-specific weights if defined, otherwise use FlowSystem weights
+        objective_weights = self.effects.objective_effect.submodel.weights
+        if self._model.normalize_weights:
+            objective_weights = objective_weights / objective_weights.sum()
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.weights).sum() + self.penalty.total.sum()
+            (self.effects.objective_effect.submodel.total * objective_weights).sum() + self.penalty.total.sum()
         )
 
     def _add_share_between_effects(self):

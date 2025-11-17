@@ -219,14 +219,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def weights(self) -> int | xr.DataArray:
         """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
         if self.flow_system.weights is not None:
-            weights = self.flow_system.weights
-        else:
-            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
+            return self.flow_system.weights
 
-        if not self.normalize_weights:
-            return weights
-
-        return weights / weights.sum()
+        return self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
 
     def __repr__(self) -> str:
         """
