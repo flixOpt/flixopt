@@ -6,6 +6,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 import flixopt as fx
+from tests.conftest import BoilerFactory, StorageFactory
 
 
 @pytest.fixture
@@ -41,6 +42,7 @@ def complex_fs():
     )
 
     # Storage
+    # Note: Uses custom bus names and labels, keeping manual for now
     fs.add_elements(
         fx.Storage(
             label='battery',
@@ -51,6 +53,7 @@ def complex_fs():
     )
 
     # Piecewise converter
+    # Note: Uses custom bus names and modifies size afterwards, keeping manual for now
     converter = fx.linear_converters.Boiler(
         'boiler', eta=0.9, Q_fu=fx.Flow('gas', bus='elec'), Q_th=fx.Flow('heat', bus='heat')
     )

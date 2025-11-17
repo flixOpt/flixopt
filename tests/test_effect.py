@@ -4,6 +4,7 @@ import xarray as xr
 import flixopt as fx
 
 from .conftest import (
+    BoilerFactory,
     assert_conequal,
     assert_sets_equal,
     assert_var_equal,
@@ -245,15 +246,8 @@ class TestEffectResults:
             effect1,
             effect2,
             effect3,
-            fx.linear_converters.Boiler(
-                'Boiler',
-                eta=0.5,
-                Q_th=fx.Flow(
-                    'Q_th',
-                    bus='Fernwärme',
-                    size=fx.InvestParameters(effects_of_investment_per_size=10, minimum_size=20, mandatory=True),
-                ),
-                Q_fu=fx.Flow('Q_fu', bus='Gas'),
+            BoilerFactory.with_investment(
+                invest_params={'effects_of_investment_per_size': 10, 'minimum_size': 20, 'mandatory': True}
             ),
         )
 

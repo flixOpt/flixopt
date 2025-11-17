@@ -5,6 +5,7 @@ import flixopt as fx
 import flixopt.elements
 
 from .conftest import (
+    BoilerFactory,
     assert_almost_equal_numeric,
     assert_conequal,
     assert_sets_equal,
@@ -415,6 +416,7 @@ class TestTransmissionModel:
         flow_system = basic_flow_system
         flow_system.add_elements(fx.Bus('Wärme lokal'))
 
+        # Note: Uses custom bus 'Wärme lokal', keeping manual creation
         boiler = fx.linear_converters.Boiler(
             'Boiler', eta=0.5, Q_th=fx.Flow('Q_th', bus='Wärme lokal'), Q_fu=fx.Flow('Q_fu', bus='Gas')
         )
