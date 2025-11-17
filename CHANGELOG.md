@@ -51,31 +51,44 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Improved parameter naming consistency and fixed weight normalization bug.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
-
-### 💥 Breaking Changes
-
 ### ♻️ Changed
+
+- **Parameter naming consistency**: Established consistent naming pattern for constraint parameters across `Effect`, `Flow`, and `OnOffParameters`:
+  - Per-period constraints now use no suffix (e.g., `minimum_total`, `flow_hours_max`, `on_hours_min`)
+  - Sum-over-all-periods constraints now use `_over_periods` suffix (e.g., `minimum_over_periods`, `flow_hours_max_over_periods`)
+
+- **Effect parameters**:
+  - Renamed `minimum_total_per_period` → `minimum_total` (per-period constraint)
+  - Renamed `maximum_total_per_period` → `maximum_total` (per-period constraint)
+  - Renamed `minimum` → `minimum_over_periods` (weighted sum across all periods)
+  - Renamed `maximum` → `maximum_over_periods` (weighted sum across all periods)
+
+- **Flow parameters**:
+  - Renamed `flow_hours_per_period_max` → `flow_hours_max` (per-period constraint)
+  - Renamed `flow_hours_per_period_min` → `flow_hours_min` (per-period constraint)
+  - Renamed `total_flow_hours_max` → `flow_hours_max_over_periods` (weighted sum across all periods)
+  - Renamed `total_flow_hours_min` → `flow_hours_min_over_periods` (weighted sum across all periods)
+
+- **OnOffParameters**:
+  - Renamed `on_hours_total_max` → `on_hours_max` (per-period constraint)
+  - Renamed `on_hours_total_min` → `on_hours_min` (per-period constraint)
+  - Renamed `switch_on_total_max` → `switch_on_max` (per-period constraint)
 
 ### 🗑️ Deprecated
 
-### 🔥 Removed
+- **Effect parameters**: `minimum_total_per_period`, `maximum_total_per_period`, `minimum`, `maximum` (use new names listed above)
+- **Flow parameters**: `flow_hours_per_period_max`, `flow_hours_per_period_min`, `total_flow_hours_max`, `total_flow_hours_min`, `flow_hours_total_max`, `flow_hours_total_min` (use new names listed above)
+- **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use new names listed above)
+
+All deprecated parameter names continue to work with deprecation warnings for backward compatibility.
 
 ### 🐛 Fixed
 
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
-
-### 👷 Development
-
-### 🚧 Known Issues
+- Fixed `FlowSystemModel.weights` property not normalizing scenario weights when `normalize_weights=True`. The property now correctly normalizes weights to sum to 1, fixing incorrect objective function calculations in multi-scenario optimizations.
 
 ---
 
