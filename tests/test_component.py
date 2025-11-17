@@ -82,7 +82,7 @@ class TestComponentModel:
             fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.3, relative_maximum=ub_out2, size=300),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -93,17 +93,17 @@ class TestComponentModel:
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent(Out1)|flow_rate',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|on',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours_total',
                 'TestComponent(Out2)|flow_rate',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|on',
-                'TestComponent(Out2)|on_hours_total',
+                'TestComponent(Out2)|active_hours_total',
                 'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect variables',
         )
@@ -114,18 +114,18 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|flow_rate|lb',
                 'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours_total',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|on_hours_total',
+                'TestComponent(Out2)|active_hours_total',
                 'TestComponent|on|lb',
                 'TestComponent|on|ub',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect constraints',
         )
@@ -180,7 +180,7 @@ class TestComponentModel:
         ]
         outputs = []
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -191,9 +191,9 @@ class TestComponentModel:
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect variables',
         )
@@ -204,9 +204,9 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect constraints',
         )
@@ -257,7 +257,7 @@ class TestComponentModel:
             ),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, active_inactive_parameters=fx.ActivityParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -268,17 +268,17 @@ class TestComponentModel:
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent(Out1)|flow_rate',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|on',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours_total',
                 'TestComponent(Out2)|flow_rate',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|on',
-                'TestComponent(Out2)|on_hours_total',
+                'TestComponent(Out2)|active_hours_total',
                 'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect variables',
         )
@@ -289,18 +289,18 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours_total',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|flow_rate|lb',
                 'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours_total',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|on_hours_total',
+                'TestComponent(Out2)|active_hours_total',
                 'TestComponent|on|lb',
                 'TestComponent|on|ub',
-                'TestComponent|on_hours_total',
+                'TestComponent|active_hours_total',
             },
             msg='Incorrect constraints',
         )
@@ -377,7 +377,7 @@ class TestComponentModel:
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
                 previous_flow_rate=in1_previous_flow_rate,
-                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+                active_inactive_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
             ),
         ]
         outputs = [
@@ -397,14 +397,14 @@ class TestComponentModel:
             'TestComponent',
             inputs=inputs,
             outputs=outputs,
-            on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+            active_inactive_parameters=fx.ActivityParameters(consecutive_active_hours_min=3),
         )
         flow_system.add_elements(comp)
         create_linopy_model(flow_system)
 
         assert_conequal(
-            comp.submodel.constraints['TestComponent|consecutive_on_hours|initial'],
-            comp.submodel.variables['TestComponent|consecutive_on_hours'].isel(time=0)
+            comp.submodel.constraints['TestComponent|consecutive_active_hours|initial'],
+            comp.submodel.variables['TestComponent|consecutive_active_hours'].isel(time=0)
             == comp.submodel.variables['TestComponent|on'].isel(time=0) * (previous_on_hours + 1),
         )
 
@@ -435,7 +435,7 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.active_inactive.active.solution.values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
             'On does not work properly',
         )
@@ -496,7 +496,7 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.active_inactive.active.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'On does not work properly',
         )
@@ -574,7 +574,7 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.active_inactive.active.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'On does not work properly',
         )

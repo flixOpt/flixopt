@@ -136,7 +136,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Enhanced documentation in `flixopt/types.py` with comprehensive examples and dimension explanation table
 - Clarified Effect type docstrings - Effect types are dicts, but single numeric values work through union types
 - Added clarifying comments in `effects.py` explaining parameter handling and transformation
-- Improved OnOffParameters attribute documentation
+- Improved ActivityParameters attribute documentation
 - Updated getting-started guide with loguru examples
 - Updated `config.py` docstrings for loguru integration
 
@@ -215,7 +215,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Improved `summary.yaml` to use a compacted list representation for periods and scenarios
 
 ### 🐛 Fixed
-- Using `switch_on_total_max` with periods or scenarios failed
+- Using `startup_total_max` with periods or scenarios failed
 
 ### 📝 Docs
 - Add more comprehensive `CONTRIBUTE.md`
@@ -467,7 +467,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 **Variable Renaming in Results:**
 
 - Investment binary variable: `is_invested` → `invested` in `InvestmentModel`
-- Switch tracking variables in `OnOffModel`:
+- Switch tracking variables in `ActivityModel`:
     - `switch_on` → `switch|on`
     - `switch_off` → `switch|off`
     - `switch_on_nr` → `switch|count`
@@ -759,18 +759,18 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - Python 3.13 support added
-- Logger warning if relative_minimum is used without on_off_parameters in Flow
+- Logger warning if relative_minimum is used without active_inactive_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
 ### 💥 Breaking Changes
 - Restructured the modeling of the On/Off state of Flows or Components
-    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Variable renaming: `...|consecutive_active_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_inactive_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_active_hours_con1` → `...|ConsecutiveOn|con1`
     - Similar pattern for all consecutive on/off constraints
 
 ### 🐛 Fixed
-- Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
+- Fixed the lower bound of `flow_rate` when using optional investments without ActivityParameters
 - Fixed bug that prevented divest effects from working
 - Added lower bounds of 0 to two unbounded vars (numerical improvement)
 
@@ -779,7 +779,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.0.1] - 2025-04-10
 
 ### ✨ Added
-- Logger warning if relative_minimum is used without on_off_parameters in Flow
+- Logger warning if relative_minimum is used without active_inactive_parameters in Flow
 
 ### 🐛 Fixed
 - Replace "|" with "__" in filenames when saving figures (Windows compatibility)
@@ -813,9 +813,9 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Variable Structure:**
 - Restructured the modeling of the On/Off state of Flows or Components
-    - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
-    - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
-    - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
+    - Variable renaming: `...|consecutive_active_hours` → `...|ConsecutiveOn|hours`
+    - Variable renaming: `...|consecutive_inactive_hours` → `...|ConsecutiveOff|hours`
+    - Constraint renaming: `...|consecutive_active_hours_con1` → `...|ConsecutiveOn|con1`
     - Similar pattern for all consecutive on/off constraints
 
 ### 🔥 Removed

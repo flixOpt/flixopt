@@ -43,7 +43,7 @@ These patterns are used throughout FlixOpt components:
 
 - [`Flow`][flixopt.elements.Flow] uses **scaled bounds with state** for flow rate constraints
 - [`Storage`][flixopt.components.Storage] uses **basic bounds** for charge state
-- [`OnOffParameters`](../features/OnOffParameters.md) uses **state transitions** for startup/shutdown
+- [`ActivityParameters`](../features/ActivityParameters.md) uses **state transitions** for startup/shutdown
 - [`InvestParameters`](../features/InvestParameters.md) uses **bounds with state** for investment decisions
 
 ## Implementation

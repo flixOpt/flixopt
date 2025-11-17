@@ -51,7 +51,7 @@ if __name__ == '__main__':
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         eta=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(
+        active_inactive_parameters=fx.ActivityParameters(
             effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
         ),  # CO2 emissions per hour
         Q_th=fx.Flow(
@@ -69,14 +69,14 @@ if __name__ == '__main__':
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
             flow_hours_total_max=1e6,  # Total energy flow limit
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_total_min=0,  # Minimum operating hours
-                on_hours_total_max=1000,  # Maximum operating hours
-                consecutive_on_hours_max=10,  # Max consecutive operating hours
-                consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
-                consecutive_off_hours_max=10,  # Max consecutive off hours
-                effects_per_switch_on=0.01,  # Cost per switch-on
-                switch_on_total_max=1000,  # Max number of starts
+            active_inactive_parameters=fx.ActivityParameters(
+                active_hours_total_min=0,  # Minimum operating hours
+                active_hours_total_max=1000,  # Maximum operating hours
+                consecutive_active_hours_max=10,  # Max consecutive operating hours
+                consecutive_active_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
+                consecutive_inactive_hours_max=10,  # Max consecutive off hours
+                effects_per_startup=0.01,  # Cost per switch-on
+                startup_total_max=1000,  # Max number of starts
             ),
         ),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas', size=200),
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         'BHKW2',
         eta_th=0.5,
         eta_el=0.4,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        active_inactive_parameters=fx.ActivityParameters(effects_per_startup=0.01),
         P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
         Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
         Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
         piecewise_conversion=piecewise_conversion,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        active_inactive_parameters=fx.ActivityParameters(effects_per_startup=0.01),
     )
 
     # 4. Define Storage Component

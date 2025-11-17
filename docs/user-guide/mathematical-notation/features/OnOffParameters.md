@@ -1,6 +1,6 @@
-# OnOffParameters
+# ActivityParameters
 
-[`OnOffParameters`][flixopt.interface.OnOffParameters] model equipment that operates in discrete on/off states rather than continuous operation. This captures realistic operational constraints including startup costs, minimum run times, cycling limitations, and maintenance scheduling.
+[`ActivityParameters`][flixopt.interface.ActivityParameters] model equipment that operates in discrete on/off states rather than continuous operation. This captures realistic operational constraints including startup costs, minimum run times, cycling limitations, and maintenance scheduling.
 
 ## Binary State Variable
 
@@ -190,14 +190,14 @@ With:
 
 ## Integration with Flow Bounds
 
-OnOffParameters modify flow rate bounds by coupling them to the on/off state.
+ActivityParameters modify flow rate bounds by coupling them to the on/off state.
 
-**Without OnOffParameters** (continuous operation):
+**Without ActivityParameters** (continuous operation):
 $$
 P \cdot \text{rel}_\text{lower} \leq p(t) \leq P \cdot \text{rel}_\text{upper}
 $$
 
-**With OnOffParameters** (binary operation):
+**With ActivityParameters** (binary operation):
 $$
 s(t) \cdot P \cdot \max(\varepsilon, \text{rel}_\text{lower}) \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}
 $$
@@ -212,7 +212,7 @@ Using the **bounds with state** pattern from [Bounds and States](../modeling-pat
 
 ## Complete Formulation Summary
 
-For equipment with OnOffParameters, the complete constraint system includes:
+For equipment with ActivityParameters, the complete constraint system includes:
 
 1. **State variable:** $s(t) \in \{0, 1\}$
 2. **Switch tracking:** $s^\text{on}(t) - s^\text{off}(t) = s(t) - s(t-1)$
@@ -232,18 +232,18 @@ For equipment with OnOffParameters, the complete constraint system includes:
 
 ## Implementation
 
-**Python Class:** [`OnOffParameters`][flixopt.interface.OnOffParameters]
+**Python Class:** [`ActivityParameters`][flixopt.interface.ActivityParameters]
 
 **Key Parameters:**
-- `effects_per_switch_on`: Costs per startup event
+- `effects_per_startup`: Costs per startup event
 - `effects_per_running_hour`: Costs per hour of operation
-- `on_hours_total_min`, `on_hours_total_max`: Total runtime bounds
-- `consecutive_on_hours_min`, `consecutive_on_hours_max`: Consecutive runtime bounds
-- `consecutive_off_hours_min`, `consecutive_off_hours_max`: Consecutive shutdown bounds
-- `switch_on_total_max`: Maximum number of startups
+- `active_hours_total_min`, `active_hours_total_max`: Total runtime bounds
+- `consecutive_active_hours_min`, `consecutive_active_hours_max`: Consecutive runtime bounds
+- `consecutive_inactive_hours_min`, `consecutive_inactive_hours_max`: Consecutive shutdown bounds
+- `startup_total_max`: Maximum number of startups
 - `force_switch_on`: Create switch variables even without limits (for tracking)
 
-See the [`OnOffParameters`][flixopt.interface.OnOffParameters] API documentation for complete parameter list and usage examples.
+See the [`ActivityParameters`][flixopt.interface.ActivityParameters] API documentation for complete parameter list and usage examples.
 
 **Mathematical Patterns Used:**
 - [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions) - Switch tracking
@@ -260,43 +260,43 @@ See the [`OnOffParameters`][flixopt.interface.OnOffParameters] API documentation
 
 ### Power Plant with Startup Costs
 ```python
-power_plant = OnOffParameters(
-    effects_per_switch_on={'startup_cost': 25000},  # €25k per startup
+power_plant = ActivityParameters(
+    effects_per_startup={'startup_cost': 25000},  # €25k per startup
     effects_per_running_hour={'fixed_om': 125},  # €125/hour while running
-    consecutive_on_hours_min=8,  # Minimum 8-hour run
-    consecutive_off_hours_min=4,  # 4-hour cooling period
-    on_hours_total_max=6000,  # Annual limit
+    consecutive_active_hours_min=8,  # Minimum 8-hour run
+    consecutive_inactive_hours_min=4,  # 4-hour cooling period
+    active_hours_total_max=6000,  # Annual limit
 )
 ```
 
 ### Batch Process with Cycling Limits
 ```python
-batch_reactor = OnOffParameters(
-    effects_per_switch_on={'setup_cost': 1500},
-    consecutive_on_hours_min=12,  # 12-hour minimum batch
-    consecutive_on_hours_max=24,  # 24-hour maximum batch
-    consecutive_off_hours_min=6,  # Cleaning time
-    switch_on_total_max=200,  # Max 200 batches
+batch_reactor = ActivityParameters(
+    effects_per_startup={'setup_cost': 1500},
+    consecutive_active_hours_min=12,  # 12-hour minimum batch
+    consecutive_active_hours_max=24,  # 24-hour maximum batch
+    consecutive_inactive_hours_min=6,  # Cleaning time
+    startup_total_max=200,  # Max 200 batches
 )
 ```
 
 ### HVAC with Cycle Prevention
 ```python
-hvac = OnOffParameters(
-    effects_per_switch_on={'compressor_wear': 0.5},
-    consecutive_on_hours_min=1,  # Prevent short cycling
-    consecutive_off_hours_min=0.5,  # 30-min minimum off
-    switch_on_total_max=2000,  # Limit compressor starts
+hvac = ActivityParameters(
+    effects_per_startup={'compressor_wear': 0.5},
+    consecutive_active_hours_min=1,  # Prevent short cycling
+    consecutive_inactive_hours_min=0.5,  # 30-min minimum off
+    startup_total_max=2000,  # Limit compressor starts
 )
 ```
 
 ### Backup Generator with Testing Requirements
 ```python
-backup_gen = OnOffParameters(
-    effects_per_switch_on={'fuel_priming': 50},  # L diesel
-    consecutive_on_hours_min=0.5,  # 30-min test duration
-    consecutive_off_hours_max=720,  # Test every 30 days
-    on_hours_total_min=26,  # Weekly testing requirement
+backup_gen = ActivityParameters(
+    effects_per_startup={'fuel_priming': 50},  # L diesel
+    consecutive_active_hours_min=0.5,  # 30-min test duration
+    consecutive_inactive_hours_max=720,  # Test every 30 days
+    active_hours_total_min=26,  # Weekly testing requirement
 )
 ```
 
@@ -304,4 +304,4 @@ backup_gen = OnOffParameters(
 
 ## Notes
 
-**Time Series Boundary:** The final time period constraints for consecutive_on_hours_min/max and consecutive_off_hours_min/max are not enforced at the end of the planning horizon. This allows optimization to end with ongoing campaigns that may be shorter/longer than specified, as they extend beyond the modeled period.
+**Time Series Boundary:** The final time period constraints for consecutive_active_hours_min/max and consecutive_inactive_hours_min/max are not enforced at the end of the planning horizon. This allows optimization to end with ongoing campaigns that may be shorter/longer than specified, as they extend beyond the modeled period.

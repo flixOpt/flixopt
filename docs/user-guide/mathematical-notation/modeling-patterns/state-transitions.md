@@ -221,7 +221,7 @@ model.add_constraint(increase.sum() <= max_total_expansion)
 ## Used In
 
 These patterns are used in:
-- [`OnOffParameters`](../features/OnOffParameters.md) - Startup/shutdown tracking and costs
+- [`ActivityParameters`](../features/ActivityParameters.md) - Startup/shutdown tracking and costs
 - Operating mode switching with transition costs
 - Investment planning with staged capacity additions
 - Inventory management with controlled stock changes

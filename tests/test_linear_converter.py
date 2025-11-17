@@ -135,25 +135,25 @@ class TestLinearConverterModel:
         )
 
     def test_linear_converter_with_on_off(self, basic_flow_system_linopy_coords, coords_config):
-        """Test a LinearConverter with OnOffParameters."""
+        """Test a LinearConverter with ActivityParameters."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
         output_flow = fx.Flow('output', bus='output_bus', size=100)
 
-        # Create OnOffParameters
-        on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
+        # Create ActivityParameters
+        on_off_params = fx.ActivityParameters(
+            active_hours_total_min=10, active_hours_total_max=40, effects_per_running_hour={'costs': 5}
         )
 
-        # Create a linear converter with OnOffParameters
+        # Create a linear converter with ActivityParameters
         converter = fx.LinearConverter(
             label='Converter',
             inputs=[input_flow],
             outputs=[output_flow],
             conversion_factors=[{input_flow.label: 0.8, output_flow.label: 1.0}],
-            on_off_parameters=on_off_params,
+            active_inactive_parameters=on_off_params,
         )
 
         # Add to flow system
@@ -168,12 +168,12 @@ class TestLinearConverterModel:
 
         # Verify OnOff variables and constraints
         assert 'Converter|on' in model.variables
-        assert 'Converter|on_hours_total' in model.variables
+        assert 'Converter|active_hours_total' in model.variables
 
-        # Check on_hours_total constraint
+        # Check active_hours_total constraint
         assert_conequal(
-            model.constraints['Converter|on_hours_total'],
-            model.variables['Converter|on_hours_total']
+            model.constraints['Converter|active_hours_total'],
+            model.variables['Converter|active_hours_total']
             == (model.variables['Converter|on'] * model.hours_per_step).sum('time'),
         )
 
@@ -378,7 +378,7 @@ class TestLinearConverterModel:
         )
 
     def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy_coords, coords_config):
-        """Test a LinearConverter with PiecewiseConversion and OnOffParameters."""
+        """Test a LinearConverter with PiecewiseConversion and ActivityParameters."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
@@ -395,9 +395,9 @@ class TestLinearConverterModel:
             {input_flow.label: fx.Piecewise(input_pieces), output_flow.label: fx.Piecewise(output_pieces)}
         )
 
-        # Create OnOffParameters
-        on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
+        # Create ActivityParameters
+        on_off_params = fx.ActivityParameters(
+            active_hours_total_min=10, active_hours_total_max=40, effects_per_running_hour={'costs': 5}
         )
 
         # Create a linear converter with piecewise conversion and on/off parameters
@@ -406,7 +406,7 @@ class TestLinearConverterModel:
             inputs=[input_flow],
             outputs=[output_flow],
             piecewise_conversion=piecewise_conversion,
-            on_off_parameters=on_off_params,
+            active_inactive_parameters=on_off_params,
         )
 
         # Add to flow system
@@ -429,7 +429,7 @@ class TestLinearConverterModel:
         assert len(piecewise_model.pieces) == 2
 
         # Verify that the on variable was used as the zero_point for the piecewise model
-        # When using OnOffParameters, the zero_point should be the on variable
+        # When using ActivityParameters, the zero_point should be the on variable
         assert 'Converter|on' in model.variables
         assert piecewise_model.zero_point is not None  # Should be a variable
 
@@ -481,10 +481,10 @@ class TestLinearConverterModel:
         )
 
         # Also check that the OnOff model is working correctly
-        assert 'Converter|on_hours_total' in model.constraints
+        assert 'Converter|active_hours_total' in model.constraints
         assert_conequal(
-            model.constraints['Converter|on_hours_total'],
-            model['Converter|on_hours_total'] == (model['Converter|on'] * model.hours_per_step).sum('time'),
+            model.constraints['Converter|active_hours_total'],
+            model['Converter|active_hours_total'] == (model['Converter|on'] * model.hours_per_step).sum('time'),
         )
 
         # Verify that the costs effect is applied

@@ -121,7 +121,7 @@ if __name__ == '__main__':
             size=50,
             relative_minimum=0.1,
             relative_maximum=1,
-            on_off_parameters=fx.OnOffParameters(),
+            active_inactive_parameters=fx.ActivityParameters(),
         ),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
     )
@@ -132,7 +132,9 @@ if __name__ == '__main__':
         label='CHP',
         eta_th=0.48,  # Realistic thermal efficiency (48%)
         eta_el=0.40,  # Realistic electrical efficiency (40%)
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
+        P_el=fx.Flow(
+            'P_el', bus='Strom', size=60, relative_minimum=5 / 60, active_inactive_parameters=fx.ActivityParameters()
+        ),
         Q_th=fx.Flow('Q_th', bus='Fernwärme'),
         Q_fu=fx.Flow('Q_fu', bus='Gas'),
     )

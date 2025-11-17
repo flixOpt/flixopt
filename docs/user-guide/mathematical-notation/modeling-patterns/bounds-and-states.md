@@ -45,7 +45,7 @@ With:
 **Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]
 
 **Used in:**
-- Flow rates with on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
+- Flow rates with on/off operation (see [ActivityParameters](../features/ActivityParameters.md))
 - Investment size decisions (see [InvestParameters](../features/InvestParameters.md))
 
 ---
@@ -108,7 +108,7 @@ Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum 
 
 **Used in:**
 - Flow rates with on/off operation and investment sizing
-- Components combining [OnOffParameters](../features/OnOffParameters.md) and [InvestParameters](../features/InvestParameters.md)
+- Components combining [ActivityParameters](../features/ActivityParameters.md) and [InvestParameters](../features/InvestParameters.md)
 
 ---
 

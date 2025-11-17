@@ -338,7 +338,7 @@ def test_on(solver_fixture, time_steps_fixture):
             'Boiler',
             0.5,
             Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, on_off_parameters=fx.OnOffParameters()),
+            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, active_inactive_parameters=fx.ActivityParameters()),
         )
     )
 
@@ -354,7 +354,7 @@ def test_on(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
@@ -381,7 +381,7 @@ def test_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_off_hours_max=100),
+                active_inactive_parameters=fx.ActivityParameters(consecutive_inactive_hours_max=100),
             ),
         )
     )
@@ -398,15 +398,15 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.off.solution.values,
-        1 - boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.inactive.solution.values,
+        1 - boiler.Q_th.submodel.active_inactive.active.solution.values,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__off" does not have the right value',
@@ -432,7 +432,7 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(force_switch_on=True),
+                active_inactive_parameters=fx.ActivityParameters(force_switch_on=True),
             ),
         )
     )
@@ -449,21 +449,21 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.switch_on.solution.values,
+        boiler.Q_th.submodel.active_inactive.startup.solution.values,
         [0, 1, 0, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.switch_off.solution.values,
+        boiler.Q_th.submodel.active_inactive.shutdown.solution.values,
         [0, 0, 0, 1, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -490,7 +490,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=1),
+                active_inactive_parameters=fx.ActivityParameters(active_hours_total_max=1),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -513,7 +513,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -540,7 +540,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=2),
+                active_inactive_parameters=fx.ActivityParameters(active_hours_total_max=2),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -551,7 +551,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_min=3),
+                active_inactive_parameters=fx.ActivityParameters(active_hours_total_min=3),
             ),
         ),
     )
@@ -572,7 +572,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [0, 0, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
@@ -587,7 +587,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        sum(boiler_backup.Q_th.submodel.on_off.on.solution.values),
+        sum(boiler_backup.Q_th.submodel.active_inactive.active.solution.values),
         3,
         rtol=1e-5,
         atol=1e-10,
@@ -614,7 +614,9 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_max=2, consecutive_on_hours_min=2),
+                active_inactive_parameters=fx.ActivityParameters(
+                    consecutive_active_hours_max=2, consecutive_active_hours_min=2
+                ),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -640,7 +642,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.Q_th.submodel.active_inactive.active.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
@@ -682,7 +684,9 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
                 bus='Fernwärme',
                 size=100,
                 previous_flow_rate=np.array([20]),  # Otherwise its Off before the start
-                on_off_parameters=fx.OnOffParameters(consecutive_off_hours_max=2, consecutive_off_hours_min=2),
+                active_inactive_parameters=fx.ActivityParameters(
+                    consecutive_inactive_hours_max=2, consecutive_inactive_hours_min=2
+                ),
             ),
         ),
     )
@@ -703,14 +707,14 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_backup.Q_th.submodel.on_off.on.solution.values,
+        boiler_backup.Q_th.submodel.active_inactive.active.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.submodel.on_off.off.solution.values,
+        boiler_backup.Q_th.submodel.active_inactive.inactive.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,

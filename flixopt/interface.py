@@ -1100,7 +1100,7 @@ class ActivityParameters(Interface):
 
     Mathematical Formulation:
         See the complete mathematical model in the documentation:
-        [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
+        [ActivityParameters](../user-guide/mathematical-notation/features/ActivityParameters.md)
 
     Args:
         effects_per_startup: Costs or impacts incurred for each transition from

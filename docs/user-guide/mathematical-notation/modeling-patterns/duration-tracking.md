@@ -154,6 +154,6 @@ maintenance_duration = modeling.consecutive_duration_tracking(
 ## Used In
 
 This pattern is used in:
-- [`OnOffParameters`](../features/OnOffParameters.md) - Minimum on/off times
+- [`ActivityParameters`](../features/ActivityParameters.md) - Minimum on/off times
 - Operating mode constraints with minimum durations
 - Startup/shutdown sequence modeling

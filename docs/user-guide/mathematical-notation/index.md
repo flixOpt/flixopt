@@ -56,10 +56,10 @@ Mathematical formulations for core FlixOpt elements (corresponding to [`flixopt.
 Mathematical formulations for optional features (corresponding to parameters in FlixOpt classes):
 
 - [InvestParameters](features/InvestParameters.md) - Investment decision modeling
-- [OnOffParameters](features/OnOffParameters.md) - Binary on/off operation
+- [ActivityParameters](features/ActivityParameters.md) - Binary on/off operation
 - [Piecewise](features/Piecewise.md) - Piecewise linear approximations
 
-**User API:** When you pass `invest_parameters` or `on_off_parameters` to a `Flow` or component, these formulations are applied.
+**User API:** When you pass `invest_parameters` or `active_inactive_parameters` to a `Flow` or component, these formulations are applied.
 
 ### System-Level
 - [Effects, Penalty & Objective](effects-penalty-objective.md) - Cost allocation and objective function
@@ -97,7 +97,7 @@ Mathematical formulations for optional features (corresponding to parameters in 
 | Concept | Documentation | Python Class |
 |---------|---------------|--------------|
 | **Binary investment** | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
-| **On/off operation** | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
+| **On/off operation** | [ActivityParameters](features/ActivityParameters.md) | [`ActivityParameters`][flixopt.interface.ActivityParameters] |
 | **Piecewise segments** | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
 
 ### Modeling Patterns Cross-Reference
@@ -119,5 +119,5 @@ Mathematical formulations for optional features (corresponding to parameters in 
 | `Storage` | [Storage](elements/Storage.md) | [`Storage`][flixopt.components.Storage] |
 | `LinearConverter` | [LinearConverter](elements/LinearConverter.md) | [`LinearConverter`][flixopt.components.LinearConverter] |
 | `InvestParameters` | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
-| `OnOffParameters` | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
+| `ActivityParameters` | [ActivityParameters](features/ActivityParameters.md) | [`ActivityParameters`][flixopt.interface.ActivityParameters] |
 | `Piecewise` | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
