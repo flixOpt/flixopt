@@ -81,6 +81,22 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [3.6.1] - 2025-11-17
+
+**Summary**: Documentation improvements and dependency updates.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 📦 Dependencies
+- Updated `astral-sh/uv` to v0.9.8
+- Updated `mkdocs-git-revision-date-localized-plugin` to v1.5.0
+
+### 📝 Docs
+- Improved type specifications in `flixopt/types.py` for better documentation generation
+- Fixed minor mkdocs warnings in `flixopt/io.py` and `mkdocs.yml`
+
+---
+
 ## [3.6.0] - 2025-11-15
 
 **Summary**: Type system overhaul and migration to loguru for logging. If you are heavily using our logs, this might be breaking!
