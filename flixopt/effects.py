@@ -491,7 +491,7 @@ class EffectModel(ElementModel):
             return self.element.weights
         elif default_weights is not None:  # Fall back to FlowSystem weights
             return default_weights
-        return xr.DataArray(1)
+        return self.element._fit_coords(name='weights', data=1, dims=['period', 'scenario'])
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
