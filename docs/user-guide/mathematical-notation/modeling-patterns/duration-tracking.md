@@ -116,7 +116,7 @@ Ensuring equipment runs for a minimum duration once started:
 # State: 1 when running, 0 when off
 # Require at least 2 hours of operation
 duration = modeling.consecutive_duration_tracking(
-    state_variable=on_state,
+    state=on_state,
     duration_per_step=time_step_hours,
     minimum_duration=2.0
 )
@@ -129,7 +129,7 @@ Tracking time since startup for gradual ramp-up constraints:
 ```python
 # Track startup duration
 startup_duration = modeling.consecutive_duration_tracking(
-    state_variable=on_state,
+    state=on_state,
     duration_per_step=time_step_hours
 )
 # Constrain output based on startup duration
@@ -143,7 +143,7 @@ Tracking time in a state before allowing transitions:
 ```python
 # Track maintenance duration
 maintenance_duration = modeling.consecutive_duration_tracking(
-    state_variable=maintenance_state,
+    state=maintenance_state,
     duration_per_step=time_step_hours,
     minimum_duration=scheduled_maintenance_hours
 )
