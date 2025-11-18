@@ -443,49 +443,46 @@ class Effect(Element):
         )
         self.maximum_over_periods = value
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.minimum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.maximum_per_hour = self._fit_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
-        self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
-
-        self.share_from_temporal = flow_system.fit_effects_to_model_coords(
-            label_prefix=None,
+        self.share_from_temporal = self._fit_effect_coords(
+            prefix=None,
             effect_values=self.share_from_temporal,
-            label_suffix=f'(temporal)->{prefix}(temporal)',
+            suffix=f'(temporal)->{prefix}(temporal)',
             dims=['time', 'period', 'scenario'],
         )
-        self.share_from_periodic = flow_system.fit_effects_to_model_coords(
-            label_prefix=None,
+        self.share_from_periodic = self._fit_effect_coords(
+            prefix=None,
             effect_values=self.share_from_periodic,
-            label_suffix=f'(periodic)->{prefix}(periodic)',
+            suffix=f'(periodic)->{prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
-        self.minimum_temporal = flow_system.fit_to_model_coords(
+        self.minimum_temporal = self._fit_coords(
             f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
-        self.maximum_temporal = flow_system.fit_to_model_coords(
+        self.maximum_temporal = self._fit_coords(
             f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
-        self.minimum_periodic = flow_system.fit_to_model_coords(
+        self.minimum_periodic = self._fit_coords(
             f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
-        self.maximum_periodic = flow_system.fit_to_model_coords(
+        self.maximum_periodic = self._fit_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_total',
-            self.minimum_total,
-            dims=['period', 'scenario'],
+        self.minimum_total = self._fit_coords(
+            f'{prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
         )
-        self.maximum_total = flow_system.fit_to_model_coords(
+        self.maximum_total = self._fit_coords(
             f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
-        self.minimum_over_periods = flow_system.fit_to_model_coords(
+        self.minimum_over_periods = self._fit_coords(
             f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
         )
-        self.maximum_over_periods = flow_system.fit_to_model_coords(
+        self.maximum_over_periods = self._fit_coords(
             f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
 
@@ -527,6 +524,9 @@ class EffectModel(ElementModel):
             return self._model.weights
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
+
         self.total: linopy.Variable | None = None
         self.periodic: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
@@ -807,14 +807,20 @@ class EffectCollectionModel(Submodel):
         self.penalty.add_share(name, expression, dims=())
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create EffectModel for each effect
         for effect in self.effects.values():
             effect.create_model(self._model)
+
+        # Create penalty allocation model
         self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
 
+        # Add cross-effect shares
         self._add_share_between_effects()
 
         # Use effect-specific weights if defined, otherwise use FlowSystem weights

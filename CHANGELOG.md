@@ -51,12 +51,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Improved parameter naming consistency and fixed weight normalization bug.
+**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emmit warnings) & new bounds for weighted sums over all periods for effects and flow hours.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-
 - **New constraint parameters for sum across all periods**:
   - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
   - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
@@ -74,7 +73,33 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   effect = fx.Effect('costs', maximum_over_periods=1000)  # 0.5×costs₂₀₂₀ + 0.3×costs₂₀₃₀ + 0.2×costs₂₀₄₀ ≤ 1000
   ```
 
+- **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
+
 ### ♻️ Changed
+- **Refactored FlowSystem-Element coupling**:
+    - Introduced `_set_flow_system()` method in Interface base class to propagate FlowSystem reference to nested Interface objects
+    - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
+    - Elements can now access FlowSystem via `self.flow_system` property instead of passing it through every method call
+- **Simplified transform_data() signature**: Removed `flow_system` parameter from `transform_data()` methods - FlowSystem reference is now accessed via `self.flow_system` property
+- **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
+- **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
+- **Better logging**: Centralized element registration logging to show element type and full label
+- **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
+    - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
+        - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
+        - `Power2Heat`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPump`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CoolingTower`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
+    - **Efficiency parameters** (abbreviated → descriptive names):
+        - `Boiler`: `eta` → `thermal_efficiency`
+        - `Power2Heat`: `eta` → `thermal_efficiency`
+        - `CHP`: `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`
+        - `HetaPump`: `COP` → `cop`
+        - `HetaPumpWithSource`: `COP` → `cop`
+    - **Storage Parameters**:
+        - `Storage`: `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_last"`
 
 - **Parameter naming consistency**: Established consistent naming pattern for constraint parameters across `Effect`, `Flow`, and `OnOffParameters`:
   - Per-period constraints use no suffix or clarified names (e.g., `minimum_total`, `flow_hours_max`, `on_hours_min`)
@@ -90,6 +115,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - Renamed `switch_on_total_max` → `switch_on_max` (per-period constraint)
 
 ### 🗑️ Deprecated
+- **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
+    - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
+    - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
+    - **COP parameter**: `COP` (use lowercase `cop` instead)
+    - **Storage Parameter**: `Storage`: `initial_charge_state="lastValueOfSim"` (use `initial_charge_state="equals_last"`)
+
 
 - **Flow parameters**: `flow_hours_total_max`, `flow_hours_total_min` (use `flow_hours_max`, `flow_hours_min`)
 - **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use `on_hours_max`, `on_hours_min`, `switch_on_max`)
@@ -101,9 +132,20 @@ All deprecated parameter names continue to work with deprecation warnings for ba
 - `on_hours_total_min` → `on_hours_min`
 - `switch_on_total_max` → `switch_on_max`
 
-### 🐛 Fixed
 
-- Fixed `FlowSystemModel.weights` property not normalizing scenario weights when `normalize_weights=True`. The property now correctly normalizes weights to sum to 1, fixing incorrect objective function calculations in multi-scenario optimizations.
+### 🐛 Fixed
+- Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
+- Fixed `check_bounds` function in `linear_converters.py` to normalize array inputs before comparisons, ensuring correct boundary checks with DataFrames, Series, and other array-like types
+
+### 👷 Development
+- **Eliminated circular dependencies**: Implemented two-phase modeling pattern within `_do_modeling()` where nested submodels are created first (creating their variables), then constraints are created that can safely reference those submodel variables
+- Added comprehensive docstrings to `_do_modeling()` methods explaining the pattern: "Create variables, constraints, and nested submodels"
+- Added missing type hints throughout the codebase
+- Improved code organization by making FlowSystem reference propagation explicit and traceable
+- **System validation**: Added `_validate_system_integrity()` to validate cross-element references (e.g., Flow.bus) immediately after transformation, providing clearer error messages
+- **Element registration validation**: Added checks to prevent elements from being assigned to multiple FlowSystems simultaneously
+- **Helper methods in Interface base class**: Added `_fit_coords()` and `_fit_effect_coords()` convenience wrappers for cleaner data transformation code
+- **FlowSystem property in Interface**: Added `flow_system` property to access the linked FlowSystem with clear error messages if not yet linked
 
 ---
 
