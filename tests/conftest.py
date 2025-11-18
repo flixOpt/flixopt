@@ -138,7 +138,7 @@ class Converters:
                     size=50,
                     relative_minimum=5 / 50,
                     relative_maximum=1,
-                    on_off_parameters=fx.OnOffParameters(),
+                    status_parameters=fx.StatusParameters(),
                 ),
                 Q_fu=fx.Flow('Q_fu', bus='Gas'),
             )
@@ -149,7 +149,7 @@ class Converters:
             return fx.linear_converters.Boiler(
                 'Kessel',
                 eta=0.5,
-                on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
+                status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
                 Q_th=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
@@ -164,14 +164,14 @@ class Converters:
                         mandatory=True,
                         effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
-                    on_off_parameters=fx.OnOffParameters(
-                        on_hours_total_min=0,
-                        on_hours_total_max=1000,
-                        consecutive_on_hours_max=10,
-                        consecutive_on_hours_min=1,
-                        consecutive_off_hours_max=10,
-                        effects_per_switch_on=0.01,
-                        switch_on_total_max=1000,
+                    status_parameters=fx.StatusParameters(
+                        active_hours_min=0,
+                        active_hours_max=1000,
+                        max_uptime=10,
+                        min_uptime=1,
+                        max_downtime=10,
+                        effects_per_startup=0.01,
+                        startup_limit=1000,
                     ),
                     flow_hours_total_max=1e6,
                 ),
@@ -187,7 +187,7 @@ class Converters:
                 eta_th=0.5,
                 eta_el=0.4,
                 P_el=fx.Flow(
-                    'P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()
+                    'P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
                 ),
                 Q_th=fx.Flow('Q_th', bus='Fernwärme'),
                 Q_fu=fx.Flow('Q_fu', bus='Gas'),
@@ -200,7 +200,7 @@ class Converters:
                 'KWK',
                 eta_th=0.5,
                 eta_el=0.4,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
                 P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
                 Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
                 Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3),
@@ -224,7 +224,7 @@ class Converters:
                         'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                     }
                 ),
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
             )
 
         @staticmethod
@@ -249,7 +249,7 @@ class Converters:
                         'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                     }
                 ),
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
             )
 
 
@@ -604,14 +604,14 @@ def flow_system_long():
                 size=95,
                 relative_minimum=12 / 95,
                 previous_flow_rate=0,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=1000),
+                status_parameters=fx.StatusParameters(effects_per_startup=1000),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
             eta_th=0.58,
             eta_el=0.22,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=24000),
+            status_parameters=fx.StatusParameters(effects_per_startup=24000),
             P_el=fx.Flow('P_el', bus='Strom'),
             Q_th=fx.Flow('Q_th', bus='Fernwärme'),
             Q_fu=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288),

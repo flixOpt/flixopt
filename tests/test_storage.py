@@ -408,8 +408,8 @@ class TestStorageModel:
         # Binary variables should exist when preventing simultaneous operation
         if prevent_simultaneous:
             binary_vars = {
-                'SimultaneousStorage(Q_th_in)|on',
-                'SimultaneousStorage(Q_th_out)|on',
+                'SimultaneousStorage(Q_th_in)|status',
+                'SimultaneousStorage(Q_th_out)|status',
             }
             for var_name in binary_vars:
                 assert var_name in model.variables, f'Missing binary variable: {var_name}'
@@ -420,7 +420,8 @@ class TestStorageModel:
 
             assert_conequal(
                 model.constraints['SimultaneousStorage|prevent_simultaneous_use'],
-                model.variables['SimultaneousStorage(Q_th_in)|on'] + model.variables['SimultaneousStorage(Q_th_out)|on']
+                model.variables['SimultaneousStorage(Q_th_in)|status']
+                + model.variables['SimultaneousStorage(Q_th_out)|status']
                 <= 1,
             )
 
