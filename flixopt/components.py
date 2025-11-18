@@ -15,7 +15,7 @@ from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
-from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
+from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -167,7 +167,7 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        on_off_parameters: OnOffParameters | None = None,
+        on_off_parameters: StatusParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        on_off_parameters: OnOffParameters = None,
+        on_off_parameters: StatusParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -733,7 +733,7 @@ class TransmissionModel(ComponentModel):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
                 if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+                    flow.on_off_parameters = StatusParameters()
 
         super().__init__(model, element)
 
