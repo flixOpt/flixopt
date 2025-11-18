@@ -783,16 +783,10 @@ class EffectCollectionModel(Submodel):
         # Add cross-effect shares
         self._add_share_between_effects()
 
-        # Use effect-specific weights if defined, otherwise use model weights
-        # (which handles normalization based on normalize_weights flag)
-        objective_effect = self.effects.objective_effect.submodel
-        if self._model.normalize_weights:
-            objective_weights = objective_effect.weights / objective_effect.weights.sum()
-        else:
-            objective_weights = objective_effect.weights
-
+        # Use objective weights with objective effect
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * objective_weights).sum() + self.penalty.total.sum()
+            (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
+            + self.penalty.total.sum()
         )
 
     def _add_share_between_effects(self):

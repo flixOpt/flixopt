@@ -186,6 +186,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
 
+    @property
+    def objective_weights(self) -> xr.DataArray:
+        weights = self.flow_system.effects.objective_effect.submodel.weights
+        if self.normalize_weights:
+            return weights / weights.sum()
+        return weights
+
     def get_coords(
         self,
         dims: Collection[str] | None = None,
