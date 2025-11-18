@@ -11,10 +11,10 @@ investment optimization, and operational constraints like on-off behavior.
 3. **Solution**: The models are solved using the `solve_and_load` method, which performs modeling, solves the optimization problem, and loads the results.
 4. **Validation**: Results are validated using assertions, primarily `assert_allclose`, to ensure model outputs match expected values with a specified tolerance.
 
-Classes group related test cases by their functional focus:
-- Minimal modeling setup (`TestMinimal`)
-- Investment behavior (`TestInvestment`)
-- Status operational constraints (`TestStatus`).
+Tests group related cases by their functional focus:
+- Minimal modeling setup (`TestMinimal` class)
+- Investment behavior (`TestInvestment` class)
+- Status operational constraints (functions: `test_startup_shutdown`, `test_consecutive_uptime_downtime`, etc.)
 """
 
 import numpy as np

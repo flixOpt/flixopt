@@ -445,7 +445,7 @@ class TestTransmissionModel:
         assert_almost_equal_numeric(
             transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -506,7 +506,7 @@ class TestTransmissionModel:
         assert_almost_equal_numeric(
             transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -584,7 +584,7 @@ class TestTransmissionModel:
         assert_almost_equal_numeric(
             transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(

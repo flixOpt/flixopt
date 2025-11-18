@@ -588,7 +588,7 @@ class BoundingPatterns:
             constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
         """
         if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.state_transition_bounds() can only be used with a Submodel')
+            raise ValueError('BoundingPatterns.state_transition_bounds() can only be used with a Submodel')
 
         # State transition constraints for t > 0
         transition = model.add_constraints(

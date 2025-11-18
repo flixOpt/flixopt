@@ -75,7 +75,7 @@ if __name__ == '__main__':
                 max_uptime=10,  # Max consecutive operating hours
                 min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
                 max_downtime=10,  # Max consecutive off hours
-                effects_per_startup=0.01,  # Cost per switch-on
+                effects_per_startup={Costs.label: 0.01},  # Cost per switch-on
                 startup_limit=1000,  # Max number of starts
             ),
         ),
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         'BHKW2',
         eta_th=0.5,
         eta_el=0.4,
-        status_parameters=fx.StatusParameters(effects_per_startup=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
         P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
         Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
         Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
         piecewise_conversion=piecewise_conversion,
-        status_parameters=fx.StatusParameters(effects_per_startup=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
     )
 
     # 4. Define Storage Component

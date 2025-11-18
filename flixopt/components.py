@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        status_parameters: StatusParameters = None,
+        status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -765,7 +765,7 @@ class TransmissionModel(ComponentModel):
             short_name=name,
         )
 
-        if self.element.absolute_losses is not None:
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
             con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
 
         return con_transmission
