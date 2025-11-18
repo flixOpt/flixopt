@@ -16,6 +16,8 @@ nav:
     - Migration to v3.0.0: user-guide/migration-guide-v3.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
+      - Notation Reference: user-guide/mathematical-notation/notation-reference.md
+      - Quick Reference: user-guide/mathematical-notation/quick-reference.md
       - Dimensions: user-guide/mathematical-notation/dimensions.md
       - Elements:
         - Flow: user-guide/mathematical-notation/elements/Flow.md
