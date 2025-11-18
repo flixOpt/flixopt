@@ -244,11 +244,11 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     normalized_weights = (
         flow_system_piecewise_conversion_scenarios.weights / flow_system_piecewise_conversion_scenarios.weights.sum()
     )
-    np.testing.assert_allclose(model.weights.values, normalized_weights)
+    np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
     assert_linequal(
         model.objective.expression, (model.variables['costs'] * normalized_weights).sum() + model.variables['Penalty']
     )
-    assert np.isclose(model.weights.sum().item(), 1)
+    assert np.isclose(model.objective_weights.sum().item(), 1)
 
 
 def test_weights_io(flow_system_piecewise_conversion_scenarios):
@@ -257,9 +257,9 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.weights = weights
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.weights.values, weights)
+    np.testing.assert_allclose(model.objective_weights.values, weights)
     assert_linequal(model.objective.expression, (model.variables['costs'] * weights).sum() + model.variables['Penalty'])
-    assert np.isclose(model.weights.sum().item(), 1.0)
+    assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
 
 def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scenarios):
@@ -690,3 +690,82 @@ def test_scenario_parameters_io_with_calculation():
     finally:
         # Clean up
         shutil.rmtree(temp_dir)
+
+
+def test_weights_io_persistence():
+    """Test that weights persist through IO operations (to_dataset/from_dataset)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
+    custom_weights = np.array([0.3, 0.5, 0.2])
+
+    # Create FlowSystem with custom weights
+    fs_original = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        weights=custom_weights,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+
+    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Save to dataset
+    fs_original.connect_and_transform()
+    ds = fs_original.to_dataset()
+
+    # Load from dataset
+    fs_loaded = fx.FlowSystem.from_dataset(ds)
+
+    # Verify weights persisted correctly
+    np.testing.assert_allclose(fs_loaded.weights.values, fs_original.weights.values)
+    assert fs_loaded.weights.dims == fs_original.weights.dims
+
+
+def test_weights_selection():
+    """Test that weights are correctly sliced when using FlowSystem.sel()."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
+    custom_weights = np.array([0.3, 0.5, 0.2])
+
+    # Create FlowSystem with custom weights
+    fs_full = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        weights=custom_weights,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=10,
+            )
+        ],
+    )
+
+    fs_full.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Select a subset of scenarios
+    fs_subset = fs_full.sel(scenario=['base', 'high'])
+
+    # Verify weights are correctly sliced
+    assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))
+    np.testing.assert_allclose(fs_subset.weights.values, custom_weights[[0, 2]])
+
+    # Verify weights are 1D with just scenario dimension (no period dimension)
+    assert fs_subset.weights.dims == ('scenario',)
