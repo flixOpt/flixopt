@@ -568,44 +568,59 @@ class BoundingPatterns:
     def state_transition_bounds(
         model: Submodel,
         state_variable: linopy.Variable,
-        switch_on: linopy.Variable,
-        switch_off: linopy.Variable,
+        activate: linopy.Variable,
+        deactivate: linopy.Variable,
         name: str,
         previous_state=0,
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
-        Creates state transition constraints for binary switching variables.
+        Creates state transition constraints for binary state variables.
+
+        This generic primitive tracks transitions between active (1) and inactive (0) states.
+        Use cases include equipment startup/shutdown, investment activation, mode switching, etc.
 
         Mathematical formulation:
-            switch_on[t] - switch_off[t] = state[t] - state[t-1]  ∀t > 0
-            switch_on[0] - switch_off[0] = state[0] - previous_state
-            switch_on[t] + switch_off[t] ≤ 1  ∀t
-            switch_on[t], switch_off[t] ∈ {0, 1}
+            activate[t] - deactivate[t] = state[t] - state[t-1]  ∀t > 0
+            activate[0] - deactivate[0] = state[0] - previous_state
+            activate[t] + deactivate[t] ≤ 1  ∀t
+            activate[t], deactivate[t] ∈ {0, 1}
+
+        Args:
+            model: The submodel to add constraints to
+            state_variable: Binary state variable (0=inactive, 1=active)
+            activate: Binary variable for transitions from inactive to active (0→1)
+            deactivate: Binary variable for transitions from active to inactive (1→0)
+            name: Base name for constraints
+            previous_state: State value before first timestep (default 0)
+            coord: Time dimension name (default 'time')
 
         Returns:
-            variables: {'switch_on': binary_var, 'switch_off': binary_var}
-            constraints: {'transition': constraint, 'initial': constraint, 'mutex': constraint}
+            Tuple of constraints: (transition, initial, mutex)
+
+        Examples:
+            - Equipment operation: activate=startup, deactivate=shutdown
+            - Investment decisions: activate=invest, deactivate=divest
+            - Mode switching: activate=enter_mode, deactivate=exit_mode
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.state_transition_bounds() can only be used with a Submodel')
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
-            switch_on.isel({coord: slice(1, None)}) - switch_off.isel({coord: slice(1, None)})
+            activate.isel({coord: slice(1, None)}) - deactivate.isel({coord: slice(1, None)})
             == state_variable.isel({coord: slice(1, None)}) - state_variable.isel({coord: slice(None, -1)}),
             name=f'{name}|transition',
         )
 
         # Initial state transition for t = 0
         initial = model.add_constraints(
-            switch_on.isel({coord: 0}) - switch_off.isel({coord: 0})
-            == state_variable.isel({coord: 0}) - previous_state,
+            activate.isel({coord: 0}) - deactivate.isel({coord: 0}) == state_variable.isel({coord: 0}) - previous_state,
             name=f'{name}|initial',
         )
 
-        # At most one switch per timestep
-        mutex = model.add_constraints(switch_on + switch_off <= 1, name=f'{name}|mutex')
+        # At most one transition per timestep (mutual exclusivity)
+        mutex = model.add_constraints(activate + deactivate <= 1, name=f'{name}|mutex')
 
         return transition, initial, mutex
 
@@ -613,29 +628,34 @@ class BoundingPatterns:
     def continuous_transition_bounds(
         model: Submodel,
         continuous_variable: linopy.Variable,
-        switch_on: linopy.Variable,
-        switch_off: linopy.Variable,
+        activate: linopy.Variable,
+        deactivate: linopy.Variable,
         name: str,
         max_change: float | xr.DataArray,
         previous_value: float | xr.DataArray = 0.0,
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
-        Constrains a continuous variable to only change when switch variables are active.
+        Constrains a continuous variable to only change when state transition occurs.
+
+        This generic primitive ensures a continuous variable remains constant unless a
+        transition (activate or deactivate) happens. Useful for modeling variables that
+        can only change during specific events.
 
         Mathematical formulation:
-            -max_change * (switch_on[t] + switch_off[t]) <= continuous[t] - continuous[t-1] <= max_change * (switch_on[t] + switch_off[t])  ∀t > 0
-            -max_change * (switch_on[0] + switch_off[0]) <= continuous[0] - previous_value <= max_change * (switch_on[0] + switch_off[0])
-            switch_on[t], switch_off[t] ∈ {0, 1}
+            -max_change * (activate[t] + deactivate[t]) <= continuous[t] - continuous[t-1] <= max_change * (activate[t] + deactivate[t])  ∀t > 0
+            -max_change * (activate[0] + deactivate[0]) <= continuous[0] - previous_value <= max_change * (activate[0] + deactivate[0])
+            activate[t], deactivate[t] ∈ {0, 1}
 
-        This ensures the continuous variable can only change when switch_on or switch_off is 1.
-        When both switches are 0, the variable must stay exactly constant.
+        Behavior:
+            - When both activate=0 and deactivate=0: variable must stay constant
+            - When activate=1 or deactivate=1: variable can change within ±max_change
 
         Args:
             model: The submodel to add constraints to
             continuous_variable: The continuous variable to constrain
-            switch_on: Binary variable indicating when changes are allowed (typically transitions to active state)
-            switch_off: Binary variable indicating when changes are allowed (typically transitions to inactive state)
+            activate: Binary variable for transitions from inactive to active
+            deactivate: Binary variable for transitions from active to inactive
             name: Base name for the constraints
             max_change: Maximum possible change in the continuous variable (Big-M value)
             previous_value: Initial value of the continuous variable before first period
@@ -643,33 +663,37 @@ class BoundingPatterns:
 
         Returns:
             Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
+
+        Examples:
+            - Capacity that only changes during investment/divestment events
+            - Temperature that only changes during heating/cooling activation
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
 
-        # Transition constraints for t > 0: continuous variable can only change when switches are active
+        # Transition constraints for t > 0: continuous variable can only change when transitions occur
         transition_upper = model.add_constraints(
             continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
-            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
             name=f'{name}|transition_ub',
         )
 
         transition_lower = model.add_constraints(
             -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
-            <= max_change * (switch_on.isel({coord: slice(1, None)}) + switch_off.isel({coord: slice(1, None)})),
+            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
             name=f'{name}|transition_lb',
         )
 
         # Initial constraints for t = 0
         initial_upper = model.add_constraints(
             continuous_variable.isel({coord: 0}) - previous_value
-            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            <= max_change * (activate.isel({coord: 0}) + deactivate.isel({coord: 0})),
             name=f'{name}|initial_ub',
         )
 
         initial_lower = model.add_constraints(
             -continuous_variable.isel({coord: 0}) + previous_value
-            <= max_change * (switch_on.isel({coord: 0}) + switch_off.isel({coord: 0})),
+            <= max_change * (activate.isel({coord: 0}) + deactivate.isel({coord: 0})),
             name=f'{name}|initial_lb',
         )
 

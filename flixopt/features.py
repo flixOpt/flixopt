@@ -204,8 +204,8 @@ class StatusModel(Submodel):
             BoundingPatterns.state_transition_bounds(
                 self,
                 state_variable=self.status,
-                switch_on=self.startup,
-                switch_off=self.shutdown,
+                activate=self.startup,
+                deactivate=self.shutdown,
                 name=f'{self.label_of_model}|switch',
                 previous_state=self._previous_status.isel(time=-1) if self._previous_status is not None else 0,
                 coord='time',
