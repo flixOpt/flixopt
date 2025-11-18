@@ -75,7 +75,7 @@ class InvestmentModel(Submodel):
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
-                variable_state=self._variables['invested'],
+                state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 

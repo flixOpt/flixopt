@@ -635,7 +635,7 @@ class FlowModel(ElementModel):
                 self,
                 variable=self.flow_rate,
                 bounds=(bounds[0] * self.element.size, bounds[1] * self.element.size),
-                variable_state=self.status.status,
+                state=self.status.status,
             )
 
         elif self.with_investment and not self.with_status:
@@ -659,7 +659,7 @@ class FlowModel(ElementModel):
                 scaling_variable=self._investment.size,
                 relative_bounds=self.relative_flow_rate_bounds,
                 scaling_bounds=(self.element.size.minimum_or_fixed_size, self.element.size.maximum_or_fixed_size),
-                variable_state=self.status.status,
+                state=self.status.status,
             )
         else:
             raise Exception('Not valid')

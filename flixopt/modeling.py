@@ -420,14 +420,14 @@ class BoundingPatterns:
         model: Submodel,
         variable: linopy.Variable,
         bounds: tuple[xr.DataArray, xr.DataArray],
-        variable_state: linopy.Variable,
+        state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
         """Constraint a variable to bounds, that can be escaped from to 0 by a binary variable.
         variable ∈ {0, [max(ε, lower_bound), upper_bound]}
 
         Mathematical Formulation:
-            - variable_state * max(ε, lower_bound) ≤ variable ≤ variable_state * upper_bound
+            - state * max(ε, lower_bound) ≤ variable ≤ state * upper_bound
 
         Use Cases:
             - Investment decisions
@@ -437,7 +437,7 @@ class BoundingPatterns:
             model: The optimization model instance
             variable: Variable to be bounded
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
-            variable_state: Binary variable controlling the bounds
+            state: Binary variable controlling the bounds
 
         Returns:
             Tuple containing:
@@ -451,13 +451,13 @@ class BoundingPatterns:
         name = name or f'{variable.name}'
 
         if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
-            fix_constraint = model.add_constraints(variable == variable_state * upper_bound, name=f'{name}|fix')
+            fix_constraint = model.add_constraints(variable == state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
         epsilon = np.maximum(CONFIG.Modeling.epsilon, lower_bound)
 
-        upper_constraint = model.add_constraints(variable <= variable_state * upper_bound, name=f'{name}|ub')
-        lower_constraint = model.add_constraints(variable >= variable_state * epsilon, name=f'{name}|lb')
+        upper_constraint = model.add_constraints(variable <= state * upper_bound, name=f'{name}|ub')
+        lower_constraint = model.add_constraints(variable >= state * epsilon, name=f'{name}|lb')
 
         return [lower_constraint, upper_constraint]
 
@@ -511,7 +511,7 @@ class BoundingPatterns:
         scaling_variable: linopy.Variable,
         relative_bounds: tuple[xr.DataArray, xr.DataArray],
         scaling_bounds: tuple[xr.DataArray, xr.DataArray],
-        variable_state: linopy.Variable,
+        state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
         """Constraint a variable by scaling bounds with binary state control.
@@ -519,8 +519,8 @@ class BoundingPatterns:
         variable ∈ {0, [max(ε, lower_relative_bound) * scaling_variable, upper_relative_bound * scaling_variable]}
 
         Mathematical Formulation (Big-M):
-            (variable_state - 1) * M_misc + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
-            variable_state * big_m_lower ≤ variable ≤ variable_state * big_m_upper
+            (state - 1) * M_misc + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
+            state * big_m_lower ≤ variable ≤ state * big_m_upper
 
         Where:
             M_misc = scaling_max * rel_lower
@@ -533,7 +533,7 @@ class BoundingPatterns:
             scaling_variable: Variable that scales the bound factors
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
             scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling variable
-            variable_state: Binary variable for active/inactive status control
+            state: Binary variable for active/inactive status control
             name: Optional name prefix for constraints
 
         Returns:
@@ -549,15 +549,15 @@ class BoundingPatterns:
         big_m_misc = scaling_max * rel_lower
 
         scaling_lower = model.add_constraints(
-            variable >= (variable_state - 1) * big_m_misc + scaling_variable * rel_lower, name=f'{name}|lb2'
+            variable >= (state - 1) * big_m_misc + scaling_variable * rel_lower, name=f'{name}|lb2'
         )
         scaling_upper = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub2')
 
         big_m_upper = rel_upper * scaling_max
         big_m_lower = np.maximum(CONFIG.Modeling.epsilon, rel_lower * scaling_min)
 
-        binary_upper = model.add_constraints(variable_state * big_m_upper >= variable, name=f'{name}|ub1')
-        binary_lower = model.add_constraints(variable_state * big_m_lower <= variable, name=f'{name}|lb1')
+        binary_upper = model.add_constraints(state * big_m_upper >= variable, name=f'{name}|ub1')
+        binary_lower = model.add_constraints(state * big_m_lower <= variable, name=f'{name}|lb1')
 
         return [scaling_lower, scaling_upper, binary_lower, binary_upper]
 
