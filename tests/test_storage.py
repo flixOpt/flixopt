@@ -3,7 +3,7 @@ import pytest
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_var_equal, create_linopy_model
+from .conftest import StorageFactory, assert_conequal, assert_var_equal, create_linopy_model
 
 
 class TestStorageModel:
@@ -14,14 +14,7 @@ class TestStorageModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create a simple storage
-        storage = fx.Storage(
-            'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,  # 30 kWh storage capacity
-            initial_charge_state=0,  # Start empty
-            prevent_simultaneous_charge_and_discharge=True,
-        )
+        storage = StorageFactory.minimal(label='TestStorage', capacity=30)
 
         flow_system.add_elements(storage)
         model = create_linopy_model(flow_system)
@@ -86,17 +79,13 @@ class TestStorageModel:
         """Test that basic storage model variables and constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
-        # Create a simple storage
-        storage = fx.Storage(
-            'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,  # 30 kWh storage capacity
-            initial_charge_state=0,  # Start empty
-            eta_charge=0.9,  # Charging efficiency
-            eta_discharge=0.8,  # Discharging efficiency
-            relative_loss_per_hour=0.05,  # 5% loss per hour
-            prevent_simultaneous_charge_and_discharge=True,
+        # Create a simple storage with efficiency losses
+        storage = StorageFactory.minimal(
+            label='TestStorage',
+            capacity=30,
+            eta_charge=0.9,
+            eta_discharge=0.8,
+            relative_loss_per_hour=0.05,
         )
 
         flow_system.add_elements(storage)
@@ -170,14 +159,11 @@ class TestStorageModel:
         """Test that basic storage model variables and constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
-        # Create a simple storage
-        storage = fx.Storage(
-            'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,  # 30 kWh storage capacity
+        # Create a simple storage with custom charge state bounds
+        storage = StorageFactory.minimal(
+            label='TestStorage',
+            capacity=30,
             initial_charge_state=3,
-            prevent_simultaneous_charge_and_discharge=True,
             relative_maximum_charge_state=np.array([0.14, 0.22, 0.3, 0.38, 0.46, 0.54, 0.62, 0.7, 0.78, 0.86]),
             relative_minimum_charge_state=np.array([0.07, 0.11, 0.15, 0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43]),
         )
@@ -256,22 +242,18 @@ class TestStorageModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create storage with investment parameters
-        storage = fx.Storage(
-            'InvestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=fx.InvestParameters(
-                effects_of_investment=100,
-                effects_of_investment_per_size=10,
-                minimum_size=20,
-                maximum_size=100,
-                mandatory=False,
-            ),
-            initial_charge_state=0,
+        storage = StorageFactory.with_investment(
+            label='InvestStorage',
+            invest_params={
+                'effects_of_investment': 100,
+                'effects_of_investment_per_size': 10,
+                'minimum_size': 20,
+                'maximum_size': 100,
+                'mandatory': False,
+            },
             eta_charge=0.9,
             eta_discharge=0.9,
             relative_loss_per_hour=0.05,
-            prevent_simultaneous_charge_and_discharge=True,
         )
 
         flow_system.add_elements(storage)
@@ -312,11 +294,9 @@ class TestStorageModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create storage with final state constraints
-        storage = fx.Storage(
-            'FinalStateStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,
+        storage = StorageFactory.minimal(
+            label='FinalStateStorage',
+            capacity=30,
             initial_charge_state=10,  # Start with 10 kWh
             minimal_final_charge_state=15,  # End with at least 15 kWh
             maximal_final_charge_state=25,  # End with at most 25 kWh
@@ -357,11 +337,9 @@ class TestStorageModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create storage with cyclic initialization
-        storage = fx.Storage(
-            'CyclicStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,
+        storage = StorageFactory.minimal(
+            label='CyclicStorage',
+            capacity=30,
             initial_charge_state='lastValueOfSim',  # Cyclic initialization
             eta_charge=0.9,
             eta_discharge=0.9,
@@ -390,12 +368,9 @@ class TestStorageModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create storage with or without simultaneous charge/discharge prevention
-        storage = fx.Storage(
-            'SimultaneousStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=30,
-            initial_charge_state=0,
+        storage = StorageFactory.minimal(
+            label='SimultaneousStorage',
+            capacity=30,
             eta_charge=0.9,
             eta_discharge=0.9,
             relative_loss_per_hour=0.05,
@@ -455,12 +430,9 @@ class TestStorageModel:
             invest_params['minimum_size'] = minimum_size
 
         # Create storage with specified investment parameters
-        storage = fx.Storage(
-            'InvestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
-            capacity_in_flow_hours=fx.InvestParameters(**invest_params),
-            initial_charge_state=0,
+        storage = StorageFactory.with_investment(
+            label='InvestStorage',
+            invest_params=invest_params,
             eta_charge=0.9,
             eta_discharge=0.9,
             relative_loss_per_hour=0.05,
