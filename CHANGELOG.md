@@ -51,13 +51,54 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Renamed OnOff terminology to Status terminology for better alignment with PyPSA and unit commitment standards.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
 ### 💥 Breaking Changes
+
+- **Renamed `OnOffParameters` → `StatusParameters`**: Updated class name to better reflect equipment status modeling aligned with PyPSA conventions
+  - Constructor parameter `on_variable` → `status`
+  - Constructor parameter `previous_states` → `previous_status`
+
+- **Renamed all `OnOffParameters` properties and parameters**:
+  - `effects_per_switch_on` → `effects_per_startup`
+  - `effects_per_running_hour` → `effects_per_active_hour`
+  - `on_hours_total_min` → `active_hours_min`
+  - `on_hours_total_max` → `active_hours_max`
+  - `consecutive_on_hours_min` → `min_uptime` (standard UC terminology)
+  - `consecutive_on_hours_max` → `max_uptime` (standard UC terminology)
+  - `consecutive_off_hours_min` → `min_downtime` (standard UC terminology)
+  - `consecutive_off_hours_max` → `max_downtime` (standard UC terminology)
+  - `switch_on_total_max` → `startup_limit`
+  - `force_switch_on` → `force_startup_tracking`
+
+- **Renamed `OnOffModel` → `StatusModel`**: Updated feature model class name
+  - Main variable renamed from `on` to `status`
+  - Variable `switch_on` → `startup`
+  - Variable `switch_off` → `shutdown`
+  - Variable `switch_on_nr` → `startup_count`
+  - Variable `on_hours_total` → `active_hours`
+  - Variable `consecutive_on_hours` → `uptime`
+  - Variable `consecutive_off_hours` → `downtime`
+  - Variable `off` → `inactive` (deprecated - use `1 - status` expression instead)
+
+- **Updated Flow and Component classes**:
+  - Parameter `on_off_parameters` → `status_parameters` in `Flow.__init__()`
+  - Parameter `on_off_parameters` → `status_parameters` in `Component.__init__()`
+  - Property `flow.submodel.on_off` → `flow.submodel.status`
+  - Property `component.submodel.on_off` → `component.submodel.status`
+
+- **Updated internal property names**:
+  - `use_switch_on` → `use_startup_tracking`
+  - `use_consecutive_on_hours` → `use_uptime_tracking`
+  - `use_consecutive_off_hours` → `use_downtime_tracking`
+  - `with_on_off` → `with_status`
+  - `previous_states` → `previous_status`
+
+**Migration Guide**: Replace all occurrences of the old names with the new names in your code. The functionality remains identical - only the naming has changed for better alignment with industry standards.
 
 ### ♻️ Changed
 
