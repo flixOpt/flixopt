@@ -25,7 +25,7 @@ With:
 
 ## Bounds with State
 
-When a variable should only be non-zero if a binary state variable is active (e.g., on/off operation, investment decisions), the bounds are controlled by the state:
+When a variable should only be non-zero if a binary state variable is active (e.g., active/inactive operation, investment decisions), the bounds are controlled by the state:
 
 $$\label{eq:bounds_with_state}
 s \cdot \max(\varepsilon, \text{lower}) \leq v \leq s \cdot \text{upper}
@@ -45,7 +45,7 @@ With:
 **Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]
 
 **Used in:**
-- Flow rates with on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
+- Flow rates with active/inactive operation (see [StatusParameters](../features/StatusParameters.md))
 - Investment size decisions (see [InvestParameters](../features/InvestParameters.md))
 
 ---
@@ -78,7 +78,7 @@ With:
 
 ## Scaled Bounds with State
 
-Combining scaled bounds with binary state control requires a Big-M formulation to handle both the scaling and the on/off behavior:
+Combining scaled bounds with binary state control requires a Big-M formulation to handle both the scaling and the active/inactive behavior:
 
 $$\label{eq:scaled_bounds_with_state_1}
 (s - 1) \cdot M_\text{misc} + v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}
@@ -107,8 +107,8 @@ Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum 
 **Implementation:** [`BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state]
 
 **Used in:**
-- Flow rates with on/off operation and investment sizing
-- Components combining [OnOffParameters](../features/OnOffParameters.md) and [InvestParameters](../features/InvestParameters.md)
+- Flow rates with active/inactive operation and investment sizing
+- Components combining [StatusParameters](../features/StatusParameters.md) and [InvestParameters](../features/InvestParameters.md)
 
 ---
 

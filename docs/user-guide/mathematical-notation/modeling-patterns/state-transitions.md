@@ -46,7 +46,7 @@ $$
 
 This ensures:
 - At most one switch event per time step
-- No simultaneous on/off switching
+- No simultaneous active/inactive switching
 
 ---
 
@@ -221,7 +221,7 @@ model.add_constraint(increase.sum() <= max_total_expansion)
 ## Used In
 
 These patterns are used in:
-- [`OnOffParameters`](../features/OnOffParameters.md) - Startup/shutdown tracking and costs
+- [`StatusParameters`](../features/StatusParameters.md) - Startup/shutdown tracking and costs
 - Operating mode switching with transition costs
 - Investment planning with staged capacity additions
 - Inventory management with controlled stock changes

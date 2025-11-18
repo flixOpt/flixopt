@@ -48,9 +48,9 @@ class LinearConverter(Component):
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
         outputs: list of output Flows that are produced by the converter.
-        on_off_parameters: Information about on and off state of LinearConverter.
-            Component is On/Off if all connected Flows are On/Off. This induces an
-            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+        status_parameters: Information about active and inactive state of LinearConverter.
+            Component is active/inactive if all connected Flows are active/inactive. This induces a
+            status variable (binary) in all Flows! If possible, use StatusParameters in a
             single Flow instead to keep the number of binary variables low.
         conversion_factors: Linear relationships between flows expressed as a list of
             dictionaries. Each dictionary maps flow labels to their coefficients in one
@@ -167,12 +167,12 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        on_off_parameters: StatusParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
-        super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -567,7 +567,7 @@ class Transmission(Component):
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
             Automatically creates binary variables for on/off states.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
             reality for most transmission systems. Default is True.
@@ -630,10 +630,10 @@ class Transmission(Component):
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
-            on_off_parameters=OnOffParameters(
-                effects_per_switch_on={'maintenance': 0.1},
-                consecutive_on_hours_min=2,  # Minimum 2-hour operation
-                switch_on_total_max=10,  # Maximum 10 starts per day
+            status_parameters=StatusParameters(
+                effects_per_startup={'maintenance': 0.1},
+                min_uptime=2,  # Minimum 2-hour operation
+                startup_limit=10,  # Maximum 10 starts per day
             ),
         )
         ```
@@ -664,7 +664,7 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
-        on_off_parameters: StatusParameters = None,
+        status_parameters: StatusParameters = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -673,7 +673,7 @@ class Transmission(Component):
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
             outputs=[flow for flow in (out1, out2) if flow is not None],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
@@ -732,8 +732,8 @@ class TransmissionModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = StatusParameters()
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
 
         super().__init__(model, element)
 
@@ -798,7 +798,7 @@ class LinearConverterModel(ComponentModel):
                 )
 
         else:
-            # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
+            # TODO: Improve Inclusion of StatusParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
                 for flow, piecewise in self.element.piecewise_conversion.items()
@@ -964,7 +964,7 @@ class StorageModel(ComponentModel):
 
     @property
     def investment(self) -> InvestmentModel | None:
-        """OnOff feature"""
+        """Investment feature"""
         if 'investment' not in self.submodels:
             return None
         return self.submodels['investment']

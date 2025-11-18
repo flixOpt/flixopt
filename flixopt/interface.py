@@ -1,5 +1,5 @@
 """
-This module contains classes to collect Parameters for the Investment and OnOff decisions.
+This module contains classes to collect Parameters for the Investment and Status decisions.
 These are tightly connected to features.py
 """
 

@@ -575,7 +575,7 @@ class BoundingPatterns:
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """
-        Creates switch-on/off variables with state transition logic.
+        Creates state transition constraints for binary switching variables.
 
         Mathematical formulation:
             switch_on[t] - switch_off[t] = state[t] - state[t-1]  ∀t > 0
