@@ -53,6 +53,7 @@ Storage formulation uses the following modeling patterns:
 - **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - For flow rate bounds relative to storage size
 
 When combined with investment parameters, storage can use:
+
 - **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions (see [InvestParameters](../features/InvestParameters.md))
 
 ---

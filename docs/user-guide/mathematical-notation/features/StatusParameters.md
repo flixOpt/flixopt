@@ -11,6 +11,7 @@ s(t) \in \{0, 1\} \quad \forall t
 $$
 
 With:
+
 - $s(t) = 1$: equipment is operating (active state)
 - $s(t) = 0$: equipment is shutdown (inactive state)
 
@@ -31,6 +32,7 @@ s^\text{startup}(t) + s^\text{shutdown}(t) \leq 1 \quad \forall t
 $$
 
 With:
+
 - $s^\text{startup}(t) \in \{0, 1\}$: equals 1 when switching from inactive to active (startup)
 - $s^\text{shutdown}(t) \in \{0, 1\}$: equals 1 when switching from active to inactive (shutdown)
 
@@ -52,6 +54,7 @@ E_{e,\text{switch}} = \sum_{t} s^\text{startup}(t) \cdot \text{effect}_{e,\text{
 $$
 
 With:
+
 - $\text{effect}_{e,\text{switch}}$ being the effect value per startup event
 
 **Examples:**
@@ -71,6 +74,7 @@ E_{e,\text{run}} = \sum_{t} s(t) \cdot \Delta t \cdot \text{effect}_{e,\text{run
 $$
 
 With:
+
 - $\text{effect}_{e,\text{run}}$ being the effect rate per operating hour
 - $\Delta t$ being the time step duration
 
@@ -93,6 +97,7 @@ h_\text{min} \leq \sum_{t} s(t) \cdot \Delta t \leq h_\text{max}
 $$
 
 With:
+
 - $h_\text{min}$ being the minimum total operating hours
 - $h_\text{max}$ being the maximum total operating hours
 
@@ -113,6 +118,7 @@ d^\text{uptime}(t) \geq (s(t-1) - s(t)) \cdot h^\text{uptime}_\text{min} \quad \
 $$
 
 With:
+
 - $d^\text{uptime}(t)$ being the consecutive uptime duration at time $t$
 - $h^\text{uptime}_\text{min}$ being the minimum required uptime
 
@@ -146,6 +152,7 @@ d^\text{downtime}(t) \geq (s(t) - s(t-1)) \cdot h^\text{downtime}_\text{min} \qu
 $$
 
 With:
+
 - $d^\text{downtime}(t)$ being the consecutive downtime duration at time $t$
 - $h^\text{downtime}_\text{min}$ being the minimum required downtime
 
@@ -178,6 +185,7 @@ $$\label{eq:status_max_switches}
 $$
 
 With:
+
 - $n_\text{max}$ being the maximum allowed number of startups
 
 **Use cases:**
@@ -218,6 +226,7 @@ For equipment with StatusParameters, the complete constraint system includes:
 2. **Switch tracking:** $s^\text{startup}(t) - s^\text{shutdown}(t) = s(t) - s(t-1)$
 3. **Switch exclusivity:** $s^\text{startup}(t) + s^\text{shutdown}(t) \leq 1$
 4. **Duration tracking:**
+
     - On-duration: $d^\text{uptime}(t)$ following duration tracking pattern
     - Off-duration: $d^\text{downtime}(t)$ following duration tracking pattern
 5. **Minimum uptime:** $d^\text{uptime}(t) \geq (s(t-1) - s(t)) \cdot h^\text{uptime}_\text{min}$

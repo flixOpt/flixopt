@@ -11,6 +11,7 @@ $$\label{eq:basic_bounds}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $\text{lower}$ being the lower bound (constant or time-dependent)
 - $\text{upper}$ being the upper bound (constant or time-dependent)
@@ -32,6 +33,7 @@ s \cdot \max(\varepsilon, \text{lower}) \leq v \leq s \cdot \text{upper}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $s \in \{0, 1\}$ being the binary state variable
 - $\text{lower}$ being the lower bound when active
@@ -59,6 +61,7 @@ v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \t
 $$
 
 With:
+
 - $v$ being the optimization variable (e.g., flow rate)
 - $v_\text{scale}$ being the scaling variable (e.g., component size)
 - $\text{rel}_\text{lower}$ being the relative lower bound factor (typically 0)
@@ -89,6 +92,7 @@ s \cdot M_\text{lower} \leq v \leq s \cdot M_\text{upper}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $v_\text{scale}$ being the scaling variable
 - $s \in \{0, 1\}$ being the binary state variable
@@ -127,6 +131,7 @@ $$\label{eq:expression_tracking_bounds}
 $$
 
 With:
+
 - $v_\text{tracker}$ being the auxiliary tracking variable
 - $\text{expression}$ being a linear expression of other variables
 - $\text{lower}, \text{upper}$ being optional bounds on the tracker
@@ -149,6 +154,7 @@ $$\label{eq:mutual_exclusivity}
 $$
 
 With:
+
 - $s_i(t) \in \{0, 1\}$ being binary state variables
 - $\text{tolerance}$ being the maximum number of simultaneously active states (typically 1)
 - $t$ being the time index

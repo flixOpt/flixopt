@@ -9,6 +9,7 @@ For a binary state variable $s(t) \in \{0, 1\}$, state transitions track when th
 ### Switch Variables
 
 Two binary variables track the transitions:
+
 - $s^\text{on}(t) \in \{0, 1\}$: equals 1 when switching from off to on
 - $s^\text{off}(t) \in \{0, 1\}$: equals 1 when switching from on to off
 
@@ -25,6 +26,7 @@ s^\text{on}(0) - s^\text{off}(0) = s(0) - s_\text{prev}
 $$
 
 With:
+
 - $s(t)$ being the binary state variable
 - $s_\text{prev}$ being the state before the optimization period
 - $s^\text{on}(t), s^\text{off}(t)$ being the switch variables
@@ -45,6 +47,7 @@ s^\text{on}(t) + s^\text{off}(t) \leq 1 \quad \forall t
 $$
 
 This ensures:
+
 - At most one switch event per time step
 - No simultaneous active/inactive switching
 
@@ -80,6 +83,7 @@ $$\label{eq:continuous_transition_initial}
 $$
 
 With:
+
 - $v(t)$ being the continuous variable
 - $v_\text{prev}$ being the value before the optimization period
 - $\Delta v^\text{max}$ being the maximum allowed change
@@ -110,6 +114,7 @@ $$\label{eq:level_evolution}
 $$
 
 With:
+
 - $\ell(t)$ being the level variable
 - $\ell_\text{init}$ being the initial level
 - $\ell^\text{inc}(t)$ being the increase in level at time $t$ (non-negative)
@@ -130,6 +135,7 @@ $$\label{eq:decrease_bound}
 $$
 
 With:
+
 - $\Delta \ell^\text{max}$ being the maximum change per time step
 - $b^\text{inc}(t), b^\text{dec}(t) \in \{0, 1\}$ being binary control variables
 
@@ -144,6 +150,7 @@ b^\text{inc}(t) + b^\text{dec}(t) \leq 1 \quad \forall t
 $$
 
 This ensures:
+
 - Level can only increase OR decrease (or stay constant) in each time step
 - No simultaneous contradictory changes
 
@@ -221,6 +228,7 @@ model.add_constraint(increase.sum() <= max_total_expansion)
 ## Used In
 
 These patterns are used in:
+
 - [`StatusParameters`](../features/StatusParameters.md) - Startup/shutdown tracking and costs
 - Operating mode switching with transition costs
 - Investment planning with staged capacity additions
