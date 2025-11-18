@@ -51,7 +51,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emmit warnings) & new bounds for weighted sums over all periods for effects and flow hours.
+**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emit warnings) & new bounds for weighted sums over all periods for effects and flow hours.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
@@ -102,8 +102,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
         - `Boiler`: `eta` → `thermal_efficiency`
         - `Power2Heat`: `eta` → `thermal_efficiency`
         - `CHP`: `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`
-        - `HetaPump`: `COP` → `cop`
-        - `HetaPumpWithSource`: `COP` → `cop`
+        - `HeatPump`: `COP` → `cop`
+        - `HeatPumpWithSource`: `COP` → `cop`
     - **Storage Parameters**:
         - `Storage`: `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_last"`
 
