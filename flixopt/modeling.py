@@ -202,16 +202,22 @@ class ModelingPrimitives:
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
-        """
-        Creates variable that equals a given expression.
+        """Creates a variable constrained to equal a given expression.
 
         Mathematical formulation:
             tracker = expression
-            lower ≤ tracker ≤ upper (if bounds provided)
+            lower ≤ tracker ≤ upper  (if bounds provided)
+
+        Args:
+            model: The submodel to add variables and constraints to
+            tracked_expression: Expression that the tracker variable must equal
+            name: Full name for the variable and constraint
+            short_name: Short name for display purposes
+            bounds: Optional (lower_bound, upper_bound) tuple for the tracker variable
+            coords: Coordinate dimensions for the variable (None uses all model coords)
 
         Returns:
-            variables: {'tracker': tracker_var}
-            constraints: {'tracking': constraint}
+            Tuple of (tracker_variable, tracking_constraint)
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
@@ -244,28 +250,36 @@ class ModelingPrimitives:
         duration_per_step: int | float | xr.DataArray = None,
         previous_duration: xr.DataArray = 0,
     ) -> tuple[linopy.Variable, tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
-        """
-        Creates consecutive duration tracking for a binary state variable.
+        """Creates consecutive duration tracking for a binary state variable.
+
+        Tracks how long a binary state has been continuously active (=1).
+        Duration resets to 0 when state becomes inactive (=0).
 
         Mathematical formulation:
-            duration[t] ≤ state[t] * M  ∀t
+            duration[t] ≤ state[t] · M  ∀t
             duration[t+1] ≤ duration[t] + duration_per_step[t]  ∀t
-            duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M  ∀t
-            duration[0] = (duration_per_step[0] + previous_duration) * state[0]
+            duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) · M  ∀t
+            duration[0] = (duration_per_step[0] + previous_duration) · state[0]
 
             If minimum_duration provided:
-                duration[t] ≥ (state[t-1] - state[t]) * minimum_duration[t-1]  ∀t > 0
+                duration[t] ≥ (state[t-1] - state[t]) · minimum_duration[t-1]  ∀t > 0
+
+        Where M is a big-M value (sum of all duration_per_step + previous_duration).
 
         Args:
-            name: Name of the duration variable
-            state: Binary state variable to track duration for
-            minimum_duration: Optional minimum consecutive duration
-            maximum_duration: Optional maximum consecutive duration
-            previous_duration: Duration from before first timestep
+            model: The submodel to add variables and constraints to
+            state: Binary state variable (1=active, 0=inactive) to track duration for
+            name: Full name for the duration variable
+            short_name: Short name for display purposes
+            minimum_duration: Optional minimum consecutive duration (enforced at state transitions)
+            maximum_duration: Optional maximum consecutive duration (upper bound on duration variable)
+            duration_dim: Dimension name to track duration along (default 'time')
+            duration_per_step: Time increment per step in duration_dim
+            previous_duration: Initial duration value before first timestep (default 0)
 
         Returns:
-            variables: {'duration': duration_var}
-            constraints: {'ub': constraint, 'forward': constraint, 'backward': constraint, ...}
+            Tuple of (duration_variable, constraints_dict)
+            where constraints_dict contains: 'ub', 'forward', 'backward', 'initial', and optionally 'lb', 'initial_lb'
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
@@ -341,23 +355,21 @@ class ModelingPrimitives:
         tolerance: float = 1,
         short_name: str = 'mutual_exclusivity',
     ) -> linopy.Constraint:
-        """
-        Creates mutual exclusivity constraint for binary variables.
+        """Creates mutual exclusivity constraint for binary variables.
+
+        Ensures at most one binary variable can be active (=1) at any time.
 
         Mathematical formulation:
-            Σ(binary_vars[i]) ≤ tolerance  ∀t
-
-        Ensures at most one binary variable can be 1 at any time.
-        Tolerance > 1.0 accounts for binary variable numerical precision.
+            Σᵢ binary_vars[i] ≤ tolerance  ∀t
 
         Args:
+            model: The submodel to add the constraint to
             binary_variables: List of binary variables that should be mutually exclusive
-            tolerance: Upper bound
-            short_name: Short name of the constraint
+            tolerance: Upper bound on the sum (default 1, allows slight numerical tolerance)
+            short_name: Short name for the constraint
 
         Returns:
-            variables: {} (no new variables created)
-            constraints: {'mutual_exclusivity': constraint}
+            Mutual exclusivity constraint
 
         Raises:
             AssertionError: If fewer than 2 variables provided or variables aren't binary
@@ -390,19 +402,19 @@ class BoundingPatterns:
         bounds: tuple[xr.DataArray, xr.DataArray],
         name: str = None,
     ) -> list[linopy.constraints.Constraint]:
-        """Create simple bounds.
-        variable ∈ [lower_bound, upper_bound]
+        """Creates simple lower and upper bounds for a variable.
 
-        Mathematical Formulation:
+        Mathematical formulation:
             lower_bound ≤ variable ≤ upper_bound
 
         Args:
-            model: The optimization model instance
+            model: The submodel to add constraints to
             variable: Variable to be bounded
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
+            name: Optional name prefix for constraints
 
         Returns:
-            List containing lower_bound and upper_bound constraints
+            List of [lower_constraint, upper_constraint]
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
@@ -423,26 +435,25 @@ class BoundingPatterns:
         state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
-        """Constraint a variable to bounds, that can be escaped from to 0 by a binary variable.
-        variable ∈ {0, [max(ε, lower_bound), upper_bound]}
+        """Creates bounds controlled by a binary state variable.
 
-        Mathematical Formulation:
-            - state * max(ε, lower_bound) ≤ variable ≤ state * upper_bound
+        Variable is forced to 0 when state=0, bounded when state=1.
 
-        Use Cases:
-            - Investment decisions
-            - Unit commitment (active/inactive states)
+        Mathematical formulation:
+            state · max(ε, lower_bound) ≤ variable ≤ state · upper_bound
+
+        Where ε is a small positive number (CONFIG.Modeling.epsilon) ensuring
+        numerical stability when lower_bound is 0.
 
         Args:
-            model: The optimization model instance
+            model: The submodel to add constraints to
             variable: Variable to be bounded
-            bounds: Tuple of (lower_bound, upper_bound) absolute bounds
-            state: Binary variable controlling the bounds
+            bounds: Tuple of (lower_bound, upper_bound) absolute bounds when state=1
+            state: Binary variable (0=force variable to 0, 1=allow bounds)
+            name: Optional name prefix for constraints
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Empty dict
-                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
+            List of [lower_constraint, upper_constraint] (or [fix_constraint] if lower=upper)
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.bounds_with_state() can only be used with a Submodel')
@@ -469,26 +480,22 @@ class BoundingPatterns:
         relative_bounds: tuple[xr.DataArray, xr.DataArray],
         name: str = None,
     ) -> list[linopy.Constraint]:
-        """Constraint a variable by scaling bounds, dependent on another variable.
-        variable ∈ [lower_bound * scaling_variable, upper_bound * scaling_variable]
+        """Creates bounds scaled by another variable.
 
-        Mathematical Formulation:
-            scaling_variable * lower_factor ≤ variable ≤ scaling_variable * upper_factor
+        Variable is bounded relative to a scaling variable (e.g., flow rate relative to size).
 
-        Use Cases:
-            - Flow rates bounded by equipment capacity
-            - Production levels scaled by plant size
+        Mathematical formulation:
+            scaling_variable · lower_factor ≤ variable ≤ scaling_variable · upper_factor
 
         Args:
-            model: The optimization model instance
+            model: The submodel to add constraints to
             variable: Variable to be bounded
-            scaling_variable: Variable that scales the bound factors
-            relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
+            scaling_variable: Variable that scales the bound factors (e.g., equipment size)
+            relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling_variable
+            name: Optional name prefix for constraints
 
         Returns:
-            Tuple containing:
-                - variables (Dict): Empty dict
-                - constraints (Dict[str, linopy.Constraint]): 'ub', 'lb'
+            List of [lower_constraint, upper_constraint] (or [fix_constraint] if lower=upper)
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.scaled_bounds() can only be used with a Submodel')
@@ -514,30 +521,30 @@ class BoundingPatterns:
         state: linopy.Variable,
         name: str = None,
     ) -> list[linopy.Constraint]:
-        """Constraint a variable by scaling bounds with binary state control.
+        """Creates bounds scaled by a variable and controlled by a binary state.
 
-        variable ∈ {0, [max(ε, lower_relative_bound) * scaling_variable, upper_relative_bound * scaling_variable]}
+        Variable is forced to 0 when state=0, bounded relative to scaling_variable when state=1.
 
-        Mathematical Formulation (Big-M):
-            (state - 1) * M_misc + scaling_variable * rel_lower ≤ variable ≤ scaling_variable * rel_upper
-            state * big_m_lower ≤ variable ≤ state * big_m_upper
+        Mathematical formulation (Big-M):
+            (state - 1) · M_misc + scaling_variable · rel_lower ≤ variable ≤ scaling_variable · rel_upper
+            state · big_m_lower ≤ variable ≤ state · big_m_upper
 
         Where:
-            M_misc = scaling_max * rel_lower
-            big_m_upper = scaling_max * rel_upper
-            big_m_lower = max(ε, scaling_min * rel_lower)
+            M_misc = scaling_max · rel_lower
+            big_m_upper = scaling_max · rel_upper
+            big_m_lower = max(ε, scaling_min · rel_lower)
 
         Args:
-            model: The optimization model instance
+            model: The submodel to add constraints to
             variable: Variable to be bounded
-            scaling_variable: Variable that scales the bound factors
-            relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
-            scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling variable
-            state: Binary variable for active/inactive status control
+            scaling_variable: Variable that scales the bound factors (e.g., equipment size)
+            relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling_variable
+            scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling_variable
+            state: Binary variable (0=force variable to 0, 1=allow scaled bounds)
             name: Optional name prefix for constraints
 
         Returns:
-            List[linopy.Constraint]: List of constraint objects
+            List of [scaling_lower, scaling_upper, binary_lower, binary_upper] constraints
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.scaled_bounds_with_state() can only be used with a Submodel')
@@ -571,11 +578,10 @@ class BoundingPatterns:
         previous_state=0,
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
-        """
-        Creates state transition constraints for binary state variables.
+        """Creates state transition constraints for binary state variables.
 
-        This generic primitive tracks transitions between active (1) and inactive (0) states.
-        Use cases include equipment startup/shutdown, investment activation, mode switching, etc.
+        Tracks transitions between active (1) and inactive (0) states using
+        separate binary variables for activation and deactivation events.
 
         Mathematical formulation:
             activate[t] - deactivate[t] = state[t] - state[t-1]  ∀t > 0
@@ -593,12 +599,7 @@ class BoundingPatterns:
             coord: Time dimension name (default 'time')
 
         Returns:
-            Tuple of constraints: (transition, initial, mutex)
-
-        Examples:
-            - Equipment operation: activate=startup, deactivate=shutdown
-            - Investment decisions: activate=invest, deactivate=divest
-            - Mode switching: activate=enter_mode, deactivate=exit_mode
+            Tuple of (transition_constraint, initial_constraint, mutex_constraint)
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.state_transition_bounds() can only be used with a Submodel')
@@ -632,38 +633,32 @@ class BoundingPatterns:
         previous_value: float | xr.DataArray = 0.0,
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint, linopy.Constraint]:
-        """
-        Constrains a continuous variable to only change when state transition occurs.
+        """Constrains a continuous variable to only change during state transitions.
 
-        This generic primitive ensures a continuous variable remains constant unless a
-        transition (activate or deactivate) happens. Useful for modeling variables that
-        can only change during specific events.
+        Ensures a continuous variable remains constant unless a transition event occurs.
+        Uses Big-M formulation to enforce change bounds.
 
         Mathematical formulation:
-            -max_change * (activate[t] + deactivate[t]) <= continuous[t] - continuous[t-1] <= max_change * (activate[t] + deactivate[t])  ∀t > 0
-            -max_change * (activate[0] + deactivate[0]) <= continuous[0] - previous_value <= max_change * (activate[0] + deactivate[0])
+            -max_change · (activate[t] + deactivate[t]) ≤ continuous[t] - continuous[t-1] ≤ max_change · (activate[t] + deactivate[t])  ∀t > 0
+            -max_change · (activate[0] + deactivate[0]) ≤ continuous[0] - previous_value ≤ max_change · (activate[0] + deactivate[0])
             activate[t], deactivate[t] ∈ {0, 1}
 
         Behavior:
-            - When both activate=0 and deactivate=0: variable must stay constant
+            - When activate=0 and deactivate=0: variable must stay constant
             - When activate=1 or deactivate=1: variable can change within ±max_change
 
         Args:
             model: The submodel to add constraints to
-            continuous_variable: The continuous variable to constrain
-            activate: Binary variable for transitions from inactive to active
-            deactivate: Binary variable for transitions from active to inactive
-            name: Base name for the constraints
-            max_change: Maximum possible change in the continuous variable (Big-M value)
-            previous_value: Initial value of the continuous variable before first period
-            coord: Coordinate name for time dimension
+            continuous_variable: Continuous variable to constrain
+            activate: Binary variable for transitions from inactive to active (0→1)
+            deactivate: Binary variable for transitions from active to inactive (1→0)
+            name: Base name for constraints
+            max_change: Maximum allowed change (Big-M value, should be ≥ actual max change)
+            previous_value: Initial value before first timestep (default 0.0)
+            coord: Time dimension name (default 'time')
 
         Returns:
-            Tuple of constraints: (transition_upper, transition_lower, initial_upper, initial_lower)
-
-        Examples:
-            - Capacity that only changes during investment/divestment events
-            - Temperature that only changes during heating/cooling activation
+            Tuple of (transition_upper, transition_lower, initial_upper, initial_lower) constraints
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
