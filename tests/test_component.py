@@ -123,8 +123,8 @@ class TestComponentModel:
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
                 'TestComponent(Out2)|active_hours',
-                'TestComponent|on|lb',
-                'TestComponent|on|ub',
+                'TestComponent|status|lb',
+                'TestComponent|status|ub',
                 'TestComponent|active_hours',
             },
             msg='Incorrect constraints',
@@ -155,7 +155,7 @@ class TestComponentModel:
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on|lb'],
+            model.constraints['TestComponent|status|lb'],
             model.variables['TestComponent|status']
             >= (
                 model.variables['TestComponent(In1)|status']
@@ -165,7 +165,7 @@ class TestComponentModel:
             / (3 + 1e-5),
         )
         assert_conequal(
-            model.constraints['TestComponent|on|ub'],
+            model.constraints['TestComponent|status|ub'],
             model.variables['TestComponent|status']
             <= (
                 model.variables['TestComponent(In1)|status']
@@ -303,8 +303,8 @@ class TestComponentModel:
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
                 'TestComponent(Out2)|active_hours',
-                'TestComponent|on|lb',
-                'TestComponent|on|ub',
+                'TestComponent|status|lb',
+                'TestComponent|status|ub',
                 'TestComponent|active_hours',
             },
             msg='Incorrect constraints',
@@ -335,7 +335,7 @@ class TestComponentModel:
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on|lb'],
+            model.constraints['TestComponent|status|lb'],
             model.variables['TestComponent|status']
             >= (
                 model.variables['TestComponent(In1)|status']
@@ -345,7 +345,7 @@ class TestComponentModel:
             / (3 + 1e-5),
         )
         assert_conequal(
-            model.constraints['TestComponent|on|ub'],
+            model.constraints['TestComponent|status|ub'],
             model.variables['TestComponent|status']
             <= (
                 model.variables['TestComponent(In1)|status']

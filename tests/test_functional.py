@@ -432,7 +432,7 @@ def test_startup_shutdown(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                status_parameters=fx.StatusParameters(force_switch_on=True),
+                status_parameters=fx.StatusParameters(force_startup_tracking=True),
             ),
         )
     )
@@ -463,7 +463,7 @@ def test_startup_shutdown(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.status.switch_off.solution.values,
+        boiler.Q_th.submodel.status.shutdown.solution.values,
         [0, 0, 0, 1, 0],
         rtol=1e-5,
         atol=1e-10,

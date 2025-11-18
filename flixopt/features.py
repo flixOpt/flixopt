@@ -282,6 +282,11 @@ class StatusModel(Submodel):
         return self.get('inactive')
 
     @property
+    def off(self):
+        """Expression for inactive state (1 - status)"""
+        return 1 - self.status
+
+    @property
     def startup(self) -> linopy.Variable | None:
         """Startup variable"""
         return self.get('startup')
