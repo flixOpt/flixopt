@@ -403,46 +403,6 @@ class Effect(Element):
         )
         self.maximum_total = value
 
-    @property
-    def minimum(self):
-        """DEPRECATED: Use 'minimum_over_periods' property instead."""
-        warnings.warn(
-            "Property 'minimum' is deprecated. Use 'minimum_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_over_periods
-
-    @minimum.setter
-    def minimum(self, value):
-        """DEPRECATED: Use 'minimum_over_periods' property instead."""
-        warnings.warn(
-            "Property 'minimum' is deprecated. Use 'minimum_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_over_periods = value
-
-    @property
-    def maximum(self):
-        """DEPRECATED: Use 'maximum_over_periods' property instead."""
-        warnings.warn(
-            "Property 'maximum' is deprecated. Use 'maximum_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_over_periods
-
-    @maximum.setter
-    def maximum(self, value):
-        """DEPRECATED: Use 'maximum_over_periods' property instead."""
-        warnings.warn(
-            "Property 'maximum' is deprecated. Use 'maximum_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_over_periods = value
-
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
