@@ -51,31 +51,35 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-
-### 💥 Breaking Changes
+- **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
+- **System validation**: Added `_validate_system_integrity()` to validate cross-element references (e.g., Flow.bus) immediately after transformation, providing clearer error messages
+- **Element registration validation**: Added checks to prevent elements from being assigned to multiple FlowSystems simultaneously
+- **Helper methods in Interface base class**: Added `_fit_coords()` and `_fit_effect_coords()` convenience wrappers for cleaner data transformation code
+- **FlowSystem property in Interface**: Added `flow_system` property to access the linked FlowSystem with clear error messages if not yet linked
 
 ### ♻️ Changed
-
-### 🗑️ Deprecated
-
-### 🔥 Removed
+- **Refactored FlowSystem-Element coupling**:
+    - Introduced `_set_flow_system()` method in Interface base class to propagate FlowSystem reference to nested Interface objects
+    - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
+    - Elements can now access FlowSystem via `self.flow_system` property instead of passing it through every method call
+- **Simplified transform_data() signature**: Removed `flow_system` parameter from `transform_data()` methods - FlowSystem reference is now accessed via `self.flow_system` property
+- **Two-phase modeling pattern**: Clarified the separation between variable creation (in `__init__`) and constraint creation (in `_do_modeling()`) to eliminate circular dependencies in Submodel architecture
+- **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
+- **Better logging**: Enhanced element registration logging to show element type and full label
 
 ### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
+- Fixed inconsistent argument passing in `_fit_effect_coords()` - changed parameters from `label_prefix`/`label_suffix` to `prefix`/`suffix` for consistency
 
 ### 👷 Development
-
-### 🚧 Known Issues
+- **Eliminated circular dependencies**: Implemented clean two-phase modeling pattern where Phase 1 creates all variables and Phase 2 creates constraints that reference those variables
+- Added comprehensive docstrings to `_do_modeling()` methods explaining "Create variables, constraints, and nested submodels"
+- Added missing type hints throughout the codebase
+- Improved code organization by making FlowSystem reference propagation explicit and traceable
 
 ---
 
