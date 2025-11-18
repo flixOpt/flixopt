@@ -235,7 +235,7 @@ class ModelingPrimitives:
     @staticmethod
     def consecutive_duration_tracking(
         model: Submodel,
-        state_variable: linopy.Variable,
+        state: linopy.Variable,
         name: str = None,
         short_name: str = None,
         minimum_duration: xr.DataArray | None = None,
@@ -258,7 +258,7 @@ class ModelingPrimitives:
 
         Args:
             name: Name of the duration variable
-            state_variable: Binary state variable to track duration for
+            state: Binary state variable to track duration for
             minimum_duration: Optional minimum consecutive duration
             maximum_duration: Optional maximum consecutive duration
             previous_duration: Duration from before first timestep
@@ -276,7 +276,7 @@ class ModelingPrimitives:
         duration = model.add_variables(
             lower=0,
             upper=maximum_duration if maximum_duration is not None else mega,
-            coords=state_variable.coords,
+            coords=state.coords,
             name=name,
             short_name=short_name,
         )
@@ -284,7 +284,7 @@ class ModelingPrimitives:
         constraints = {}
 
         # Upper bound: duration[t] ≤ state[t] * M
-        constraints['ub'] = model.add_constraints(duration <= state_variable * mega, name=f'{duration.name}|ub')
+        constraints['ub'] = model.add_constraints(duration <= state * mega, name=f'{duration.name}|ub')
 
         # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
@@ -298,14 +298,14 @@ class ModelingPrimitives:
             duration.isel({duration_dim: slice(1, None)})
             >= duration.isel({duration_dim: slice(None, -1)})
             + duration_per_step.isel({duration_dim: slice(None, -1)})
-            + (state_variable.isel({duration_dim: slice(1, None)}) - 1) * mega,
+            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
             name=f'{duration.name}|backward',
         )
 
         # Initial condition: duration[0] = (duration_per_step[0] + previous_duration) * state[0]
         constraints['initial'] = model.add_constraints(
             duration.isel({duration_dim: 0})
-            == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state_variable.isel({duration_dim: 0}),
+            == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state.isel({duration_dim: 0}),
             name=f'{duration.name}|initial',
         )
 
@@ -313,10 +313,7 @@ class ModelingPrimitives:
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
                 duration
-                >= (
-                    state_variable.isel({duration_dim: slice(None, -1)})
-                    - state_variable.isel({duration_dim: slice(1, None)})
-                )
+                >= (state.isel({duration_dim: slice(None, -1)}) - state.isel({duration_dim: slice(1, None)}))
                 * minimum_duration.isel({duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
@@ -330,7 +327,7 @@ class ModelingPrimitives:
             min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
             if prev > 0 and prev < min0:
                 constraints['initial_lb'] = model.add_constraints(
-                    state_variable.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
+                    state.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
                 )
 
         variables = {'duration': duration}
@@ -567,7 +564,7 @@ class BoundingPatterns:
     @staticmethod
     def state_transition_bounds(
         model: Submodel,
-        state_variable: linopy.Variable,
+        state: linopy.Variable,
         activate: linopy.Variable,
         deactivate: linopy.Variable,
         name: str,
@@ -588,7 +585,7 @@ class BoundingPatterns:
 
         Args:
             model: The submodel to add constraints to
-            state_variable: Binary state variable (0=inactive, 1=active)
+            state: Binary state variable (0=inactive, 1=active)
             activate: Binary variable for transitions from inactive to active (0→1)
             deactivate: Binary variable for transitions from active to inactive (1→0)
             name: Base name for constraints
@@ -609,13 +606,13 @@ class BoundingPatterns:
         # State transition constraints for t > 0
         transition = model.add_constraints(
             activate.isel({coord: slice(1, None)}) - deactivate.isel({coord: slice(1, None)})
-            == state_variable.isel({coord: slice(1, None)}) - state_variable.isel({coord: slice(None, -1)}),
+            == state.isel({coord: slice(1, None)}) - state.isel({coord: slice(None, -1)}),
             name=f'{name}|transition',
         )
 
         # Initial state transition for t = 0
         initial = model.add_constraints(
-            activate.isel({coord: 0}) - deactivate.isel({coord: 0}) == state_variable.isel({coord: 0}) - previous_state,
+            activate.isel({coord: 0}) - deactivate.isel({coord: 0}) == state.isel({coord: 0}) - previous_state,
             name=f'{name}|initial',
         )
 

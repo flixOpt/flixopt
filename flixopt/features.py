@@ -203,7 +203,7 @@ class StatusModel(Submodel):
 
             BoundingPatterns.state_transition_bounds(
                 self,
-                state_variable=self.status,
+                state=self.status,
                 activate=self.startup,
                 deactivate=self.shutdown,
                 name=f'{self.label_of_model}|switch',
@@ -224,7 +224,7 @@ class StatusModel(Submodel):
         if self.parameters.use_uptime_tracking:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.status,
+                state=self.status,
                 short_name='uptime',
                 minimum_duration=self.parameters.min_uptime,
                 maximum_duration=self.parameters.max_uptime,
@@ -237,7 +237,7 @@ class StatusModel(Submodel):
         if self.parameters.use_downtime_tracking:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.inactive,
+                state=self.inactive,
                 short_name='downtime',
                 minimum_duration=self.parameters.min_downtime,
                 maximum_duration=self.parameters.max_downtime,
