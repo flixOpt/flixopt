@@ -182,18 +182,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.periods, weight_of_last_period
         )
 
-        # Auto-derive weights from period index if not provided
-        if weights is None and weight_per_period is not None:
-            # Use period weights, broadcast to period×scenario dimensions
-            self.weights = self.fit_to_model_coords('weights', weight_per_period, dims=['period', 'scenario'])
-        else:
-            self.weights = weights
-
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
-        self.weight_per_period = (
-            self.fit_to_model_coords('weight_per_period', weight_per_period, dims=['period'])
-            if weight_per_period is not None
-            else None
+
+        self.weights = self.fit_to_model_coords(
+            'weights', weights if weights is not None else weight_per_period, dims=['period', 'scenario']
         )
 
         # Element collections

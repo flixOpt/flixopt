@@ -217,22 +217,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         return xr.Coordinates(coords) if coords else None
 
-    @property
-    def weights(self) -> xr.DataArray:
-        """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
-        weights = self.flow_system.fit_to_model_coords(
-            name='weights',
-            data=self.flow_system.weights if self.flow_system.weights is not None else 1,
-            dims=['period', 'scenario'],
-        )
-        if not self.normalize_weights:
-            return weights
-
-        total = float(weights.sum().item())
-        if np.isclose(total, 0.0):
-            raise ValueError('FlowSystemModel.weights: weights sum to 0; cannot normalize.')
-        return weights / total
-
     def __repr__(self) -> str:
         """
         Return a string representation of the FlowSystemModel, borrowed from linopy.Model.

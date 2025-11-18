@@ -445,6 +445,7 @@ class Effect(Element):
         self.maximum_over_periods = self._fit_coords(
             f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
+        self.weights = self._fit_coords(f'{prefix}|weights', self.weights, dims=['scenario', 'period'])
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
         self._plausibility_checks()
@@ -476,12 +477,10 @@ class EffectModel(ElementModel):
         """
         if self.element.weights is not None:
             # Use effect-specific weights
-            return self._model.flow_system.fit_to_model_coords(
-                f'weights_{self.element.label}', self.element.weights, dims=['period', 'scenario']
-            )
+            return self.element.weights
         else:
             # Fall back to FlowSystem weights
-            return self._model.weights
+            return self.element._flow_system.weights
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
