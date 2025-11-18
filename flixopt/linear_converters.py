@@ -58,7 +58,7 @@ class Boiler(LinearConverter):
             eta=seasonal_efficiency_profile,  # Time-varying efficiency
             Q_fu=biomass_flow,
             Q_th=district_heat_flow,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=4,  # Minimum 4-hour operation
                 effects_per_switch_on={'startup_fuel': 50},  # Startup fuel penalty
             ),
@@ -86,7 +86,7 @@ class Boiler(LinearConverter):
             inputs=[Q_fu],
             outputs=[Q_th],
             conversion_factors=[{Q_fu.label: eta, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.Q_fu = Q_fu
@@ -143,7 +143,7 @@ class Power2Heat(LinearConverter):
             eta=0.95,  # 95% efficiency including boiler losses
             P_el=industrial_electricity,
             Q_th=process_steam_flow,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=1,  # Minimum 1-hour operation
                 effects_per_switch_on={'startup_cost': 100},
             ),
@@ -173,7 +173,7 @@ class Power2Heat(LinearConverter):
             inputs=[P_el],
             outputs=[Q_th],
             conversion_factors=[{P_el.label: eta, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
@@ -231,7 +231,7 @@ class HeatPump(LinearConverter):
             COP=temperature_dependent_cop,  # Time-varying COP based on ground temp
             P_el=electricity_flow,
             Q_th=radiant_heating_flow,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=2,  # Avoid frequent cycling
                 effects_per_running_hour={'maintenance': 0.5},
             ),
@@ -260,7 +260,7 @@ class HeatPump(LinearConverter):
             inputs=[P_el],
             outputs=[Q_th],
             conversion_factors=[{P_el.label: COP, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.P_el = P_el
@@ -318,7 +318,7 @@ class CoolingTower(LinearConverter):
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
             P_el=auxiliary_electricity,
             Q_th=condenser_waste_heat,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=4,  # Minimum operation time
                 effects_per_running_hour={'water_consumption': 2.5},  # m³/h
             ),
@@ -349,7 +349,7 @@ class CoolingTower(LinearConverter):
             inputs=[P_el, Q_th],
             outputs=[],
             conversion_factors=[{P_el.label: -1, Q_th.label: specific_electricity_demand}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
@@ -415,7 +415,7 @@ class CHP(LinearConverter):
             Q_fu=fuel_gas_flow,
             P_el=plant_electricity,
             Q_th=process_steam,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=8,  # Minimum 8-hour operation
                 effects_per_switch_on={'startup_cost': 5000},
                 on_hours_total_max=6000,  # Annual operating limit
@@ -452,7 +452,7 @@ class CHP(LinearConverter):
             inputs=[Q_fu],
             outputs=[Q_th, P_el],
             conversion_factors=[heat, electricity],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
 
@@ -526,7 +526,7 @@ class HeatPumpWithSource(LinearConverter):
             P_el=electricity_consumption,
             Q_ab=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
             Q_th=heat_supply,
-            on_off_parameters=OnOffParameters(
+            status_parameters=OnOffParameters(
                 consecutive_on_hours_min=0.5,  # 30-minute minimum runtime
                 effects_per_switch_on={'costs': 1000},
             ),
@@ -562,7 +562,7 @@ class HeatPumpWithSource(LinearConverter):
             inputs=[P_el, Q_ab],
             outputs=[Q_th],
             conversion_factors=[{P_el.label: COP, Q_th.label: 1}, {Q_ab.label: COP / (COP - 1), Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=on_off_parameters,
             meta_data=meta_data,
         )
         self.P_el = P_el
