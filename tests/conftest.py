@@ -131,8 +131,8 @@ class Converters:
             """Simple boiler from simple_flow_system"""
             return fx.linear_converters.Boiler(
                 'Boiler',
-                eta=0.5,
-                Q_th=fx.Flow(
+                thermal_efficiency=0.5,
+                thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
                     size=50,
@@ -140,7 +140,7 @@ class Converters:
                     relative_maximum=1,
                     on_off_parameters=fx.OnOffParameters(),
                 ),
-                Q_fu=fx.Flow('Q_fu', bus='Gas'),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             )
 
         @staticmethod
@@ -148,9 +148,9 @@ class Converters:
             """Complex boiler with investment parameters from flow_system_complex"""
             return fx.linear_converters.Boiler(
                 'Kessel',
-                eta=0.5,
+                thermal_efficiency=0.5,
                 on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
-                Q_th=fx.Flow(
+                thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
                     load_factor_max=1.0,
@@ -175,7 +175,7 @@ class Converters:
                     ),
                     flow_hours_max=1e6,
                 ),
-                Q_fu=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
             )
 
     class CHPs:
@@ -184,13 +184,13 @@ class Converters:
             """Simple CHP from simple_flow_system"""
             return fx.linear_converters.CHP(
                 'CHP_unit',
-                eta_th=0.5,
-                eta_el=0.4,
-                P_el=fx.Flow(
+                thermal_efficiency=0.5,
+                electrical_efficiency=0.4,
+                electrical_flow=fx.Flow(
                     'P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()
                 ),
-                Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-                Q_fu=fx.Flow('Q_fu', bus='Gas'),
+                thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             )
 
         @staticmethod
@@ -198,12 +198,12 @@ class Converters:
             """CHP from flow_system_base"""
             return fx.linear_converters.CHP(
                 'KWK',
-                eta_th=0.5,
-                eta_el=0.4,
+                thermal_efficiency=0.5,
+                electrical_efficiency=0.4,
                 on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
-                P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
-                Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
-                Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3),
+                electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
+                thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3),
             )
 
     class LinearConverters:
@@ -596,9 +596,9 @@ def flow_system_long():
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Kessel',
-            eta=0.85,
-            Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow(
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow(label='Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
                 size=95,
@@ -609,12 +609,12 @@ def flow_system_long():
         ),
         fx.linear_converters.CHP(
             'BHKW2',
-            eta_th=0.58,
-            eta_el=0.22,
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
             on_off_parameters=fx.OnOffParameters(effects_per_switch_on=24000),
-            P_el=fx.Flow('P_el', bus='Strom'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288),
+            electrical_flow=fx.Flow('P_el', bus='Strom'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288),
         ),
         fx.Storage(
             'Speicher',

@@ -24,7 +24,7 @@ import xarray as xr
 from loguru import logger
 
 from . import io as fx_io
-from .core import TimeSeriesData, get_dataarray_stats
+from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib
@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
+    from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
 
 CLASS_REGISTRY = {}
@@ -95,6 +96,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
 
     def do_modeling(self):
+        # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
             component.create_model(self)
@@ -267,20 +269,95 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(flow_system): Transform data to match FlowSystem dimensions
+        transform_data(name_prefix=''): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
         Args:
-            flow_system: The FlowSystem containing timing and dimensional information
             name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses
+
+        Note:
+            The FlowSystem reference is available via self._flow_system (for Interface objects)
+            or self.flow_system property (for Element objects). Elements must be registered
+            to a FlowSystem before calling this method.
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
+
+    def _set_flow_system(self, flow_system: FlowSystem) -> None:
+        """Store flow_system reference and propagate to nested Interface objects.
+
+        This method is called automatically during element registration to enable
+        elements to access FlowSystem properties without passing the reference
+        through every method call.
+
+        Subclasses with nested Interface objects should override this method
+        to explicitly propagate the reference to their nested interfaces.
+
+        Args:
+            flow_system: The FlowSystem that this interface belongs to
+        """
+        self._flow_system = flow_system
+
+    @property
+    def flow_system(self) -> FlowSystem:
+        """Access the FlowSystem this interface is linked to.
+
+        Returns:
+            The FlowSystem instance this interface belongs to.
+
+        Raises:
+            RuntimeError: If interface has not been linked to a FlowSystem yet.
+
+        Note:
+            For Elements, this is set during add_elements().
+            For parameter classes, this is set recursively when the parent Element is registered.
+        """
+        if not hasattr(self, '_flow_system') or self._flow_system is None:
+            raise RuntimeError(
+                f'{self.__class__.__name__} is not linked to a FlowSystem. '
+                f'Ensure the parent element is registered via flow_system.add_elements() first.'
+            )
+        return self._flow_system
+
+    def _fit_coords(
+        self, name: str, data: NumericOrBool | None, dims: Collection[FlowSystemDimensions] | None = None
+    ) -> xr.DataArray | None:
+        """Convenience wrapper for FlowSystem.fit_to_model_coords().
+
+        Args:
+            name: The name for the data variable
+            data: The data to transform
+            dims: Optional dimension names
+
+        Returns:
+            Transformed data aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_to_model_coords(name, data, dims=dims)
+
+    def _fit_effect_coords(
+        self,
+        prefix: str | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
+        suffix: str | None = None,
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> Effect_TPS | None:
+        """Convenience wrapper for FlowSystem.fit_effects_to_model_coords().
+
+        Args:
+            prefix: Label prefix for effect names
+            effect_values: The effect values to transform
+            suffix: Optional label suffix
+            dims: Optional dimension names
+
+        Returns:
+            Transformed effect values aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_effects_to_model_coords(prefix, effect_values, suffix, dims=dims)
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
@@ -859,6 +936,7 @@ class Element(Interface):
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
         self.submodel = None
+        self._flow_system: FlowSystem | None = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
@@ -1420,7 +1498,12 @@ class Submodel(SubmodelsMixin):
         return self._model.hours_per_step
 
     def _do_modeling(self):
-        """Called at the end of initialization. Override in subclasses to create variables and constraints."""
+        """
+        Override in subclasses to create variables, constraints, and submodels.
+
+        This method is called during __init__. Create all nested submodels first
+        (so their variables exist), then create constraints that reference those variables.
+        """
         pass
 
 
