@@ -98,8 +98,6 @@ class Calculation:
             raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
         self.folder.mkdir(parents=False, exist_ok=True)
 
-        self._modeled = False
-
     @property
     def main_results(self) -> dict[str, int | float | dict]:
         from flixopt.features import InvestmentModel
@@ -228,6 +226,11 @@ class FullCalculation(Calculation):
     def solve(
         self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
     ) -> FullCalculation:
+        # Auto-call do_modeling() if not already done
+        if not self.modeled:
+            logger.info('Model not yet created. Calling do_modeling() automatically.')
+            self.do_modeling()
+
         t_start = timeit.default_timer()
 
         self.model.solve(

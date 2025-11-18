@@ -51,15 +51,26 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Renaming parameters in Linear Transformers for readability & Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-
-### 💥 Breaking Changes
+- **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
+- **System validation**: Added `_validate_system_integrity()` to validate cross-element references (e.g., Flow.bus) immediately after transformation, providing clearer error messages
+- **Element registration validation**: Added checks to prevent elements from being assigned to multiple FlowSystems simultaneously
+- **Helper methods in Interface base class**: Added `_fit_coords()` and `_fit_effect_coords()` convenience wrappers for cleaner data transformation code
+- **FlowSystem property in Interface**: Added `flow_system` property to access the linked FlowSystem with clear error messages if not yet linked
 
 ### ♻️ Changed
+- **Refactored FlowSystem-Element coupling**:
+    - Introduced `_set_flow_system()` method in Interface base class to propagate FlowSystem reference to nested Interface objects
+    - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
+    - Elements can now access FlowSystem via `self.flow_system` property instead of passing it through every method call
+- **Simplified transform_data() signature**: Removed `flow_system` parameter from `transform_data()` methods - FlowSystem reference is now accessed via `self.flow_system` property
+- **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
+- **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
+- **Better logging**: Centralized element registration logging to show element type and full label
 - **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
     - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
         - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
@@ -84,24 +95,35 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
     - **COP parameter**: `COP` (use lowercase `cop` instead)
     - **Storage Parameter**: `Storage`: `initial_charge_state="lastValueOfSim"` (use `initial_charge_state="equals_last"`)
 
-### 🔥 Removed
-
 ### 🐛 Fixed
+- Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
 - Fixed `check_bounds` function in `linear_converters.py` to normalize array inputs before comparisons, ensuring correct boundary checks with DataFrames, Series, and other array-like types
 
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
-
 ### 👷 Development
-
-### 🚧 Known Issues
+- **Eliminated circular dependencies**: Implemented two-phase modeling pattern within `_do_modeling()` where nested submodels are created first (creating their variables), then constraints are created that can safely reference those submodel variables
+- Added comprehensive docstrings to `_do_modeling()` methods explaining the pattern: "Create variables, constraints, and nested submodels"
+- Added missing type hints throughout the codebase
+- Improved code organization by making FlowSystem reference propagation explicit and traceable
 
 ---
 
 Until here -->
+
+## [3.6.1] - 2025-11-17
+
+**Summary**: Documentation improvements and dependency updates.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 📦 Dependencies
+- Updated `astral-sh/uv` to v0.9.8
+- Updated `mkdocs-git-revision-date-localized-plugin` to v1.5.0
+
+### 📝 Docs
+- Improved type specifications in `flixopt/types.py` for better documentation generation
+- Fixed minor mkdocs warnings in `flixopt/io.py` and `mkdocs.yml`
+
+---
 
 ## [3.6.0] - 2025-11-15
 
