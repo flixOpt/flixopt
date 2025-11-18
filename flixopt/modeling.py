@@ -196,7 +196,7 @@ class ModelingPrimitives:
     @staticmethod
     def expression_tracking_variable(
         model: Submodel,
-        tracked_expression,
+        tracked_expression: linopy.expressions.LinearExpression | linopy.Variable,
         name: str = None,
         short_name: str = None,
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
@@ -575,7 +575,7 @@ class BoundingPatterns:
         activate: linopy.Variable,
         deactivate: linopy.Variable,
         name: str,
-        previous_state=0,
+        previous_state: float | xr.DataArray = 0,
         coord: str = 'time',
     ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
         """Creates state transition constraints for binary state variables.
