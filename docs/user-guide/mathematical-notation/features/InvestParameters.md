@@ -233,6 +233,7 @@ $$
 **Python Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
 
 **Key Parameters:**
+
 - `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
 - `minimum_size`, `maximum_size`: For continuous sizing
 - `mandatory`: Whether investment is required (default: `False`)

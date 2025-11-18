@@ -244,6 +244,7 @@ For equipment with StatusParameters, the complete constraint system includes:
 **Python Class:** [`StatusParameters`][flixopt.interface.StatusParameters]
 
 **Key Parameters:**
+
 - `effects_per_startup`: Costs per startup event
 - `effects_per_active_hour`: Costs per hour of operation
 - `active_hours_min`, `active_hours_max`: Total runtime bounds

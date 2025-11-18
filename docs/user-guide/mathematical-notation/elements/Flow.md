@@ -44,6 +44,7 @@ Flow formulation uses the following modeling patterns:
 **Python Class:** [`Flow`][flixopt.elements.Flow]
 
 **Key Parameters:**
+
 - `size`: Flow size $\text{P}$ (can be fixed or variable with InvestParameters)
 - `relative_minimum`, `relative_maximum`: Relative bounds $\text{p}^{\text{L}}_{\text{rel}}, \text{p}^{\text{U}}_{\text{rel}}$
 - `effects_per_flow_hour`: Operational effects (costs, emissions, etc.)
