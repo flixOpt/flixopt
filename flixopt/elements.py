@@ -691,6 +691,12 @@ class FlowModel(ElementModel):
 
         # Weighted sum over all periods constraint
         if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
+            # Validate that period dimension exists
+            if self._model.flow_system.periods is None:
+                raise ValueError(
+                    f"{self.label_full}: flow_hours_*_over_periods requires FlowSystem to define 'periods', "
+                    f'but FlowSystem has no period dimension. Please define periods in FlowSystem constructor.'
+                )
             # Get period weights from FlowSystem
             weight_per_period = self._model.flow_system.weight_per_period
             if weight_per_period is not None:
