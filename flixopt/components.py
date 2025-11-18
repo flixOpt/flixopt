@@ -766,7 +766,7 @@ class TransmissionModel(ComponentModel):
         )
 
         if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.submodel.on_off.on * self.element.absolute_losses
+            con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
 
         return con_transmission
 
@@ -810,7 +810,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
-                    zero_point=self.on_off.on if self.on_off is not None else False,
+                    zero_point=self.status.status if self.status is not None else False,
                     dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',

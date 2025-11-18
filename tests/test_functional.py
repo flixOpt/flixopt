@@ -14,7 +14,7 @@ investment optimization, and operational constraints like on-off behavior.
 Classes group related test cases by their functional focus:
 - Minimal modeling setup (`TestMinimal`)
 - Investment behavior (`TestInvestment`)
-- On-off operational constraints (`TestOnOff`).
+- Status operational constraints (`TestStatus`).
 """
 
 import numpy as np
@@ -420,7 +420,7 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
 
-def test_switch_on_off(solver_fixture, time_steps_fixture):
+def test_startup_shutdown(solver_fixture, time_steps_fixture):
     """Tests if the Switch On/Off Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
@@ -602,8 +602,8 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
 
-def test_consecutive_on_off(solver_fixture, time_steps_fixture):
-    """Tests if the consecutive on/off hours are correctly created and calculated in a Flow"""
+def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
+    """Tests if the consecutive uptime/downtime are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
         fx.linear_converters.Boiler(

@@ -233,7 +233,7 @@ class HeatPump(LinearConverter):
             Q_th=radiant_heating_flow,
             status_parameters=StatusParameters(
                 min_uptime=2,  # Avoid frequent cycling
-                effects_per_running_hour={'maintenance': 0.5},
+                effects_per_active_hour={'maintenance': 0.5},
             ),
         )
         ```
@@ -320,7 +320,7 @@ class CoolingTower(LinearConverter):
             Q_th=condenser_waste_heat,
             status_parameters=StatusParameters(
                 min_uptime=4,  # Minimum operation time
-                effects_per_running_hour={'water_consumption': 2.5},  # m³/h
+                effects_per_active_hour={'water_consumption': 2.5},  # m³/h
             ),
         )
         ```

@@ -555,7 +555,7 @@ class TestFlowOnModel:
             ),
         )
 
-        # OnOff
+        # Status
         assert_var_equal(
             flow.submodel.status.status,
             model.add_variables(binary=True, coords=model.get_coords()),
@@ -1054,13 +1054,13 @@ class TestFlowOnModel:
         # Check that constraints exist
         assert 'Sink(Wärme)|active_hours' in model.constraints
 
-        # Check on_hours_total variable bounds
+        # Check active_hours variable bounds
         assert_var_equal(
             flow.submodel.variables['Sink(Wärme)|active_hours'],
             model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        # Check on_hours_total constraint
+        # Check active_hours constraint
         assert_conequal(
             model.constraints['Sink(Wärme)|active_hours'],
             flow.submodel.variables['Sink(Wärme)|active_hours']
@@ -1122,7 +1122,7 @@ class TestFlowOnInvestModel:
             ),
         )
 
-        # OnOff
+        # Status
         assert_var_equal(
             flow.submodel.status.status,
             model.add_variables(binary=True, coords=model.get_coords()),
@@ -1222,7 +1222,7 @@ class TestFlowOnInvestModel:
             ),
         )
 
-        # OnOff
+        # Status
         assert_var_equal(
             flow.submodel.status.status,
             model.add_variables(binary=True, coords=model.get_coords()),

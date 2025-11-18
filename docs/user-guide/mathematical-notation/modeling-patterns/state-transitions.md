@@ -174,14 +174,14 @@ Track startup and shutdown events to apply costs:
 
 ```python
 # Create switch variables
-switch_on, switch_off = modeling.state_transition_bounds(
+startup, shutdown = modeling.state_transition_bounds(
     state_variable=on_state,
     previous_state=previous_on_state
 )
 
 # Apply costs to switches
-startup_cost = switch_on * startup_cost_per_event
-shutdown_cost = switch_off * shutdown_cost_per_event
+startup_cost = startup * startup_cost_per_event
+shutdown_cost = shutdown * shutdown_cost_per_event
 ```
 
 ### Limited Switching
@@ -190,13 +190,13 @@ Restrict the number of state changes:
 
 ```python
 # Track all switches
-switch_on, switch_off = modeling.state_transition_bounds(
+startup, shutdown = modeling.state_transition_bounds(
     state_variable=on_state
 )
 
 # Limit total switches
 model.add_constraint(
-    (switch_on + switch_off).sum() <= max_switches
+    (startup + shutdown).sum() <= max_switches
 )
 ```
 
