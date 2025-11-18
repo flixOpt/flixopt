@@ -27,7 +27,7 @@ def test_system():
     flow_system = FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        weights=weights,  # Use TimeSeriesData for weights
+        weights=weights,
     )
 
     # Create demand profiles that differ between scenarios
@@ -291,7 +291,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
 
 
 @pytest.mark.skip(reason='This test is taking too long with highs and is too big for gurobipy free')
-def test_io_persistance(flow_system_piecewise_conversion_scenarios):
+def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
