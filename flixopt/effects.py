@@ -16,6 +16,7 @@ import numpy as np
 import xarray as xr
 from loguru import logger
 
+from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
@@ -66,8 +67,10 @@ class Effect(Element):
         maximum_total: Maximum allowed total effect (temporal + periodic combined) per period.
         minimum_over_periods: Minimum allowed weighted sum of total effect across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
+            Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
         maximum_over_periods: Maximum allowed weighted sum of total effect across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
+            Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -453,8 +456,15 @@ class Effect(Element):
         return self.submodel
 
     def _plausibility_checks(self) -> None:
-        # TODO: Check for plausibility
-        pass
+        # Check that minimum_over_periods and maximum_over_periods require a period dimension
+        if (
+            self.minimum_over_periods is not None or self.maximum_over_periods is not None
+        ) and self.flow_system.periods is None:
+            raise PlausibilityError(
+                f"Effect '{self.label}': minimum_over_periods and maximum_over_periods require "
+                f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
+                f'the FlowSystem, or remove these constraints.'
+            )
 
 
 class EffectModel(ElementModel):
