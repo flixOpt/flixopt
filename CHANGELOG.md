@@ -60,7 +60,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
   - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
 
-  **Important**: Constraints with the `_over_periods` suffix compute weighted sums across all periods using the weights specified in `FlowSystem.weights` or `Effect.weights`. Per-period constraints (without the suffix) apply separately to each individual period.
+  **Important**:
+  - Constraints with the `_over_periods` suffix compute weighted sums across all periods using the **raw** weights from period durations (or user-specified weights). These constraints always use unnormalized weights.
+  - The `normalize_weights` parameter (in `Calculation` or `FlowSystem.create_model()`) only affects the objective function, not the `_over_periods` constraints.
+  - Per-period constraints (without the suffix) apply separately to each individual period.
 
   **Example**:
   ```python
@@ -69,8 +72,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   effect = fx.Effect('costs', maximum_total=1000)  # ≤1000 in 2020 AND ≤1000 in 2030 AND ≤1000 in 2040
 
   # Over-periods constraint: limits apply to WEIGHTED SUM across ALL periods
-  # With periods=[2020, 2030, 2040] and weights=[0.5, 0.3, 0.2], this creates 1 constraint
-  effect = fx.Effect('costs', maximum_over_periods=1000)  # 0.5×costs₂₀₂₀ + 0.3×costs₂₀₃₀ + 0.2×costs₂₀₄₀ ≤ 1000
+  # With periods=[2020, 2030, 2040] (auto-derived weights: [10, 10, 10] from 10-year intervals)
+  effect = fx.Effect('costs', maximum_over_periods=1000)  # 10×costs₂₀₂₀ + 10×costs₂₀₃₀ + 10×costs₂₀₄₀ ≤ 1000
+
+  # Note: If normalize_weights=True, the objective uses normalized weights [0.33, 0.33, 0.33],
+  # but the constraint above still uses raw weights [10, 10, 10]
   ```
 
 - **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
