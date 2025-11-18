@@ -75,7 +75,7 @@ if __name__ == '__main__':
                 max_uptime=10,  # Max consecutive operating hours
                 min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
                 max_downtime=10,  # Max consecutive off hours
-                effects_per_startup={Costs.label: 0.01},  # Cost per switch-on
+                effects_per_startup={Costs.label: 0.01},  # Cost per startup
                 startup_limit=1000,  # Max number of starts
             ),
         ),

@@ -429,8 +429,8 @@ class TestLinearConverterModel:
         # Check that we have the expected pieces (2 in this case)
         assert len(piecewise_model.pieces) == 2
 
-        # Verify that the on variable was used as the zero_point for the piecewise model
-        # When using StatusParameters, the zero_point should be the on variable
+        # Verify that the status variable was used as the zero_point for the piecewise model
+        # When using StatusParameters, the zero_point should be the status variable
         assert 'Converter|status' in model.variables
         assert piecewise_model.zero_point is not None  # Should be a variable
 

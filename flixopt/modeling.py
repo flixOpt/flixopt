@@ -59,12 +59,12 @@ class ModelingUtilitiesAbstract:
         (non-zero) at the end of the time series. If the final state is "off", returns 0.
 
         Args:
-            binary_values: Binary DataArray with values close to 0 (off) or 1 (on).
+            binary_values: Binary DataArray with values close to 0 (inactive) or 1 (active).
             dim: Dimension along which to count consecutive states.
             epsilon: Tolerance for zero detection. Uses CONFIG.Modeling.epsilon if None.
 
         Returns:
-            Sum of values in the final consecutive "on" period. Returns 0.0 if the
+            Sum of values in the final consecutive "active" period. Returns 0.0 if the
             final state is "off".
 
         Examples:
@@ -120,7 +120,7 @@ class ModelingUtilities:
         epsilon: float = None,
     ) -> float:
         """
-        Computes the final consecutive duration in state 'on' (=1) in hours.
+        Computes the final consecutive duration in state 'active' (=1) in hours.
 
         Args:
             binary_values: Binary DataArray with 'time' dim, or scalar/array
@@ -128,7 +128,7 @@ class ModelingUtilities:
             epsilon: Tolerance for zero detection (uses CONFIG.Modeling.epsilon if None)
 
         Returns:
-            The duration of the final consecutive 'on' period in hours
+            The duration of the final consecutive 'active' period in hours
         """
         if not isinstance(hours_per_timestep, (int, float)):
             raise TypeError(f'hours_per_timestep must be a scalar, got {type(hours_per_timestep)}')
@@ -434,7 +434,7 @@ class BoundingPatterns:
 
         Use Cases:
             - Investment decisions
-            - Unit commitment (on/off states)
+            - Unit commitment (active/inactive states)
 
         Args:
             model: The optimization model instance
@@ -536,7 +536,7 @@ class BoundingPatterns:
             scaling_variable: Variable that scales the bound factors
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling variable
             scaling_bounds: Tuple of (scaling_min, scaling_max) bounds of the scaling variable
-            variable_state: Binary variable for on/off control
+            variable_state: Binary variable for active/inactive status control
             name: Optional name prefix for constraints
 
         Returns:

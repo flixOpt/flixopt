@@ -622,7 +622,7 @@ class Transmission(Component):
         )
         ```
 
-        Material conveyor with on/off operation:
+        Material conveyor with active/inactive status:
 
         ```python
         conveyor_belt = Transmission(

@@ -329,7 +329,7 @@ class Flow(Element):
         flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
-        previous_flow_rate: Initial flow state for on/off dynamics. Default: None (off).
+        previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (off).
         meta_data: Additional info stored in results. Python native types only.
 
     Examples:

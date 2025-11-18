@@ -676,7 +676,7 @@ class TestFlowOnModel:
                 'Sink(Wärme)|uptime|initial',
                 'Sink(Wärme)|uptime|lb',
             },
-            msg='Missing consecutive on hours constraints',
+            msg='Missing uptime constraints',
         )
 
         assert_var_equal(
@@ -724,7 +724,7 @@ class TestFlowOnModel:
         )
 
     def test_consecutive_on_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
-        """Test flow with minimum and maximum consecutive on hours."""
+        """Test flow with minimum and maximum uptime."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
@@ -732,10 +732,10 @@ class TestFlowOnModel:
             bus='Fernwärme',
             size=100,
             status_parameters=fx.StatusParameters(
-                min_uptime=2,  # Must run for at least 2 hours when turned on
+                min_uptime=2,  # Must run for at least 2 hours when active
                 max_uptime=8,  # Can't run more than 8 consecutive hours
             ),
-            previous_flow_rate=np.array([10, 20, 30, 0, 20, 20, 30]),  # Previously on for 3 steps
+            previous_flow_rate=np.array([10, 20, 30, 0, 20, 20, 30]),  # Previously active for 3 steps
         )
 
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
@@ -757,7 +757,7 @@ class TestFlowOnModel:
                 'Sink(Wärme)|uptime|backward',
                 'Sink(Wärme)|uptime|initial',
             },
-            msg='Missing consecutive on hours constraints for previous states',
+            msg='Missing uptime constraints for previous states',
         )
 
         assert_var_equal(
@@ -1032,7 +1032,7 @@ class TestFlowOnModel:
         )
 
     def test_on_hours_limits(self, basic_flow_system_linopy_coords, coords_config):
-        """Test flow with limits on total on hours."""
+        """Test flow with limits on total active hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
