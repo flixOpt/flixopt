@@ -72,8 +72,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+- Added Zenodo DOI badge to README.md (placeholder, to be updated after first Zenodo release)
 
 ### 👷 Development
+- Added Zenodo integration for automatic archival and citation
+  - Created `CITATION.cff` file for software citation following CFF 1.2.0 specification
+  - Created `.zenodo.json` file for Zenodo metadata configuration
+  - Repository now ready for DOI assignment upon next release
 
 ### 🚧 Known Issues
 

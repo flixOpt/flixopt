@@ -1,4 +1,4 @@
-# flixOpt Documentation Configuration
+# FlixOpt Documentation Configuration
 # https://mkdocstrings.github.io/python/usage/configuration/docstrings/
 # https://squidfunk.github.io/mkdocs-material/setup/
 
@@ -278,10 +278,10 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/flixOpt/flixopt
-      name: flixOpt on GitHub
+      name: FlixOpt on GitHub
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/flixopt/
-      name: flixOpt on PyPI
+      name: FlixOpt on PyPI
 
   analytics:
     provider: google

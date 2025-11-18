@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flixopt"
 dynamic = ["version"]
-description = "Vector based energy and material flow optimization framework in Python."
+description = "Progressive flow system optimization in Python - start simple, scale to complex."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
