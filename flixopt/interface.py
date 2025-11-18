@@ -407,7 +407,7 @@ class PiecewiseConversion(Interface):
         operate in certain ranges (e.g., minimum loads, unstable regions).
 
         **Discrete Modes**: Use pieces with identical start/end values to model
-        equipment with fixed operating points (e.g., on/off, discrete speeds).
+        equipment with fixed operating points (e.g., on/inactive, discrete speeds).
 
         **Efficiency Changes**: Coordinate input and output pieces to reflect
         changing conversion efficiency across operating ranges.
@@ -1198,7 +1198,7 @@ class StatusParameters(Interface):
                 'maintenance': 0.12,  # €/hour maintenance reserve
             },
             min_uptime=1,  # Minimum 1-hour run to avoid cycling
-            min_downtime=0.5,  # 30-minute minimum off time
+            min_downtime=0.5,  # 30-minute minimum inactive time
             startup_limit=2000,  # Limit cycling for compressor life
             active_hours_min=2000,  # Minimum operation for humidity control
             active_hours_max=5000,  # Maximum operation for energy budget

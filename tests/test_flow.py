@@ -805,7 +805,7 @@ class TestFlowOnModel:
         )
 
     def test_consecutive_off_hours(self, basic_flow_system_linopy_coords, coords_config):
-        """Test flow with minimum and maximum consecutive off hours."""
+        """Test flow with minimum and maximum consecutive inactive hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
@@ -813,8 +813,8 @@ class TestFlowOnModel:
             bus='Fernwärme',
             size=100,
             status_parameters=fx.StatusParameters(
-                min_downtime=4,  # Must stay off for at least 4 hours when shut down
-                max_downtime=12,  # Can't be off for more than 12 consecutive hours
+                min_downtime=4,  # Must stay inactive for at least 4 hours when shut down
+                max_downtime=12,  # Can't be inactive for more than 12 consecutive hours
             ),
         )
 
@@ -839,7 +839,7 @@ class TestFlowOnModel:
                 'Sink(Wärme)|downtime|initial',
                 'Sink(Wärme)|downtime|lb',
             },
-            msg='Missing consecutive off hours constraints',
+            msg='Missing consecutive inactive hours constraints',
         )
 
         assert_var_equal(
@@ -847,7 +847,7 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=12, coords=model.get_coords()),
         )
 
-        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 1  # previously off for 1h
+        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 1  # previously inactive for 1h
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|ub'],
@@ -887,7 +887,7 @@ class TestFlowOnModel:
         )
 
     def test_consecutive_off_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
-        """Test flow with minimum and maximum consecutive off hours."""
+        """Test flow with minimum and maximum consecutive inactive hours."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
@@ -895,10 +895,10 @@ class TestFlowOnModel:
             bus='Fernwärme',
             size=100,
             status_parameters=fx.StatusParameters(
-                min_downtime=4,  # Must stay off for at least 4 hours when shut down
-                max_downtime=12,  # Can't be off for more than 12 consecutive hours
+                min_downtime=4,  # Must stay inactive for at least 4 hours when shut down
+                max_downtime=12,  # Can't be inactive for more than 12 consecutive hours
             ),
-            previous_flow_rate=np.array([10, 20, 30, 0, 20, 0, 0]),  # Previously off for 2 steps
+            previous_flow_rate=np.array([10, 20, 30, 0, 20, 0, 0]),  # Previously inactive for 2 steps
         )
 
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
@@ -922,7 +922,7 @@ class TestFlowOnModel:
                 'Sink(Wärme)|downtime|initial',
                 'Sink(Wärme)|downtime|lb',
             },
-            msg='Missing consecutive off hours constraints for previous states',
+            msg='Missing consecutive inactive hours constraints for previous states',
         )
 
         assert_var_equal(

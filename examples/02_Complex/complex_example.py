@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
     # --- Define Components ---
     # 1. Define Boiler Component
-    # A gas boiler that converts fuel into thermal output, with investment and on-off parameters
+    # A gas boiler that converts fuel into thermal output, with investment and on-inactive parameters
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         eta=0.5,  # Efficiency ratio
@@ -74,7 +74,7 @@ if __name__ == '__main__':
                 active_hours_max=1000,  # Maximum operating hours
                 max_uptime=10,  # Max consecutive operating hours
                 min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
-                max_downtime=10,  # Max consecutive off hours
+                max_downtime=10,  # Max consecutive inactive hours
                 effects_per_startup={Costs.label: 0.01},  # Cost per startup
                 startup_limit=1000,  # Max number of starts
             ),

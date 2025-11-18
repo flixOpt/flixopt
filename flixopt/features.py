@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class InvestmentModel(Submodel):
     """
     This feature model is used to model the investment of a variable.
-    It applies the corresponding bounds to the variable and the on/off state of the variable.
+    It applies the corresponding bounds to the variable and the on/inactive state of the variable.
 
     Args:
         model: The optimization model instance
@@ -280,11 +280,6 @@ class StatusModel(Submodel):
     def inactive(self) -> linopy.Variable | None:
         """Binary inactive state variable (deprecated - use 1 - status expression instead)"""
         return self.get('inactive')
-
-    @property
-    def off(self):
-        """Expression for inactive state (1 - status)"""
-        return 1 - self.status
 
     @property
     def startup(self) -> linopy.Variable | None:

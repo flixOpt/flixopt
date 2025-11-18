@@ -56,7 +56,7 @@ class ModelingUtilitiesAbstract:
         """Count consecutive steps in the final active state of a binary time series.
 
         This function counts how many consecutive time steps the series remains "on"
-        (non-zero) at the end of the time series. If the final state is "off", returns 0.
+        (non-zero) at the end of the time series. If the final state is "inactive", returns 0.
 
         Args:
             binary_values: Binary DataArray with values close to 0 (inactive) or 1 (active).
@@ -65,7 +65,7 @@ class ModelingUtilitiesAbstract:
 
         Returns:
             Sum of values in the final consecutive "active" period. Returns 0.0 if the
-            final state is "off".
+            final state is "inactive".
 
         Examples:
             >>> arr = xr.DataArray([0, 0, 1, 1, 1, 0, 1, 1], dims=['time'])
@@ -97,11 +97,11 @@ class ModelingUtilitiesAbstract:
         if arr.size == 1:
             return float(arr[0]) if not np.isclose(arr[0], 0, atol=epsilon) else 0.0
 
-        # Return 0 if final state is off
+        # Return 0 if final state is inactive
         if np.isclose(arr[-1], 0, atol=epsilon):
             return 0.0
 
-        # Find the last zero position (treat NaNs as off)
+        # Find the last zero position (treat NaNs as inactive)
         arr = np.nan_to_num(arr, nan=0.0)
         is_zero = np.isclose(arr, 0, atol=epsilon)
         zero_indices = np.where(is_zero)[0]
@@ -156,14 +156,14 @@ class ModelingUtilities:
         previous_values: xr.DataArray, hours_per_step: xr.DataArray | float | int
     ) -> float:
         """
-        Compute previous consecutive 'off' duration.
+        Compute previous consecutive 'inactive' duration.
 
         Args:
             previous_values: DataArray with 'time' dimension
             hours_per_step: Duration of each timestep in hours
 
         Returns:
-            Previous consecutive off duration in hours
+            Previous consecutive inactive duration in hours
         """
         if previous_values is None or previous_values.size == 0:
             return 0.0

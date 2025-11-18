@@ -298,7 +298,7 @@ class Flow(Element):
     between a Bus and a Component in a specific direction. The flow rate is the
     primary optimization variable, with constraints and costs defined through
     various parameters. Flows can have fixed or variable sizes, operational
-    constraints, and complex on/off behavior.
+    constraints, and complex on/inactive behavior.
 
     Key Concepts:
         **Flow Rate**: The instantaneous rate of energy/material transfer (optimization variable) [kW, m³/h, kg/h]
@@ -329,7 +329,7 @@ class Flow(Element):
         flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
-        previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (off).
+        previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
         meta_data: Additional info stored in results. Python native types only.
 
     Examples:
@@ -371,7 +371,7 @@ class Flow(Element):
             status_parameters=StatusParameters(
                 effects_per_startup={'startup_cost': 100, 'wear': 0.1},
                 min_uptime=2,  # Must run at least 2 hours
-                min_downtime=1,  # Must stay off at least 1 hour
+                min_downtime=1,  # Must stay inactive at least 1 hour
                 startup_limit=200,  # Maximum 200 starts per period
             ),
         )
@@ -530,7 +530,7 @@ class Flow(Element):
         if np.any(self.relative_minimum > 0) and self.status_parameters is None:
             logger.warning(
                 f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no status_parameters. '
-                f'This prevents the Flow from switching off (flow_rate = 0). '
+                f'This prevents the Flow from switching inactive (flow_rate = 0). '
                 f'Consider using status_parameters to allow the Flow to be switched active and inactive.'
             )
 

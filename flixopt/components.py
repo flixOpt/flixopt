@@ -566,7 +566,7 @@ class Transmission(Component):
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
-            Automatically creates binary variables for on/off states.
+            Automatically creates binary variables for on/inactive states.
         status_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
@@ -647,7 +647,7 @@ class Transmission(Component):
         When using InvestParameters on in1, the capacity automatically applies to in2
         to maintain consistent bidirectional capacity without additional investment variables.
 
-        Absolute losses force the creation of binary on/off variables, which increases
+        Absolute losses force the creation of binary on/inactive variables, which increases
         computational complexity but enables realistic modeling of equipment with
         standby power consumption.
 

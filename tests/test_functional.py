@@ -3,7 +3,7 @@ Unit tests for the flixopt framework.
 
 This module defines a set of unit tests for testing the functionality of the `flixopt` framework.
 The tests focus on verifying the correct behavior of flow systems, including component modeling,
-investment optimization, and operational constraints like on-off behavior.
+investment optimization, and operational constraints like status behavior.
 
 ### Approach:
 1. **Setup**: Each test initializes a flow system with a set of predefined elements and parameters.
@@ -405,7 +405,7 @@ def test_off(solver_fixture, time_steps_fixture):
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.status.off.solution.values,
+        boiler.Q_th.submodel.status.inactive.solution.values,
         1 - boiler.Q_th.submodel.status.status.solution.values,
         rtol=1e-5,
         atol=1e-10,
@@ -710,7 +710,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.submodel.status.off.solution.values,
+        boiler_backup.Q_th.submodel.status.inactive.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
