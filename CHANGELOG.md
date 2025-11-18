@@ -51,7 +51,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Renaming parameters in Linear Transformers for readability & Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies.
+**Summary**: Renaming parameters in Linear Transformers for readability & Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies. Old parameters till work but emmit warnings.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
