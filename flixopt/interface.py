@@ -1273,20 +1273,10 @@ class OnOffParameters(Interface):
         **kwargs,
     ):
         # Handle deprecated parameters
-        from .structure import Element  # Import here to avoid circular import
-
-        on_hours_min = Element._handle_deprecated_kwarg(
-            None, kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min
-        )
-        on_hours_max = Element._handle_deprecated_kwarg(
-            None, kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max
-        )
-        switch_on_max = Element._handle_deprecated_kwarg(
-            None, kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max
-        )
-        # Validate any remaining unexpected kwargs
-        if kwargs:
-            raise TypeError(f'OnOffParameters got unexpected keyword arguments: {", ".join(kwargs.keys())}')
+        on_hours_min = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min)
+        on_hours_max = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max)
+        switch_on_max = self._handle_deprecated_kwarg(kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max)
+        self._validate_kwargs(kwargs)
 
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}

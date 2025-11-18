@@ -51,6 +51,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the first time interval.
             Can be a scalar (all previous timesteps have same duration) or array (different durations).
             Used to calculate previous values (e.g., consecutive_on_hours).
+        weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
+            Used for calculating sums over periods in multi-period models.
         weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
             Its recommended to normalize the weights to sum up to 1.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.

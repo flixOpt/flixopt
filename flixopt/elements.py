@@ -594,46 +594,6 @@ class Flow(Element):
 
     # Backwards compatible properties (deprecated)
     @property
-    def flow_hours_per_period_max(self):
-        """DEPRECATED: Use 'flow_hours_max' property instead."""
-        warnings.warn(
-            "Property 'flow_hours_per_period_max' is deprecated. Use 'flow_hours_max' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_max
-
-    @flow_hours_per_period_max.setter
-    def flow_hours_per_period_max(self, value):
-        """DEPRECATED: Use 'flow_hours_max' property instead."""
-        warnings.warn(
-            "Property 'flow_hours_per_period_max' is deprecated. Use 'flow_hours_max' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_max = value
-
-    @property
-    def flow_hours_per_period_min(self):
-        """DEPRECATED: Use 'flow_hours_min' property instead."""
-        warnings.warn(
-            "Property 'flow_hours_per_period_min' is deprecated. Use 'flow_hours_min' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_min
-
-    @flow_hours_per_period_min.setter
-    def flow_hours_per_period_min(self, value):
-        """DEPRECATED: Use 'flow_hours_min' property instead."""
-        warnings.warn(
-            "Property 'flow_hours_per_period_min' is deprecated. Use 'flow_hours_min' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_min = value
-
-    @property
     def flow_hours_total_max(self):
         """DEPRECATED: Use 'flow_hours_max' property instead."""
         warnings.warn(
@@ -672,46 +632,6 @@ class Flow(Element):
             stacklevel=2,
         )
         self.flow_hours_min = value
-
-    @property
-    def total_flow_hours_max(self):
-        """DEPRECATED: Use 'flow_hours_max_over_periods' property instead."""
-        warnings.warn(
-            "Property 'total_flow_hours_max' is deprecated. Use 'flow_hours_max_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_max_over_periods
-
-    @total_flow_hours_max.setter
-    def total_flow_hours_max(self, value):
-        """DEPRECATED: Use 'flow_hours_max_over_periods' property instead."""
-        warnings.warn(
-            "Property 'total_flow_hours_max' is deprecated. Use 'flow_hours_max_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_max_over_periods = value
-
-    @property
-    def total_flow_hours_min(self):
-        """DEPRECATED: Use 'flow_hours_min_over_periods' property instead."""
-        warnings.warn(
-            "Property 'total_flow_hours_min' is deprecated. Use 'flow_hours_min_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_min_over_periods
-
-    @total_flow_hours_min.setter
-    def total_flow_hours_min(self, value):
-        """DEPRECATED: Use 'flow_hours_min_over_periods' property instead."""
-        warnings.warn(
-            "Property 'total_flow_hours_min' is deprecated. Use 'flow_hours_min_over_periods' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_min_over_periods = value
 
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
@@ -755,16 +675,16 @@ class FlowModel(ElementModel):
             weight_per_period = self._model.flow_system.weight_per_period
             if weight_per_period is not None:
                 # Calculate weighted sum over all periods
-                weighted_total_flow_hours = (self.total_flow_hours * weight_per_period).sum('period')
+                weighted_flow_hours_over_periods = (self.total_flow_hours * weight_per_period).sum('period')
             else:
                 # No period weights defined, use unweighted sum
-                weighted_total_flow_hours = self.total_flow_hours.sum('period')
+                weighted_flow_hours_over_periods = self.total_flow_hours.sum('period')
 
             # Create tracking variable for the weighted sum
             ModelingPrimitives.expression_tracking_variable(
                 model=self,
-                name=f'{self.label_full}|total_flow_hours_over_periods',
-                tracked_expression=weighted_total_flow_hours,
+                name=f'{self.label_full}|flow_hours_over_periods',
+                tracked_expression=weighted_flow_hours_over_periods,
                 bounds=(
                     self.element.flow_hours_min_over_periods
                     if self.element.flow_hours_min_over_periods is not None
@@ -774,7 +694,7 @@ class FlowModel(ElementModel):
                     else None,
                 ),
                 coords=['scenario'],
-                short_name='total_flow_hours_over_periods',
+                short_name='flow_hours_over_periods',
             )
 
         # Load factor constraints

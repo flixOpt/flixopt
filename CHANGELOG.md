@@ -61,6 +61,19 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
   - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
 
+  **Important**: Constraints with the `_over_periods` suffix compute weighted sums across all periods using the weights specified in `FlowSystem.weights` or `Effect.weights`. Per-period constraints (without the suffix) apply separately to each individual period.
+
+  **Example**:
+  ```python
+  # Per-period constraint: limits apply to EACH period individually
+  # With periods=[2020, 2030, 2040], this creates 3 separate constraints
+  effect = fx.Effect('costs', maximum_total=1000)  # ≤1000 in 2020 AND ≤1000 in 2030 AND ≤1000 in 2040
+
+  # Over-periods constraint: limits apply to WEIGHTED SUM across ALL periods
+  # With periods=[2020, 2030, 2040] and weights=[0.5, 0.3, 0.2], this creates 1 constraint
+  effect = fx.Effect('costs', maximum_over_periods=1000)  # 0.5×costs₂₀₂₀ + 0.3×costs₂₀₃₀ + 0.2×costs₂₀₄₀ ≤ 1000
+  ```
+
 ### ♻️ Changed
 
 - **Parameter naming consistency**: Established consistent naming pattern for constraint parameters across `Effect`, `Flow`, and `OnOffParameters`:
@@ -81,7 +94,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Flow parameters**: `flow_hours_total_max`, `flow_hours_total_min` (use `flow_hours_max`, `flow_hours_min`)
 - **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use `on_hours_max`, `on_hours_min`, `switch_on_max`)
 
-All deprecated parameter names continue to work with deprecation warnings for backward compatibility. Additional property aliases have been added internally to handle various naming variations that may have been used.
+All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 4.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
+
+**Migration**: Simply rename parameters by removing `_total` from the middle:
+- `flow_hours_total_max` → `flow_hours_max`
+- `on_hours_total_min` → `on_hours_min`
+- `switch_on_total_max` → `switch_on_max`
 
 ### 🐛 Fixed
 

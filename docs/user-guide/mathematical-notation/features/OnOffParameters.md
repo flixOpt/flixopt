@@ -237,10 +237,10 @@ For equipment with OnOffParameters, the complete constraint system includes:
 **Key Parameters:**
 - `effects_per_switch_on`: Costs per startup event
 - `effects_per_running_hour`: Costs per hour of operation
-- `on_hours_total_min`, `on_hours_total_max`: Total runtime bounds
+- `on_hours_min`, `on_hours_max`: Total runtime bounds
 - `consecutive_on_hours_min`, `consecutive_on_hours_max`: Consecutive runtime bounds
 - `consecutive_off_hours_min`, `consecutive_off_hours_max`: Consecutive shutdown bounds
-- `switch_on_total_max`: Maximum number of startups
+- `switch_on_max`: Maximum number of startups
 - `force_switch_on`: Create switch variables even without limits (for tracking)
 
 See the [`OnOffParameters`][flixopt.interface.OnOffParameters] API documentation for complete parameter list and usage examples.
@@ -265,7 +265,7 @@ power_plant = OnOffParameters(
     effects_per_running_hour={'fixed_om': 125},  # €125/hour while running
     consecutive_on_hours_min=8,  # Minimum 8-hour run
     consecutive_off_hours_min=4,  # 4-hour cooling period
-    on_hours_total_max=6000,  # Annual limit
+    on_hours_max=6000,  # Annual limit
 )
 ```
 
@@ -276,7 +276,7 @@ batch_reactor = OnOffParameters(
     consecutive_on_hours_min=12,  # 12-hour minimum batch
     consecutive_on_hours_max=24,  # 24-hour maximum batch
     consecutive_off_hours_min=6,  # Cleaning time
-    switch_on_total_max=200,  # Max 200 batches
+    switch_on_max=200,  # Max 200 batches
 )
 ```
 
@@ -286,7 +286,7 @@ hvac = OnOffParameters(
     effects_per_switch_on={'compressor_wear': 0.5},
     consecutive_on_hours_min=1,  # Prevent short cycling
     consecutive_off_hours_min=0.5,  # 30-min minimum off
-    switch_on_total_max=2000,  # Limit compressor starts
+    switch_on_max=2000,  # Limit compressor starts
 )
 ```
 
@@ -296,7 +296,7 @@ backup_gen = OnOffParameters(
     effects_per_switch_on={'fuel_priming': 50},  # L diesel
     consecutive_on_hours_min=0.5,  # 30-min test duration
     consecutive_off_hours_max=720,  # Test every 30 days
-    on_hours_total_min=26,  # Weekly testing requirement
+    on_hours_min=26,  # Weekly testing requirement
 )
 ```
 

@@ -68,15 +68,15 @@ if __name__ == '__main__':
             relative_minimum=5 / 50,  # Minimum part load
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
-            flow_hours_total_max=1e6,  # Total energy flow limit
+            flow_hours_max=1e6,  # Total energy flow limit
             on_off_parameters=fx.OnOffParameters(
-                on_hours_total_min=0,  # Minimum operating hours
-                on_hours_total_max=1000,  # Maximum operating hours
+                on_hours_min=0,  # Minimum operating hours
+                on_hours_max=1000,  # Maximum operating hours
                 consecutive_on_hours_max=10,  # Max consecutive operating hours
                 consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
                 consecutive_off_hours_max=10,  # Max consecutive off hours
                 effects_per_switch_on=0.01,  # Cost per switch-on
-                switch_on_total_max=1000,  # Max number of starts
+                switch_on_max=1000,  # Max number of starts
             ),
         ),
         Q_fu=fx.Flow(label='Q_fu', bus='Gas', size=200),

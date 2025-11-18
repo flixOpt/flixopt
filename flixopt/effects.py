@@ -78,10 +78,6 @@ class Effect(Element):
         maximum_invest: Use `maximum_periodic` instead.
         minimum_operation_per_hour: Use `minimum_per_hour` instead.
         maximum_operation_per_hour: Use `maximum_per_hour` instead.
-        minimum_total_per_period: Use `minimum_total` instead.
-        maximum_total_per_period: Use `maximum_total` instead.
-        minimum: Use `minimum_over_periods` instead.
-        maximum: Use `maximum_over_periods` instead.
 
     Examples:
         Basic cost objective:
@@ -232,20 +228,6 @@ class Effect(Element):
         maximum_per_hour = self._handle_deprecated_kwarg(
             kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
         )
-        minimum_total = self._handle_deprecated_kwarg(
-            kwargs, 'minimum_total_per_period', 'minimum_total', minimum_total
-        )
-        maximum_total = self._handle_deprecated_kwarg(
-            kwargs, 'maximum_total_per_period', 'maximum_total', maximum_total
-        )
-        minimum_over_periods = self._handle_deprecated_kwarg(
-            kwargs, 'minimum', 'minimum_over_periods', minimum_over_periods
-        )
-        maximum_over_periods = self._handle_deprecated_kwarg(
-            kwargs, 'maximum', 'maximum_over_periods', maximum_over_periods
-        )
-
-        # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
 
         # Set attributes directly

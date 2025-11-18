@@ -48,8 +48,8 @@ class TestFlowModel:
             size=100,
             relative_minimum=np.linspace(0, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
-            flow_hours_total_max=1000,
-            flow_hours_total_min=10,
+            flow_hours_max=1000,
+            flow_hours_min=10,
             load_factor_min=0.1,
             load_factor_max=0.9,
         )
@@ -976,7 +976,7 @@ class TestFlowOnModel:
             bus='Fernwärme',
             size=100,
             on_off_parameters=fx.OnOffParameters(
-                switch_on_total_max=5,  # Maximum 5 startups
+                switch_on_max=5,  # Maximum 5 startups
                 effects_per_switch_on={'costs': 100},  # 100 EUR startup cost
             ),
         )
@@ -1038,8 +1038,8 @@ class TestFlowOnModel:
             bus='Fernwärme',
             size=100,
             on_off_parameters=fx.OnOffParameters(
-                on_hours_total_min=20,  # Minimum 20 hours of operation
-                on_hours_total_max=100,  # Maximum 100 hours of operation
+                on_hours_min=20,  # Minimum 20 hours of operation
+                on_hours_max=100,  # Maximum 100 hours of operation
             ),
         )
 
