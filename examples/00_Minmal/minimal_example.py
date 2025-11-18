@@ -18,9 +18,9 @@ if __name__ == '__main__':
         fx.Effect('Costs', '€', 'Cost', is_standard=True, is_objective=True),
         fx.linear_converters.Boiler(
             'Boiler',
-            eta=0.5,
-            Q_th=fx.Flow(label='Heat', bus='Heat', size=50),
-            Q_fu=fx.Flow(label='Gas', bus='Gas'),
+            thermal_efficiency=0.5,
+            thermal_flow=fx.Flow(label='Heat', bus='Heat', size=50),
+            fuel_flow=fx.Flow(label='Gas', bus='Gas'),
         ),
         fx.Sink(
             'Sink',

@@ -85,7 +85,7 @@ def test_system():
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
-        initial_charge_state='lastValueOfSim',
+        initial_charge_state='equals_final',
     )
 
     # Create effects and objective
@@ -139,9 +139,9 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
 
     boiler = fx.linear_converters.Boiler(
         'Kessel',
-        eta=0.5,
+        thermal_efficiency=0.5,
         on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
-        Q_th=fx.Flow(
+        thermal_flow=fx.Flow(
             'Q_th',
             bus='Fernwärme',
             load_factor_max=1.0,
@@ -166,7 +166,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             ),
             flow_hours_total_max=1e6,
         ),
-        Q_fu=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
     )
 
     invest_speicher = fx.InvestParameters(

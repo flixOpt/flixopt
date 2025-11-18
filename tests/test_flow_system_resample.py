@@ -52,9 +52,9 @@ def complex_fs():
 
     # Piecewise converter
     converter = fx.linear_converters.Boiler(
-        'boiler', eta=0.9, Q_fu=fx.Flow('gas', bus='elec'), Q_th=fx.Flow('heat', bus='heat')
+        'boiler', thermal_efficiency=0.9, fuel_flow=fx.Flow('gas', bus='elec'), thermal_flow=fx.Flow('heat', bus='heat')
     )
-    converter.Q_th.size = 100
+    converter.thermal_flow.size = 100
     fs.add_elements(converter)
 
     # Component with investment

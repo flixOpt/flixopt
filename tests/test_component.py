@@ -416,7 +416,10 @@ class TestTransmissionModel:
         flow_system.add_elements(fx.Bus('Wärme lokal'))
 
         boiler = fx.linear_converters.Boiler(
-            'Boiler', eta=0.5, Q_th=fx.Flow('Q_th', bus='Wärme lokal'), Q_fu=fx.Flow('Q_fu', bus='Gas')
+            'Boiler',
+            thermal_efficiency=0.5,
+            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
         transmission = fx.Transmission(
@@ -453,13 +456,16 @@ class TestTransmissionModel:
 
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
-            eta=0.9,
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
+            thermal_efficiency=0.9,
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
         boiler2 = fx.linear_converters.Boiler(
-            'Boiler_backup', eta=0.4, Q_th=fx.Flow('Q_th', bus='Wärme lokal'), Q_fu=fx.Flow('Q_fu', bus='Gas')
+            'Boiler_backup',
+            thermal_efficiency=0.4,
+            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
         last2 = fx.Sink(
@@ -527,13 +533,16 @@ class TestTransmissionModel:
 
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
-            eta=0.9,
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
+            thermal_efficiency=0.9,
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
         boiler2 = fx.linear_converters.Boiler(
-            'Boiler_backup', eta=0.4, Q_th=fx.Flow('Q_th', bus='Wärme lokal'), Q_fu=fx.Flow('Q_fu', bus='Gas')
+            'Boiler_backup',
+            thermal_efficiency=0.4,
+            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
         last2 = fx.Sink(

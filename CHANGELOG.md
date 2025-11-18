@@ -51,7 +51,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies.
+**Summary**: Renaming parameters in Linear Transformers for readability & Internal architecture improvements to simplify FlowSystem-Element coupling and eliminate circular dependencies. Old parameters till work but emmit warnings.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
@@ -71,9 +71,33 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
 - **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
 - **Better logging**: Centralized element registration logging to show element type and full label
+- **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
+    - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
+        - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
+        - `Power2Heat`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPump`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CoolingTower`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
+        - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
+    - **Efficiency parameters** (abbreviated → descriptive names):
+        - `Boiler`: `eta` → `thermal_efficiency`
+        - `Power2Heat`: `eta` → `thermal_efficiency`
+        - `CHP`: `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`
+        - `HetaPump`: `COP` → `cop`
+        - `HetaPumpWithSource`: `COP` → `cop`
+    - **Storage Parameters**:
+        - `Storage`: `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_last"`
+
+### 🗑️ Deprecated
+- **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
+    - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
+    - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
+    - **COP parameter**: `COP` (use lowercase `cop` instead)
+    - **Storage Parameter**: `Storage`: `initial_charge_state="lastValueOfSim"` (use `initial_charge_state="equals_last"`)
 
 ### 🐛 Fixed
 - Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
+- Fixed `check_bounds` function in `linear_converters.py` to normalize array inputs before comparisons, ensuring correct boundary checks with DataFrames, Series, and other array-like types
 
 ### 👷 Development
 - **Eliminated circular dependencies**: Implemented two-phase modeling pattern within `_do_modeling()` where nested submodels are created first (creating their variables), then constraints are created that can safely reference those submodel variables

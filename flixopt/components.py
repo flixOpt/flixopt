@@ -281,7 +281,7 @@ class Storage(Component):
             Scalar for fixed size or InvestParameters for optimization.
         relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
         relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
-        initial_charge_state: Charge at start. Numeric or 'lastValueOfSim'. Default: 0.
+        initial_charge_state: Charge at start. Numeric or 'equals_final'. Default: 0.
         minimal_final_charge_state: Minimum absolute charge required at end (optional).
         maximal_final_charge_state: Maximum absolute charge allowed at end (optional).
         relative_minimum_final_charge_state: Minimum relative charge at end.
@@ -345,7 +345,7 @@ class Storage(Component):
             ),
             eta_charge=0.85,  # Pumping efficiency
             eta_discharge=0.90,  # Turbine efficiency
-            initial_charge_state='lastValueOfSim',  # Ensuring no deficit compared to start
+            initial_charge_state='equals_final',  # Ensuring no deficit compared to start
             relative_loss_per_hour=0.0001,  # Minimal evaporation
         )
         ```
@@ -394,7 +394,7 @@ class Storage(Component):
         capacity_in_flow_hours: Numeric_PS | InvestParameters,
         relative_minimum_charge_state: Numeric_TPS = 0,
         relative_maximum_charge_state: Numeric_TPS = 1,
-        initial_charge_state: Numeric_PS | Literal['lastValueOfSim'] = 0,
+        initial_charge_state: Numeric_PS | Literal['equals_final'] = 0,
         minimal_final_charge_state: Numeric_PS | None = None,
         maximal_final_charge_state: Numeric_PS | None = None,
         relative_minimum_final_charge_state: Numeric_PS | None = None,
@@ -414,6 +414,13 @@ class Storage(Component):
             prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
         )
+        if isinstance(initial_charge_state, str) and initial_charge_state == 'lastValueOfSim':
+            warnings.warn(
+                f'{initial_charge_state=} is deprecated. Use "equals_final" instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            initial_charge_state = 'equals_final'
 
         self.charging = charging
         self.discharging = discharging
@@ -491,12 +498,11 @@ class Storage(Component):
         super()._plausibility_checks()
 
         # Validate string values and set flag
-        initial_is_last = False
+        initial_equals_final = False
         if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state == 'lastValueOfSim':
-                initial_is_last = True
-            else:
+            if not self.initial_charge_state == 'equals_final':
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
+            initial_equals_final = True
 
         # Use new InvestParameters methods to get capacity bounds
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
@@ -510,8 +516,8 @@ class Storage(Component):
         minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
         maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-        # Only perform numeric comparisons if not using 'lastValueOfSim'
-        if not initial_is_last:
+        # Only perform numeric comparisons if not using 'equals_final'
+        if not initial_equals_final:
             if (self.initial_charge_state > maximum_initial_capacity).any():
                 raise PlausibilityError(
                     f'{self.label_full}: {self.initial_charge_state=} '
