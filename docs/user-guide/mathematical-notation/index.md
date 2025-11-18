@@ -7,6 +7,18 @@ This section provides the **mathematical formulations** underlying FlixOpt's opt
 
 ---
 
+!!! tip "Quick Reference Pages"
+
+    For fast lookup of symbols and equations:
+
+    [:octicons-book-24: Notation Reference](notation-reference.md){ .md-button .md-button--primary }
+    Comprehensive glossary of all mathematical symbols and variables
+
+    [:octicons-list-ordered-24: Quick Reference](quick-reference.md){ .md-button .md-button--primary }
+    All equations in compact, searchable format
+
+---
+
 ## Naming Conventions
 
 FlixOpt uses the following naming conventions:

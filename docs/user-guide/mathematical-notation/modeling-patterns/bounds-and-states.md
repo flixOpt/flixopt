@@ -1,6 +1,17 @@
 # Bounds and States
 
-This document describes the mathematical formulations for variable bounding patterns used throughout FlixOpt. These patterns define how optimization variables are constrained, both with and without state control.
+Mathematical formulations for variable bounding patterns used throughout FlixOpt. These patterns define how optimization variables are constrained, both with and without state control.
+
+!!! info "Quick Reference"
+
+    | Pattern | Key Equation | Use Case |
+    |---------|--------------|----------|
+    | **Basic Bounds** | $\text{lower} \leq v \leq \text{upper}$ | Simple variable constraints |
+    | **Bounds with State** | $s \cdot \max(\varepsilon, \text{lower}) \leq v \leq s \cdot \text{upper}$ | Active/inactive operation |
+    | **Scaled Bounds** | $v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}$ | Size-dependent bounds |
+    | **Scaled + State** | Combined scaling and state control | Investment with status |
+
+---
 
 ## Basic Bounds
 
@@ -10,17 +21,18 @@ $$\label{eq:basic_bounds}
 \text{lower} \leq v \leq \text{upper}
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $v$ being the optimization variable
-- $\text{lower}$ being the lower bound (constant or time-dependent)
-- $\text{upper}$ being the upper bound (constant or time-dependent)
-
-**Implementation:** [`BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds]
+    - $v$ - Optimization variable
+    - $\text{lower}$ - Lower bound (constant or time-dependent)
+    - $\text{upper}$ - Upper bound (constant or time-dependent)
 
 **Used in:**
+
 - Storage charge state bounds (see [Storage](../elements/Storage.md))
 - Flow rate absolute bounds
+
+[:octicons-code-16: `BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds]{ .md-button }
 
 ---
 
@@ -32,23 +44,25 @@ $$\label{eq:bounds_with_state}
 s \cdot \max(\varepsilon, \text{lower}) \leq v \leq s \cdot \text{upper}
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $v$ being the optimization variable
-- $s \in \{0, 1\}$ being the binary state variable
-- $\text{lower}$ being the lower bound when active
-- $\text{upper}$ being the upper bound when active
-- $\varepsilon$ being a small positive number to ensure numerical stability
+    - $v$ - Optimization variable
+    - $s \in \{0, 1\}$ - Binary state variable
+    - $\text{lower}$ - Lower bound when active
+    - $\text{upper}$ - Upper bound when active
+    - $\varepsilon$ - Small positive number for numerical stability
 
 **Behavior:**
-- When $s = 0$: variable is forced to zero ($0 \leq v \leq 0$)
-- When $s = 1$: variable can take values in $[\text{lower}, \text{upper}]$
 
-**Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]
+- When $s = 0$: Variable forced to zero ($0 \leq v \leq 0$)
+- When $s = 1$: Variable can take values in $[\text{lower}, \text{upper}]$
 
 **Used in:**
+
 - Flow rates with active/inactive operation (see [StatusParameters](../features/StatusParameters.md))
 - Investment size decisions (see [InvestParameters](../features/InvestParameters.md))
+
+[:octicons-code-16: `BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]{ .md-button }
 
 ---
 
@@ -60,22 +74,27 @@ $$\label{eq:scaled_bounds}
 v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $v$ being the optimization variable (e.g., flow rate)
-- $v_\text{scale}$ being the scaling variable (e.g., component size)
-- $\text{rel}_\text{lower}$ being the relative lower bound factor (typically 0)
-- $\text{rel}_\text{upper}$ being the relative upper bound factor (typically 1)
+    - $v$ - Optimization variable (e.g., flow rate)
+    - $v_\text{scale}$ - Scaling variable (e.g., component size)
+    - $\text{rel}_\text{lower}$ - Relative lower bound factor (typically 0)
+    - $\text{rel}_\text{upper}$ - Relative upper bound factor (typically 1)
 
-**Example:** Flow rate bounds
-- If $v_\text{scale} = P$ (flow size) and $\text{rel}_\text{upper} = 1$
-- Then: $0 \leq p(t_i) \leq P$ (see [Flow](../elements/Flow.md))
+!!! example "Flow Rate Bounds"
 
-**Implementation:** [`BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds]
+    If $v_\text{scale} = P$ (flow size) and $\text{rel}_\text{upper} = 1$:
+
+    $$0 \leq p(t_i) \leq P$$
+
+    See [Flow](../elements/Flow.md) for complete formulation.
 
 **Used in:**
-- Flow rate constraints (see [Flow](../elements/Flow.md) equation 1)
-- Storage charge state constraints (see [Storage](../elements/Storage.md) equation 1)
+
+- Flow rate constraints (see [Flow](../elements/Flow.md))
+- Storage charge state constraints (see [Storage](../elements/Storage.md))
+
+[:octicons-code-16: `BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds]{ .md-button }
 
 ---
 
@@ -91,28 +110,30 @@ $$\label{eq:scaled_bounds_with_state_2}
 s \cdot M_\text{lower} \leq v \leq s \cdot M_\text{upper}
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $v$ being the optimization variable
-- $v_\text{scale}$ being the scaling variable
-- $s \in \{0, 1\}$ being the binary state variable
-- $\text{rel}_\text{lower}$ being the relative lower bound factor
-- $\text{rel}_\text{upper}$ being the relative upper bound factor
-- $M_\text{misc} = v_\text{scale,max} \cdot \text{rel}_\text{lower}$
-- $M_\text{upper} = v_\text{scale,max} \cdot \text{rel}_\text{upper}$
-- $M_\text{lower} = \max(\varepsilon, v_\text{scale,min} \cdot \text{rel}_\text{lower})$
+    - $v$ - Optimization variable
+    - $v_\text{scale}$ - Scaling variable
+    - $s \in \{0, 1\}$ - Binary state variable
+    - $\text{rel}_\text{lower}$ - Relative lower bound factor
+    - $\text{rel}_\text{upper}$ - Relative upper bound factor
+    - $M_\text{misc} = v_\text{scale,max} \cdot \text{rel}_\text{lower}$
+    - $M_\text{upper} = v_\text{scale,max} \cdot \text{rel}_\text{upper}$
+    - $M_\text{lower} = \max(\varepsilon, v_\text{scale,min} \cdot \text{rel}_\text{lower})$
 
-Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum possible values of the scaling variable.
+    Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum possible values of the scaling variable.
 
 **Behavior:**
-- When $s = 0$: variable is forced to zero
-- When $s = 1$: variable follows scaled bounds $v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}$
 
-**Implementation:** [`BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state]
+- When $s = 0$: Variable forced to zero
+- When $s = 1$: Variable follows scaled bounds $v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}$
 
 **Used in:**
+
 - Flow rates with active/inactive operation and investment sizing
 - Components combining [StatusParameters](../features/StatusParameters.md) and [InvestParameters](../features/InvestParameters.md)
+
+[:octicons-code-16: `BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state]{ .md-button }
 
 ---
 
@@ -130,18 +151,19 @@ $$\label{eq:expression_tracking_bounds}
 \text{lower} \leq v_\text{tracker} \leq \text{upper}
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $v_\text{tracker}$ being the auxiliary tracking variable
-- $\text{expression}$ being a linear expression of other variables
-- $\text{lower}, \text{upper}$ being optional bounds on the tracker
+    - $v_\text{tracker}$ - Auxiliary tracking variable
+    - $\text{expression}$ - Linear expression of other variables
+    - $\text{lower}, \text{upper}$ - Optional bounds on the tracker
 
 **Use cases:**
+
 - Creating named variables for complex expressions
 - Bounding intermediate results
 - Simplifying constraint formulations
 
-**Implementation:** [`ModelingPrimitives.expression_tracking_variable()`][flixopt.modeling.ModelingPrimitives.expression_tracking_variable]
+[:octicons-code-16: `ModelingPrimitives.expression_tracking_variable()`][flixopt.modeling.ModelingPrimitives.expression_tracking_variable]{ .md-button }
 
 ---
 
@@ -153,19 +175,31 @@ $$\label{eq:mutual_exclusivity}
 \sum_{i} s_i(t) \leq \text{tolerance} \quad \forall t
 $$
 
-With:
+??? note "Variable Definitions"
 
-- $s_i(t) \in \{0, 1\}$ being binary state variables
-- $\text{tolerance}$ being the maximum number of simultaneously active states (typically 1)
-- $t$ being the time index
+    - $s_i(t) \in \{0, 1\}$ - Binary state variables
+    - $\text{tolerance}$ - Maximum number of simultaneously active states (typically 1)
+    - $t$ - Time index
 
 **Use cases:**
+
 - Ensuring only one operating mode is active
 - Mutual exclusion of operation and maintenance states
 - Enforcing single-choice decisions
 
-**Implementation:** [`ModelingPrimitives.mutual_exclusivity_constraint()`][flixopt.modeling.ModelingPrimitives.mutual_exclusivity_constraint]
-
 **Used in:**
+
 - Operating mode selection
 - Piecewise linear function segments (see [Piecewise](../features/Piecewise.md))
+
+[:octicons-code-16: `ModelingPrimitives.mutual_exclusivity_constraint()`][flixopt.modeling.ModelingPrimitives.mutual_exclusivity_constraint]{ .md-button }
+
+---
+
+## See Also
+
+- [Flow](../elements/Flow.md) - Scaled bounds application
+- [Storage](../elements/Storage.md) - Basic and scaled bounds
+- [StatusParameters](../features/StatusParameters.md) - Bounds with state for operation
+- [InvestParameters](../features/InvestParameters.md) - Bounds with state for investment
+- [Piecewise](../features/Piecewise.md) - Mutual exclusivity in piecewise segments
