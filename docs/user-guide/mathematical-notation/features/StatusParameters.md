@@ -108,7 +108,7 @@ With:
 
 Enforces minimum runtime once started using duration tracking (see [Duration Tracking](../modeling-patterns/duration-tracking.md#minimum-duration-constraints)):
 
-$$\label{eq:status_min_on_duration}
+$$\label{eq:status_min_uptime}
 d^\text{uptime}(t) \geq (s(t-1) - s(t)) \cdot h^\text{uptime}_\text{min} \quad \forall t > 0
 $$
 
@@ -124,7 +124,7 @@ With:
 
 Limits continuous operation before requiring shutdown:
 
-$$\label{eq:status_max_on_duration}
+$$\label{eq:status_max_uptime}
 d^\text{uptime}(t) \leq h^\text{uptime}_\text{max} \quad \forall t
 $$
 
@@ -141,7 +141,7 @@ $$
 
 Enforces minimum shutdown duration before restarting:
 
-$$\label{eq:status_min_off_duration}
+$$\label{eq:status_min_downtime}
 d^\text{downtime}(t) \geq (s(t) - s(t-1)) \cdot h^\text{downtime}_\text{min} \quad \forall t > 0
 $$
 
@@ -158,7 +158,7 @@ With:
 
 Limits shutdown duration before mandatory restart:
 
-$$\label{eq:status_max_off_duration}
+$$\label{eq:status_max_downtime}
 d^\text{downtime}(t) \leq h^\text{downtime}_\text{max} \quad \forall t
 $$
 
