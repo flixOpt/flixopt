@@ -228,8 +228,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if not self.normalize_weights:
             return weights
 
-        total = weights.sum()
-        if np.isclose(total, 0):
+        total = float(weights.sum().item())
+        if np.isclose(total, 0.0):
             raise ValueError('FlowSystemModel.weights: weights sum to 0; cannot normalize.')
         return weights / total
 
