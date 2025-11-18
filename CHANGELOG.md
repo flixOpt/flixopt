@@ -68,16 +68,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
     - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
     - Elements can now access FlowSystem via `self.flow_system` property instead of passing it through every method call
 - **Simplified transform_data() signature**: Removed `flow_system` parameter from `transform_data()` methods - FlowSystem reference is now accessed via `self.flow_system` property
-- **Two-phase modeling pattern**: Clarified the separation between variable creation (in `__init__`) and constraint creation (in `_do_modeling()`) to eliminate circular dependencies in Submodel architecture
+- **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
 - **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
-- **Better logging**: Enhanced element registration logging to show element type and full label
+- **Better logging**: Centralized element registration logging to show element type and full label
 
 ### 🐛 Fixed
-- Fixed inconsistent argument passing in `_fit_effect_coords()` - changed parameters from `label_prefix`/`label_suffix` to `prefix`/`suffix` for consistency
+- Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
 
 ### 👷 Development
-- **Eliminated circular dependencies**: Implemented clean two-phase modeling pattern where Phase 1 creates all variables and Phase 2 creates constraints that reference those variables
-- Added comprehensive docstrings to `_do_modeling()` methods explaining "Create variables, constraints, and nested submodels"
+- **Eliminated circular dependencies**: Implemented two-phase modeling pattern within `_do_modeling()` where nested submodels are created first (creating their variables), then constraints are created that can safely reference those submodel variables
+- Added comprehensive docstrings to `_do_modeling()` methods explaining the pattern: "Create variables, constraints, and nested submodels"
 - Added missing type hints throughout the codebase
 - Improved code organization by making FlowSystem reference propagation explicit and traceable
 
