@@ -53,7 +53,7 @@
   "language": "eng",
   "grants": [
      {"id": "03KB159B"}
-  ]
+  ],
   "related_identifiers": [
     {
       "identifier": "https://github.com/flixOpt/flixopt",
