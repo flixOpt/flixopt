@@ -189,9 +189,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     @property
     def objective_weights(self) -> xr.DataArray:
         weights = self.flow_system.effects.objective_effect.submodel.weights
-        if self.normalize_weights:
-            return weights / weights.sum()
-        return weights
+        if not self.normalize_weights:
+            return weights
+
+        total = float(weights.sum().values)
+        if np.isclose(total, 0.0):
+            raise ValueError('FlowSystemModel.objective_weights: weights sum to 0; cannot normalize.')
+        return weights / total
 
     def get_coords(
         self,
