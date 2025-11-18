@@ -464,7 +464,7 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
 
     @property
-    def weights(self) -> int | xr.DataArray:
+    def weights(self) -> xr.DataArray:
         """
         Get weights for this effect.
 
@@ -475,12 +475,13 @@ class EffectModel(ElementModel):
         Returns:
             Weights for period and scenario dimensions
         """
-        if self.element.weights is not None:
-            # Use effect-specific weights
+        effect_weights = self.element.weights
+        default_weights = self.element._flow_system.weights
+        if effect_weights is not None:  # Use effect-specific weights
             return self.element.weights
-        else:
-            # Fall back to FlowSystem weights
-            return self.element._flow_system.weights
+        elif default_weights is not None:  # Fall back to FlowSystem weights
+            return default_weights
+        return xr.DataArray(1)
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -782,12 +783,14 @@ class EffectCollectionModel(Submodel):
         # Add cross-effect shares
         self._add_share_between_effects()
 
-        # Use effect-specific weights if defined, otherwise use FlowSystem weights
-        objective_weights = self.effects.objective_effect.submodel.weights
-        if objective_weights is None:
-            objective_weights = xr.DataArray(1)
+        # Use effect-specific weights if defined, otherwise use model weights
+        # (which handles normalization based on normalize_weights flag)
+        objective_effect = self.effects.objective_effect.submodel
         if self._model.normalize_weights:
-            objective_weights = objective_weights / objective_weights.sum()
+            objective_weights = objective_effect.weights / objective_effect.weights.sum()
+        else:
+            objective_weights = objective_effect.weights
+
         self._model.add_objective(
             (self.effects.objective_effect.submodel.total * objective_weights).sum() + self.penalty.total.sum()
         )
