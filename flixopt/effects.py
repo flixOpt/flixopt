@@ -678,6 +678,9 @@ class EffectCollectionModel(Submodel):
         self._add_share_between_effects()
 
         # Set objective
+        # Note: penalty.total is used here, but penalty shares from buses/components
+        # are added later via add_share_to_penalty(). The ShareAllocationModel supports
+        # this pattern - shares can be added after the objective is defined.
         self._model.add_objective(
             (self.effects.objective_effect.submodel.total * self._model.weights).sum() + self.penalty.total.sum()
         )
