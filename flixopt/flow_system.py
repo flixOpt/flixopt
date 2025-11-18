@@ -308,6 +308,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Period index with an extra period appended at the end
         """
         if weight_of_last_period is None:
+            if len(periods) < 2:
+                raise ValueError(
+                    'FlowSystem: weight_of_last_period must be provided explicitly when only one period is defined.'
+                )
             # Calculate weight from difference between last two periods
             weight_of_last_period = int(periods[-1]) - int(periods[-2])
 
