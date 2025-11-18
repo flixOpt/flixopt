@@ -17,7 +17,7 @@ from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
-from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
+from .structure import Element, ElementModel, FlowSystemModel, Interface, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -109,13 +109,21 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects and flows."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, prefix)
+            self.on_off_parameters.transform_data(prefix)
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
+            flow.transform_data()  # Flow doesnt need the name_prefix
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -250,9 +258,15 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested flows."""
+        super()._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
+        self.excess_penalty_per_flow_hour = self._fit_coords(
             f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
@@ -477,35 +491,39 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        if isinstance(self.size, Interface):
+            self.size._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_minimum = flow_system.fit_to_model_coords(f'{prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = flow_system.fit_to_model_coords(f'{prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = flow_system.fit_to_model_coords(
-            f'{prefix}|fixed_relative_profile', self.fixed_relative_profile
-        )
-        self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
-            prefix, self.effects_per_flow_hour, 'per_flow_hour'
-        )
-        self.flow_hours_total_max = flow_system.fit_to_model_coords(
+        self.relative_minimum = self._fit_coords(f'{prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = self._fit_coords(f'{prefix}|relative_maximum', self.relative_maximum)
+        self.fixed_relative_profile = self._fit_coords(f'{prefix}|fixed_relative_profile', self.fixed_relative_profile)
+        self.effects_per_flow_hour = self._fit_effect_coords(prefix, self.effects_per_flow_hour, 'per_flow_hour')
+        self.flow_hours_total_max = self._fit_coords(
             f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
         )
-        self.flow_hours_total_min = flow_system.fit_to_model_coords(
+        self.flow_hours_total_min = self._fit_coords(
             f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
         )
-        self.load_factor_max = flow_system.fit_to_model_coords(
+        self.load_factor_max = self._fit_coords(
             f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
-        self.load_factor_min = flow_system.fit_to_model_coords(
+        self.load_factor_min = self._fit_coords(
             f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.on_off_parameters is not None:
-            self.on_off_parameters.transform_data(flow_system, prefix)
+            self.on_off_parameters.transform_data(prefix)
         if isinstance(self.size, InvestParameters):
-            self.size.transform_data(flow_system, prefix)
+            self.size.transform_data(prefix)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
+            self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -567,7 +585,9 @@ class FlowModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         # Main flow rate variable
         self.add_variables(
             lower=self.absolute_flow_rate_bounds[0],
@@ -578,7 +598,7 @@ class FlowModel(ElementModel):
 
         self._constraint_flow_rate()
 
-        # Total flow hours tracking
+        # Total flow hours tracking (creates variable + constraint)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
@@ -623,6 +643,7 @@ class FlowModel(ElementModel):
         )
 
     def _constraint_flow_rate(self):
+        """Create bounding constraints for flow_rate (models already created in _create_variables)"""
         if not self.with_investment and not self.with_on_off:
             # Most basic case. Already covered by direct variable bounds
             pass
@@ -798,7 +819,8 @@ class BusModel(ElementModel):
         self.excess_output: linopy.Variable | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self) -> None:
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
@@ -807,7 +829,7 @@ class BusModel(ElementModel):
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
-        # Fehlerplus/-minus:
+        # Add excess to balance and penalty if needed
         if self.element.with_excess:
             excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
 
@@ -845,9 +867,12 @@ class ComponentModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Initiates all FlowModels"""
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         all_flows = self.element.inputs + self.element.outputs
+
+        # Set on_off_parameters on flows if needed
         if self.element.on_off_parameters:
             for flow in all_flows:
                 if flow.on_off_parameters is None:
@@ -858,9 +883,11 @@ class ComponentModel(ElementModel):
                 if flow.on_off_parameters is None:
                     flow.on_off_parameters = OnOffParameters()
 
+        # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
+        # Create component on variable and OnOffModel if needed
         if self.element.on_off_parameters:
             on = self.add_variables(binary=True, short_name='on', coords=self._model.get_coords())
             if len(all_flows) == 1:
