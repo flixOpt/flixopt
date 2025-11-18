@@ -784,6 +784,8 @@ class EffectCollectionModel(Submodel):
 
         # Use effect-specific weights if defined, otherwise use FlowSystem weights
         objective_weights = self.effects.objective_effect.submodel.weights
+        if objective_weights is None:
+            objective_weights = xr.DataArray(1)
         if self._model.normalize_weights:
             objective_weights = objective_weights / objective_weights.sum()
         self._model.add_objective(

@@ -184,7 +184,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
-        self.weights = self.fit_to_model_coords(
+        self.weights: xr.DataArray | None = self.fit_to_model_coords(
             'weights', weights if weights is not None else weight_per_period, dims=['period', 'scenario']
         )
 
