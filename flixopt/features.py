@@ -14,6 +14,8 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
+    import xarray as xr
+
     from .core import FlowSystemDimensions
     from .interface import InvestParameters, Piecewise, StatusParameters
     from .types import Numeric_PS, Numeric_TPS
@@ -151,7 +153,7 @@ class StatusModel(Submodel):
         label_of_element: str,
         parameters: StatusParameters,
         status: linopy.Variable,
-        previous_status: Numeric_TPS | None,
+        previous_status: xr.DataArray | None,
         label_of_model: str | None = None,
     ):
         """

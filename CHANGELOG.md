@@ -86,8 +86,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - Variable `off` → `inactive` (deprecated - use `1 - status` expression instead)
 
 - **Updated Flow and Component classes**:
-  - Parameter `status_parameters` → `status_parameters` in `Flow.__init__()`
-  - Parameter `status_parameters` → `status_parameters` in `Component.__init__()`
+  - Parameter `on_off_parameters` → `status_parameters` in `Flow.__init__()`
+  - Parameter `on_off_parameters` → `status_parameters` in `Component.__init__()`
   - Property `flow.submodel.on_off` → `flow.submodel.status`
   - Property `component.submodel.on_off` → `component.submodel.status`
 
@@ -800,7 +800,6 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - Python 3.13 support added
-- Logger warning if relative_minimum is used without status_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
 ### 💥 Breaking Changes
@@ -820,7 +819,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.0.1] - 2025-04-10
 
 ### ✨ Added
-- Logger warning if relative_minimum is used without status_parameters in Flow
+- Logger warning if relative_minimum is used without on_off_parameters in Flow
 
 ### 🐛 Fixed
 - Replace "|" with "__" in filenames when saving figures (Windows compatibility)

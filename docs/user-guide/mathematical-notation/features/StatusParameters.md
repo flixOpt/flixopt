@@ -226,7 +226,7 @@ For equipment with StatusParameters, the complete constraint system includes:
 8. **Maximum downtime:** $d^\text{downtime}(t) \leq h^\text{downtime}_\text{max}$
 9. **Total hours:** $h_\text{min} \leq \sum_t s(t) \cdot \Delta t \leq h_\text{max}$
 10. **Cycling limit:** $\sum_t s^\text{startup}(t) \leq n_\text{max}$
-11. **Flow bounds:** $s(t) \cdot P \cdot \text{rel}_\text{lower} \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}$
+11. **Flow bounds:** $s(t) \cdot P \cdot \max(\varepsilon, \text{rel}_\text{lower}) \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}$
 
 ---
 
