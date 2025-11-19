@@ -16,59 +16,16 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
 === "Constraints"
 
-    **Flow rate bounds** ([Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)):
+    | Constraint | Equation | Parameters | Active When |
+    |------------|----------|------------|-------------|
+    | **Flow rate bounds** | $\text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `size` ($\text P$), `relative_minimum` ($\text p^{\text{L}}_{\text{rel}}$, default: 0), `relative_maximum` ($\text p^{\text{U}}_{\text{rel}}$, default: 1) | Always |
+    | **Load factor** | $\text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$ | `load_factor_min` ($\text{LF}_\text{min}$, default: 0), `load_factor_max` ($\text{LF}_\text{max}$, default: 1) | When `load_factor_min` or `load_factor_max` specified |
+    | **Flow hours limits** | $\text{FH}_\text{min} \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$ | `flow_hours_min`, `flow_hours_max`, `flow_hours_min_over_periods`, `flow_hours_max_over_periods` | When any flow hours parameter specified |
+    | **Fixed profile** | $p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$ | `fixed_relative_profile` (array) | When `fixed_relative_profile` specified |
+    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` | When `on_off_parameters` specified |
+    | **Initial conditions** | - | `previous_flow_rate` (default: None/0) | When `on_off_parameters` specified |
 
-    $$
-    \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})
-    $$
-
-    Parameters: `size` ($\text P$), `relative_minimum` ($\text p^{\text{L}}_{\text{rel}}$, default: 0), `relative_maximum` ($\text p^{\text{U}}_{\text{rel}}$, default: 1)
-
-    ---
-
-    **Load factor** (when `load_factor_min` or `load_factor_max` specified):
-
-    $$
-    \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t
-    $$
-
-    Parameters: `load_factor_min` ($\text{LF}_\text{min}$, default: 0), `load_factor_max` ($\text{LF}_\text{max}$, default: 1)
-
-    ---
-
-    **Flow hours limits** (when `flow_hours_min` or `flow_hours_max` specified):
-
-    $$
-    \text{FH}_\text{min} \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}
-    $$
-
-    Parameters: `flow_hours_min` ($\text{FH}_\text{min}$), `flow_hours_max` ($\text{FH}_\text{max}$), `flow_hours_min_over_periods`, `flow_hours_max_over_periods`
-
-    ---
-
-    **Fixed profile** (when `fixed_relative_profile` specified):
-
-    $$
-    p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})
-    $$
-
-    Parameters: `fixed_relative_profile` (array of relative flow rates)
-
-    ---
-
-    **On/off operation** (when `on_off_parameters` specified):
-
-    See [OnOffParameters](../features/OnOffParameters.md) for complete formulation. Adds constraints for:
-
-    - Minimum/maximum consecutive on/off times
-    - Startup/shutdown costs and limits
-    - Part-load restrictions ([Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state))
-
-    ---
-
-    **Initial conditions** (optional):
-
-    Parameters: `previous_flow_rate` (flow rate before optimization horizon, default: None/0)
+    **Mathematical Patterns:** [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)
 
 === "Use Cases"
 
