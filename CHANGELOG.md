@@ -120,6 +120,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
 - **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
 - **Better logging**: Centralized element registration logging to show element type and full label
+- **Centralized deprecation warnings**: All deprecation warnings now consistently include "Will be removed in v5.0.0" message
+  - Added `DEPRECATION_REMOVAL_VERSION` constant in `structure.py` as single source of truth
+  - Updated `_handle_deprecated_kwarg()` to automatically append removal version to all warnings
+  - Updated standalone deprecation warnings in `core.py`, `interface.py`, `components.py`, and `linear_converters.py`
+  - Makes it clear to users when deprecated features will be removed and simplifies future version updates
 - **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
     - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
         - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
@@ -151,7 +156,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - Renamed `switch_on_total_max` → `switch_on_max` (per-period constraint)
 
 ### 🗑️ Deprecated
-- **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
+- **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v5.0.0:
     - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
     - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
     - **COP parameter**: `COP` (use lowercase `cop` instead)
@@ -166,7 +171,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - `on_hours_total_min` → `on_hours_min`
 - `switch_on_total_max` → `switch_on_max`
 
-All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 4.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
+All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 5.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
 
 
 ### 🐛 Fixed
