@@ -18,7 +18,6 @@ from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
-    DEPRECATION_REMOVAL_VERSION,
     Element,
     ElementModel,
     FlowSystemModel,
@@ -468,7 +467,6 @@ class Flow(Element):
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
-        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.size = CONFIG.Modeling.big if size is None else size
@@ -478,26 +476,6 @@ class Flow(Element):
 
         self.load_factor_min = load_factor_min
         self.load_factor_max = load_factor_max
-
-        # Handle deprecated parameters
-        flow_hours_max = self._handle_deprecated_kwarg(
-            kwargs, 'flow_hours_per_period_max', 'flow_hours_max', flow_hours_max
-        )
-        flow_hours_min = self._handle_deprecated_kwarg(
-            kwargs, 'flow_hours_per_period_min', 'flow_hours_min', flow_hours_min
-        )
-        # Also handle the older deprecated names
-        flow_hours_max = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_max', 'flow_hours_max', flow_hours_max)
-        flow_hours_min = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_min', 'flow_hours_min', flow_hours_min)
-        flow_hours_max_over_periods = self._handle_deprecated_kwarg(
-            kwargs, 'total_flow_hours_max', 'flow_hours_max_over_periods', flow_hours_max_over_periods
-        )
-        flow_hours_min_over_periods = self._handle_deprecated_kwarg(
-            kwargs, 'total_flow_hours_min', 'flow_hours_min_over_periods', flow_hours_min_over_periods
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
 
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
@@ -616,51 +594,6 @@ class Flow(Element):
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
-
-    # Backwards compatible properties (deprecated)
-    @property
-    def flow_hours_total_max(self):
-        """DEPRECATED: Use 'flow_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_max
-
-    @flow_hours_total_max.setter
-    def flow_hours_total_max(self, value):
-        """DEPRECATED: Use 'flow_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_max = value
-
-    @property
-    def flow_hours_total_min(self):
-        """DEPRECATED: Use 'flow_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.flow_hours_min
-
-    @flow_hours_total_min.setter
-    def flow_hours_total_min(self, value):
-        """DEPRECATED: Use 'flow_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.flow_hours_min = value
 
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""

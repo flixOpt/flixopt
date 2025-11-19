@@ -17,7 +17,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns
-from .structure import DEPRECATION_REMOVAL_VERSION, FlowSystemModel, register_class_for_io
+from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -414,14 +414,6 @@ class Storage(Component):
             prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
         )
-        if isinstance(initial_charge_state, str) and initial_charge_state == 'lastValueOfSim':
-            warnings.warn(
-                f'{initial_charge_state=} is deprecated. Use "equals_final" instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            initial_charge_state = 'equals_final'
 
         self.charging = charging
         self.discharging = discharging
@@ -1095,22 +1087,7 @@ class SourceAndSink(Component):
         outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
-        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
-        prevent_simultaneous_flow_rates = self._handle_deprecated_kwarg(
-            kwargs,
-            'prevent_simultaneous_sink_and_source',
-            'prevent_simultaneous_flow_rates',
-            prevent_simultaneous_flow_rates,
-            check_conflict=False,
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         super().__init__(
             label,
             inputs=inputs,
@@ -1119,36 +1096,6 @@ class SourceAndSink(Component):
             meta_data=meta_data,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-
-    @property
-    def source(self) -> Flow:
-        warnings.warn(
-            'The source property is deprecated. Use the outputs property instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.outputs[0]
-
-    @property
-    def sink(self) -> Flow:
-        warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.inputs[0]
-
-    @property
-    def prevent_simultaneous_sink_and_source(self) -> bool:
-        warnings.warn(
-            'The prevent_simultaneous_sink_and_source property is deprecated. Use the prevent_simultaneous_flow_rates property instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.prevent_simultaneous_flow_rates
 
 
 @register_class_for_io
@@ -1233,14 +1180,7 @@ class Source(Component):
         outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs,
     ):
-        # Handle deprecated parameter using centralized helper
-        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
@@ -1248,16 +1188,6 @@ class Source(Component):
             meta_data=meta_data,
             prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
         )
-
-    @property
-    def source(self) -> Flow:
-        warnings.warn(
-            'The source property is deprecated. Use the outputs property instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.outputs[0]
 
 
 @register_class_for_io
@@ -1343,13 +1273,8 @@ class Sink(Component):
         inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs,
     ):
         """Initialize a Sink (consumes flow from the system).
-
-        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided
-        it is used as the single input flow and a DeprecationWarning is issued; specifying both
-        `inputs` and `sink` raises ValueError.
 
         Args:
             label: Unique element label.
@@ -1357,15 +1282,7 @@ class Sink(Component):
             meta_data: Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
                 across the element's inputs by wiring that restriction into the base Component setup.
-
-        Note:
-            The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
-        # Handle deprecated parameter using centralized helper
-        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1374,13 +1291,3 @@ class Sink(Component):
             meta_data=meta_data,
             prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
         )
-
-    @property
-    def sink(self) -> Flow:
-        warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.inputs[0]
