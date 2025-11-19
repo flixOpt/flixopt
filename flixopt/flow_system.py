@@ -171,7 +171,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             'weights',
             'scenario_weights',
             scenario_weights,
-            check_conflict=False,
+            check_conflict=True,
             additional_warning_message='This might lead to later errors if your custom weights used the period dimension.',
         )
         self._validate_kwargs(kwargs)
