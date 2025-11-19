@@ -460,21 +460,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Update period-related attributes and data variables in dataset based on its period index.
 
-        Recomputes weight_of_last_period, period_weights, and weights from the dataset's
-        period index when weight_of_last_period is None. This ensures period metadata stays
-        synchronized with the actual periods after operations like selection.
+        Recomputes weight_of_last_period and period_weights from the dataset's
+        period index. This ensures period metadata stays synchronized with the actual
+        periods after operations like selection.
 
         This is analogous to _update_time_metadata() for time-related metadata.
 
         Args:
             dataset: Dataset to update (will be modified in place)
-            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+            weight_of_last_period: Weight of the last period. If None, reused from dataset attrs
+                (essential for single-period subsets where it cannot be inferred from intervals).
 
         Returns:
             The same dataset with updated period-related attributes and data variables
         """
         new_period_index = dataset.indexes.get('period')
         if new_period_index is not None and len(new_period_index) >= 1:
+            # Reuse stored weight_of_last_period when not explicitly overridden.
+            # This is essential for single-period subsets where it cannot be inferred from intervals.
+            if weight_of_last_period is None:
+                weight_of_last_period = dataset.attrs.get('weight_of_last_period')
+
             # Use shared helper to compute all period metadata
             _, weight_of_last_period, period_weights = cls._compute_period_metadata(
                 new_period_index, weight_of_last_period
