@@ -4,15 +4,15 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
 === "Variables"
 
-    | Variable Name | Symbol | Description | Domain | Created When |
-    |---------------|--------|-------------|--------|--------------|
-    | **flow_rate** | $p(\text{t}_{i})$ | Flow rate at each timestep | $\mathbb{R}$ | Always |
-    | **size** | $\text P$ | Flow capacity (decision variable) | $\mathbb{R}_+$ | `size` is `InvestParameters` |
-    | **invest_binary** | $s_\text{invest}$ | Binary investment decision | $\{0,1\}$ | `size` is `InvestParameters` |
-    | **total_flow_hours** | - | Cumulative flow-hours per period | $\mathbb{R}_+$ | `flow_hours_min/max` or `load_factor_min/max` specified |
-    | **on_off_state** | $s(\text{t}_i)$ | Binary on/off state | $\{0,1\}$ | `on_off_parameters` specified |
-    | **switch_on** | - | Startup indicator | $\{0,1\}$ | `on_off_parameters` specified |
-    | **switch_off** | - | Shutdown indicator | $\{0,1\}$ | `on_off_parameters` specified |
+    | Symbol | Python Name | Description | Domain | Created When |
+    |--------|-------------|-------------|--------|--------------|
+    | $p(\text{t}_{i})$ | `flow_rate` | Flow rate at each timestep | $\mathbb{R}$ | Always |
+    | $\text P$ | `size` | Flow capacity (decision variable) | $\mathbb{R}_+$ | `size` is `InvestParameters` |
+    | $s_\text{invest}$ | `invest_binary` | Binary investment decision | $\{0,1\}$ | `size` is `InvestParameters` |
+    | - | `total_flow_hours` | Cumulative flow-hours per period | $\mathbb{R}_+$ | `flow_hours_min/max` or `load_factor_min/max` specified |
+    | $s(\text{t}_i)$ | `on_off_state` | Binary on/off state | $\{0,1\}$ | `on_off_parameters` specified |
+    | - | `switch_on` | Startup indicator | $\{0,1\}$ | `on_off_parameters` specified |
+    | - | `switch_off` | Shutdown indicator | $\{0,1\}$ | `on_off_parameters` specified |
 
 === "Constraints"
 
