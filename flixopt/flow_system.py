@@ -166,11 +166,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_flow_rates: bool | list[str] = False,
         **kwargs,
     ):
-        self._handle_deprecated_kwarg(
+        scenario_weights = self._handle_deprecated_kwarg(
             kwargs,
             'weights',
             'scenario_weights',
             scenario_weights,
+            check_conflict=False,
             additional_warning_message='This might lead to later errors if your custom weights used the period dimension.',
         )
         self._validate_kwargs(kwargs)
@@ -190,9 +191,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
-        self.scenario_weights: xr.DataArray = self.fit_to_model_coords(
-            'scenario_weights', scenario_weights, dims=['scenario']
-        )
+        self.scenario_weights = scenario_weights  # Use setter
 
         # Compute all period-related metadata using shared helper
         (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
@@ -1122,6 +1121,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._used_in_calculation
 
     @property
+    def scenario_weights(self) -> xr.DataArray | None:
+        """
+        Weights for each scenario.
+
+        Returns:
+            xr.DataArray: Scenario weights with 'scenario' dimension
+        """
+        return self._scenario_weights
+
+    @scenario_weights.setter
+    def scenario_weights(self, value: Numeric_S) -> None:
+        """
+        Set scenario weights.
+
+        Args:
+            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension)
+        """
+        self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+    @property
     def weights(self) -> Numeric_S | None:
         warnings.warn(
             'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead.',
@@ -1143,7 +1162,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             DeprecationWarning,
             stacklevel=2,
         )
-        self.scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+        self.scenario_weights = value  # Use the scenario_weights setter
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """
