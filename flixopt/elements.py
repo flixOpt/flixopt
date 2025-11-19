@@ -119,8 +119,8 @@ class Component(Element):
     def _set_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Interface objects and flows."""
         super()._set_flow_system(flow_system)
-        if self.on_off_parameters is not None:
-            self.on_off_parameters._set_flow_system(flow_system)
+        if self.status_parameters is not None:
+            self.status_parameters._set_flow_system(flow_system)
         for flow in self.inputs + self.outputs:
             flow._set_flow_system(flow_system)
 
@@ -532,8 +532,8 @@ class Flow(Element):
     def _set_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Interface objects."""
         super()._set_flow_system(flow_system)
-        if self.on_off_parameters is not None:
-            self.on_off_parameters._set_flow_system(flow_system)
+        if self.status_parameters is not None:
+            self.status_parameters._set_flow_system(flow_system)
         if isinstance(self.size, Interface):
             self.size._set_flow_system(flow_system)
 
@@ -991,7 +991,7 @@ class ComponentModel(ElementModel):
 
         all_flows = self.element.inputs + self.element.outputs
 
-        # Set on_off_parameters on flows if needed
+        # Set status_parameters on flows if needed
         if self.element.status_parameters:
             for flow in all_flows:
                 if flow.status_parameters is None:
