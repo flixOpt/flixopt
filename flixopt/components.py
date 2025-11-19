@@ -573,7 +573,7 @@ class Transmission(Component):
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
-            Automatically creates binary variables for on/inactive states.
+            Automatically creates binary variables for active/inactive states.
         status_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical

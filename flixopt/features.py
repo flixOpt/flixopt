@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class InvestmentModel(Submodel):
     """
     This feature model is used to model the investment of a variable.
-    It applies the corresponding bounds to the variable and the on/inactive state of the variable.
+    It applies the corresponding bounds to the variable and the active/inactive state of the variable.
 
     Args:
         model: The optimization model instance

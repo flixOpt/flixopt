@@ -1137,7 +1137,7 @@ def dual_pie_with_matplotlib(
         """Draw a single pie chart."""
         if not labels:
             ax.set_title(subtitle)
-            ax.axis('inactive')
+            ax.axis('off')
             return
 
         chart_colors = [color_map[label] for label in labels]
