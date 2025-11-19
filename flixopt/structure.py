@@ -195,7 +195,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             return xr.DataArray(1)
 
         if self.flow_system.scenario_weights is None:
-            scenario_weights = xr.DataArray(1, coords=(self.flow_system.scenarios,), name='scenario_weights')
+            scenario_weights = xr.DataArray(
+                np.ones(self.flow_system.scenarios.size, dtype=float),
+                coords={'scenario': self.flow_system.scenarios},
+                dims=['scenario'],
+                name='scenario_weights',
+            )
         else:
             scenario_weights = self.flow_system.scenario_weights
 
@@ -515,6 +520,7 @@ class Interface:
         current_value: Any = None,
         transform: callable = None,
         check_conflict: bool = True,
+        additional_warning_message: str = '',
     ) -> Any:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
@@ -530,6 +536,7 @@ class Interface:
             check_conflict: Whether to check if both old and new parameters are specified (default: True).
                 Note: For parameters with non-None default values (e.g., bool parameters with default=False),
                 set check_conflict=False since we cannot distinguish between an explicit value and the default.
+            additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
 
         Returns:
             The value to use (either from old parameter or current_value)
@@ -550,10 +557,13 @@ class Interface:
         """
         import warnings
 
+        if additional_warning_message:
+            additional_warning_message = r'\n ' + additional_warning_message
+
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.',
+                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.{additional_warning_message}',
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )

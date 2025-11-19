@@ -87,6 +87,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **FlowSystem weights parameter renamed**: The `weights` parameter in `FlowSystem.__init__()` has been renamed to `scenario_weights` to clarify that it only accepts scenario dimension weights (not period × scenario)
   - Period weights are now **always computed internally** from the period index (similar to `hours_per_timestep` for time)
   - The combined `weights` (period × scenario) are computed automatically by multiplying `period_weights × scenario_weights`
+  - only scenario_weights are normalized in the objective function
 
   **Migration**: Update your code from:
   ```python
@@ -160,12 +161,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - **Flow parameters**: `flow_hours_total_max`, `flow_hours_total_min` (use `flow_hours_max`, `flow_hours_min`)
 - **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use `on_hours_max`, `on_hours_min`, `switch_on_max`)
 
-All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 4.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
-
 **Migration**: Simply rename parameters by removing `_total` from the middle:
 - `flow_hours_total_max` → `flow_hours_max`
 - `on_hours_total_min` → `on_hours_min`
 - `switch_on_total_max` → `switch_on_max`
+
+All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 4.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
 
 
 ### 🐛 Fixed
