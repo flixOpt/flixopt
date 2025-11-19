@@ -189,7 +189,7 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
-        weights: Numeric_PS | None = None,
+        period_weights: Numeric_PS | None = None,
         share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
         share_from_periodic: Effect_PS | Numeric_PS | None = None,
         minimum_temporal: Numeric_PS | None = None,
@@ -209,7 +209,7 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
-        self.weights = weights
+        self.period_weights = period_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
         # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
         # Default to {} when None (no shares defined).
@@ -448,7 +448,9 @@ class Effect(Element):
         self.maximum_over_periods = self._fit_coords(
             f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
-        self.weights = self._fit_coords(f'{prefix}|weights', self.weights, dims=['scenario', 'period'])
+        self.period_weights = self._fit_coords(
+            f'{prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
+        )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
         self._plausibility_checks()
@@ -474,24 +476,24 @@ class EffectModel(ElementModel):
         super().__init__(model, element)
 
     @property
-    def weights(self) -> xr.DataArray:
+    def period_weights(self) -> xr.DataArray:
         """
-        Get weights for this effect.
+        Get period weights for this effect.
 
-        Returns effect-specific weights if defined, otherwise falls back to FlowSystem weights.
-        This allows different effects to have different weighting schemes (e.g., discounting for costs,
+        Returns effect-specific weights if defined, otherwise falls back to FlowSystem period weights.
+        This allows different effects to have different weighting schemes over periods (e.g., discounting for costs,
         equal weights for CO2 emissions).
 
         Returns:
-            Weights for period and scenario dimensions
+            Weights with period dimensions (if applicable)
         """
-        effect_weights = self.element.weights
-        default_weights = self.element._flow_system.weights
+        effect_weights = self.element.period_weights
+        default_weights = self.element._flow_system.period_weights
         if effect_weights is not None:  # Use effect-specific weights
-            return self.element.weights
+            return effect_weights
         elif default_weights is not None:  # Fall back to FlowSystem weights
             return default_weights
-        return self.element._fit_coords(name='weights', data=1, dims=['period', 'scenario'])
+        return self.element._fit_coords(name='period_weights', data=1, dims=['period'])
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""

@@ -187,15 +187,35 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return self.flow_system.hours_of_previous_timesteps
 
     @property
-    def objective_weights(self) -> xr.DataArray:
-        weights = self.flow_system.effects.objective_effect.submodel.weights
-        if not self.normalize_weights:
-            return weights
+    def scenario_weights(self) -> xr.DataArray:
+        """
+        Scenario weights of model. With optional normalization.
+        """
+        if self.flow_system.scenarios is None:
+            return xr.DataArray(1)
 
-        total = float(weights.sum().values)
-        if np.isclose(total, 0.0):
-            raise ValueError('FlowSystemModel.objective_weights: weights sum to 0; cannot normalize.')
-        return weights / total
+        if self.flow_system.scenario_weights is None:
+            scenario_weights = xr.DataArray(1, coords=(self.flow_system.scenarios,), name='scenario_weights')
+        else:
+            scenario_weights = self.flow_system.scenario_weights
+
+        if not self.normalize_weights:
+            return scenario_weights
+
+        norm = scenario_weights.sum('scenario')
+        if np.isclose(norm, 0.0).any():
+            raise ValueError('FlowSystemModel.scenario_weights: weights sum to 0; cannot normalize.')
+        return scenario_weights / norm
+
+    @property
+    def objective_weights(self) -> xr.DataArray:
+        """
+        Objective weights of model. With optional normalization of scenario weights.
+        """
+        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        scenario_weights = self.scenario_weights
+
+        return period_weights * scenario_weights
 
     def get_coords(
         self,

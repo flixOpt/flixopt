@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS, NumericOrBool
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, NumericOrBool
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
@@ -53,8 +53,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Used to calculate previous values (e.g., consecutive_on_hours).
         weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
             Used for calculating sums over periods in multi-period models.
-        weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
-            Its recommended to normalize the weights to sum up to 1.
+        scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
+            Period weights are always computed internally from the period index (like hours_per_timestep for time).
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
@@ -160,7 +160,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weight_of_last_period: int | float | None = None,
-        weights: Numeric_PS | None = None,
+        scenario_weights: Numeric_S | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
     ):
@@ -177,16 +177,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
+        self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+
+        self.scenario_weights: xr.DataArray = self.fit_to_model_coords(
+            'scenario_weights', scenario_weights, dims=['scenario']
+        )
+
         # Compute all period-related metadata using shared helper
         (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
             self.periods, weight_of_last_period
         )
 
-        self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
-
-        self.weights: xr.DataArray | None = self.fit_to_model_coords(
-            'weights', weights if weights is not None else weight_per_period, dims=['period', 'scenario']
-        )
+        self.period_weights: xr.DataArray | None = weight_per_period
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(
@@ -439,6 +441,60 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return dataset
 
+    @classmethod
+    def _update_period_metadata(
+        cls,
+        dataset: xr.Dataset,
+        weight_of_last_period: int | float | None = None,
+    ) -> xr.Dataset:
+        """
+        Update period-related attributes and data variables in dataset based on its period index.
+
+        Recomputes weight_of_last_period, period_weights, and weights from the dataset's
+        period index when weight_of_last_period is None. This ensures period metadata stays
+        synchronized with the actual periods after operations like selection.
+
+        This is analogous to _update_time_metadata() for time-related metadata.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            The same dataset with updated period-related attributes and data variables
+        """
+        new_period_index = dataset.indexes.get('period')
+        if new_period_index is not None and len(new_period_index) >= 1:
+            # Use shared helper to compute all period metadata
+            _, weight_of_last_period, period_weights = cls._compute_period_metadata(
+                new_period_index, weight_of_last_period
+            )
+
+            # Update period_weights DataArray if it exists in the dataset
+            if 'period_weights' in dataset.data_vars:
+                dataset['period_weights'] = period_weights
+
+            # Recompute weights from period_weights and scenario_weights
+            if 'weights' in dataset.data_vars:
+                # Get scenario_weights from dataset (if it exists)
+                scenario_weights = dataset.data_vars.get('scenario_weights')
+
+                # Compute new weights
+                if scenario_weights is None:
+                    # No scenario dimension or all scenarios have equal weight
+                    new_weights = period_weights
+                else:
+                    # Multiply period_weights × scenario_weights
+                    new_weights = period_weights * scenario_weights
+
+                dataset['weights'] = new_weights
+
+        # Update period-related attributes only when new values are provided/computed
+        if weight_of_last_period is not None:
+            dataset.attrs['weight_of_last_period'] = weight_of_last_period
+
+        return dataset
+
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
@@ -519,8 +575,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
             weight_of_last_period=reference_structure.get('weight_of_last_period'),
-            weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
-            if 'weights' in reference_structure
+            scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
+            if 'scenario_weights' in reference_structure
             else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
@@ -669,8 +725,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self.connected_and_transformed:
             logger.debug('FlowSystem already connected and transformed')
             return
-
-        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
 
         self._connect_network()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
@@ -1197,6 +1251,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if 'time' in indexers:
             result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
+        # Update period-related attributes if period was selected
+        # This recalculates period_weights and weights from the new period index
+        if 'period' in indexers:
+            result = cls._update_period_metadata(result)
+
         return result
 
     def sel(
@@ -1272,6 +1331,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Update time-related attributes if time was selected
         if 'time' in indexers:
             result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
+        # Update period-related attributes if period was selected
+        # This recalculates period_weights and weights from the new period index
+        if 'period' in indexers:
+            result = cls._update_period_metadata(result)
 
         return result
 

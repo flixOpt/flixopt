@@ -698,7 +698,9 @@ class FlowModel(ElementModel):
                     f'but FlowSystem has no period dimension. Please define periods in FlowSystem constructor.'
                 )
             # Get period weights from FlowSystem
-            weighted_flow_hours_over_periods = (self.total_flow_hours * self._model.flow_system.weights).sum('period')
+            weighted_flow_hours_over_periods = (self.total_flow_hours * self._model.flow_system.period_weights).sum(
+                'period'
+            )
 
             # Create tracking variable for the weighted sum
             ModelingPrimitives.expression_tracking_variable(
