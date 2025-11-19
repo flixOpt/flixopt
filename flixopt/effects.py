@@ -16,6 +16,7 @@ import numpy as np
 import xarray as xr
 from loguru import logger
 
+from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
 
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .flow_system import FlowSystem
-    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS, Scalar
+    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 
 @register_class_for_io
@@ -48,17 +49,28 @@ class Effect(Element):
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
+        weights: Optional custom weights for periods and scenarios (Numeric_PS).
+            If provided, overrides the FlowSystem's default period weights for this effect.
+            Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
+            If None, uses FlowSystem's default weights.
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect.
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
-        minimum_temporal: Minimum allowed total contribution across all timesteps.
-        maximum_temporal: Maximum allowed total contribution across all timesteps.
+        minimum_temporal: Minimum allowed total contribution across all timesteps (per period).
+        maximum_temporal: Maximum allowed total contribution across all timesteps (per period).
         minimum_per_hour: Minimum allowed contribution per hour.
         maximum_per_hour: Maximum allowed contribution per hour.
-        minimum_periodic: Minimum allowed total periodic contribution.
-        maximum_periodic: Maximum allowed total periodic contribution.
-        minimum_total: Minimum allowed total effect (temporal + periodic combined).
+        minimum_periodic: Minimum allowed total periodic contribution (per period).
+        maximum_periodic: Maximum allowed total periodic contribution (per period).
+        minimum_total: Minimum allowed total effect (temporal + periodic combined) per period.
+        maximum_total: Maximum allowed total effect (temporal + periodic combined) per period.
+        minimum_over_periods: Minimum allowed weighted sum of total effect across ALL periods.
+            Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
+            Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
+        maximum_over_periods: Maximum allowed weighted sum of total effect across ALL periods.
+            Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
+            Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -82,14 +94,25 @@ class Effect(Element):
         )
         ```
 
-        CO2 emissions:
+        CO2 emissions with per-period limit:
 
         ```python
         co2_effect = Effect(
             label='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
-            maximum_total=1_000_000,  # 1000 t CO2 annual limit
+            maximum_total=100_000,  # 100 t CO2 per period
+        )
+        ```
+
+        CO2 emissions with total limit across all periods:
+
+        ```python
+        co2_effect = Effect(
+            label='CO2',
+            unit='kg_CO2',
+            description='Carbon dioxide emissions',
+            maximum_over_periods=1_000_000,  # 1000 t CO2 total across all periods
         )
         ```
 
@@ -100,7 +123,7 @@ class Effect(Element):
             label='land_usage',
             unit='m²',
             description='Land area requirement',
-            maximum_total=50_000,  # Maximum 5 hectares available
+            maximum_total=50_000,  # Maximum 5 hectares per period
         )
         ```
 
@@ -138,7 +161,7 @@ class Effect(Element):
             description='Industrial water usage',
             minimum_per_hour=10,  # Minimum 10 m³/h for process stability
             maximum_per_hour=500,  # Maximum 500 m³/h capacity limit
-            maximum_total=100_000,  # Annual permit limit: 100,000 m³
+            maximum_over_periods=100_000,  # Annual permit limit: 100,000 m³
         )
         ```
 
@@ -166,6 +189,7 @@ class Effect(Element):
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
+        period_weights: Numeric_PS | None = None,
         share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
         share_from_periodic: Effect_PS | Numeric_PS | None = None,
         minimum_temporal: Numeric_PS | None = None,
@@ -176,6 +200,8 @@ class Effect(Element):
         maximum_per_hour: Numeric_TPS | None = None,
         minimum_total: Numeric_PS | None = None,
         maximum_total: Numeric_PS | None = None,
+        minimum_over_periods: Numeric_S | None = None,
+        maximum_over_periods: Numeric_S | None = None,
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -183,6 +209,7 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
         self.is_objective = is_objective
+        self.period_weights = period_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
         # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
         # Default to {} when None (no shares defined).
@@ -204,8 +231,6 @@ class Effect(Element):
         maximum_per_hour = self._handle_deprecated_kwarg(
             kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
         )
-
-        # Validate any remaining unexpected kwargs
         self._validate_kwargs(kwargs)
 
         # Set attributes directly
@@ -217,6 +242,8 @@ class Effect(Element):
         self.maximum_per_hour = maximum_per_hour
         self.minimum_total = minimum_total
         self.maximum_total = maximum_total
+        self.minimum_over_periods = minimum_over_periods
+        self.maximum_over_periods = maximum_over_periods
 
     # Backwards compatible properties (deprecated)
     @property
@@ -339,44 +366,90 @@ class Effect(Element):
         )
         self.maximum_per_hour = value
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    @property
+    def minimum_total_per_period(self):
+        """DEPRECATED: Use 'minimum_total' property instead."""
+        warnings.warn(
+            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.minimum_total
+
+    @minimum_total_per_period.setter
+    def minimum_total_per_period(self, value):
+        """DEPRECATED: Use 'minimum_total' property instead."""
+        warnings.warn(
+            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.minimum_total = value
+
+    @property
+    def maximum_total_per_period(self):
+        """DEPRECATED: Use 'maximum_total' property instead."""
+        warnings.warn(
+            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.maximum_total
+
+    @maximum_total_per_period.setter
+    def maximum_total_per_period(self, value):
+        """DEPRECATED: Use 'maximum_total' property instead."""
+        warnings.warn(
+            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.maximum_total = value
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.minimum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.maximum_per_hour = self._fit_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
-        self.maximum_per_hour = flow_system.fit_to_model_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
-
-        self.share_from_temporal = flow_system.fit_effects_to_model_coords(
-            label_prefix=None,
+        self.share_from_temporal = self._fit_effect_coords(
+            prefix=None,
             effect_values=self.share_from_temporal,
-            label_suffix=f'(temporal)->{prefix}(temporal)',
+            suffix=f'(temporal)->{prefix}(temporal)',
             dims=['time', 'period', 'scenario'],
         )
-        self.share_from_periodic = flow_system.fit_effects_to_model_coords(
-            label_prefix=None,
+        self.share_from_periodic = self._fit_effect_coords(
+            prefix=None,
             effect_values=self.share_from_periodic,
-            label_suffix=f'(periodic)->{prefix}(periodic)',
+            suffix=f'(periodic)->{prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
-        self.minimum_temporal = flow_system.fit_to_model_coords(
+        self.minimum_temporal = self._fit_coords(
             f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
-        self.maximum_temporal = flow_system.fit_to_model_coords(
+        self.maximum_temporal = self._fit_coords(
             f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
-        self.minimum_periodic = flow_system.fit_to_model_coords(
+        self.minimum_periodic = self._fit_coords(
             f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
-        self.maximum_periodic = flow_system.fit_to_model_coords(
+        self.maximum_periodic = self._fit_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total = flow_system.fit_to_model_coords(
-            f'{prefix}|minimum_total',
-            self.minimum_total,
-            dims=['period', 'scenario'],
+        self.minimum_total = self._fit_coords(
+            f'{prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
         )
-        self.maximum_total = flow_system.fit_to_model_coords(
+        self.maximum_total = self._fit_coords(
             f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
+        )
+        self.minimum_over_periods = self._fit_coords(
+            f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
+        )
+        self.maximum_over_periods = self._fit_coords(
+            f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
+        )
+        self.period_weights = self._fit_coords(
+            f'{prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -385,8 +458,15 @@ class Effect(Element):
         return self.submodel
 
     def _plausibility_checks(self) -> None:
-        # TODO: Check for plausibility
-        pass
+        # Check that minimum_over_periods and maximum_over_periods require a period dimension
+        if (
+            self.minimum_over_periods is not None or self.maximum_over_periods is not None
+        ) and self.flow_system.periods is None:
+            raise PlausibilityError(
+                f"Effect '{self.label}': minimum_over_periods and maximum_over_periods require "
+                f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
+                f'the FlowSystem, or remove these constraints.'
+            )
 
 
 class EffectModel(ElementModel):
@@ -395,7 +475,30 @@ class EffectModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Effect):
         super().__init__(model, element)
 
+    @property
+    def period_weights(self) -> xr.DataArray:
+        """
+        Get period weights for this effect.
+
+        Returns effect-specific weights if defined, otherwise falls back to FlowSystem period weights.
+        This allows different effects to have different weighting schemes over periods (e.g., discounting for costs,
+        equal weights for CO2 emissions).
+
+        Returns:
+            Weights with period dimensions (if applicable)
+        """
+        effect_weights = self.element.period_weights
+        default_weights = self.element._flow_system.period_weights
+        if effect_weights is not None:  # Use effect-specific weights
+            return effect_weights
+        elif default_weights is not None:  # Fall back to FlowSystem weights
+            return default_weights
+        return self.element._fit_coords(name='period_weights', data=1, dims=['period'])
+
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
+
         self.total: linopy.Variable | None = None
         self.periodic: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
@@ -433,6 +536,21 @@ class EffectModel(ElementModel):
         self.add_constraints(
             self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
         )
+
+        # Add weighted sum over all periods constraint if minimum_over_periods or maximum_over_periods is defined
+        if self.element.minimum_over_periods is not None or self.element.maximum_over_periods is not None:
+            # Calculate weighted sum over all periods
+            weighted_total = (self.total * self.period_weights).sum('period')
+
+            # Create tracking variable for the weighted sum
+            self.total_over_periods = self.add_variables(
+                lower=self.element.minimum_over_periods if self.element.minimum_over_periods is not None else -np.inf,
+                upper=self.element.maximum_over_periods if self.element.maximum_over_periods is not None else np.inf,
+                coords=self._model.get_coords(['scenario']),
+                short_name='total_over_periods',
+            )
+
+            self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')
 
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
@@ -661,18 +779,26 @@ class EffectCollectionModel(Submodel):
         self.penalty.add_share(name, expression, dims=())
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create EffectModel for each effect
         for effect in self.effects.values():
             effect.create_model(self._model)
+
+        # Create penalty allocation model
         self.penalty = self.add_submodels(
             ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
             short_name='penalty',
         )
 
+        # Add cross-effect shares
         self._add_share_between_effects()
 
+        # Use objective weights with objective effect
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.weights).sum() + self.penalty.total.sum()
+            (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
+            + self.penalty.total.sum()
         )
 
     def _add_share_between_effects(self):

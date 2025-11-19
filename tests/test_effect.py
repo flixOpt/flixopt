@@ -247,13 +247,13 @@ class TestEffectResults:
             effect3,
             fx.linear_converters.Boiler(
                 'Boiler',
-                eta=0.5,
-                Q_th=fx.Flow(
+                thermal_efficiency=0.5,
+                thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
                     size=fx.InvestParameters(effects_of_investment_per_size=10, minimum_size=20, mandatory=True),
                 ),
-                Q_fu=fx.Flow('Q_fu', bus='Gas'),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             ),
         )
 

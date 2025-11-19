@@ -122,6 +122,84 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [4.0.0] - 2025-11-19
+
+**Summary**: This release introduces clearer parameter naming for linear converters and constraints, enhanced period handling with automatic weight computation, and new sum-over-all-periods constraints for multi-period optimization. All deprecated parameter names continue to work with warnings.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Key Features
+
+**Sum-over-all-periods constraints:**
+New constraint parameters enable limiting weighted totals across all periods:
+- `Effect`: `minimum_over_periods` and `maximum_over_periods`
+- `Flow`: `flow_hours_max_over_periods` and `flow_hours_min_over_periods`
+
+```python
+# Per-period: limits apply to EACH period individually
+effect = fx.Effect('costs', maximum_total=1000)  # ≤1000 per period
+
+# Over-periods: limits apply to WEIGHTED SUM across ALL periods
+# With periods=[2020, 2030, 2040] (weights: [10, 10, 10] from 10-year intervals)
+effect = fx.Effect('costs', maximum_over_periods=25000)  # 10×costs₂₀₂₀ + 10×costs₂₀₃₀ + 10×costs₂₀₄₀ ≤ 25000
+```
+
+**Improved period weight handling:**
+- Period weights now computed automatically from period index (like `hours_per_timestep` for time)
+- Weights correctly recalculate when using `.sel()` or `.isel()` on periods
+- Separate tracking of `period_weights`, `scenario_weights`, and combined `weights`
+
+**Simplified workflow:**
+- `Calculation.solve()` now automatically calls `do_modeling()` if needed
+
+### 💥 Breaking Changes
+
+**FlowSystem weights parameter renamed:**
+```python
+# Old (v3.x)
+fs = FlowSystem(..., weights=np.array([0.3, 0.5, 0.2]))
+
+# New (v4.0)
+fs = FlowSystem(..., scenario_weights=np.array([0.3, 0.5, 0.2]))
+```
+Period weights are now always computed from the period index.
+
+  **Note**: If you were previously passing period × scenario weights to `weights`, you now need to:
+  1. Pass only scenario weights to `scenario_weights`
+  2. Period weights will be computed automatically from your `periods` index
+
+### 🗑️ Deprecated Parameters
+
+**Linear converters** (`Boiler`, `CHP`, `HeatPump`, etc.) - descriptive names replace abbreviations:
+- Flow: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`, `Q_ab` → `heat_source_flow`
+- Efficiency: `eta` → `thermal_efficiency`, `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`, `COP` → `cop` (lowercase)
+
+**Constraint parameters** - removed redundant `_total` suffix:
+- `Flow`: `flow_hours_total_max` → `flow_hours_max`, `flow_hours_total_min` → `flow_hours_min`
+- `OnOffParameters`: `on_hours_total_max` → `on_hours_max`, `on_hours_total_min` → `on_hours_min`, `switch_on_total_max` → `switch_on_max`
+
+**Storage**:
+- `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_final"`
+
+All deprecated names continue working with warnings. **They will be removed in v5.0.0.**
+
+**Additional property deprecations now include removal version:**
+- `InvestParameters`: `fix_effects`, `specific_effects`, `divest_effects`, `piecewise_effects`
+- `OnOffParameters`: `on_hours_total_min`, `on_hours_total_max`, `switch_on_total_max`
+- `Flow`: `flow_hours_total_min`, `flow_hours_total_max`
+
+### 🐛 Fixed
+- Fixed inconsistent boundary checks in linear converters with array-like inputs
+
+### 👷 Development
+- Eliminated circular dependencies with two-phase modeling pattern
+- Enhanced validation for cross-element references and FlowSystem assignment
+- Added helper methods for cleaner data transformation code
+- Improved logging and cache invalidation
+- Improved argument consistency in internal effect coordinate fitting
+
+---
+
 ## [3.6.1] - 2025-11-17
 
 **Summary**: Documentation improvements and dependency updates.
@@ -800,6 +878,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ### ✨ Added
 - Python 3.13 support added
+- Logger warning if relative_minimum is used without on_off_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
 ### 💥 Breaking Changes

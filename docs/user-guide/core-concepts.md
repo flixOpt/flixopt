@@ -28,7 +28,7 @@ Element labels must be unique across all types. See the [`FlowSystem` API refere
 
 - Have a `size` which, generally speaking, defines how much energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
 - Have a `flow_rate`, which defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
-- Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
+- Have constraints to limit the flow-rate (min/max, total flow hours, active/inactive status etc.)
 - Can have fixed profiles (for demands or renewable generation)
 - Can have [Effects](#effects) associated by their use (costs, emissions, labour, ...)
 
@@ -121,7 +121,6 @@ This [`CalculationResults`][flixopt.results.CalculationResults] object can be sa
 The process of working with FlixOpt can be divided into 3 steps:
 
 1. Create a [`FlowSystem`][flixopt.flow_system.FlowSystem], containing all the elements and data of your system
-
      -  Define the time horizon of your system (and optionally your periods and scenarios, see [Dimensions](mathematical-notation/dimensions.md)))
      -  Add [`Effects`][flixopt.effects.Effect] to represent costs, emissions, etc.
      -  Add [`Buses`][flixopt.elements.Bus] as connection points in your system and [`Sinks`][flixopt.components.Sink] & [`Sources`][flixopt.components.Source] as connections to the outer world (markets, power grid, ...)
@@ -129,12 +128,10 @@ The process of working with FlixOpt can be divided into 3 steps:
      -  Add
      - [`FlowSystems`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
-
      - Create a [`Calculation`][flixopt.calculation.Calculation] from your FlowSystem and choose a Solver
      - ...The Calculation is translated internally to a mathematical optimization problem...
      - ...and solved by the chosen solver.
 3. Analyze the results
-
      - The results are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object
      - This object can be saved to file and reloaded from file, retaining all information about the calculation
      - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it fully documents all assumptions taken to create the results.

@@ -7,19 +7,16 @@ FlixOpt's `FlowSystem` supports multiple dimensions for modeling optimization pr
 FlixOpt models can have up to three dimensions:
 
 1. **Time (`time`)** - **MANDATORY**
-
     - Represents the temporal evolution of the system
     - Defined via `pd.DatetimeIndex`
     - Must contain at least 2 timesteps
     - All optimization variables and constraints evolve over time
 2. **Period (`period`)** - **OPTIONAL**
-
     - Represents independent planning periods (e.g., years 2020, 2021, 2022)
     - Defined via `pd.Index` with integer values
     - Used for multi-period optimization such as investment planning across years
     - Each period is independent with its own time series
 3. **Scenario (`scenario`)** - **OPTIONAL**
-
     - Represents alternative futures or uncertainty realizations (e.g., "Base Case", "High Demand")
     - Defined via `pd.Index` with any labels
     - Scenarios within the same period share the same time dimension
@@ -55,12 +52,11 @@ flow_system = fx.FlowSystem(
     timesteps=timesteps,
     periods=periods,
     scenarios=scenarios,
-    weights=np.array([0.5, 0.5])  # Scenario weights
+    scenario_weights=np.array([0.5, 0.5])  # Scenario weights
 )
 ```
 
 This creates a system with:
-
 - 24 time steps per scenario per period
 - 2 scenarios with equal weights (0.5 each)
 - 3 periods (years)
@@ -115,7 +111,6 @@ $$
 $$
 
 Where:
-
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$
 - The optimizer balances performance across scenarios according to their weights
@@ -207,7 +202,6 @@ $$
 $$
 
 Where:
-
 - $\mathcal{T}$ is the set of time steps
 - $\mathcal{E}$ is the set of effects
 - $\mathcal{S}$ is the set of scenarios
@@ -226,28 +220,75 @@ Where:
 
 Weights determine the relative importance of scenarios and periods in the objective function.
 
-**Specification:**
+### Scenario Weights
+
+You provide scenario weights explicitly via the `scenario_weights` parameter:
 
 ```python
 flow_system = fx.FlowSystem(
     timesteps=timesteps,
-    periods=periods,
     scenarios=scenarios,
-    weights=weights  # Shape depends on dimensions
+    scenario_weights=np.array([0.3, 0.7])  # Scenario probabilities
 )
 ```
 
-**Weight Dimensions:**
+**Default:** If not specified, all scenarios have equal weight (normalized to sum to 1).
 
-| Dimensions Present | Weight Shape | Example | Meaning |
-|-------------------|--------------|---------|---------|
-| Time + Scenario | 1D array of length `n_scenarios` | `[0.3, 0.7]` | Scenario probabilities |
-| Time + Period | 1D array of length `n_periods` | `[0.5, 0.3, 0.2]` | Period importance |
-| Time + Period + Scenario | 2D array `(n_periods, n_scenarios)` | `[[0.25, 0.25], [0.25, 0.25]]` | Combined weights |
+### Period Weights
 
-**Default:** If not specified, all scenarios/periods have equal weight (normalized to sum to 1).
+Period weights are **automatically computed** from the period index (similar to how `hours_per_timestep` is computed from the time index):
 
-**Normalization:** Set `normalize_weights=True` in `Calculation` to automatically normalize weights to sum to 1.
+```python
+# Period weights are computed from the differences between period values
+periods = pd.Index([2020, 2025, 2030, 2035])
+# → period_weights = [5, 5, 5, 5] (representing 5-year intervals)
+
+flow_system = fx.FlowSystem(
+    timesteps=timesteps,
+    periods=periods,
+    # No need to specify period weights - they're computed automatically
+)
+```
+
+**How period weights are computed:**
+- For periods `[2020, 2025, 2030, 2035]`, the weights are `[5, 5, 5, 5]` (the interval sizes)
+- This ensures that when you use `.sel()` to select a subset of periods, the weights are correctly recalculated
+- You can specify `weight_of_last_period` if the last period weight cannot be inferred from the index
+
+### Combined Weights
+
+When both periods and scenarios are present, the combined `weights` array (accessible via `flow_system.model.objective_weights`) is computed as:
+
+$$
+w_{y,s} = w_y \times \frac{w_s}{\sum_{s \in \mathcal{S}} w_s}
+$$
+
+Where:
+- $w_y$ are the period weights (computed from period index)
+- $w_s$ are the scenario weights (user-specified)
+- $\mathcal{S}$ is the set of all scenarios
+- The scenario weights are normalized to sum to 1 before multiplication
+
+**Example:**
+```python
+periods = pd.Index([2020, 2030, 2040])  # → period_weights = [10, 10, 10]
+scenarios = pd.Index(['Base', 'High'])
+scenario_weights = np.array([0.6, 0.4])
+
+flow_system = fx.FlowSystem(
+    timesteps=timesteps,
+    periods=periods,
+    scenarios=scenarios,
+    scenario_weights=scenario_weights
+)
+
+# Combined weights shape: (3 periods, 2 scenarios)
+# [[6.0, 4.0],   # 2020: 10 × [0.6, 0.4]
+#  [6.0, 4.0],   # 2030: 10 × [0.6, 0.4]
+#  [6.0, 4.0]]   # 2040: 10 × [0.6, 0.4]
+```
+
+**Normalization:** Set `normalize_weights=False` in `Calculation` to turn of the normalization.
 
 ---
 
