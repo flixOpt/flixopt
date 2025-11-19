@@ -83,7 +83,9 @@ if __name__ == '__main__':
     # Base Case: 60% probability, High Demand: 40% probability
     scenario_weights = np.array([0.6, 0.4])
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods, scenarios=scenarios, weights=scenario_weights)
+    flow_system = fx.FlowSystem(
+        timesteps=timesteps, periods=periods, scenarios=scenarios, scenario_weights=scenario_weights
+    )
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
@@ -114,8 +116,8 @@ if __name__ == '__main__':
     # Modern condensing gas boiler with realistic efficiency
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
-        eta=0.92,  # Realistic efficiency for modern condensing gas boiler (92%)
-        Q_th=fx.Flow(
+        thermal_efficiency=0.92,  # Realistic efficiency for modern condensing gas boiler (92%)
+        thermal_flow=fx.Flow(
             label='Q_th',
             bus='Fernwärme',
             size=50,
@@ -123,18 +125,20 @@ if __name__ == '__main__':
             relative_maximum=1,
             status_parameters=fx.StatusParameters(),
         ),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
+        fuel_flow=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
     # Modern CHP unit with realistic efficiencies (total efficiency ~88%)
     chp = fx.linear_converters.CHP(
         label='CHP',
-        eta_th=0.48,  # Realistic thermal efficiency (48%)
-        eta_el=0.40,  # Realistic electrical efficiency (40%)
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-        Q_fu=fx.Flow('Q_fu', bus='Gas'),
+        thermal_efficiency=0.48,  # Realistic thermal efficiency (48%)
+        electrical_efficiency=0.40,  # Realistic electrical efficiency (40%)
+        electrical_flow=fx.Flow(
+            'P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
+        ),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas'),
     )
 
     # Storage: Thermal energy storage system with charging and discharging capabilities

@@ -71,9 +71,9 @@ if __name__ == '__main__':
     # 1. Boiler
     a_gaskessel = fx.linear_converters.Boiler(
         'Kessel',
-        eta=0.85,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
-        Q_fu=fx.Flow(
+        thermal_efficiency=0.85,
+        thermal_flow=fx.Flow(label='Q_th', bus='Fernwärme'),
+        fuel_flow=fx.Flow(
             label='Q_fu',
             bus='Gas',
             size=95,
@@ -86,12 +86,12 @@ if __name__ == '__main__':
     # 2. CHP
     a_kwk = fx.linear_converters.CHP(
         'BHKW2',
-        eta_th=0.58,
-        eta_el=0.22,
+        thermal_efficiency=0.58,
+        electrical_efficiency=0.22,
         status_parameters=fx.StatusParameters(effects_per_startup=24000),
-        P_el=fx.Flow('P_el', bus='Strom', size=200),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme', size=200),
-        Q_fu=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
+        electrical_flow=fx.Flow('P_el', bus='Strom', size=200),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=200),
+        fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
     )
 
     # 3. Storage

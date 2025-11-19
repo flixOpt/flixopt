@@ -14,6 +14,8 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     import xarray as xr
 
     from .core import FlowSystemDimensions
@@ -175,6 +177,7 @@ class StatusModel(Submodel):
         super().__init__(model, label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
         # Note: We no longer create a separate 'inactive' variable
@@ -331,7 +334,7 @@ class PieceModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
@@ -341,7 +344,10 @@ class PieceModel(Submodel):
         super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create variables
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
@@ -361,6 +367,7 @@ class PieceModel(Submodel):
             coords=self._model.get_coords(dims=self.dims),
         )
 
+        # Create constraints
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
@@ -373,7 +380,7 @@ class PiecewiseModel(Submodel):
         label_of_model: str,
         piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -397,12 +404,15 @@ class PiecewiseModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         # Validate all piecewise variables have the same number of segments
         segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
         if not all(count == segment_counts[0] for count in segment_counts):
             raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
 
+        # Create PieceModel submodels (which creates their variables and constraints)
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
@@ -446,6 +456,10 @@ class PiecewiseModel(Submodel):
             else:
                 rhs = 1
 
+            # This constraint ensures at most one segment is active at a time.
+            # When zero_point is a binary variable, it acts as a gate:
+            # - zero_point=1: at most one segment can be active (normal piecewise operation)
+            # - zero_point=0: all segments must be inactive (effectively disables the piecewise)
             self.add_constraints(
                 sum([piece.inside_piece for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}|single_segment',
@@ -480,6 +494,10 @@ class PiecewiseEffectsModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
+
+        # Create variables
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
@@ -493,6 +511,7 @@ class PiecewiseEffectsModel(Submodel):
             },
         }
 
+        # Create piecewise model (which creates its variables and constraints)
         self.piecewise_model = self.add_submodels(
             PiecewiseModel(
                 model=self._model,
@@ -505,7 +524,7 @@ class PiecewiseEffectsModel(Submodel):
             short_name='PiecewiseEffects',
         )
 
-        # Shares
+        # Add shares to effects
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
@@ -526,7 +545,7 @@ class ShareAllocationModel(Submodel):
         min_per_hour: Numeric_TPS | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
-            raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
+            raise ValueError("max_per_hour and min_per_hour require 'time' dimension in dims")
 
         self._dims = dims
         self.total_per_timestep: linopy.Variable | None = None
@@ -546,7 +565,10 @@ class ShareAllocationModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create variables
         self.total = self.add_variables(
             lower=self._total_min if self._total_min is not None else -np.inf,
             upper=self._total_max if self._total_max is not None else np.inf,

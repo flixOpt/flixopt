@@ -17,7 +17,14 @@ from .core import PlausibilityError
 from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
-from .structure import Element, ElementModel, FlowSystemModel, register_class_for_io
+from .structure import (
+    DEPRECATION_REMOVAL_VERSION,
+    Element,
+    ElementModel,
+    FlowSystemModel,
+    Interface,
+    register_class_for_io,
+)
 
 if TYPE_CHECKING:
     import linopy
@@ -109,13 +116,21 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects and flows."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(flow_system, prefix)
+            self.status_parameters.transform_data(prefix)
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data(flow_system)  # Flow doesnt need the name_prefix
+            flow.transform_data()  # Flow doesnt need the name_prefix
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -250,9 +265,15 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested flows."""
+        super()._set_flow_system(flow_system)
+        for flow in self.inputs + self.outputs:
+            flow._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.excess_penalty_per_flow_hour = flow_system.fit_to_model_coords(
+        self.excess_penalty_per_flow_hour = self._fit_coords(
             f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
         )
 
@@ -325,8 +346,12 @@ class Flow(Element):
         effects_per_flow_hour: Operational costs/impacts per flow-hour.
             Dict mapping effect names to values (e.g., {'cost': 45, 'CO2': 0.8}).
         status_parameters: Binary operation constraints (StatusParameters). Default: None.
-        flow_hours_total_max: Maximum cumulative flow-hours. Alternative to load_factor_max.
-        flow_hours_total_min: Minimum cumulative flow-hours. Alternative to load_factor_min.
+        flow_hours_max: Maximum cumulative flow-hours per period. Alternative to load_factor_max.
+        flow_hours_min: Minimum cumulative flow-hours per period. Alternative to load_factor_min.
+        flow_hours_max_over_periods: Maximum weighted sum of flow-hours across ALL periods.
+            Weighted by FlowSystem period weights.
+        flow_hours_min_over_periods: Minimum weighted sum of flow-hours across ALL periods.
+            Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
         previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
@@ -403,8 +428,9 @@ class Flow(Element):
         ```
 
     Design Considerations:
-        **Size vs Load Factors**: Use `flow_hours_total_min/max` for absolute limits,
-        `load_factor_min/max` for utilization-based constraints.
+        **Size vs Load Factors**: Use `flow_hours_min/max` for absolute limits per period,
+        `load_factor_min/max` for utilization-based constraints, or `flow_hours_min/max_over_periods` for
+        limits across all periods.
 
         **Relative Bounds**: Set `relative_minimum > 0` only when equipment cannot
         operate below that level. Use `status_parameters` for discrete active/inactive behavior.
@@ -434,12 +460,15 @@ class Flow(Element):
         relative_maximum: Numeric_TPS = 1,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
         status_parameters: StatusParameters | None = None,
-        flow_hours_total_max: Numeric_PS | None = None,
-        flow_hours_total_min: Numeric_PS | None = None,
+        flow_hours_max: Numeric_PS | None = None,
+        flow_hours_min: Numeric_PS | None = None,
+        flow_hours_max_over_periods: Numeric_S | None = None,
+        flow_hours_min_over_periods: Numeric_S | None = None,
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.size = CONFIG.Modeling.big if size is None else size
@@ -449,10 +478,33 @@ class Flow(Element):
 
         self.load_factor_min = load_factor_min
         self.load_factor_max = load_factor_max
+
+        # Handle deprecated parameters
+        flow_hours_max = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_per_period_max', 'flow_hours_max', flow_hours_max
+        )
+        flow_hours_min = self._handle_deprecated_kwarg(
+            kwargs, 'flow_hours_per_period_min', 'flow_hours_min', flow_hours_min
+        )
+        # Also handle the older deprecated names
+        flow_hours_max = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_max', 'flow_hours_max', flow_hours_max)
+        flow_hours_min = self._handle_deprecated_kwarg(kwargs, 'flow_hours_total_min', 'flow_hours_min', flow_hours_min)
+        flow_hours_max_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'total_flow_hours_max', 'flow_hours_max_over_periods', flow_hours_max_over_periods
+        )
+        flow_hours_min_over_periods = self._handle_deprecated_kwarg(
+            kwargs, 'total_flow_hours_min', 'flow_hours_min_over_periods', flow_hours_min_over_periods
+        )
+
+        # Validate any remaining unexpected kwargs
+        self._validate_kwargs(kwargs)
+
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
-        self.flow_hours_total_max = flow_hours_total_max
-        self.flow_hours_total_min = flow_hours_total_min
+        self.flow_hours_max = flow_hours_max
+        self.flow_hours_min = flow_hours_min
+        self.flow_hours_max_over_periods = flow_hours_max_over_periods
+        self.flow_hours_min_over_periods = flow_hours_min_over_periods
         self.status_parameters = status_parameters
 
         self.previous_flow_rate = previous_flow_rate
@@ -477,35 +529,45 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects."""
+        super()._set_flow_system(flow_system)
+        if self.on_off_parameters is not None:
+            self.on_off_parameters._set_flow_system(flow_system)
+        if isinstance(self.size, Interface):
+            self.size._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_minimum = flow_system.fit_to_model_coords(f'{prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = flow_system.fit_to_model_coords(f'{prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = flow_system.fit_to_model_coords(
-            f'{prefix}|fixed_relative_profile', self.fixed_relative_profile
+        self.relative_minimum = self._fit_coords(f'{prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = self._fit_coords(f'{prefix}|relative_maximum', self.relative_maximum)
+        self.fixed_relative_profile = self._fit_coords(f'{prefix}|fixed_relative_profile', self.fixed_relative_profile)
+        self.effects_per_flow_hour = self._fit_effect_coords(prefix, self.effects_per_flow_hour, 'per_flow_hour')
+        self.flow_hours_max = self._fit_coords(
+            f'{prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
         )
-        self.effects_per_flow_hour = flow_system.fit_effects_to_model_coords(
-            prefix, self.effects_per_flow_hour, 'per_flow_hour'
+        self.flow_hours_min = self._fit_coords(
+            f'{prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
         )
-        self.flow_hours_total_max = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_max', self.flow_hours_total_max, dims=['period', 'scenario']
+        self.flow_hours_max_over_periods = self._fit_coords(
+            f'{prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
         )
-        self.flow_hours_total_min = flow_system.fit_to_model_coords(
-            f'{prefix}|flow_hours_total_min', self.flow_hours_total_min, dims=['period', 'scenario']
+        self.flow_hours_min_over_periods = self._fit_coords(
+            f'{prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
         )
-        self.load_factor_max = flow_system.fit_to_model_coords(
+        self.load_factor_max = self._fit_coords(
             f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
-        self.load_factor_min = flow_system.fit_to_model_coords(
+        self.load_factor_min = self._fit_coords(
             f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(flow_system, prefix)
+            self.status_parameters.transform_data(prefix)
         if isinstance(self.size, InvestParameters):
-            self.size.transform_data(flow_system, prefix)
+            self.size.transform_data(prefix)
         else:
-            self.size = flow_system.fit_to_model_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
+            self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -555,6 +617,51 @@ class Flow(Element):
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
         return False if (isinstance(self.size, InvestParameters) and self.size.fixed_size is None) else True
 
+    # Backwards compatible properties (deprecated)
+    @property
+    def flow_hours_total_max(self):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_max
+
+    @flow_hours_total_max.setter
+    def flow_hours_total_max(self, value):
+        """DEPRECATED: Use 'flow_hours_max' property instead."""
+        warnings.warn(
+            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_max = value
+
+    @property
+    def flow_hours_total_min(self):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_hours_min
+
+    @flow_hours_total_min.setter
+    def flow_hours_total_min(self, value):
+        """DEPRECATED: Use 'flow_hours_min' property instead."""
+        warnings.warn(
+            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.flow_hours_min = value
+
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
         return f'size: {params.format_for_repr()}'
@@ -567,7 +674,9 @@ class FlowModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         # Main flow rate variable
         self.add_variables(
             lower=self.absolute_flow_rate_bounds[0],
@@ -578,18 +687,48 @@ class FlowModel(ElementModel):
 
         self._constraint_flow_rate()
 
-        # Total flow hours tracking
+        # Total flow hours tracking (per period)
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
             tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
             bounds=(
-                self.element.flow_hours_total_min if self.element.flow_hours_total_min is not None else 0,
-                self.element.flow_hours_total_max if self.element.flow_hours_total_max is not None else None,
+                self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
+                self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
             ),
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
         )
+
+        # Weighted sum over all periods constraint
+        if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
+            # Validate that period dimension exists
+            if self._model.flow_system.periods is None:
+                raise ValueError(
+                    f"{self.label_full}: flow_hours_*_over_periods requires FlowSystem to define 'periods', "
+                    f'but FlowSystem has no period dimension. Please define periods in FlowSystem constructor.'
+                )
+            # Get period weights from FlowSystem
+            weighted_flow_hours_over_periods = (self.total_flow_hours * self._model.flow_system.period_weights).sum(
+                'period'
+            )
+
+            # Create tracking variable for the weighted sum
+            ModelingPrimitives.expression_tracking_variable(
+                model=self,
+                name=f'{self.label_full}|flow_hours_over_periods',
+                tracked_expression=weighted_flow_hours_over_periods,
+                bounds=(
+                    self.element.flow_hours_min_over_periods
+                    if self.element.flow_hours_min_over_periods is not None
+                    else 0,
+                    self.element.flow_hours_max_over_periods
+                    if self.element.flow_hours_max_over_periods is not None
+                    else None,
+                ),
+                coords=['scenario'],
+                short_name='flow_hours_over_periods',
+            )
 
         # Load factor constraints
         self._create_bounds_for_load_factor()
@@ -623,6 +762,7 @@ class FlowModel(ElementModel):
         )
 
     def _constraint_flow_rate(self):
+        """Create bounding constraints for flow_rate (models already created in _create_variables)"""
         if not self.with_investment and not self.with_status:
             # Most basic case. Already covered by direct variable bounds
             pass
@@ -798,7 +938,8 @@ class BusModel(ElementModel):
         self.excess_output: linopy.Variable | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self) -> None:
+    def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
@@ -807,7 +948,7 @@ class BusModel(ElementModel):
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
-        # Fehlerplus/-minus:
+        # Add excess to balance and penalty if needed
         if self.element.with_excess:
             excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
 
@@ -845,9 +986,12 @@ class ComponentModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Initiates all FlowModels"""
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         all_flows = self.element.inputs + self.element.outputs
+
+        # Set on_off_parameters on flows if needed
         if self.element.status_parameters:
             for flow in all_flows:
                 if flow.status_parameters is None:
@@ -858,9 +1002,11 @@ class ComponentModel(ElementModel):
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
 
+        # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
+        # Create component on variable and OnOffModel if needed
         if self.element.status_parameters:
             status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
             if len(all_flows) == 1:

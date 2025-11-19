@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_TPS, NumericOrBool
+    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, NumericOrBool
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
@@ -51,8 +51,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the first time interval.
             Can be a scalar (all previous timesteps have same duration) or array (different durations).
             Used to calculate previous values (e.g., uptime and downtime).
-        weights: The weights of each period and scenario. If None, all scenarios have the same weight (normalized to 1).
-            Its recommended to normalize the weights to sum up to 1.
+        weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
+            Used for calculating sums over periods in multi-period models.
+        scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
+            Period weights are always computed internally from the period index (like hours_per_timestep for time).
+            The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
@@ -157,10 +160,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenarios: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        weights: Numeric_PS | None = None,
+        weight_of_last_period: int | float | None = None,
+        scenario_weights: Numeric_S | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
+        **kwargs,
     ):
+        scenario_weights = self._handle_deprecated_kwarg(
+            kwargs,
+            'weights',
+            'scenario_weights',
+            scenario_weights,
+            check_conflict=True,
+            additional_warning_message='This might lead to later errors if your custom weights used the period dimension.',
+        )
+        self._validate_kwargs(kwargs)
+
         self.timesteps = self._validate_timesteps(timesteps)
 
         # Compute all time-related metadata using shared helper
@@ -174,9 +189,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.weights = weights
-
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+
+        self.scenario_weights = scenario_weights  # Use setter
+
+        # Compute all period-related metadata using shared helper
+        (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
+            self.periods, weight_of_last_period
+        )
+
+        self.period_weights: xr.DataArray | None = weight_per_period
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(
@@ -278,6 +300,43 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
 
+    @staticmethod
+    def _create_periods_with_extra(periods: pd.Index, weight_of_last_period: int | float | None) -> pd.Index:
+        """Create periods with an extra period at the end.
+
+        Args:
+            periods: The period index (must be monotonically increasing integers)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            Period index with an extra period appended at the end
+        """
+        if weight_of_last_period is None:
+            if len(periods) < 2:
+                raise ValueError(
+                    'FlowSystem: weight_of_last_period must be provided explicitly when only one period is defined.'
+                )
+            # Calculate weight from difference between last two periods
+            weight_of_last_period = int(periods[-1]) - int(periods[-2])
+
+        # Create the extra period value
+        last_period_value = int(periods[-1]) + weight_of_last_period
+        periods_extra = periods.append(pd.Index([last_period_value], name='period'))
+        return periods_extra
+
+    @staticmethod
+    def calculate_weight_per_period(periods_extra: pd.Index) -> xr.DataArray:
+        """Calculate weight of each period from period index differences.
+
+        Args:
+            periods_extra: Period index with an extra period at the end
+
+        Returns:
+            DataArray with weights for each period (1D, 'period' dimension)
+        """
+        weights = np.diff(periods_extra.to_numpy().astype(int))
+        return xr.DataArray(weights, coords={'period': periods_extra[:-1]}, dims='period', name='weight_per_period')
+
     @classmethod
     def _compute_time_metadata(
         cls,
@@ -314,6 +373,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
         return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
+
+    @classmethod
+    def _compute_period_metadata(
+        cls, periods: pd.Index | None, weight_of_last_period: int | float | None = None
+    ) -> tuple[pd.Index | None, int | float | None, xr.DataArray | None]:
+        """
+        Compute all period-related metadata from periods.
+
+        This is the single source of truth for period metadata computation, used by both
+        __init__ and dataset operations to ensure consistency.
+
+        Args:
+            periods: The period index to compute metadata from (or None if no periods)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            Tuple of (periods_extra, weight_of_last_period, weight_per_period)
+            All return None if periods is None
+        """
+        if periods is None:
+            return None, None, None
+
+        # Create periods with extra period at the end
+        periods_extra = cls._create_periods_with_extra(periods, weight_of_last_period)
+
+        # Calculate weight per period
+        weight_per_period = cls.calculate_weight_per_period(periods_extra)
+
+        # Extract weight_of_last_period if not provided
+        if weight_of_last_period is None:
+            weight_of_last_period = weight_per_period.isel(period=-1).item()
+
+        return periods_extra, weight_of_last_period, weight_per_period
 
     @classmethod
     def _update_time_metadata(
@@ -356,6 +448,51 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
         if hours_of_previous_timesteps is not None:
             dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+
+        return dataset
+
+    @classmethod
+    def _update_period_metadata(
+        cls,
+        dataset: xr.Dataset,
+        weight_of_last_period: int | float | None = None,
+    ) -> xr.Dataset:
+        """
+        Update period-related attributes and data variables in dataset based on its period index.
+
+        Recomputes weight_of_last_period and period_weights from the dataset's
+        period index. This ensures period metadata stays synchronized with the actual
+        periods after operations like selection.
+
+        This is analogous to _update_time_metadata() for time-related metadata.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+            weight_of_last_period: Weight of the last period. If None, reused from dataset attrs
+                (essential for single-period subsets where it cannot be inferred from intervals).
+
+        Returns:
+            The same dataset with updated period-related attributes and data variables
+        """
+        new_period_index = dataset.indexes.get('period')
+        if new_period_index is not None and len(new_period_index) >= 1:
+            # Reuse stored weight_of_last_period when not explicitly overridden.
+            # This is essential for single-period subsets where it cannot be inferred from intervals.
+            if weight_of_last_period is None:
+                weight_of_last_period = dataset.attrs.get('weight_of_last_period')
+
+            # Use shared helper to compute all period metadata
+            _, weight_of_last_period, period_weights = cls._compute_period_metadata(
+                new_period_index, weight_of_last_period
+            )
+
+            # Update period_weights DataArray if it exists in the dataset
+            if 'period_weights' in dataset.data_vars:
+                dataset['period_weights'] = period_weights
+
+        # Update period-related attributes only when new values are provided/computed
+        if weight_of_last_period is not None:
+            dataset.attrs['weight_of_last_period'] = weight_of_last_period
 
         return dataset
 
@@ -436,11 +573,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             timesteps=ds.indexes['time'],
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
-            weights=cls._resolve_dataarray_reference(reference_structure['weights'], arrays_dict)
-            if 'weights' in reference_structure
-            else None,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            weight_of_last_period=reference_structure.get('weight_of_last_period'),
+            scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
+            if 'scenario_weights' in reference_structure
+            else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
         )
@@ -589,11 +727,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.debug('FlowSystem already connected and transformed')
             return
 
-        self.weights = self.fit_to_model_coords('weights', self.weights, dims=['period', 'scenario'])
-
         self._connect_network()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
-            element.transform_data(self)
+            element.transform_data()
+
+        # Validate cross-element references immediately after transformation
+        self._validate_system_integrity()
+
         self._connected_and_transformed = True
 
     def add_elements(self, *elements: Element) -> None:
@@ -610,17 +750,29 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
             self._connected_and_transformed = False
+
         for new_element in list(elements):
+            # Validate element type first
+            if not isinstance(new_element, (Component, Effect, Bus)):
+                raise TypeError(
+                    f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
+                )
+
+            # Common validations for all element types (before any state changes)
+            self._check_if_element_already_assigned(new_element)
+            self._check_if_element_is_unique(new_element)
+
+            # Dispatch to type-specific handlers
             if isinstance(new_element, Component):
                 self._add_components(new_element)
             elif isinstance(new_element, Effect):
                 self._add_effects(new_element)
             elif isinstance(new_element, Bus):
                 self._add_buses(new_element)
-            else:
-                raise TypeError(
-                    f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
-                )
+
+            # Log registration
+            element_type = type(new_element).__name__
+            logger.info(f'Registered new {element_type}: {new_element.label_full}')
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
@@ -633,6 +785,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
+        # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
@@ -766,22 +919,67 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if element.label_full in self:
             raise ValueError(f'Label of Element {element.label_full} already used in another element!')
 
+    def _check_if_element_already_assigned(self, element: Element) -> None:
+        """
+        Check if element already belongs to another FlowSystem.
+
+        Args:
+            element: Element to check
+
+        Raises:
+            ValueError: If element is already assigned to a different FlowSystem
+        """
+        if element._flow_system is not None and element._flow_system is not self:
+            raise ValueError(
+                f'Element "{element.label_full}" is already assigned to another FlowSystem. '
+                f'Each element can only belong to one FlowSystem at a time. '
+                f'To use this element in multiple systems, create a copy: '
+                f'flow_system.add_elements(element.copy())'
+            )
+
+    def _validate_system_integrity(self) -> None:
+        """
+        Validate cross-element references to ensure system consistency.
+
+        This performs system-level validation that requires knowledge of multiple elements:
+        - Validates that all Flow.bus references point to existing buses
+        - Can be extended for other cross-element validations
+
+        Should be called after connect_and_transform and before create_model.
+
+        Raises:
+            ValueError: If any cross-element reference is invalid
+        """
+        # Validate bus references in flows
+        for flow in self.flows.values():
+            if flow.bus not in self.buses:
+                available_buses = list(self.buses.keys())
+                raise ValueError(
+                    f'Flow "{flow.label_full}" references bus "{flow.bus}" which does not exist in FlowSystem. '
+                    f'Available buses: {available_buses}. '
+                    f'Did you forget to add the bus using flow_system.add_elements(Bus("{flow.bus}"))?'
+                )
+
     def _add_effects(self, *args: Effect) -> None:
+        for effect in args:
+            effect._set_flow_system(self)  # Link element to FlowSystem
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            logger.info(f'Registered new Component: {new_component.label_full}')
-            self._check_if_element_is_unique(new_component)  # check if already exists:
+            new_component._set_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if components:
+            self._flows_cache = None
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            logger.info(f'Registered new Bus: {new_bus.label_full}')
-            self._check_if_element_is_unique(new_bus)  # check if already exists:
+            new_bus._set_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
-            self._flows_cache = None  # Invalidate flows cache
+        # Invalidate cache once after all additions
+        if buses:
+            self._flows_cache = None
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -812,9 +1010,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     bus.outputs.append(flow)
                 elif not flow.is_input_in_component and flow not in bus.inputs:
                     bus.inputs.append(flow)
+
+        # Count flows manually to avoid triggering cache rebuild
+        flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
         logger.debug(
             f'Connected {len(self.buses)} Buses and {len(self.components)} '
-            f'via {len(self.flows)} Flows inside the FlowSystem.'
+            f'via {flow_count} Flows inside the FlowSystem.'
         )
 
     def __repr__(self) -> str:
@@ -924,6 +1125,64 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def used_in_calculation(self) -> bool:
         return self._used_in_calculation
+
+    @property
+    def scenario_weights(self) -> xr.DataArray | None:
+        """
+        Weights for each scenario.
+
+        Returns:
+            xr.DataArray: Scenario weights with 'scenario' dimension
+        """
+        return self._scenario_weights
+
+    @scenario_weights.setter
+    def scenario_weights(self, value: Numeric_S | None) -> None:
+        """
+        Set scenario weights.
+
+        Args:
+            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension)
+                or None to clear weights.
+
+        Raises:
+            ValueError: If value is not None and no scenarios are defined in the FlowSystem.
+        """
+        if value is None:
+            self._scenario_weights = None
+            return
+
+        if self.scenarios is None:
+            raise ValueError(
+                'FlowSystem.scenario_weights cannot be set when no scenarios are defined. '
+                'Either define scenarios in FlowSystem(scenarios=...) or set scenario_weights to None.'
+            )
+
+        self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+    @property
+    def weights(self) -> Numeric_S | None:
+        warnings.warn(
+            'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.scenario_weights
+
+    @weights.setter
+    def weights(self, value: Numeric_S) -> None:
+        """
+        Set weights (deprecated - sets scenario_weights).
+
+        Args:
+            value: Scenario weights to set
+        """
+        warnings.warn(
+            'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.scenario_weights = value  # Use the scenario_weights setter
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """
@@ -1051,6 +1310,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if 'time' in indexers:
             result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
+        # Update period-related attributes if period was selected
+        # This recalculates period_weights and weights from the new period index
+        if 'period' in indexers:
+            result = cls._update_period_metadata(result)
+
         return result
 
     def sel(
@@ -1126,6 +1390,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Update time-related attributes if time was selected
         if 'time' in indexers:
             result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
+        # Update period-related attributes if period was selected
+        # This recalculates period_weights and weights from the new period index
+        if 'period' in indexers:
+            result = cls._update_period_metadata(result)
 
         return result
 

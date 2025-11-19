@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from linopy.testing import assert_linequal
 
 import flixopt as fx
@@ -21,13 +22,13 @@ def test_system():
     scenarios = pd.Index(['Scenario A', 'Scenario B'], name='scenario')
 
     # Create scenario weights
-    weights = np.array([0.7, 0.3])
+    scenario_weights = np.array([0.7, 0.3])
 
     # Create a flow system with scenarios
     flow_system = FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        weights=weights,  # Use TimeSeriesData for weights
+        scenario_weights=scenario_weights,
     )
 
     # Create demand profiles that differ between scenarios
@@ -85,7 +86,7 @@ def test_system():
         ),
         eta_charge=0.95,
         eta_discharge=0.95,
-        initial_charge_state='lastValueOfSim',
+        initial_charge_state='equals_final',
     )
 
     # Create effects and objective
@@ -139,9 +140,9 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
 
     boiler = fx.linear_converters.Boiler(
         'Kessel',
-        eta=0.5,
+        thermal_efficiency=0.5,
         status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
-        Q_th=fx.Flow(
+        thermal_flow=fx.Flow(
             'Q_th',
             bus='Fernwärme',
             load_factor_max=1.0,
@@ -164,9 +165,9 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 effects_per_startup=0.01,
                 startup_limit=1000,
             ),
-            flow_hours_total_max=1e6,
+            flow_hours_max=1e6,
         ),
-        Q_fu=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
     )
 
     invest_speicher = fx.InvestParameters(
@@ -238,28 +239,41 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
 def test_weights(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
-    weights = np.linspace(0.5, 1, len(scenarios))
-    flow_system_piecewise_conversion_scenarios.weights = weights
-    model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    normalized_weights = (
-        flow_system_piecewise_conversion_scenarios.weights / flow_system_piecewise_conversion_scenarios.weights.sum()
+    scenario_weights = np.linspace(0.5, 1, len(scenarios))
+    scenario_weights_da = xr.DataArray(
+        scenario_weights,
+        dims=['scenario'],
+        coords={'scenario': scenarios},
     )
-    np.testing.assert_allclose(model.weights.values, normalized_weights)
+    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights_da
+    model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
+    normalized_weights = scenario_weights / sum(scenario_weights)
+    np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
     assert_linequal(
         model.objective.expression, (model.variables['costs'] * normalized_weights).sum() + model.variables['Penalty']
     )
-    assert np.isclose(model.weights.sum().item(), 1)
+    assert np.isclose(model.objective_weights.sum().item(), 1)
 
 
 def test_weights_io(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
-    weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.weights = weights
+    scenario_weights = np.linspace(0.5, 1, len(scenarios))
+    scenario_weights_da = xr.DataArray(
+        scenario_weights,
+        dims=['scenario'],
+        coords={'scenario': scenarios},
+    )
+    normalized_scenario_weights_da = scenario_weights_da / scenario_weights_da.sum()
+    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights_da
+
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.weights.values, weights)
-    assert_linequal(model.objective.expression, (model.variables['costs'] * weights).sum() + model.variables['Penalty'])
-    assert np.isclose(model.weights.sum().item(), 1.0)
+    np.testing.assert_allclose(model.objective_weights.values, normalized_scenario_weights_da)
+    assert_linequal(
+        model.objective.expression,
+        (model.variables['costs'] * normalized_scenario_weights_da).sum() + model.variables['Penalty'],
+    )
+    assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
 
 def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scenarios):
@@ -273,7 +287,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.weights = weights
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
@@ -291,11 +305,11 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
 
 
 @pytest.mark.skip(reason='This test is taking too long with highs and is too big for gurobipy free')
-def test_io_persistance(flow_system_piecewise_conversion_scenarios):
+def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.weights = weights
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
@@ -317,8 +331,8 @@ def test_io_persistance(flow_system_piecewise_conversion_scenarios):
 def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     flow_system_full = flow_system_piecewise_conversion_scenarios
     scenarios = flow_system_full.scenarios
-    weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_full.weights = weights
+    scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
+    flow_system_full.scenario_weights = scenario_weights
     flow_system = flow_system_full.sel(scenario=scenarios[0:2])
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
@@ -690,3 +704,82 @@ def test_scenario_parameters_io_with_calculation():
     finally:
         # Clean up
         shutil.rmtree(temp_dir)
+
+
+def test_weights_io_persistence():
+    """Test that weights persist through IO operations (to_dataset/from_dataset)."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
+    custom_scenario_weights = np.array([0.3, 0.5, 0.2])
+
+    # Create FlowSystem with custom scenario weights
+    fs_original = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_weights=custom_scenario_weights,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=fx.InvestParameters(
+                    minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
+                ),
+            )
+        ],
+    )
+
+    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Save to dataset
+    fs_original.connect_and_transform()
+    ds = fs_original.to_dataset()
+
+    # Load from dataset
+    fs_loaded = fx.FlowSystem.from_dataset(ds)
+
+    # Verify weights persisted correctly
+    np.testing.assert_allclose(fs_loaded.weights.values, fs_original.weights.values)
+    assert fs_loaded.weights.dims == fs_original.weights.dims
+
+
+def test_weights_selection():
+    """Test that weights are correctly sliced when using FlowSystem.sel()."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+    scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
+    custom_scenario_weights = np.array([0.3, 0.5, 0.2])
+
+    # Create FlowSystem with custom scenario weights
+    fs_full = fx.FlowSystem(
+        timesteps=timesteps,
+        scenarios=scenarios,
+        scenario_weights=custom_scenario_weights,
+    )
+
+    bus = fx.Bus('grid')
+    source = fx.Source(
+        label='solar',
+        outputs=[
+            fx.Flow(
+                label='out',
+                bus='grid',
+                size=10,
+            )
+        ],
+    )
+
+    fs_full.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+
+    # Select a subset of scenarios
+    fs_subset = fs_full.sel(scenario=['base', 'high'])
+
+    # Verify weights are correctly sliced
+    assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))
+    np.testing.assert_allclose(fs_subset.weights.values, custom_scenario_weights[[0, 2]])
+
+    # Verify weights are 1D with just scenario dimension (no period dimension)
+    assert fs_subset.weights.dims == ('scenario',)

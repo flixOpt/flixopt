@@ -14,7 +14,7 @@ import xarray as xr
 from loguru import logger
 
 from .config import CONFIG
-from .structure import Interface, register_class_for_io
+from .structure import DEPRECATION_REMOVAL_VERSION, Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
@@ -74,10 +74,10 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         dims = None if self.has_time_dim else ['period', 'scenario']
-        self.start = flow_system.fit_to_model_coords(f'{name_prefix}|start', self.start, dims=dims)
-        self.end = flow_system.fit_to_model_coords(f'{name_prefix}|end', self.end, dims=dims)
+        self.start = self._fit_coords(f'{name_prefix}|start', self.start, dims=dims)
+        self.end = self._fit_coords(f'{name_prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
@@ -220,9 +220,15 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Piece objects."""
+        super()._set_flow_system(flow_system)
+        for piece in self.pieces:
+            piece._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
-            piece.transform_data(flow_system, f'{name_prefix}|Piece{i}')
+            piece.transform_data(f'{name_prefix}|Piece{i}')
 
 
 @register_class_for_io
@@ -446,9 +452,15 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Piecewise objects."""
+        super()._set_flow_system(flow_system)
+        for piecewise in self.piecewises.values():
+            piecewise._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
-            piecewise.transform_data(flow_system, f'{name_prefix}|{name}')
+            piecewise.transform_data(f'{name_prefix}|{name}')
 
 
 @register_class_for_io
@@ -658,10 +670,17 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.piecewise_origin.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|origin')
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Piecewise objects."""
+        super()._set_flow_system(flow_system)
+        self.piecewise_origin._set_flow_system(flow_system)
+        for piecewise in self.piecewise_shares.values():
+            piecewise._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
+        self.piecewise_origin.transform_data(f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
-            piecewise.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects|{effect}')
+            piecewise.transform_data(f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
 @register_class_for_io
@@ -713,15 +732,15 @@ class InvestParameters(Interface):
 
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_investment` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -897,7 +916,8 @@ class InvestParameters(Interface):
         # For mandatory parameter with non-None default, disable conflict checking
         if 'optional' in kwargs:
             warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -920,34 +940,40 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
         self.linked_periods = linked_periods
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.effects_of_investment = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested PiecewiseEffects object if present."""
+        super()._set_flow_system(flow_system)
+        if self.piecewise_effects_of_investment is not None:
+            self.piecewise_effects_of_investment._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
+        self.effects_of_investment = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_investment,
-            label_suffix='effects_of_investment',
+            suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
-        self.effects_of_retirement = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+        self.effects_of_retirement = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_retirement,
-            label_suffix='effects_of_retirement',
+            suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
-        self.effects_of_investment_per_size = flow_system.fit_effects_to_model_coords(
-            label_prefix=name_prefix,
+        self.effects_of_investment_per_size = self._fit_effect_coords(
+            prefix=name_prefix,
             effect_values=self.effects_of_investment_per_size,
-            label_suffix='effects_of_investment_per_size',
+            suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
         )
 
         if self.piecewise_effects_of_investment is not None:
             self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data(flow_system, f'{name_prefix}|PiecewiseEffects')
+            self.piecewise_effects_of_investment.transform_data(f'{name_prefix}|PiecewiseEffects')
 
-        self.minimum_size = flow_system.fit_to_model_coords(
+        self.minimum_size = self._fit_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
         )
-        self.maximum_size = flow_system.fit_to_model_coords(
+        self.maximum_size = self._fit_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
         # Convert tuple (first_period, last_period) to DataArray if needed
@@ -956,50 +982,59 @@ class InvestParameters(Interface):
                 raise TypeError(
                     f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
                 )
-            if flow_system.periods is None:
+            if self.flow_system.periods is None:
                 raise ValueError(
                     f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
                     f'Please define periods in FlowSystem or use linked_periods=None.'
                 )
             logger.debug(f'Computing linked_periods from {self.linked_periods}')
             start, end = self.linked_periods
-            if start not in flow_system.periods.values:
+            if start not in self.flow_system.periods.values:
                 logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {flow_system.periods.values}'
+                    f'Start of linked periods ({start} not found in periods directly: {self.flow_system.periods.values}'
                 )
-            if end not in flow_system.periods.values:
+            if end not in self.flow_system.periods.values:
                 logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {flow_system.periods.values}'
+                    f'End of linked periods ({end} not found in periods directly: {self.flow_system.periods.values}'
                 )
-            self.linked_periods = self.compute_linked_periods(start, end, flow_system.periods)
+            self.linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
             logger.debug(f'Computed {self.linked_periods=}')
 
-        self.linked_periods = flow_system.fit_to_model_coords(
+        self.linked_periods = self._fit_coords(
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
-        self.fixed_size = flow_system.fit_to_model_coords(
-            f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario']
-        )
+        self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
 
     @property
     def optional(self) -> bool:
         """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
         import warnings
 
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return not self.mandatory
 
     @optional.setter
     def optional(self, value: bool):
         """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.mandatory = not value
 
     @property
     def fix_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment instead."""
         warnings.warn(
-            'The fix_effects property is deprecated. Use effects_of_investment instead.',
+            f'The fix_effects property is deprecated. Use effects_of_investment instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1009,7 +1044,8 @@ class InvestParameters(Interface):
     def specific_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment_per_size instead."""
         warnings.warn(
-            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            f'The specific_effects property is deprecated. Use effects_of_investment_per_size instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1019,7 +1055,8 @@ class InvestParameters(Interface):
     def divest_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_retirement instead."""
         warnings.warn(
-            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
+            f'The divest_effects property is deprecated. Use effects_of_retirement instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1029,7 +1066,8 @@ class InvestParameters(Interface):
     def piecewise_effects(self) -> PiecewiseEffects | None:
         """Deprecated property. Use piecewise_effects_of_investment instead."""
         warnings.warn(
-            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            f'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1110,10 +1148,10 @@ class StatusParameters(Interface):
         effects_per_active_hour: Ongoing costs or impacts while equipment operates
             in the active state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-        active_hours_min: Minimum total active hours across the entire time horizon.
+        active_hours_min: Minimum total active hours across the entire time horizon per period.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
-        active_hours_max: Maximum total active hours across the entire time horizon.
+        active_hours_max: Maximum total active hours across the entire time horizon per period.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
         min_uptime: Minimum continuous operating duration once started (unit commitment term).
@@ -1129,7 +1167,7 @@ class StatusParameters(Interface):
         max_downtime: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-        startup_limit: Maximum number of startup operations across the time horizon.
+        startup_limit: Maximum number of startup operations across the time horizon per period..
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).
         force_startup_tracking: When True, creates startup variables even without explicit
@@ -1282,24 +1320,28 @@ class StatusParameters(Interface):
         self.startup_limit = startup_limit
         self.force_startup_tracking: bool = force_startup_tracking
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
-        self.effects_per_startup = flow_system.fit_effects_to_model_coords(
-            name_prefix, self.effects_per_startup, 'per_startup'
+    def transform_data(self, name_prefix: str = '') -> None:
+        self.effects_per_startup = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_per_startup,
+            suffix='per_startup',
         )
-        self.effects_per_active_hour = flow_system.fit_effects_to_model_coords(
-            name_prefix, self.effects_per_active_hour, 'per_active_hour'
+        self.effects_per_active_hour = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_per_active_hour,
+            suffix='per_active_hour',
         )
-        self.min_uptime = flow_system.fit_to_model_coords(f'{name_prefix}|min_uptime', self.min_uptime)
-        self.max_uptime = flow_system.fit_to_model_coords(f'{name_prefix}|max_uptime', self.max_uptime)
-        self.min_downtime = flow_system.fit_to_model_coords(f'{name_prefix}|min_downtime', self.min_downtime)
-        self.max_downtime = flow_system.fit_to_model_coords(f'{name_prefix}|max_downtime', self.max_downtime)
-        self.active_hours_max = flow_system.fit_to_model_coords(
+        self.min_uptime = self._fit_coords(f'{name_prefix}|min_uptime', self.min_uptime)
+        self.max_uptime = self._fit_coords(f'{name_prefix}|max_uptime', self.max_uptime)
+        self.min_downtime = self._fit_coords(f'{name_prefix}|min_downtime', self.min_downtime)
+        self.max_downtime = self._fit_coords(f'{name_prefix}|max_downtime', self.max_downtime)
+        self.active_hours_max = self._fit_coords(
             f'{name_prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
         )
-        self.active_hours_min = flow_system.fit_to_model_coords(
+        self.active_hours_min = self._fit_coords(
             f'{name_prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
         )
-        self.startup_limit = flow_system.fit_to_model_coords(
+        self.startup_limit = self._fit_coords(
             f'{name_prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
         )
 
@@ -1331,3 +1373,70 @@ class StatusParameters(Interface):
                 self.startup_limit,
             ]
         )
+
+    # Backwards compatible properties (deprecated)
+    @property
+    def on_hours_total_min(self):
+        """DEPRECATED: Use 'on_hours_min' property instead."""
+        warnings.warn(
+            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.on_hours_min
+
+    @on_hours_total_min.setter
+    def on_hours_total_min(self, value):
+        """DEPRECATED: Use 'on_hours_min' property instead."""
+        warnings.warn(
+            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.on_hours_min = value
+
+    @property
+    def on_hours_total_max(self):
+        """DEPRECATED: Use 'on_hours_max' property instead."""
+        warnings.warn(
+            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.on_hours_max
+
+    @on_hours_total_max.setter
+    def on_hours_total_max(self, value):
+        """DEPRECATED: Use 'on_hours_max' property instead."""
+        warnings.warn(
+            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.on_hours_max = value
+
+    @property
+    def switch_on_total_max(self):
+        """DEPRECATED: Use 'switch_on_max' property instead."""
+        warnings.warn(
+            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.switch_on_max
+
+    @switch_on_total_max.setter
+    def switch_on_total_max(self, value):
+        """DEPRECATED: Use 'switch_on_max' property instead."""
+        warnings.warn(
+            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.switch_on_max = value

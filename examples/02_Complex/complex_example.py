@@ -50,11 +50,11 @@ if __name__ == '__main__':
     # A gas boiler that converts fuel into thermal output, with investment and on-inactive parameters
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
-        eta=0.5,  # Efficiency ratio
+        thermal_efficiency=0.5,  # Efficiency ratio
         status_parameters=fx.StatusParameters(
             effects_per_active_hour={Costs.label: 0, CO2.label: 1000}
         ),  # CO2 emissions per hour
-        Q_th=fx.Flow(
+        thermal_flow=fx.Flow(
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus
             size=fx.InvestParameters(
@@ -68,7 +68,7 @@ if __name__ == '__main__':
             relative_minimum=5 / 50,  # Minimum part load
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
-            flow_hours_total_max=1e6,  # Total energy flow limit
+            flow_hours_max=1e6,  # Total energy flow limit
             status_parameters=fx.StatusParameters(
                 active_hours_min=0,  # Minimum operating hours
                 active_hours_max=1000,  # Maximum operating hours
@@ -79,19 +79,19 @@ if __name__ == '__main__':
                 startup_limit=1000,  # Max number of starts
             ),
         ),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas', size=200),
+        fuel_flow=fx.Flow(label='Q_fu', bus='Gas', size=200),
     )
 
     # 2. Define CHP Unit
     # Combined Heat and Power unit that generates both electricity and heat from fuel
     bhkw = fx.linear_converters.CHP(
         'BHKW2',
-        eta_th=0.5,
-        eta_el=0.4,
+        thermal_efficiency=0.5,
+        electrical_efficiency=0.4,
         status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
-        Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
+        electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
     )
 
     # 3. Define CHP with Piecewise Conversion

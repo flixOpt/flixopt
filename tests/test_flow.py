@@ -48,8 +48,8 @@ class TestFlowModel:
             size=100,
             relative_minimum=np.linspace(0, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
-            flow_hours_total_max=1000,
-            flow_hours_total_min=10,
+            flow_hours_max=1000,
+            flow_hours_min=10,
             load_factor_min=0.1,
             load_factor_max=0.9,
         )
