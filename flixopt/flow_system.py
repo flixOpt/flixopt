@@ -55,6 +55,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Used for calculating sums over periods in multi-period models.
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
             Period weights are always computed internally from the period index (like hours_per_timestep for time).
+            The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
