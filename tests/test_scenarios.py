@@ -287,7 +287,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.weights = weights
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
@@ -309,7 +309,7 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.weights = weights
+    flow_system_piecewise_conversion_scenarios.scenario_weights = weights
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
