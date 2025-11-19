@@ -100,6 +100,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 **Migration Guide**: Replace all occurrences of the old names with the new names in your code. The functionality remains identical - only the naming has changed for better alignment with industry standards.
 
+**Important**: This is a complete renaming with no backwards compatibility wrapper. The change affects:
+- Constructor parameter names (e.g., `effects_per_switch_on` → `effects_per_startup`)
+- Model variable names (e.g., `flow.submodel.on_off.on` → `flow.submodel.status.status`)
+- Results access (e.g., `results.on` → `results.status`)
+A partial backwards compatibility wrapper would be misleading, so we opted for a clean breaking change.
+
 ### ♻️ Changed
 
 ### 🗑️ Deprecated
