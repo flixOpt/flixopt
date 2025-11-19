@@ -192,8 +192,10 @@ class StatusModel(Submodel):
             tracked_expression=(self.status * self._model.hours_per_step).sum('time'),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
-                self.parameters.active_hours_max if self.parameters.active_hours_max is not None else None,
-            ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_uptime())
+                self.parameters.active_hours_max
+                if self.parameters.active_hours_max is not None
+                else self._model.hours_per_step.sum('time').item(),
+            ),
             short_name='active_hours',
             coords=['period', 'scenario'],
         )
