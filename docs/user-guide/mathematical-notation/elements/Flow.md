@@ -54,23 +54,24 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
     ---
 
-    ??? info "Symbol to Parameter Mapping"
-        | Symbol | Python Parameter | Description | Default |
-        |--------|------------------|-------------|---------|
-        | $\text P$ | `size` | Flow capacity | Required |
-        | $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ | `relative_minimum` | Relative lower bound (fraction of size) | 0 |
-        | $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `relative_maximum` | Relative upper bound (fraction of size) | 1 |
-        | $\text{LF}_\text{min}$ | `load_factor_min` | Minimum average utilization (0-1) | 0 |
-        | $\text{LF}_\text{max}$ | `load_factor_max` | Maximum average utilization (0-1) | 1 |
-        | $\text{FH}_\text{min}$ | `flow_hours_min` | Minimum cumulative flow-hours | None |
-        | $\text{FH}_\text{max}$ | `flow_hours_max` | Maximum cumulative flow-hours | None |
-        | - | `flow_hours_min_over_periods` | Minimum flow-hours across all periods | None |
-        | - | `flow_hours_max_over_periods` | Maximum flow-hours across all periods | None |
-        | $\text{profile}(\text{t}_{i})$ | `fixed_relative_profile` | Array of relative flow rates | None |
-        | - | `previous_flow_rate` | Flow rate before optimization horizon | None |
-        | - | `on_off_parameters` | OnOffParameters instance | None |
-
     **Mathematical Patterns:** [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)
+
+=== "Parameters"
+
+    | Symbol | Python Parameter | Description | Default |
+    |--------|------------------|-------------|---------|
+    | $\text P$ | `size` | Flow capacity | Required |
+    | $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ | `relative_minimum` | Relative lower bound (fraction of size) | 0 |
+    | $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `relative_maximum` | Relative upper bound (fraction of size) | 1 |
+    | $\text{LF}_\text{min}$ | `load_factor_min` | Minimum average utilization (0-1) | 0 |
+    | $\text{LF}_\text{max}$ | `load_factor_max` | Maximum average utilization (0-1) | 1 |
+    | $\text{FH}_\text{min}$ | `flow_hours_min` | Minimum cumulative flow-hours | None |
+    | $\text{FH}_\text{max}$ | `flow_hours_max` | Maximum cumulative flow-hours | None |
+    | - | `flow_hours_min_over_periods` | Minimum flow-hours across all periods | None |
+    | - | `flow_hours_max_over_periods` | Maximum flow-hours across all periods | None |
+    | $\text{profile}(\text{t}_{i})$ | `fixed_relative_profile` | Array of relative flow rates | None |
+    | - | `previous_flow_rate` | Flow rate before optimization horizon | None |
+    | - | `on_off_parameters` | OnOffParameters instance | None |
 
 === "Use Cases"
 
