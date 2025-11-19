@@ -1,0 +1,396 @@
+/* ============================================================================
+   flixOpt Custom Styling
+   ========================================================================= */
+
+/* Root variables for easy customization */
+:root {
+  /* Spacing */
+  --content-padding: 2rem;
+
+  /* Typography */
+  --heading-font-weight: 600;
+
+  /* Colors - enhance teal theme */
+  --flixopt-teal: #009688;
+  --flixopt-teal-light: #4DB6AC;
+  --flixopt-teal-dark: #00796B;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] {
+  --md-code-bg-color: #1e1e1e;
+}
+
+/* ============================================================================
+   Typography Improvements
+   ========================================================================= */
+
+/* Better line height for readability */
+.md-typeset {
+  line-height: 1.7;
+}
+
+/* Enhanced headings */
+.md-typeset h1 {
+  font-weight: var(--heading-font-weight);
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+
+.md-typeset h2 {
+  font-weight: var(--heading-font-weight);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.3em;
+  margin-top: 2em;
+}
+
+/* Better code inline */
+.md-typeset code {
+  padding: 0.15em 0.4em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+}
+
+/* ============================================================================
+   Navigation Enhancements
+   ========================================================================= */
+
+/* Smooth hover effects on navigation */
+.md-nav__link:hover {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+/* Active navigation item enhancement */
+.md-nav__link--active {
+  font-weight: 600;
+  border-left: 3px solid var(--md-primary-fg-color);
+  padding-left: calc(1.2rem - 3px) !important;
+}
+
+/* ============================================================================
+   Code Block Improvements
+   ========================================================================= */
+
+/* Better code block styling */
+.md-typeset .highlight {
+  border-radius: 0.5rem;
+  margin: 1.5em 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Line numbers styling */
+.md-typeset .highlight .linenos {
+  user-select: none;
+  opacity: 0.5;
+}
+
+/* Copy button enhancement */
+.md-clipboard {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.highlight:hover .md-clipboard {
+  opacity: 1;
+}
+
+/* ============================================================================
+   Admonitions & Callouts
+   ========================================================================= */
+
+/* Enhanced admonitions */
+.md-typeset .admonition {
+  border-radius: 0.5rem;
+  border-left-width: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================================================
+   Tables
+   ========================================================================= */
+
+/* Better table styling */
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+  font-weight: 600;
+  text-align: left;
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--md-default-fg-color--lightest);
+  transition: background-color 0.2s ease;
+}
+
+/* ============================================================================
+   API Documentation Styling
+   ========================================================================= */
+
+/* Better spacing for API docs */
+.doc-heading {
+  margin-top: 2rem !important;
+}
+
+/* Parameter tables */
+.doc-md-description table {
+  width: 100%;
+  font-size: 0.9em;
+}
+
+/* Signature styling */
+.doc-signature {
+  font-family: var(--md-code-font);
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+/* ============================================================================
+   Home Page Hero (optional enhancement)
+   ========================================================================= */
+
+.hero {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, var(--flixopt-teal-light) 0%, var(--flixopt-teal-dark) 100%);
+  color: white;
+  border-radius: 1rem;
+  margin-bottom: 2rem;
+}
+
+.hero h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: white;
+  border: none;
+}
+
+.hero p {
+  font-size: 1.25rem;
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   Responsive Design
+   ========================================================================= */
+
+@media screen and (max-width: 76.1875em) {
+  .md-typeset h1 {
+    font-size: 2rem;
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  :root {
+    --content-padding: 1rem;
+  }
+
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+  }
+}
+
+/* ============================================================================
+   Print Styles
+   ========================================================================= */
+
+@media print {
+  .md-typeset {
+    font-size: 0.9rem;
+  }
+
+  .md-header,
+  .md-sidebar,
+  .md-footer {
+    display: none;
+  }
+}
+
+/* ============================================================================
+   Home Page Inline Styles (moved from docs/index.md)
+   ========================================================================= */
+
+.hero-section {
+  text-align: center;
+  padding: 4rem 2rem 3rem 2rem;
+  background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
+  border-radius: 1rem;
+  margin-bottom: 3rem;
+}
+
+.hero-section h1 {
+  font-size: 3.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #009688 0%, #00796B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-section .tagline {
+  font-size: 1.5rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 2rem;
+  font-weight: 300;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin: 3rem 0;
+}
+
+.feature-card {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-color: var(--md-primary-fg-color);
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.feature-card p {
+  color: var(--md-default-fg-color--light);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.stats-banner {
+  display: flex;
+  justify-content: space-around;
+  padding: 2rem;
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+  margin: 3rem 0;
+  text-align: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.stat-item {
+  flex: 1;
+  min-width: 150px;
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--md-primary-fg-color);
+  display: block;
+}
+
+.stat-label {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.architecture-section {
+  margin: 4rem 0;
+  padding: 2rem;
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+}
+
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin: 3rem 0;
+}
+
+.quick-link-card {
+  padding: 1.5rem;
+  border-left: 4px solid var(--md-primary-fg-color);
+  background: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: block;
+}
+
+.quick-link-card:hover {
+  background: var(--md-default-fg-color--lightest);
+  transform: translateX(4px);
+}
+
+.quick-link-card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--md-primary-fg-color);
+}
+
+.quick-link-card p {
+  margin: 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.9rem;
+}
+
+@media screen and (max-width: 768px) {
+  .hero-section h1 {
+    font-size: 2.5rem;
+  }
+
+  .hero-section .tagline {
+    font-size: 1.2rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-banner {
+    flex-direction: column;
+  }
+}
