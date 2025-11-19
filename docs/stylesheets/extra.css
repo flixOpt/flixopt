@@ -104,31 +104,31 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-top: 0;
-  margin-bottom: 0.8rem;
-  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
   line-height: 1.2;
 }
 
 .md-typeset h2 {
   font-weight: var(--heading-font-weight);
   border-bottom: 2px solid var(--md-default-fg-color--lightest);
-  padding-bottom: 0.3em;
-  margin-top: 1.2em;
-  margin-bottom: 0.6rem;
-  font-size: 1.5rem;
+  padding-bottom: 0.2em;
+  margin-top: 1em;
+  margin-bottom: 0.4rem;
+  font-size: 1.2rem;
 }
 
 .md-typeset h3 {
   font-weight: var(--heading-font-weight);
-  margin-top: 1em;
-  margin-bottom: 0.4rem;
-  font-size: 1.15rem;
-}
-
-.md-typeset h4 {
   margin-top: 0.8em;
   margin-bottom: 0.3rem;
   font-size: 1rem;
+}
+
+.md-typeset h4 {
+  margin-top: 0.6em;
+  margin-bottom: 0.2rem;
+  font-size: 0.9rem;
 }
 
 /* Compact paragraph spacing */
