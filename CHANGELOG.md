@@ -59,51 +59,68 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 💥 Breaking Changes
 
-- **Renamed `OnOffParameters` → `StatusParameters`**: Updated class name to better reflect equipment status modeling aligned with PyPSA conventions
-  - Constructor parameter `on_variable` → `status`
-  - Constructor parameter `previous_states` → `previous_status`
+**Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
 
-- **Renamed all `OnOffParameters` properties and parameters**:
-  - `effects_per_switch_on` → `effects_per_startup`
-  - `effects_per_running_hour` → `effects_per_active_hour`
-  - `on_hours_total_min` → `active_hours_min`
-  - `on_hours_total_max` → `active_hours_max`
-  - `consecutive_on_hours_min` → `min_uptime` (standard UC terminology)
-  - `consecutive_on_hours_max` → `max_uptime` (standard UC terminology)
-  - `consecutive_off_hours_min` → `min_downtime` (standard UC terminology)
-  - `consecutive_off_hours_max` → `max_downtime` (standard UC terminology)
-  - `switch_on_total_max` → `startup_limit`
-  - `force_switch_on` → `force_startup_tracking`
+**Class and Constructor Parameters:**
 
-- **Renamed `OnOffModel` → `StatusModel`**: Updated feature model class name
-  - Main variable renamed from `on` to `status`
-  - Variable `switch_on` → `startup`
-  - Variable `switch_off` → `shutdown`
-  - Variable `switch_on_nr` → `startup_count`
-  - Variable `on_hours_total` → `active_hours`
-  - Variable `consecutive_on_hours` → `uptime`
-  - Variable `consecutive_off_hours` → `downtime`
-  - Variable `off` → `inactive` (deprecated - use `1 - status` expression instead)
+| Category | Old Name (OnOffParameters) | New Name (StatusParameters) | Notes |
+|----------|---------------------------|----------------------------|-------|
+| **Class** | `OnOffParameters` | `StatusParameters` | Main class renamed |
+| **Constructor** | `on_variable` | `status` | Model variable parameter |
+| **Constructor** | `previous_states` | `previous_status` | Initial state parameter |
+| **Parameter** | `effects_per_switch_on` | `effects_per_startup` | Startup costs/impacts |
+| **Parameter** | `effects_per_running_hour` | `effects_per_active_hour` | Operating costs/impacts |
+| **Parameter** | `on_hours_total_min` | `active_hours_min` | Minimum total operating hours |
+| **Parameter** | `on_hours_total_max` | `active_hours_max` | Maximum total operating hours |
+| **Parameter** | `consecutive_on_hours_min` | `min_uptime` | UC standard terminology |
+| **Parameter** | `consecutive_on_hours_max` | `max_uptime` | UC standard terminology |
+| **Parameter** | `consecutive_off_hours_min` | `min_downtime` | UC standard terminology |
+| **Parameter** | `consecutive_off_hours_max` | `max_downtime` | UC standard terminology |
+| **Parameter** | `switch_on_total_max` | `startup_limit` | Maximum number of startups |
+| **Parameter** | `force_switch_on` | `force_startup_tracking` | Force creation of startup variables |
 
-- **Updated Flow and Component classes**:
-  - Parameter `on_off_parameters` → `status_parameters` in `Flow.__init__()`
-  - Parameter `on_off_parameters` → `status_parameters` in `Component.__init__()`
-  - Property `flow.submodel.on_off` → `flow.submodel.status`
-  - Property `component.submodel.on_off` → `component.submodel.status`
+**Model Classes and Variables:**
 
-- **Updated internal property names**:
-  - `use_switch_on` → `use_startup_tracking`
-  - `use_consecutive_on_hours` → `use_uptime_tracking`
-  - `use_consecutive_off_hours` → `use_downtime_tracking`
-  - `with_on_off` → `with_status`
-  - `previous_states` → `previous_status`
+| Category | Old Name (OnOffModel) | New Name (StatusModel) | Notes |
+|----------|----------------------|------------------------|-------|
+| **Model Class** | `OnOffModel` | `StatusModel` | Feature model class |
+| **Variable** | `on` | `status` | Main binary state variable |
+| **Variable** | `switch_on` | `startup` | Startup event variable |
+| **Variable** | `switch_off` | `shutdown` | Shutdown event variable |
+| **Variable** | `switch_on_nr` | `startup_count` | Cumulative startup counter |
+| **Variable** | `on_hours_total` | `active_hours` | Total operating hours |
+| **Variable** | `consecutive_on_hours` | `uptime` | Consecutive active hours |
+| **Variable** | `consecutive_off_hours` | `downtime` | Consecutive inactive hours |
+| **Variable** | `off` | `inactive` | Deprecated - use `1 - status` instead |
 
-**Migration Guide**: Replace all occurrences of the old names with the new names in your code. The functionality remains identical - only the naming has changed for better alignment with industry standards.
+**Flow and Component API:**
 
-**Important**: This is a complete renaming with no backwards compatibility wrapper. The change affects:
-- Constructor parameter names (e.g., `effects_per_switch_on` → `effects_per_startup`)
-- Model variable names (e.g., `flow.submodel.on_off.on` → `flow.submodel.status.status`)
-- Results access (e.g., `results.on` → `results.status`)
+| Category | Old Name | New Name | Location |
+|----------|----------|----------|----------|
+| **Parameter** | `on_off_parameters` | `status_parameters` | `Flow.__init__()` |
+| **Parameter** | `on_off_parameters` | `status_parameters` | `Component.__init__()` |
+| **Property** | `flow.submodel.on_off` | `flow.submodel.status` | Flow submodel access |
+| **Property** | `component.submodel.on_off` | `component.submodel.status` | Component submodel access |
+
+**Internal Properties:**
+
+| Old Name | New Name |
+|----------|----------|
+| `use_switch_on` | `use_startup_tracking` |
+| `use_consecutive_on_hours` | `use_uptime_tracking` |
+| `use_consecutive_off_hours` | `use_downtime_tracking` |
+| `with_on_off` | `with_status` |
+| `previous_states` | `previous_status` |
+
+**Migration Guide**:
+
+Use find-and-replace to update your code with the mappings above. The functionality is identical - only naming has changed.
+
+**Important**: This is a complete renaming with no backwards compatibility. The change affects:
+- Constructor parameter names
+- Model variable names and property access
+- Results access patterns
+
 A partial backwards compatibility wrapper would be misleading, so we opted for a clean breaking change.
 
 ### ♻️ Changed
