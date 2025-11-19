@@ -237,7 +237,22 @@ def deprecated_instances():
         'boiler': Boiler(
             'b_prop', fuel_flow=fx.Flow('f_p', 'bus', 10), thermal_flow=fx.Flow('h_p', 'bus', 9), thermal_efficiency=0.9
         ),
+        'invest_with_effects': fx.InvestParameters(
+            minimum_size=10,
+            maximum_size=100,
+            mandatory=False,
+            effects_of_investment={'costs': 100},
+            effects_of_investment_per_size={'costs': 10},
+            effects_of_retirement={'costs': 50},
+            piecewise_effects_of_investment=None,
+        ),
         'invest': fx.InvestParameters(minimum_size=10, maximum_size=100, mandatory=False),
+        'onoff': fx.OnOffParameters(
+            on_hours_min=5,
+            on_hours_max=10,
+            switch_on_max=3,
+        ),
+        'flow': fx.Flow('f_prop', bus='bus', size=10, flow_hours_min=5, flow_hours_max=20),
         'chp': CHP(
             'chp_prop',
             fuel_flow=fx.Flow('f_chp', 'bus', 100),
@@ -262,20 +277,37 @@ def deprecated_instances():
 @pytest.mark.parametrize(
     'name,accessor',
     [
+        # TimeSeriesData properties
         ('TimeSeriesData.agg_group', lambda objs: objs['data'].agg_group),
         ('TimeSeriesData.agg_weight', lambda objs: objs['data'].agg_weight),
+        # InvestParameters properties
         ('InvestParameters.optional', lambda objs: objs['invest'].optional),
+        ('InvestParameters.fix_effects', lambda objs: objs['invest_with_effects'].fix_effects),
+        ('InvestParameters.specific_effects', lambda objs: objs['invest_with_effects'].specific_effects),
+        ('InvestParameters.divest_effects', lambda objs: objs['invest_with_effects'].divest_effects),
+        ('InvestParameters.piecewise_effects', lambda objs: objs['invest_with_effects'].piecewise_effects),
+        # OnOffParameters properties
+        ('OnOffParameters.on_hours_total_min', lambda objs: objs['onoff'].on_hours_total_min),
+        ('OnOffParameters.on_hours_total_max', lambda objs: objs['onoff'].on_hours_total_max),
+        ('OnOffParameters.switch_on_total_max', lambda objs: objs['onoff'].switch_on_total_max),
+        # Flow properties
+        ('Flow.flow_hours_total_min', lambda objs: objs['flow'].flow_hours_total_min),
+        ('Flow.flow_hours_total_max', lambda objs: objs['flow'].flow_hours_total_max),
+        # Boiler properties
         ('Boiler.eta', lambda objs: objs['boiler'].eta),
         ('Boiler.Q_fu', lambda objs: objs['boiler'].Q_fu),
         ('Boiler.Q_th', lambda objs: objs['boiler'].Q_th),
+        # CHP properties
         ('CHP.eta_th', lambda objs: objs['chp'].eta_th),
         ('CHP.eta_el', lambda objs: objs['chp'].eta_el),
         ('CHP.Q_fu', lambda objs: objs['chp'].Q_fu),
         ('CHP.P_el', lambda objs: objs['chp'].P_el),
         ('CHP.Q_th', lambda objs: objs['chp'].Q_th),
+        # HeatPump properties
         ('HeatPump.COP', lambda objs: objs['hp'].COP),
         ('HeatPump.P_el', lambda objs: objs['hp'].P_el),
         ('HeatPump.Q_th', lambda objs: objs['hp'].Q_th),
+        # HeatPumpWithSource properties
         ('HeatPumpWithSource.COP', lambda objs: objs['hps'].COP),
         ('HeatPumpWithSource.P_el', lambda objs: objs['hps'].P_el),
         ('HeatPumpWithSource.Q_ab', lambda objs: objs['hps'].Q_ab),
