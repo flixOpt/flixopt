@@ -2,210 +2,110 @@
 
 InvestParameters enable investment decision modeling in optimization, supporting both binary (invest/don't invest) and continuous sizing choices with comprehensive cost modeling.
 
-**Implementation:**
+=== "Variables"
 
-- **Feature Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
-- **Used by:** [`Flow`][flixopt.elements.Flow] · [`Storage`][flixopt.components.Storage] · [`LinearConverter`][flixopt.components.LinearConverter]
+    | Symbol | Python Name | Description | Domain | Created When |
+    |--------|-------------|-------------|--------|--------------|
+    | $v_\text{invest}$ | `size` | Investment size (continuous or fixed) | $\mathbb{R}_+$ | Always |
+    | $s_\text{invest}$ | `invested` | Binary investment decision | $\{0,1\}$ | `mandatory=False` (optional investment) |
 
-**Related:** [`OnOffParameters`](OnOffParameters.md) · [`Piecewise`](Piecewise.md)
+=== "Constraints"
 
----
-
-=== "Core Formulation"
-
-    ## Binary Investment Decision
-
-    Fixed-size investment creating a yes/no decision (e.g., install a 100 kW generator):
+    **Binary investment decision** (when `fixed_size` specified):
 
     $$\label{eq:invest_binary}
     v_\text{invest} = s_\text{invest} \cdot \text{size}_\text{fixed}
     $$
 
-    ??? info "Variables"
-        | Symbol | Description | Domain |
-        |--------|-------------|--------|
-        | $s_\text{invest}$ | Binary investment decision | $\{0, 1\}$ |
-        | $v_\text{invest}$ | Resulting investment size | $\mathbb{R}_+$ |
+    ---
 
-    ??? info "Parameters"
-        | Symbol | Description |
-        |--------|-------------|
-        | $\text{size}_\text{fixed}$ | Predefined component size |
-
-    **Behavior:**
-
-    - $s_\text{invest} = 0$: no investment ($v_\text{invest} = 0$)
-    - $s_\text{invest} = 1$: invest at fixed size ($v_\text{invest} = \text{size}_\text{fixed}$)
-
-    ## Continuous Sizing Decision
-
-    Variable-size investment with bounds (e.g., battery capacity from 10-1000 kWh):
+    **Continuous sizing decision** (when `minimum_size` and `maximum_size` specified):
 
     $$\label{eq:invest_continuous}
     s_\text{invest} \cdot \text{size}_\text{min} \leq v_\text{invest} \leq s_\text{invest} \cdot \text{size}_\text{max}
     $$
 
-    ??? info "Variables"
-        | Symbol | Description | Domain |
-        |--------|-------------|--------|
-        | $s_\text{invest}$ | Binary investment decision | $\{0, 1\}$ |
-        | $v_\text{invest}$ | Investment size (continuous) | $\mathbb{R}_+$ |
+    When `mandatory=False`: $s_\text{invest} = 0$ means no investment ($v_\text{invest} = 0$), $s_\text{invest} = 1$ means invest with size in $[\text{size}_\text{min}, \text{size}_\text{max}]$
 
-    ??? info "Parameters"
-        | Symbol | Description |
-        |--------|-------------|
-        | $\text{size}_\text{min}$ | Minimum investment size (if investing) |
-        | $\text{size}_\text{max}$ | Maximum investment size |
+    ---
 
-    **Behavior:**
+    **Mandatory investment** (when `mandatory=True`):
 
-    - $s_\text{invest} = 0$: no investment ($v_\text{invest} = 0$)
-    - $s_\text{invest} = 1$: invest with size in $[\text{size}_\text{min}, \text{size}_\text{max}]$
+    $$\label{eq:invest_mandatory}
+    s_\text{invest} = 1
+    $$
 
-    This uses the **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** pattern.
+    ---
 
-    ## Investment Effects (Costs)
-
-    ### Fixed Effects
-
-    One-time effects incurred if investment is made, independent of size:
+    **Investment effects - Fixed** (when `effects_of_investment` specified):
 
     $$\label{eq:invest_fixed_effects}
     E_{e,\text{fix}} = s_\text{invest} \cdot \text{fix}_e
     $$
 
-    **Examples:** Fixed installation costs (permits, grid connection), one-time environmental impacts.
+    One-time effects incurred if investment is made, independent of size (permits, grid connection, one-time environmental impacts).
 
-    ### Specific Effects (Per-Unit Costs)
+    ---
 
-    Effects proportional to investment size:
+    **Investment effects - Specific** (when `effects_of_investment_per_size` specified):
 
     $$\label{eq:invest_specific_effects}
     E_{e,\text{spec}} = v_\text{invest} \cdot \text{spec}_e
     $$
 
-    **Examples:** Equipment costs (€/kW), material requirements (kg steel/kW), recurring maintenance (€/kW/year).
+    Effects proportional to investment size (equipment costs €/kW, material requirements kg/kW, recurring maintenance €/kW/year).
 
-    ### Total Investment Effects
+    ---
 
-    $$\label{eq:invest_total_effects}
-    E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{retirement}}
-    $$
-
-    Where $E_{e,\text{pw}}$ is the piecewise contribution (see Advanced tab) and $E_{e,\text{retirement}}$ are retirement effects (see Advanced tab).
-
-=== "Advanced & Edge Cases"
-
-    ## Optional vs. Mandatory Investment
-
-    The `mandatory` parameter controls whether investment is required:
-
-    **Optional Investment** (`mandatory=False`, default):
-    $$\label{eq:invest_optional}
-    s_\text{invest} \in \{0, 1\}
-    $$
-
-    The optimization can freely choose to invest or not.
-
-    **Mandatory Investment** (`mandatory=True`):
-    $$\label{eq:invest_mandatory}
-    s_\text{invest} = 1
-    $$
-
-    The investment must occur (useful for mandatory upgrades or replacements).
-
-    ## Retirement Effects
-
-    Effects incurred if investment is NOT made (when retiring/not replacing existing equipment):
+    **Retirement effects** (when `effects_of_retirement` specified and `mandatory=False`):
 
     $$\label{eq:invest_retirement_effects}
     E_{e,\text{retirement}} = (1 - s_\text{invest}) \cdot \text{retirement}_e
     $$
 
-    **Behavior:**
+    Effects incurred if investment is NOT made (demolition/disposal costs, decommissioning, penalties, opportunity costs).
 
-    - $s_\text{invest} = 0$: retirement effects are incurred
-    - $s_\text{invest} = 1$: no retirement effects
+    ---
 
-    **Examples:** Demolition/disposal costs, decommissioning expenses, contractual penalties, opportunity costs.
-
-    ## Piecewise Effects (Economies of Scale)
-
-    Non-linear effect relationships using piecewise linear approximations:
+    **Piecewise effects** (when `piecewise_effects_of_investment` specified):
 
     $$\label{eq:invest_piecewise_effects}
     E_{e,\text{pw}} = \sum_{k=1}^{K} \lambda_k \cdot r_{e,k}
     $$
 
     Subject to:
+
     $$
     v_\text{invest} = \sum_{k=1}^{K} \lambda_k \cdot v_k
     $$
 
-    ??? info "Piecewise Variables"
-        | Symbol | Description |
-        |--------|-------------|
-        | $\lambda_k$ | Piecewise lambda variables (see [Piecewise](Piecewise.md)) |
-        | $r_{e,k}$ | Effect rate at piece $k$ |
-        | $v_k$ | Size points defining the pieces |
+    Non-linear effect relationships using piecewise linear approximations for economies of scale, technology learning curves, or threshold effects. See [Piecewise](Piecewise.md) for detailed formulation.
 
-    **Use cases:** Economies of scale (bulk discounts), technology learning curves, threshold effects.
+    ---
 
-    See [Piecewise](Piecewise.md) for detailed mathematical formulation.
+    **Total investment effects**:
 
-    ## Integration with Component Sizing
-
-    Investment parameters modify component sizing:
-
-    **Without Investment:**
-    $$
-    \text{size} = \text{size}_\text{nominal}
+    $$\label{eq:invest_total_effects}
+    E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{retirement}}
     $$
 
-    **With Investment:**
-    $$
-    \text{size} = v_\text{invest}
-    $$
+    **Mathematical Patterns:** [Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state), [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Piecewise Linear Approximations](Piecewise.md)
 
-    This size variable then appears in component constraints. For example, flow rate bounds become:
+=== "Parameters"
 
-    $$
-    v_\text{invest} \cdot \text{rel}_\text{lower} \leq p(t) \leq v_\text{invest} \cdot \text{rel}_\text{upper}
-    $$
+    | Symbol | Python Parameter | Description | Default |
+    |--------|------------------|-------------|---------|
+    | $\text{fix}_e$ | `effects_of_investment` | Fixed effects if investment is made | None |
+    | $\text{retirement}_e$ | `effects_of_retirement` | Effects if NOT investing | None |
+    | $\text{size}_\text{fixed}$ | `fixed_size` | Predefined component size (binary decision) | None |
+    | $\text{size}_\text{max}$ | `maximum_size` | Maximum investment size | CONFIG.Modeling.big |
+    | $\text{size}_\text{min}$ | `minimum_size` | Minimum investment size (if investing) | CONFIG.Modeling.epsilon |
+    | $\text{spec}_e$ | `effects_of_investment_per_size` | Per-unit effects proportional to size | None |
+    | - | `linked_periods` | Describes which periods are linked for multi-period optimization | None |
+    | - | `mandatory` | If True, investment must occur | False |
+    | - | `piecewise_effects_of_investment` | PiecewiseEffects for non-linear cost structures | None |
 
-    Using the **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** pattern.
-
-    ## Cost Annualization
-
-    **Important:** All investment cost values must be properly weighted to match the optimization model's time horizon.
-
-    For long-term investments, costs should be annualized:
-
-    $$\label{eq:annualization}
-    \text{cost}_\text{annual} = \frac{\text{cost}_\text{capital} \cdot r}{1 - (1 + r)^{-n}}
-    $$
-
-    ??? info "Annualization Parameters"
-        | Symbol | Description |
-        |--------|-------------|
-        | $\text{cost}_\text{capital}$ | Upfront investment cost |
-        | $r$ | Discount rate |
-        | $n$ | Equipment lifetime (years) |
-
-    **Example:** €1,000,000 equipment with 20-year life and 5% discount rate
-    $$
-    \text{cost}_\text{annual} = \frac{1{,}000{,}000 \cdot 0.05}{1 - (1.05)^{-20}} \approx €80{,}243/\text{year}
-    $$
-
-=== "Mathematical Patterns"
-
-    InvestParameters relies on:
-
-    - **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - For continuous sizing with binary investment decision
-    - **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - For linking investment size to component constraints
-    - **[Piecewise Linear Approximations](Piecewise.md)** - For non-linear cost structures
-
-=== "Examples"
+=== "Use Cases"
 
     ## Binary Investment (Solar Panels)
 
@@ -224,6 +124,12 @@ InvestParameters enable investment decision modeling in optimization, supporting
     )
     ```
 
+    **Variables:** `size`, `invested` (binary)
+
+    **Constraints:** $\eqref{eq:invest_binary}$ with $v_\text{invest} = s_\text{invest} \cdot 100$ kW, $\eqref{eq:invest_fixed_effects}$ with fixed cost of €25,000, $\eqref{eq:invest_specific_effects}$ with €1,200/kW
+
+    ---
+
     ## Continuous Sizing (Battery)
 
     ```python
@@ -231,8 +137,8 @@ InvestParameters enable investment decision modeling in optimization, supporting
 
     battery = Storage(
         label='battery_storage',
-        inputs=[Flow(label='charge', bus='electricity', size=100)],
-        outputs=[Flow(label='discharge', bus='electricity', size=100)],
+        charging=Flow(label='charge', bus='electricity', size=100),
+        discharging=Flow(label='discharge', bus='electricity', size=100),
         capacity_in_flow_hours=InvestParameters(
             minimum_size=10,  # Minimum 10 kWh if investing
             maximum_size=1000,  # Maximum 1 MWh
@@ -241,6 +147,12 @@ InvestParameters enable investment decision modeling in optimization, supporting
         ),
     )
     ```
+
+    **Variables:** `size` (continuous), `invested` (binary)
+
+    **Constraints:** $\eqref{eq:invest_continuous}$ with $s_\text{invest} \cdot 10 \leq v_\text{invest} \leq s_\text{invest} \cdot 1000$ kWh, $\eqref{eq:invest_fixed_effects}$, $\eqref{eq:invest_specific_effects}$
+
+    ---
 
     ## With Retirement Costs (Replacement Decision)
 
@@ -261,9 +173,15 @@ InvestParameters enable investment decision modeling in optimization, supporting
             ),
         )],
         outputs=[Flow(label='heat_out', bus='heating', size=1)],
-        conversion_factors={('gas_in', 'heat_out'): 0.9},
+        conversion_factors=[{'gas_in': 0.9, 'heat_out': 1}],
     )
     ```
+
+    **Variables:** `size`, `invested`
+
+    **Constraints:** $\eqref{eq:invest_continuous}$, $\eqref{eq:invest_fixed_effects}$, $\eqref{eq:invest_specific_effects}$, $\eqref{eq:invest_retirement_effects}$ with €8,000 cost if $s_\text{invest} = 0$
+
+    ---
 
     ## Economies of Scale (Piecewise Costs)
 
@@ -281,14 +199,20 @@ InvestParameters enable investment decision modeling in optimization, supporting
             ]),
             piecewise_shares={
                 'cost': Piecewise([
-                    Piece((0, 800), (100, 750)),  # €800-750/kWh (small)
-                    Piece((100, 750), (500, 600)),  # €750-600/kWh (medium)
-                    Piece((500, 600), (1000, 500)),  # €600-500/kWh (large, bulk discount)
+                    Piece((0, 0), (100, 80000)),  # €800/kWh (small)
+                    Piece((100, 80000), (500, 350000)),  # €750-€600/kWh (medium)
+                    Piece((500, 350000), (1000, 850000)),  # €600-€500/kWh (large, bulk discount)
                 ])
             },
         ),
     )
     ```
+
+    **Variables:** `size`, `invested`, piecewise lambda variables $\lambda_k$
+
+    **Constraints:** $\eqref{eq:invest_continuous}$, $\eqref{eq:invest_piecewise_effects}$ representing decreasing cost per kWh with scale (bulk discount from €800/kWh to €500/kWh)
+
+    ---
 
     ## Mandatory Investment (Upgrade Required)
 
@@ -307,7 +231,37 @@ InvestParameters enable investment decision modeling in optimization, supporting
     )
     ```
 
+    **Variables:** `size` (no binary variable since mandatory)
+
+    **Constraints:** $\eqref{eq:invest_mandatory}$ forcing $s_\text{invest} = 1$, $\eqref{eq:invest_continuous}$ simplified to $100 \leq v_\text{invest} \leq 500$ kW
+
 ---
+
+## Cost Annualization
+
+**Important:** All investment cost values must be properly weighted to match the optimization model's time horizon.
+
+For long-term investments, costs should be annualized:
+
+$$\label{eq:annualization}
+\text{cost}_\text{annual} = \frac{\text{cost}_\text{capital} \cdot r}{1 - (1 + r)^{-n}}
+$$
+
+Where $r$ is the discount rate and $n$ is the equipment lifetime (years).
+
+**Example:** €1,000,000 equipment with 20-year life and 5% discount rate:
+
+$$
+\text{cost}_\text{annual} = \frac{1{,}000{,}000 \cdot 0.05}{1 - (1.05)^{-20}} \approx €80{,}243/\text{year}
+$$
+
+---
+
+## Implementation
+
+- **Feature Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
+- **Model Class:** [`InvestmentModel`][flixopt.features.InvestmentModel]
+- **Used by:** [`Flow`](../elements/Flow.md) · [`Storage`](../elements/Storage.md) · [`LinearConverter`](../elements/LinearConverter.md)
 
 ## See Also
 

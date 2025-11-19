@@ -22,16 +22,19 @@ if TYPE_CHECKING:
 
 
 class InvestmentModel(Submodel):
-    """
-    This feature model is used to model the investment of a variable.
-    It applies the corresponding bounds to the variable and the on/off state of the variable.
+    """Mathematical model implementation for investment decisions.
+
+    Creates optimization variables and constraints for investment sizing decisions,
+    supporting both binary and continuous sizing with comprehensive effect modeling.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         model: The optimization model instance
         label_of_element: The label of the parent (Element). Used to construct the full label of the model.
         parameters: The parameters of the feature model.
         label_of_model: The label of the model. This is needed to construct the full label of the model.
-
     """
 
     parameters: InvestParameters
@@ -145,7 +148,14 @@ class InvestmentModel(Submodel):
 
 
 class OnOffModel(Submodel):
-    """OnOff model using factory patterns"""
+    """Mathematical model implementation for on/off operational constraints.
+
+    Creates optimization variables and constraints for binary state modeling,
+    state transitions, duration tracking, and operational effects.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/OnOffParameters/>
+    """
 
     def __init__(
         self,
