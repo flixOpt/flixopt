@@ -540,7 +540,7 @@ class EffectModel(ElementModel):
         # Add weighted sum over all periods constraint if minimum_over_periods or maximum_over_periods is defined
         if self.element.minimum_over_periods is not None or self.element.maximum_over_periods is not None:
             # Calculate weighted sum over all periods
-            weighted_total = (self.total * self.weights).sum('period')
+            weighted_total = (self.total * self.period_weights).sum('period')
 
             # Create tracking variable for the weighted sum
             self.total_over_periods = self.add_variables(

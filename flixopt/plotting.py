@@ -1267,7 +1267,7 @@ def heatmap_with_plotly(
         Automatic time reshaping (when only time dimension remains):
 
         ```python
-        # Data with dims ['time', period','scenario']
+        # Data with dims ['time', 'period','scenario']
         # After faceting and animation, only 'time' remains -> auto-reshapes to (timestep, timeframe)
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period')
         ```
