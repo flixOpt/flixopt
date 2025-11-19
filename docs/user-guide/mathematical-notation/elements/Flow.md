@@ -16,13 +16,43 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
 === "Constraints"
 
-    | Constraint | Equation | Active When |
-    |------------|----------|-------------|
-    | **Flow rate bounds** | $\label{eq:flow_bounds} \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | Always |
-    | **Load factor** | $\label{eq:flow_load_factor} \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$ | `load_factor_min` or `load_factor_max` specified |
-    | **Flow hours limits** | $\label{eq:flow_hours} \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$ | Any flow hours parameter specified |
-    | **Fixed profile** | $\label{eq:flow_profile} p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$ | `fixed_relative_profile` specified |
-    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` specified |
+    **Flow rate bounds** (always active):
+
+    $$\label{eq:flow_bounds}
+    \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})
+    $$
+
+    ---
+
+    **Load factor** (when `load_factor_min` or `load_factor_max` specified):
+
+    $$\label{eq:flow_load_factor}
+    \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t
+    $$
+
+    ---
+
+    **Flow hours limits** (when any flow hours parameter specified):
+
+    $$\label{eq:flow_hours}
+    \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}
+    $$
+
+    ---
+
+    **Fixed profile** (when `fixed_relative_profile` specified):
+
+    $$\label{eq:flow_profile}
+    p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})
+    $$
+
+    ---
+
+    **On/off operation** (when `on_off_parameters` specified):
+
+    See [OnOffParameters](../features/OnOffParameters.md)
+
+    ---
 
     ??? info "Symbol to Parameter Mapping"
         | Symbol | Python Parameter | Description | Default |
