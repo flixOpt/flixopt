@@ -378,6 +378,15 @@ class PieceModel(Submodel):
 
 
 class PiecewiseModel(Submodel):
+    """Mathematical model implementation for piecewise linear approximations.
+
+    Creates optimization variables and constraints for piecewise linear relationships,
+    including lambda variables, piece activation binaries, and coupling constraints.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
+    """
+
     def __init__(
         self,
         model: FlowSystemModel,

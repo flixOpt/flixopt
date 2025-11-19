@@ -82,8 +82,14 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """
-    Define a Piecewise, consisting of a list of Pieces.
+    """Define piecewise linear approximations for modeling non-linear relationships.
+
+    Enables modeling of non-linear relationships through piecewise linear segments
+    while maintaining problem linearity. Consists of a collection of Pieces that
+    define valid ranges for variables.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
