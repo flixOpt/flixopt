@@ -1130,6 +1130,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
         return self.scenario_weights
 
+    @weights.setter
+    def weights(self, value: Numeric_S) -> None:
+        """
+        Set weights (deprecated - sets scenario_weights).
+
+        Args:
+            value: Scenario weights to set
+        """
+        warnings.warn(
+            'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """
         Validate scenario parameter value.
