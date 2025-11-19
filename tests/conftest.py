@@ -451,7 +451,7 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
 
     # Create flow system
     flow_system = fx.FlowSystem(
-        base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), weights=np.array([0.5, 0.25, 0.25])
+        base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), scenario_weights=np.array([0.5, 0.25, 0.25])
     )
     flow_system.add_elements(*Buses.defaults())
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)

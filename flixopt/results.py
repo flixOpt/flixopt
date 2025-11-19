@@ -1231,7 +1231,7 @@ class _NodeResults(_ElementResults):
             facet_by: Dimension(s) to create facets (subplots) for. Can be a single dimension name (str)
                 or list of dimensions. Each unique value combination creates a subplot. Ignored if not found.
                 Example: 'scenario' creates one subplot per scenario.
-                Example: ['scenario', 'period'] creates a grid of subplots for each scenario-period combination.
+                Example: ['period', 'scenario'] creates a grid of subplots for each scenario-period combination.
             animate_by: Dimension to animate over (Plotly only). Creates animation frames that cycle through
                 dimension values. Only one dimension can be animated. Ignored if not found.
             facet_cols: Number of columns in the facet grid layout (default: 3).
