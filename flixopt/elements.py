@@ -332,8 +332,7 @@ class Flow(Element):
         - **OnOffParameters**: Used for `on_off_parameters` when flow has discrete states
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [Flow](../user-guide/mathematical-notation/elements/Flow.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
 
     Args:
         label: Unique flow identifier within its component.
@@ -668,6 +667,15 @@ class Flow(Element):
 
 
 class FlowModel(ElementModel):
+    """Mathematical model implementation for Flow elements.
+
+    Creates optimization variables and constraints for flow rate bounds,
+    flow-hours tracking, and load factors.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
+    """
+
     element: Flow  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Flow):
