@@ -490,45 +490,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return dataset
 
-    @classmethod
-    def _update_period_metadata(
-        cls,
-        dataset: xr.Dataset,
-        weight_of_last_period: int | float | None = None,
-    ) -> xr.Dataset:
-        """
-        Update period-related attributes and data variables in dataset based on its period index.
-
-        Recomputes weight_of_last_period, period_weights, and weights from the dataset's
-        period index when weight_of_last_period is None. This ensures period metadata stays
-        synchronized with the actual periods after operations like selection.
-
-        This is analogous to _update_time_metadata() for time-related metadata.
-
-        Args:
-            dataset: Dataset to update (will be modified in place)
-            weight_of_last_period: Weight of the last period. If None, computed from the period index.
-
-        Returns:
-            The same dataset with updated period-related attributes and data variables
-        """
-        new_period_index = dataset.indexes.get('period')
-        if new_period_index is not None and len(new_period_index) >= 1:
-            # Use shared helper to compute all period metadata
-            _, weight_of_last_period, period_weights = cls._compute_period_metadata(
-                new_period_index, weight_of_last_period
-            )
-
-            # Update period_weights DataArray if it exists in the dataset
-            if 'period_weights' in dataset.data_vars:
-                dataset['period_weights'] = period_weights
-
-        # Update period-related attributes only when new values are provided/computed
-        if weight_of_last_period is not None:
-            dataset.attrs['weight_of_last_period'] = weight_of_last_period
-
-        return dataset
-
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
