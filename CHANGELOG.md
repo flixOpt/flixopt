@@ -51,145 +51,108 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emit warnings), new bounds for weighted sums over all periods for effects and flow hours, and refactored weights handling to fix `.sel()` issues with periods.
+**Summary**:
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- **Internal period weight computation**: `FlowSystem` now automatically computes `period_weights` from the period index (similar to `hours_per_timestep` for time dimension), ensuring weights are always consistent with the actual periods
-
-- **New constraint parameters for sum across all periods**:
-  - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
-  - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
-
-  **Important**:
-  - Constraints with the `_over_periods` suffix compute weighted sums across all periods using the **raw** weights from period durations (or user-specified weights). These constraints always use unnormalized weights.
-  - The `normalize_weights` parameter (in `Calculation` or `FlowSystem.create_model()`) only affects the objective function, not the `_over_periods` constraints.
-  - Per-period constraints (without the suffix) apply separately to each individual period.
-
-  **Example**:
-  ```python
-  # Per-period constraint: limits apply to EACH period individually
-  # With periods=[2020, 2030, 2040], this creates 3 separate constraints
-  effect = fx.Effect('costs', maximum_total=1000)  # ≤1000 in 2020 AND ≤1000 in 2030 AND ≤1000 in 2040
-
-  # Over-periods constraint: limits apply to WEIGHTED SUM across ALL periods
-  # With periods=[2020, 2030, 2040] (auto-derived weights: [10, 10, 10] from 10-year intervals)
-  effect = fx.Effect('costs', maximum_over_periods=1000)  # 10×costs₂₀₂₀ + 10×costs₂₀₃₀ + 10×costs₂₀₄₀ ≤ 1000
-
-  # Note: If normalize_weights=True, the objective uses normalized weights [0.33, 0.33, 0.33],
-  # but the constraint above still uses raw weights [10, 10, 10]
-  ```
-
-- **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
 
 ### 💥 Breaking Changes
-- **FlowSystem weights parameter renamed**: The `weights` parameter in `FlowSystem.__init__()` has been renamed to `scenario_weights` to clarify that it only accepts scenario dimension weights (not period × scenario)
-  - Period weights are now **always computed internally** from the period index (similar to `hours_per_timestep` for time)
-  - The combined `weights` (period × scenario) are computed automatically by multiplying `period_weights × scenario_weights`
-  - only scenario_weights are normalized in the objective function
 
-  **Migration**: Update your code from:
-  ```python
-  # Old (v3.6 and earlier)
-  fs = FlowSystem(..., weights=np.array([0.3, 0.5, 0.2]))  # scenario weights
-  ```
+### ♻️ Changed
 
-  To:
-  ```python
-  # New (v3.7+)
-  fs = FlowSystem(..., scenario_weights=np.array([0.3, 0.5, 0.2]))
-  ```
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+
+Until here -->
+
+## [4.0.0] - 2025-11-19
+
+**Summary**: This release introduces clearer parameter naming for linear converters and constraints, enhanced period handling with automatic weight computation, and new sum-over-all-periods constraints for multi-period optimization. All deprecated parameter names continue to work with warnings.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Key Features
+
+**Sum-over-all-periods constraints:**
+New constraint parameters enable limiting weighted totals across all periods:
+- `Effect`: `minimum_over_periods` and `maximum_over_periods`
+- `Flow`: `flow_hours_max_over_periods` and `flow_hours_min_over_periods`
+
+```python
+# Per-period: limits apply to EACH period individually
+effect = fx.Effect('costs', maximum_total=1000)  # ≤1000 per period
+
+# Over-periods: limits apply to WEIGHTED SUM across ALL periods
+# With periods=[2020, 2030, 2040] (weights: [10, 10, 10] from 10-year intervals)
+effect = fx.Effect('costs', maximum_over_periods=25000)  # 10×costs₂₀₂₀ + 10×costs₂₀₃₀ + 10×costs₂₀₄₀ ≤ 25000
+```
+
+**Improved period weight handling:**
+- Period weights now computed automatically from period index (like `hours_per_timestep` for time)
+- Weights correctly recalculate when using `.sel()` or `.isel()` on periods
+- Separate tracking of `period_weights`, `scenario_weights`, and combined `weights`
+
+**Simplified workflow:**
+- `Calculation.solve()` now automatically calls `do_modeling()` if needed
+
+### 💥 Breaking Changes
+
+**FlowSystem weights parameter renamed:**
+```python
+# Old (v3.x)
+fs = FlowSystem(..., weights=np.array([0.3, 0.5, 0.2]))
+
+# New (v4.0)
+fs = FlowSystem(..., scenario_weights=np.array([0.3, 0.5, 0.2]))
+```
+Period weights are now always computed from the period index.
 
   **Note**: If you were previously passing period × scenario weights to `weights`, you now need to:
   1. Pass only scenario weights to `scenario_weights`
   2. Period weights will be computed automatically from your `periods` index
 
-### ♻️ Changed
-- **Period weights now computed from period index**: FlowSystem now computes `period_weights` automatically from the period index (using period intervals/differences), making weight handling consistent with `hours_per_timestep` for time dimension
-  - Added `_update_period_metadata()` method (analogous to `_update_time_metadata()`) to recalculate weights when periods are selected
-  - Period weights are stored separately in `FlowSystem.period_weights` (1D array with 'period' dimension)
-  - Scenario weights are stored in `FlowSystem.scenario_weights` (1D array with 'scenario' dimension)
-  - Combined weights `FlowSystem.weights` (2D array with 'period' and 'scenario' dimensions) are computed via `_compute_weights()` method
+### 🗑️ Deprecated Parameters
 
-- **Refactored FlowSystem-Element coupling**:
-    - Introduced `_set_flow_system()` method in Interface base class to propagate FlowSystem reference to nested Interface objects
-    - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
-    - Elements can now access FlowSystem via `self.flow_system` property instead of passing it through every method call
-- **Simplified transform_data() signature**: Removed `flow_system` parameter from `transform_data()` methods - FlowSystem reference is now accessed via `self.flow_system` property
-- **Two-phase modeling pattern within _do_modeling()**: Clarified the pattern where `_do_modeling()` creates nested submodels first (so their variables exist), then creates constraints that reference those variables - eliminates circular dependencies in Submodel architecture
-- **Improved cache invalidation**: Cache invalidation in `add_elements()` now happens once after all additions rather than per element
-- **Better logging**: Centralized element registration logging to show element type and full label
-- **Parameter renaming in `linear_converters.py`**: Renamed parameters to use lowercase, descriptive names for better consistency and clarity:
-    - **Flow parameters** (deprecated uppercase abbreviations → descriptive names):
-        - `Boiler`: `Q_fu` → `fuel_flow`, `Q_th` → `thermal_flow`
-        - `Power2Heat`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `HeatPump`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `CoolingTower`: `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `CHP`: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`
-        - `HeatPumpWithSource`: `COP` → `cop`, `P_el` → `electrical_flow`, `Q_ab` → `heat_source_flow`, `Q_th` → `thermal_flow`
-    - **Efficiency parameters** (abbreviated → descriptive names):
-        - `Boiler`: `eta` → `thermal_efficiency`
-        - `Power2Heat`: `eta` → `thermal_efficiency`
-        - `CHP`: `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`
-        - `HeatPump`: `COP` → `cop`
-        - `HeatPumpWithSource`: `COP` → `cop`
-    - **Storage Parameters**:
-        - `Storage`: `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_last"`
+**Linear converters** (`Boiler`, `CHP`, `HeatPump`, etc.) - descriptive names replace abbreviations:
+- Flow: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`, `Q_ab` → `heat_source_flow`
+- Efficiency: `eta` → `thermal_efficiency`, `eta_th` → `thermal_efficiency`, `eta_el` → `electrical_efficiency`, `COP` → `cop` (lowercase)
 
-- **Parameter naming consistency**: Established consistent naming pattern for constraint parameters across `Effect`, `Flow`, and `OnOffParameters`:
-  - Per-period constraints use no suffix or clarified names (e.g., `minimum_total`, `flow_hours_max`, `on_hours_min`)
-  - Sum-over-all-periods constraints use `_over_periods` suffix (e.g., `minimum_over_periods`, `flow_hours_max_over_periods`)
+**Constraint parameters** - removed redundant `_total` suffix:
+- `Flow`: `flow_hours_total_max` → `flow_hours_max`, `flow_hours_total_min` → `flow_hours_min`
+- `OnOffParameters`: `on_hours_total_max` → `on_hours_max`, `on_hours_total_min` → `on_hours_min`, `switch_on_total_max` → `switch_on_max`
 
-- **Flow parameters** (renamed for consistency):
-  - Renamed `flow_hours_total_max` → `flow_hours_max` (per-period constraint)
-  - Renamed `flow_hours_total_min` → `flow_hours_min` (per-period constraint)
+**Storage**:
+- `initial_charge_state="lastValueOfSim"` → `initial_charge_state="equals_final"`
 
-- **OnOffParameters** (renamed for consistency):
-  - Renamed `on_hours_total_max` → `on_hours_max` (per-period constraint)
-  - Renamed `on_hours_total_min` → `on_hours_min` (per-period constraint)
-  - Renamed `switch_on_total_max` → `switch_on_max` (per-period constraint)
-
-### 🗑️ Deprecated
-- **Old parameter names in `linear_converters.py`**: The following parameter names are now deprecated and accessible as properties/kwargs that emit `DeprecationWarning`. They will be removed in v4.0.0:
-    - **Flow parameters**: `Q_fu`, `Q_th`, `P_el`, `Q_ab`  (use `fuel_flow`, `thermal_flow`, `electrical_flow`, `heat_source_flow` instead)
-    - **Efficiency parameters**: `eta`, `eta_th`, `eta_el` (use `thermal_efficiency`, `electrical_efficiency` instead)
-    - **COP parameter**: `COP` (use lowercase `cop` instead)
-    - **Storage Parameter**: `Storage`: `initial_charge_state="lastValueOfSim"` (use `initial_charge_state="equals_last"`)
-
-
-- **Flow parameters**: `flow_hours_total_max`, `flow_hours_total_min` (use `flow_hours_max`, `flow_hours_min`)
-- **OnOffParameters**: `on_hours_total_max`, `on_hours_total_min`, `switch_on_total_max` (use `on_hours_max`, `on_hours_min`, `switch_on_max`)
-
-**Migration**: Simply rename parameters by removing `_total` from the middle:
-- `flow_hours_total_max` → `flow_hours_max`
-- `on_hours_total_min` → `on_hours_min`
-- `switch_on_total_max` → `switch_on_max`
-
-All deprecated parameter names continue to work with deprecation warnings for backward compatibility. **Deprecated names will be removed in version 4.0.0.** Please update your code to use the new parameter names. Additional property aliases have been added internally to handle various naming variations that may have been used.
-
+All deprecated names continue working with warnings. **They will be removed in v5.0.0.**
 
 ### 🐛 Fixed
-- **Fixed weights not recalculating when using `.sel()` on periods**: `FlowSystem.sel()` and `FlowSystem.isel()` now correctly recalculate `period_weights` and `weights` when selecting a subset of periods (previously weights would be incorrectly sliced instead of recomputed from the new period index)
-  - Added `_update_period_metadata()` call in `_dataset_sel()` and `_dataset_isel()` to ensure weights stay consistent with selected periods
-  - This matches the existing behavior for time dimension where `hours_per_timestep` is recalculated on selection
-
-- Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
-- Fixed `check_bounds` function in `linear_converters.py` to normalize array inputs before comparisons, ensuring correct boundary checks with DataFrames, Series, and other array-like types
+- Fixed inconsistent boundary checks in linear converters with array-like inputs
 
 ### 👷 Development
-- **Eliminated circular dependencies**: Implemented two-phase modeling pattern within `_do_modeling()` where nested submodels are created first (creating their variables), then constraints are created that can safely reference those submodel variables
-- Added comprehensive docstrings to `_do_modeling()` methods explaining the pattern: "Create variables, constraints, and nested submodels"
-- Added missing type hints throughout the codebase
-- Improved code organization by making FlowSystem reference propagation explicit and traceable
-- **System validation**: Added `_validate_system_integrity()` to validate cross-element references (e.g., Flow.bus) immediately after transformation, providing clearer error messages
-- **Element registration validation**: Added checks to prevent elements from being assigned to multiple FlowSystems simultaneously
-- **Helper methods in Interface base class**: Added `_fit_coords()` and `_fit_effect_coords()` convenience wrappers for cleaner data transformation code
-- **FlowSystem property in Interface**: Added `flow_system` property to access the linked FlowSystem with clear error messages if not yet linked
+- Eliminated circular dependencies with two-phase modeling pattern
+- Enhanced validation for cross-element references and FlowSystem assignment
+- Added helper methods for cleaner data transformation code
+- Improved logging and cache invalidation
+- Improved argument consistency in internal effect coordinate fitting
 
 ---
-
-Until here -->
 
 ## [3.6.1] - 2025-11-17
 
