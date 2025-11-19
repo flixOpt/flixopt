@@ -14,7 +14,7 @@ import xarray as xr
 from loguru import logger
 
 from .config import CONFIG
-from .structure import Interface, register_class_for_io
+from .structure import DEPRECATION_REMOVAL_VERSION, Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
@@ -916,7 +916,8 @@ class InvestParameters(Interface):
         # For mandatory parameter with non-None default, disable conflict checking
         if 'optional' in kwargs:
             warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1009,20 +1010,31 @@ class InvestParameters(Interface):
         """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
         import warnings
 
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return not self.mandatory
 
     @optional.setter
     def optional(self, value: bool):
         """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.mandatory = not value
 
     @property
     def fix_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment instead."""
         warnings.warn(
-            'The fix_effects property is deprecated. Use effects_of_investment instead.',
+            f'The fix_effects property is deprecated. Use effects_of_investment instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1032,7 +1044,8 @@ class InvestParameters(Interface):
     def specific_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_investment_per_size instead."""
         warnings.warn(
-            'The specific_effects property is deprecated. Use effects_of_investment_per_size instead.',
+            f'The specific_effects property is deprecated. Use effects_of_investment_per_size instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1042,7 +1055,8 @@ class InvestParameters(Interface):
     def divest_effects(self) -> Effect_PS | Numeric_PS:
         """Deprecated property. Use effects_of_retirement instead."""
         warnings.warn(
-            'The divest_effects property is deprecated. Use effects_of_retirement instead.',
+            f'The divest_effects property is deprecated. Use effects_of_retirement instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1052,7 +1066,8 @@ class InvestParameters(Interface):
     def piecewise_effects(self) -> PiecewiseEffects | None:
         """Deprecated property. Use piecewise_effects_of_investment instead."""
         warnings.warn(
-            'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead.',
+            f'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1378,10 +1393,9 @@ class OnOffParameters(Interface):
     @property
     def on_hours_total_min(self):
         """DEPRECATED: Use 'on_hours_min' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead.",
+            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1390,10 +1404,9 @@ class OnOffParameters(Interface):
     @on_hours_total_min.setter
     def on_hours_total_min(self, value):
         """DEPRECATED: Use 'on_hours_min' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead.",
+            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1402,10 +1415,9 @@ class OnOffParameters(Interface):
     @property
     def on_hours_total_max(self):
         """DEPRECATED: Use 'on_hours_max' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead.",
+            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1414,10 +1426,9 @@ class OnOffParameters(Interface):
     @on_hours_total_max.setter
     def on_hours_total_max(self, value):
         """DEPRECATED: Use 'on_hours_max' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead.",
+            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1426,10 +1437,9 @@ class OnOffParameters(Interface):
     @property
     def switch_on_total_max(self):
         """DEPRECATED: Use 'switch_on_max' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead.",
+            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1438,10 +1448,9 @@ class OnOffParameters(Interface):
     @switch_on_total_max.setter
     def switch_on_total_max(self, value):
         """DEPRECATED: Use 'switch_on_max' property instead."""
-        import warnings
-
         warnings.warn(
-            "Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead.",
+            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

@@ -17,7 +17,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
-from .structure import FlowSystemModel, register_class_for_io
+from .structure import DEPRECATION_REMOVAL_VERSION, FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -416,7 +416,8 @@ class Storage(Component):
         )
         if isinstance(initial_charge_state, str) and initial_charge_state == 'lastValueOfSim':
             warnings.warn(
-                f'{initial_charge_state=} is deprecated. Use "equals_final" instead.',
+                f'{initial_charge_state=} is deprecated. Use "equals_final" instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1122,7 +1123,8 @@ class SourceAndSink(Component):
     @property
     def source(self) -> Flow:
         warnings.warn(
-            'The source property is deprecated. Use the outputs property instead.',
+            'The source property is deprecated. Use the outputs property instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1131,7 +1133,8 @@ class SourceAndSink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1140,7 +1143,8 @@ class SourceAndSink(Component):
     @property
     def prevent_simultaneous_sink_and_source(self) -> bool:
         warnings.warn(
-            'The prevent_simultaneous_sink_and_source property is deprecated. Use the prevent_simultaneous_flow_rates property instead.',
+            'The prevent_simultaneous_sink_and_source property is deprecated. Use the prevent_simultaneous_flow_rates property instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1248,7 +1252,8 @@ class Source(Component):
     @property
     def source(self) -> Flow:
         warnings.warn(
-            'The source property is deprecated. Use the outputs property instead.',
+            'The source property is deprecated. Use the outputs property instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1373,7 +1378,8 @@ class Sink(Component):
     @property
     def sink(self) -> Flow:
         warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead.',
+            'The sink property is deprecated. Use the inputs property instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

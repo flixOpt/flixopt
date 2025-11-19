@@ -17,7 +17,14 @@ from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
-from .structure import Element, ElementModel, FlowSystemModel, Interface, register_class_for_io
+from .structure import (
+    DEPRECATION_REMOVAL_VERSION,
+    Element,
+    ElementModel,
+    FlowSystemModel,
+    Interface,
+    register_class_for_io,
+)
 
 if TYPE_CHECKING:
     import linopy
@@ -615,7 +622,8 @@ class Flow(Element):
     def flow_hours_total_max(self):
         """DEPRECATED: Use 'flow_hours_max' property instead."""
         warnings.warn(
-            "Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead.",
+            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -625,7 +633,8 @@ class Flow(Element):
     def flow_hours_total_max(self, value):
         """DEPRECATED: Use 'flow_hours_max' property instead."""
         warnings.warn(
-            "Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead.",
+            f"Property 'flow_hours_total_max' is deprecated. Use 'flow_hours_max' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -635,7 +644,8 @@ class Flow(Element):
     def flow_hours_total_min(self):
         """DEPRECATED: Use 'flow_hours_min' property instead."""
         warnings.warn(
-            "Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead.",
+            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -645,7 +655,8 @@ class Flow(Element):
     def flow_hours_total_min(self, value):
         """DEPRECATED: Use 'flow_hours_min' property instead."""
         warnings.warn(
-            "Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead.",
+            f"Property 'flow_hours_total_min' is deprecated. Use 'flow_hours_min' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
