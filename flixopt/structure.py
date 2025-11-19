@@ -24,10 +24,7 @@ import xarray as xr
 from loguru import logger
 
 from . import io as fx_io
-from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
-
-# Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '5.0.0'
+from .core import DEPRECATION_REMOVAL_VERSION, FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib

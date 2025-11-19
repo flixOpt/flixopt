@@ -17,6 +17,9 @@ from .types import NumericOrBool
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
+# Deprecation removal version - update this when planning the next major version
+DEPRECATION_REMOVAL_VERSION = '5.0.0'
+
 
 class PlausibilityError(Exception):
     """Error for a failing Plausibility check."""
@@ -54,8 +57,6 @@ class TimeSeriesData(xr.DataArray):
             **kwargs: Additional arguments passed to DataArray
         """
         if agg_group is not None:
-            from .structure import DEPRECATION_REMOVAL_VERSION
-
             warnings.warn(
                 f'agg_group is deprecated, use aggregation_group instead. '
                 f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
@@ -64,8 +65,6 @@ class TimeSeriesData(xr.DataArray):
             )
             aggregation_group = agg_group
         if agg_weight is not None:
-            from .structure import DEPRECATION_REMOVAL_VERSION
-
             warnings.warn(
                 f'agg_weight is deprecated, use aggregation_weight instead. '
                 f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
@@ -146,8 +145,6 @@ class TimeSeriesData(xr.DataArray):
 
     @property
     def agg_group(self):
-        from .structure import DEPRECATION_REMOVAL_VERSION
-
         warnings.warn(
             f'agg_group is deprecated, use aggregation_group instead. '
             f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
@@ -158,8 +155,6 @@ class TimeSeriesData(xr.DataArray):
 
     @property
     def agg_weight(self):
-        from .structure import DEPRECATION_REMOVAL_VERSION
-
         warnings.warn(
             f'agg_weight is deprecated, use aggregation_weight instead. '
             f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
