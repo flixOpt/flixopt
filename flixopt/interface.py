@@ -1237,11 +1237,6 @@ class StatusParameters(Interface):
         )
 
     @property
-    def use_inactive(self) -> bool:
-        """Proxy: whether INACTIVE variable is required (will be removed - use expression instead)"""
-        return self.use_downtime_tracking
-
-    @property
     def use_uptime_tracking(self) -> bool:
         """Determines whether a Variable for uptime (consecutive active hours) is needed or not"""
         return any(param is not None for param in [self.min_uptime, self.max_uptime])

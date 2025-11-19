@@ -180,10 +180,9 @@ class StatusModel(Submodel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        # Note: We no longer create a separate 'inactive' variable
-        # Instead, we use the expression (1 - self.status) where needed
-        # Keeping the creation logic for now for backwards compatibility with downtime tracking
-        if self.parameters.use_inactive:
+        # Create a separate binary 'inactive' variable when needed for downtime tracking or explicit use
+        # When not needed, the expression (1 - self.status) can be used instead
+        if self.parameters.use_downtime_tracking:
             inactive = self.add_variables(binary=True, short_name='inactive', coords=self._model.get_coords())
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
