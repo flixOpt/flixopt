@@ -142,6 +142,11 @@ Period weights are now always computed from the period index.
 
 All deprecated names continue working with warnings. **They will be removed in v5.0.0.**
 
+**Additional property deprecations now include removal version:**
+- `InvestParameters`: `fix_effects`, `specific_effects`, `divest_effects`, `piecewise_effects`
+- `OnOffParameters`: `on_hours_total_min`, `on_hours_total_max`, `switch_on_total_max`
+- `Flow`: `flow_hours_total_min`, `flow_hours_total_max`
+
 ### 🐛 Fixed
 - Fixed inconsistent boundary checks in linear converters with array-like inputs
 
