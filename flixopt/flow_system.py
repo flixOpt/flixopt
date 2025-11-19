@@ -1137,13 +1137,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._scenario_weights
 
     @scenario_weights.setter
-    def scenario_weights(self, value: Numeric_S) -> None:
+    def scenario_weights(self, value: Numeric_S | None) -> None:
         """
         Set scenario weights.
 
         Args:
             value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension)
+                or None to clear weights.
+
+        Raises:
+            ValueError: If value is not None and no scenarios are defined in the FlowSystem.
         """
+        if value is None:
+            self._scenario_weights = None
+            return
+
+        if self.scenarios is None:
+            raise ValueError(
+                'FlowSystem.scenario_weights cannot be set when no scenarios are defined. '
+                'Either define scenarios in FlowSystem(scenarios=...) or set scenario_weights to None.'
+            )
+
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
 
     @property
