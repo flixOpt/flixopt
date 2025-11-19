@@ -16,18 +16,29 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
 === "Constraints"
 
-    <div style="font-size: 0.9em;">
+    | Constraint | Equation | Active When |
+    |------------|----------|-------------|
+    | **Flow rate bounds** | $$\label{eq:flow_bounds} \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$$ | Always |
+    | **Load factor** | $$\label{eq:flow_load_factor} \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$$ | `load_factor_min` or `load_factor_max` specified |
+    | **Flow hours limits** | $$\label{eq:flow_hours} \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$$ | Any flow hours parameter specified |
+    | **Fixed profile** | $$\label{eq:flow_profile} p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$$ | `fixed_relative_profile` specified |
+    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` specified |
 
-    | Constraint | Equation | Parameters | Active When |
-    |------------|----------|------------|-------------|
-    | **Flow rate bounds** | $$\label{eq:flow_bounds} \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$$ | `size`, `relative_minimum` (default: 0), `relative_maximum` (default: 1) | Always |
-    | **Load factor** | $$\label{eq:flow_load_factor} \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$$ | `load_factor_min` (default: 0), `load_factor_max` (default: 1) | `load_factor_min/max` specified |
-    | **Flow hours limits** | $$\label{eq:flow_hours} \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$$ | `flow_hours_min`, `flow_hours_max`, `flow_hours_*_over_periods` | Any flow hours param specified |
-    | **Fixed profile** | $$\label{eq:flow_profile} p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$$ | `fixed_relative_profile` | `fixed_relative_profile` specified |
-    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` | `on_off_parameters` specified |
-    | **Initial conditions** | - | `previous_flow_rate` (default: None) | `on_off_parameters` specified |
-
-    </div>
+    ??? info "Symbol to Parameter Mapping"
+        | Symbol | Python Parameter | Description | Default |
+        |--------|------------------|-------------|---------|
+        | $\text P$ | `size` | Flow capacity | Required |
+        | $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ | `relative_minimum` | Relative lower bound (fraction of size) | 0 |
+        | $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `relative_maximum` | Relative upper bound (fraction of size) | 1 |
+        | $\text{LF}_\text{min}$ | `load_factor_min` | Minimum average utilization (0-1) | 0 |
+        | $\text{LF}_\text{max}$ | `load_factor_max` | Maximum average utilization (0-1) | 1 |
+        | $\text{FH}_\text{min}$ | `flow_hours_min` | Minimum cumulative flow-hours | None |
+        | $\text{FH}_\text{max}$ | `flow_hours_max` | Maximum cumulative flow-hours | None |
+        | - | `flow_hours_min_over_periods` | Minimum flow-hours across all periods | None |
+        | - | `flow_hours_max_over_periods` | Maximum flow-hours across all periods | None |
+        | $\text{profile}(\text{t}_{i})$ | `fixed_relative_profile` | Array of relative flow rates | None |
+        | - | `previous_flow_rate` | Flow rate before optimization horizon | None |
+        | - | `on_off_parameters` | OnOffParameters instance | None |
 
     **Mathematical Patterns:** [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)
 
