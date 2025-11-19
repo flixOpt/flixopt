@@ -732,15 +732,15 @@ class InvestParameters(Interface):
 
     Deprecated Args:
         fix_effects: **Deprecated**. Use `effects_of_investment` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
         optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-            Will be removed in version 4.0.
+            Will be removed in version 5.0.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.

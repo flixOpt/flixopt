@@ -2,21 +2,11 @@
 
 import warnings
 
-import pandas as pd
 import pytest
 
 import flixopt as fx
+from flixopt.core import DEPRECATION_REMOVAL_VERSION
 from flixopt.linear_converters import CHP, Boiler, HeatPump, HeatPumpWithSource, Power2Heat
-
-
-@pytest.fixture(scope='module')
-def setup():
-    """Setup test environment."""
-    ts = pd.date_range('2023-01-01', periods=24, freq='h')
-    fs = fx.FlowSystem(ts)
-    bus = fx.Bus('bus')
-    fs.add_elements(bus)
-    return {'ts': ts, 'fs': fs, 'bus': bus}
 
 
 # === Parameter deprecations (via _handle_deprecated_kwarg) ===
@@ -220,12 +210,14 @@ def setup():
     ids=lambda x: x if isinstance(x, str) else '',
 )
 def test_parameter_deprecations(name, factory):
-    """Test all parameter deprecations include v5.0.0 removal message."""
+    """Test all parameter deprecations include removal version message."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
         factory()
         assert len(w) > 0, f'No warning raised for {name}'
-        assert 'Will be removed in v5.0.0' in str(w[0].message), f'Missing removal version in {name}'
+        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message), (
+            f'Missing removal version in {name}'
+        )
 
 
 # === Property deprecations ===
@@ -316,9 +308,11 @@ def deprecated_instances():
     ids=lambda x: x if isinstance(x, str) else '',
 )
 def test_property_deprecations(name, accessor, deprecated_instances):
-    """Test all property deprecations include v5.0.0 removal message."""
+    """Test all property deprecations include removal version message."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
         accessor(deprecated_instances)
         assert len(w) > 0, f'No warning raised for {name}'
-        assert 'Will be removed in v5.0.0' in str(w[0].message), f'Missing removal version in {name}'
+        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message), (
+            f'Missing removal version in {name}'
+        )
