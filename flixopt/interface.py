@@ -14,7 +14,7 @@ import xarray as xr
 from loguru import logger
 
 from .config import CONFIG
-from .structure import DEPRECATION_REMOVAL_VERSION, Interface, register_class_for_io
+from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
@@ -730,18 +730,6 @@ class InvestParameters(Interface):
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
             For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
 
-    Deprecated Args:
-        fix_effects: **Deprecated**. Use `effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
-            Will be removed in version 5.0.0.
-        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
-            Will be removed in version 5.0.0.
-        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-            Will be removed in version 5.0.0.
-
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
         For long-term investments, the cost values should be annualized to the corresponding operation time (annuity).
@@ -898,36 +886,7 @@ class InvestParameters(Interface):
         effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: Numeric_PS | tuple[int, int] | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'fix_effects', 'effects_of_investment', effects_of_investment
-        )
-        effects_of_investment_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
-        )
-        effects_of_retirement = self._handle_deprecated_kwarg(
-            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
-        )
-        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
-        )
-        # For mandatory parameter with non-None default, disable conflict checking
-        if 'optional' in kwargs:
-            warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        mandatory = self._handle_deprecated_kwarg(
-            kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
         self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
         self.fixed_size = fixed_size
@@ -1004,74 +963,6 @@ class InvestParameters(Interface):
             f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
         self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
-
-    @property
-    def optional(self) -> bool:
-        """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
-        import warnings
-
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return not self.mandatory
-
-    @optional.setter
-    def optional(self, value: bool):
-        """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.mandatory = not value
-
-    @property
-    def fix_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment instead."""
-        warnings.warn(
-            f'The fix_effects property is deprecated. Use effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment
-
-    @property
-    def specific_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment_per_size instead."""
-        warnings.warn(
-            f'The specific_effects property is deprecated. Use effects_of_investment_per_size instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment_per_size
-
-    @property
-    def divest_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_retirement instead."""
-        warnings.warn(
-            f'The divest_effects property is deprecated. Use effects_of_retirement instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_retirement
-
-    @property
-    def piecewise_effects(self) -> PiecewiseEffects | None:
-        """Deprecated property. Use piecewise_effects_of_investment instead."""
-        warnings.warn(
-            f'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.piecewise_effects_of_investment
 
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
@@ -1308,14 +1199,7 @@ class OnOffParameters(Interface):
         consecutive_off_hours_max: Numeric_TPS | None = None,
         switch_on_max: Numeric_PS | None = None,
         force_switch_on: bool = False,
-        **kwargs,
     ):
-        # Handle deprecated parameters
-        on_hours_min = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min)
-        on_hours_max = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max)
-        switch_on_max = self._handle_deprecated_kwarg(kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max)
-        self._validate_kwargs(kwargs)
-
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
         self.on_hours_min = on_hours_min
@@ -1388,70 +1272,3 @@ class OnOffParameters(Interface):
                 self.switch_on_max,
             ]
         )
-
-    # Backwards compatible properties (deprecated)
-    @property
-    def on_hours_total_min(self):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_min
-
-    @on_hours_total_min.setter
-    def on_hours_total_min(self, value):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_min = value
-
-    @property
-    def on_hours_total_max(self):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_max
-
-    @on_hours_total_max.setter
-    def on_hours_total_max(self, value):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_max = value
-
-    @property
-    def switch_on_total_max(self):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.switch_on_max
-
-    @switch_on_total_max.setter
-    def switch_on_total_max(self, value):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.switch_on_max = value
