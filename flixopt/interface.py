@@ -14,7 +14,7 @@ import xarray as xr
 from loguru import logger
 
 from .config import CONFIG
-from .structure import Interface, register_class_for_io
+from .structure import DEPRECATION_REMOVAL_VERSION, Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
@@ -916,7 +916,8 @@ class InvestParameters(Interface):
         # For mandatory parameter with non-None default, disable conflict checking
         if 'optional' in kwargs:
             warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually!',
+                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1009,13 +1010,23 @@ class InvestParameters(Interface):
         """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
         import warnings
 
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return not self.mandatory
 
     @optional.setter
     def optional(self, value: bool):
         """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn("Property 'optional' is deprecated. Use 'mandatory' instead.", DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.mandatory = not value
 
     @property

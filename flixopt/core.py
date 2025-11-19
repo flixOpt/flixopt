@@ -54,10 +54,24 @@ class TimeSeriesData(xr.DataArray):
             **kwargs: Additional arguments passed to DataArray
         """
         if agg_group is not None:
-            warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
+            from .structure import DEPRECATION_REMOVAL_VERSION
+
+            warnings.warn(
+                f'agg_group is deprecated, use aggregation_group instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             aggregation_group = agg_group
         if agg_weight is not None:
-            warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
+            from .structure import DEPRECATION_REMOVAL_VERSION
+
+            warnings.warn(
+                f'agg_weight is deprecated, use aggregation_weight instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
             aggregation_weight = agg_weight
 
         if (aggregation_group is not None) and (aggregation_weight is not None):
@@ -132,12 +146,26 @@ class TimeSeriesData(xr.DataArray):
 
     @property
     def agg_group(self):
-        warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
+        from .structure import DEPRECATION_REMOVAL_VERSION
+
+        warnings.warn(
+            f'agg_group is deprecated, use aggregation_group instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.aggregation_group
 
     @property
     def agg_weight(self):
-        warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
+        from .structure import DEPRECATION_REMOVAL_VERSION
+
+        warnings.warn(
+            f'agg_weight is deprecated, use aggregation_weight instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.aggregation_weight
 
 

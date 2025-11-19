@@ -26,6 +26,9 @@ from loguru import logger
 from . import io as fx_io
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
+# Deprecation removal version - update this when planning the next major version
+DEPRECATION_REMOVAL_VERSION = '5.0.0'
+
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib
     from collections.abc import Collection, ItemsView, Iterator
@@ -563,7 +566,8 @@ class Interface:
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.{additional_warning_message}',
+                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.{additional_warning_message}',
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )
