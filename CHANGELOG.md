@@ -53,8 +53,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 **Summary**: Renamed OnOff terminology to Status terminology for better alignment with PyPSA and unit commitment standards.
 
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
-
 ### ✨ Added
 
 ### 💥 Breaking Changes
