@@ -51,11 +51,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emit warnings) & new bounds for weighted sums over all periods for effects and flow hours.
+**Summary**: Renaming parameters in Linear Transformers for readability (old parameters still work but emit warnings), new bounds for weighted sums over all periods for effects and flow hours, and refactored weights handling to fix `.sel()` issues with periods.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- **Internal period weight computation**: `FlowSystem` now automatically computes `period_weights` from the period index (similar to `hours_per_timestep` for time dimension), ensuring weights are always consistent with the actual periods
+
 - **New constraint parameters for sum across all periods**:
   - `Effect`: Added `minimum_over_periods` and `maximum_over_periods` for weighted sum constraints across all periods (complements existing per-period `minimum_total`/`maximum_total`)
   - `Flow`: Added `flow_hours_max_over_periods` and `flow_hours_min_over_periods` for weighted sum constraints across all periods
@@ -81,7 +83,34 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 - **Auto-modeling**: `Calculation.solve()` now automatically calls `do_modeling()` if not already done, making the explicit `do_modeling()` call optional for simpler workflows
 
+### 💥 Breaking Changes
+- **FlowSystem weights parameter renamed**: The `weights` parameter in `FlowSystem.__init__()` has been renamed to `scenario_weights` to clarify that it only accepts scenario dimension weights (not period × scenario)
+  - Period weights are now **always computed internally** from the period index (similar to `hours_per_timestep` for time)
+  - The combined `weights` (period × scenario) are computed automatically by multiplying `period_weights × scenario_weights`
+
+  **Migration**: Update your code from:
+  ```python
+  # Old (v3.6 and earlier)
+  fs = FlowSystem(..., weights=np.array([0.3, 0.5, 0.2]))  # scenario weights
+  ```
+
+  To:
+  ```python
+  # New (v3.7+)
+  fs = FlowSystem(..., scenario_weights=np.array([0.3, 0.5, 0.2]))
+  ```
+
+  **Note**: If you were previously passing period × scenario weights to `weights`, you now need to:
+  1. Pass only scenario weights to `scenario_weights`
+  2. Period weights will be computed automatically from your `periods` index
+
 ### ♻️ Changed
+- **Period weights now computed from period index**: FlowSystem now computes `period_weights` automatically from the period index (using period intervals/differences), making weight handling consistent with `hours_per_timestep` for time dimension
+  - Added `_update_period_metadata()` method (analogous to `_update_time_metadata()`) to recalculate weights when periods are selected
+  - Period weights are stored separately in `FlowSystem.period_weights` (1D array with 'period' dimension)
+  - Scenario weights are stored in `FlowSystem.scenario_weights` (1D array with 'scenario' dimension)
+  - Combined weights `FlowSystem.weights` (2D array with 'period' and 'scenario' dimensions) are computed via `_compute_weights()` method
+
 - **Refactored FlowSystem-Element coupling**:
     - Introduced `_set_flow_system()` method in Interface base class to propagate FlowSystem reference to nested Interface objects
     - Each Interface subclass now explicitly propagates the reference to its nested interfaces (e.g., Component → OnOffParameters, Flow → InvestParameters)
@@ -140,6 +169,10 @@ All deprecated parameter names continue to work with deprecation warnings for ba
 
 
 ### 🐛 Fixed
+- **Fixed weights not recalculating when using `.sel()` on periods**: `FlowSystem.sel()` and `FlowSystem.isel()` now correctly recalculate `period_weights` and `weights` when selecting a subset of periods (previously weights would be incorrectly sliced instead of recomputed from the new period index)
+  - Added `_update_period_metadata()` call in `_dataset_sel()` and `_dataset_isel()` to ensure weights stay consistent with selected periods
+  - This matches the existing behavior for time dimension where `hours_per_timestep` is recalculated on selection
+
 - Fixed inconsistent argument passing in `_fit_effect_coords()` - standardized all calls to use named arguments (`prefix=`, `effect_values=`, `suffix=`) instead of mix of positional and named arguments
 - Fixed `check_bounds` function in `linear_converters.py` to normalize array inputs before comparisons, ensuring correct boundary checks with DataFrames, Series, and other array-like types
 
