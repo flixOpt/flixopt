@@ -16,14 +16,18 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
 
 === "Constraints"
 
+    <div style="font-size: 0.9em;">
+
     | Constraint | Equation | Parameters | Active When |
     |------------|----------|------------|-------------|
-    | **Flow rate bounds** | $\text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `size` ($\text P$), `relative_minimum` ($\text p^{\text{L}}_{\text{rel}}$, default: 0), `relative_maximum` ($\text p^{\text{U}}_{\text{rel}}$, default: 1) | Always |
-    | **Load factor** | $\text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$ | `load_factor_min` ($\text{LF}_\text{min}$, default: 0), `load_factor_max` ($\text{LF}_\text{max}$, default: 1) | When `load_factor_min` or `load_factor_max` specified |
-    | **Flow hours limits** | $\text{FH}_\text{min} \leq \sum_{i=1}^{N_t} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$ | `flow_hours_min`, `flow_hours_max`, `flow_hours_min_over_periods`, `flow_hours_max_over_periods` | When any flow hours parameter specified |
-    | **Fixed profile** | $p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$ | `fixed_relative_profile` (array) | When `fixed_relative_profile` specified |
-    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` | When `on_off_parameters` specified |
-    | **Initial conditions** | - | `previous_flow_rate` (default: None/0) | When `on_off_parameters` specified |
+    | **Flow rate bounds** | $$\label{eq:flow_bounds} \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$$ | `size`, `relative_minimum` (default: 0), `relative_maximum` (default: 1) | Always |
+    | **Load factor** | $$\label{eq:flow_load_factor} \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t$$ | `load_factor_min` (default: 0), `load_factor_max` (default: 1) | `load_factor_min/max` specified |
+    | **Flow hours limits** | $$\label{eq:flow_hours} \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}$$ | `flow_hours_min`, `flow_hours_max`, `flow_hours_*_over_periods` | Any flow hours param specified |
+    | **Fixed profile** | $$\label{eq:flow_profile} p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})$$ | `fixed_relative_profile` | `fixed_relative_profile` specified |
+    | **On/off operation** | See [OnOffParameters](../features/OnOffParameters.md) | `on_off_parameters` | `on_off_parameters` specified |
+    | **Initial conditions** | - | `previous_flow_rate` (default: None) | `on_off_parameters` specified |
+
+    </div>
 
     **Mathematical Patterns:** [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)
 
@@ -44,7 +48,8 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
     ```
 
     **Variables:** `flow_rate[t]`
-    **Constraints:** $40 \leq p(t) \leq 100$ MW
+
+    **Constraints:** $\eqref{eq:flow_bounds}$ with $40 \leq p(t) \leq 100$ MW
 
     ---
 
@@ -65,7 +70,8 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
     ```
 
     **Variables:** `flow_rate[t]`, `size`, `invest_binary`
-    **Constraints:** If investing: $10 \leq \text{size} \leq 100$; Flow bounds: $0 \leq p(t) \leq \text{size}$
+
+    **Constraints:** $\eqref{eq:flow_bounds}$ with $0 \leq p(t) \leq \text{size}$, plus investment constraints
 
     ---
 
@@ -88,7 +94,8 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
     ```
 
     **Variables:** `flow_rate[t]`, `on_off_state[t]`, `switch_on[t]`, `switch_off[t]`
-    **Constraints:** When on: $15 \leq p(t) \leq 50$ kW; When off: $p(t) = 0$; Min 2h on, min 1h off
+
+    **Constraints:** $\eqref{eq:flow_bounds}$ plus on/off constraints from [OnOffParameters](../features/OnOffParameters.md)
 
     ---
 
@@ -107,7 +114,8 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
     ```
 
     **Variables:** `flow_rate[t]` (fixed by profile)
-    **Constraints:** $p(t) = 25 \cdot \text{profile}(t)$ MW
+
+    **Constraints:** $\eqref{eq:flow_profile}$
 
     ---
 
@@ -126,7 +134,8 @@ A Flow represents the transfer of energy or material between a Bus and a Compone
     ```
 
     **Variables:** `flow_rate[t]`, `total_flow_hours`
-    **Constraints:** $0 \leq p(t) \leq 200$ MW; $\sum_t p(t) \geq 0.7 \times 200 \times N_t$
+
+    **Constraints:** $\eqref{eq:flow_bounds}$, $\eqref{eq:flow_load_factor}$
 
 ---
 
