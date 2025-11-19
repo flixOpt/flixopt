@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from linopy.testing import assert_linequal
 
 import flixopt as fx
@@ -239,12 +240,14 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     scenario_weights = np.linspace(0.5, 1, len(scenarios))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights
-    flow_system_piecewise_conversion_scenarios.weights = flow_system_piecewise_conversion_scenarios._compute_weights()
-    model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    normalized_weights = (
-        flow_system_piecewise_conversion_scenarios.weights / flow_system_piecewise_conversion_scenarios.weights.sum()
+    scenario_weights_da = xr.DataArray(
+        scenario_weights,
+        dims=['scenario'],
+        coords={'scenario': scenarios},
     )
+    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights_da
+    model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
+    normalized_weights = scenario_weights / sum(scenario_weights)
     np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
     assert_linequal(
         model.objective.expression, (model.variables['costs'] * normalized_weights).sum() + model.variables['Penalty']
@@ -255,13 +258,20 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
 def test_weights_io(flow_system_piecewise_conversion_scenarios):
     """Test that scenario weights are correctly used in the model."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
-    scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
-    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights
-    flow_system_piecewise_conversion_scenarios.weights = flow_system_piecewise_conversion_scenarios._compute_weights()
+    scenario_weights = np.linspace(0.5, 1, len(scenarios))
+    scenario_weights_da = xr.DataArray(
+        scenario_weights,
+        dims=['scenario'],
+        coords={'scenario': scenarios},
+    )
+    normalized_scenario_weights_da = scenario_weights_da / scenario_weights_da.sum()
+    flow_system_piecewise_conversion_scenarios.scenario_weights = scenario_weights_da
+
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    np.testing.assert_allclose(model.objective_weights.values, scenario_weights)
+    np.testing.assert_allclose(model.objective_weights.values, normalized_scenario_weights_da)
     assert_linequal(
-        model.objective.expression, (model.variables['costs'] * scenario_weights).sum() + model.variables['Penalty']
+        model.objective.expression,
+        (model.variables['costs'] * normalized_scenario_weights_da).sum() + model.variables['Penalty'],
     )
     assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
