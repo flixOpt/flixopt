@@ -2,108 +2,52 @@
 
 A LinearConverter defines linear relationships (ratios) between incoming and outgoing flows, representing energy/material conversion processes with fixed or variable efficiencies.
 
-**Implementation:**
+=== "Variables"
 
-- **Component Class:** [`LinearConverter`][flixopt.components.LinearConverter]
-- **Model Class:** [`LinearConverterModel`][flixopt.components.LinearConverterModel]
+    | Symbol | Python Name | Description | Domain | Created When |
+    |--------|-------------|-------------|--------|--------------|
+    | $p_{f_\text{in}}(\text{t}_i)$ | - | Flow rate of incoming flow $f_\text{in}$ at time $\text{t}_i$ | $\mathbb{R}$ | Always (from input Flows) |
+    | $p_{f_\text{out}}(\text{t}_i)$ | - | Flow rate of outgoing flow $f_\text{out}$ at time $\text{t}_i$ | $\mathbb{R}$ | Always (from output Flows) |
+    | $\lambda_k$ | - | Piecewise lambda variables | $\mathbb{R}_+$ | `piecewise_conversion` is specified |
 
-**Related:** [`Flow`](Flow.md) · [`Bus`](Bus.md) · [`Storage`](Storage.md)
+=== "Constraints"
 
----
+    **General linear ratio constraint** (when `conversion_factors` specified):
 
-=== "Core Formulation"
-
-    ## General Linear Ratio Constraint
-
-    The fundamental constraint relates all incoming and outgoing flows through linear conversion factors:
-
-    $$ \label{eq:Linear-Transformer-Ratio}
-        \sum_{f_{\text{in}} \in \mathcal F_{in}} \text a_{f_{\text{in}}}(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = \sum_{f_{\text{out}} \in \mathcal F_{out}}  \text b_{f_\text{out}}(\text{t}_i) \cdot p_{f_\text{out}}(\text{t}_i)
+    $$\label{eq:Linear-Transformer-Ratio}
+    \sum_{f_{\text{in}} \in \mathcal F_{in}} \text a_{f_{\text{in}}}(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = \sum_{f_{\text{out}} \in \mathcal F_{out}}  \text b_{f_\text{out}}(\text{t}_i) \cdot p_{f_\text{out}}(\text{t}_i)
     $$
 
-    ??? info "Variables"
-        | Symbol | Description | Domain |
-        |--------|-------------|--------|
-        | $p_{f_\text{in}}(\text{t}_i)$ | Flow rate of incoming flow $f_\text{in}$ at time $\text{t}_i$ | $\mathbb{R}$ |
-        | $p_{f_\text{out}}(\text{t}_i)$ | Flow rate of outgoing flow $f_\text{out}$ at time $\text{t}_i$ | $\mathbb{R}$ |
+    ---
 
-    ??? info "Parameters"
-        | Symbol | Description | Interpretation |
-        |--------|-------------|----------------|
-        | $\text a_{f_\text{in}}(\text{t}_i)$ | Conversion factor for incoming flow $f_\text{in}$ | Weight/efficiency coefficient |
-        | $\text b_{f_\text{out}}(\text{t}_i)$ | Conversion factor for outgoing flow $f_\text{out}$ | Weight/efficiency coefficient |
+    **Simplified single-input single-output** (special case of above):
 
-    ??? info "Sets"
-        | Symbol | Description |
-        |--------|-------------|
-        | $\mathcal F_{in}$ | Set of all incoming flows |
-        | $\mathcal F_{out}$ | Set of all outgoing flows |
-
-    ## Simplified Single-Input Single-Output Form
-
-    For the common case of one incoming and one outgoing flow, equation $\eqref{eq:Linear-Transformer-Ratio}$ simplifies to:
-
-    $$ \label{eq:Linear-Transformer-Ratio-simple}
-        \text a(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = p_{f_\text{out}}(\text{t}_i)
+    $$\label{eq:Linear-Transformer-Ratio-simple}
+    \text a(\text{t}_i) \cdot p_{f_\text{in}}(\text{t}_i) = p_{f_\text{out}}(\text{t}_i)
     $$
 
-    **Physical Interpretation:**
+    Where $\text a$ represents the conversion efficiency or conversion ratio (COP for heat pumps, thermal efficiency for boilers, electrical efficiency for generators).
 
-    - $\text a$ represents the **conversion efficiency** or **conversion ratio**
-    - For a heat pump: $\text a$ is the Coefficient of Performance (COP)
-    - For a boiler: $\text a$ is the thermal efficiency (typically 0.85-0.95)
-    - For a generator: $\text a$ is the electrical efficiency (typically 0.3-0.5)
+    ---
 
-=== "Advanced & Edge Cases"
+    **Piecewise linear conversion** (when `piecewise_conversion` specified):
 
-    ## Piecewise Linear Conversion Factors
+    See [Piecewise](../features/Piecewise.md) for the detailed mathematical formulation of piecewise linear relationships between flows.
 
-    Conversion efficiencies often vary with operating conditions (e.g., partial load efficiency, temperature-dependent COP). This is modeled using [Piecewise](../features/Piecewise.md) linear approximations.
+    **Mathematical Patterns:** [Linear Equality Constraints](../modeling-patterns/bounds-and-states.md), [Piecewise Linear Approximations](../features/Piecewise.md)
 
-    **Example:** Heat pump COP as a function of ambient temperature or load fraction.
+=== "Parameters"
 
-    See [Piecewise](../features/Piecewise.md) for the mathematical formulation of piecewise linear relationships.
+    | Symbol | Python Parameter | Description | Default |
+    |--------|------------------|-------------|---------|
+    | $\mathcal F_{in}$ | `inputs` | Set of all incoming flows | Required |
+    | $\mathcal F_{out}$ | `outputs` | Set of all outgoing flows | Required |
+    | $\text a_{f_\text{in}}(\text{t}_i)$ | `conversion_factors` | Conversion factor for incoming flow (weight/efficiency coefficient) | None |
+    | $\text b_{f_\text{out}}(\text{t}_i)$ | `conversion_factors` | Conversion factor for outgoing flow (weight/efficiency coefficient) | None |
+    | - | `on_off_parameters` | OnOffParameters for on/off operation | None |
+    | - | `piecewise_conversion` | PiecewiseConversion for non-linear behavior | None |
 
-    ## Multiple Inputs/Outputs
-
-    LinearConverters can model complex multi-flow processes:
-
-    - **CHP (Combined Heat and Power):** 1 fuel input → 2 outputs (electricity + heat)
-    - **Heat pump with auxiliary:** 2 inputs (electricity + ambient heat) → 1 output (useful heat)
-    - **Multi-fuel boiler:** Multiple fuel inputs → 1 heat output
-
-    Each flow has its own conversion factor $\text a_{f}$ or $\text b_{f}$ defining the ratio.
-
-    ## Time-Varying Conversion Factors
-
-    Conversion factors can be time-dependent $\text a(\text{t}_i)$ to model:
-
-    - Seasonal efficiency variations
-    - Temperature-dependent performance
-    - Degradation over time
-    - Scheduled maintenance periods
-
-    ## Investment Sizing
-
-    When using [InvestParameters](../features/InvestParameters.md), the converter size becomes an optimization variable. Flow sizes are then linked to the converter's optimized capacity.
-
-    ## On/Off Operation
-
-    Combining with [OnOffParameters](../features/OnOffParameters.md) allows modeling:
-
-    - Minimum run times
-    - Startup costs
-    - Part-load restrictions (minimum load when operating)
-
-=== "Mathematical Patterns"
-
-    LinearConverter formulation relies on:
-
-    - **Linear equality constraints** - Enforcing the ratio relationship
-    - **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - For flow rate bounds
-    - **[Piecewise Linear Approximations](../features/Piecewise.md)** - For non-constant conversion factors
-
-=== "Examples"
+=== "Use Cases"
 
     ## Simple Boiler (Single Input/Output)
 
@@ -114,9 +58,15 @@ A LinearConverter defines linear relationships (ratios) between incoming and out
         label='gas_boiler',
         inputs=[Flow(label='gas_in', bus='natural_gas', size=100)],
         outputs=[Flow(label='heat_out', bus='heating', size=90)],
-        conversion_factors={('gas_in', 'heat_out'): 0.9},  # 90% efficiency
+        conversion_factors=[{'gas_in': 0.9, 'heat_out': 1}],  # 90% efficiency
     )
     ```
+
+    **Variables:** Flow rates from input and output flows
+
+    **Constraints:** $\eqref{eq:Linear-Transformer-Ratio-simple}$ with $0.9 \cdot p_\text{gas}(t) = p_\text{heat}(t)$, representing 90% thermal efficiency
+
+    ---
 
     ## CHP Plant (One Input, Two Outputs)
 
@@ -130,35 +80,50 @@ A LinearConverter defines linear relationships (ratios) between incoming and out
             Flow(label='electricity_out', bus='electricity', size=35),
             Flow(label='heat_out', bus='heating', size=55),
         ],
-        conversion_factors={
-            ('fuel_in', 'electricity_out'): 0.35,  # 35% electrical efficiency
-            ('fuel_in', 'heat_out'): 0.55,  # 55% thermal efficiency
-        },
+        conversion_factors=[
+            {'fuel_in': 0.35, 'electricity_out': 1},  # 35% electrical efficiency
+            {'fuel_in': 0.55, 'heat_out': 1},  # 55% thermal efficiency
+        ],
     )
     ```
+
+    **Variables:** Flow rates from one input and two output flows
+
+    **Constraints:** Two instances of $\eqref{eq:Linear-Transformer-Ratio}$:
+    - $0.35 \cdot p_\text{fuel}(t) = p_\text{elec}(t)$
+    - $0.55 \cdot p_\text{fuel}(t) = p_\text{heat}(t)$
+
+    ---
 
     ## Heat Pump with Temperature-Dependent COP
 
     ```python
-    from flixopt import LinearConverter, Flow, Piecewise, Piece
-    import numpy as np
+    from flixopt import LinearConverter, Flow, Piecewise, Piece, PiecewiseConversion
 
     # COP varies from 2.5 (cold) to 4.0 (warm)
     cop_curve = Piecewise(
         [
-            Piece((-10, 2.5), (0, 3.0)),   # -10°C to 0°C
-            Piece((0, 3.0), (10, 3.5)),    # 0°C to 10°C
-            Piece((10, 3.5), (20, 4.0)),   # 10°C to 20°C
+            Piece((0, 0), (100, 250)),     # 0-100 kW elec → 0-250 kW heat (COP 2.5)
+            Piece((100, 250), (200, 600)),  # 100-200 kW elec → 250-600 kW heat (COP 3.5)
         ]
     )
 
     heat_pump = LinearConverter(
         label='heat_pump',
-        inputs=[Flow(label='electricity_in', bus='electricity', size=25)],
-        outputs=[Flow(label='heat_out', bus='heating', size=100)],
-        conversion_factors={('electricity_in', 'heat_out'): cop_curve},
+        inputs=[Flow(label='electricity_in', bus='electricity', size=200)],
+        outputs=[Flow(label='heat_out', bus='heating', size=600)],
+        piecewise_conversion=PiecewiseConversion(
+            origin_flow='electricity_in',
+            piecewise_shares={'heat_out': cop_curve},
+        ),
     )
     ```
+
+    **Variables:** Flow rates + piecewise lambda variables $\lambda_k$
+
+    **Constraints:** Piecewise constraints linking electricity input to heat output with variable COP (see [Piecewise](../features/Piecewise.md))
+
+    ---
 
     ## Converter with Investment Decision
 
@@ -177,9 +142,13 @@ A LinearConverter defines linear relationships (ratios) between incoming and out
             ),
         )],
         outputs=[Flow(label='h2_out', bus='hydrogen', size=1)],  # Sized by ratio
-        conversion_factors={('electricity_in', 'h2_out'): 0.65},  # 65% efficiency
+        conversion_factors=[{'electricity_in': 0.65, 'h2_out': 1}],  # 65% efficiency
     )
     ```
+
+    **Variables:** Flow rates + `size` variable for investment
+
+    **Constraints:** $\eqref{eq:Linear-Transformer-Ratio-simple}$ plus investment constraints from [InvestParameters](../features/InvestParameters.md)
 
 ---
 
@@ -196,6 +165,11 @@ FlixOpt provides specialized classes that automatically configure the conversion
 These provide more intuitive interfaces for common applications.
 
 ---
+
+## Implementation
+
+- **Component Class:** [`LinearConverter`][flixopt.components.LinearConverter]
+- **Model Class:** [`LinearConverterModel`][flixopt.components.LinearConverterModel]
 
 ## See Also
 

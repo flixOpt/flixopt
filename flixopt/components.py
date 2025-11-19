@@ -41,8 +41,7 @@ class LinearConverter(Component):
     behavior approximated through piecewise linear segments.
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [LinearConverter](../user-guide/mathematical-notation/elements/LinearConverter.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/LinearConverter/>
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -260,18 +259,7 @@ class Storage(Component):
     and investment-optimized storage systems with comprehensive techno-economic modeling.
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [Storage](../user-guide/mathematical-notation/elements/Storage.md)
-
-        - Equation (1): Charge state bounds
-        - Equation (3): Storage balance (charge state evolution)
-
-        Variable Mapping:
-            - ``capacity_in_flow_hours`` → C (storage capacity)
-            - ``charge_state`` → c(t_i) (state of charge at time t_i)
-            - ``relative_loss_per_hour`` → ċ_rel,loss (self-discharge rate)
-            - ``eta_charge`` → η_in (charging efficiency)
-            - ``eta_discharge`` → η_out (discharging efficiency)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Storage/>
 
     Args:
         label: Element identifier used in the FlowSystem.
@@ -787,6 +775,16 @@ class TransmissionModel(ComponentModel):
 
 
 class LinearConverterModel(ComponentModel):
+    """Mathematical model implementation for LinearConverter components.
+
+    Creates optimization constraints for linear conversion relationships between
+    input and output flows, supporting both simple conversion factors and piecewise
+    non-linear approximations.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/LinearConverter/>
+    """
+
     element: LinearConverter
 
     def __init__(self, model: FlowSystemModel, element: LinearConverter):
@@ -835,7 +833,14 @@ class LinearConverterModel(ComponentModel):
 
 
 class StorageModel(ComponentModel):
-    """Submodel of Storage"""
+    """Mathematical model implementation for Storage components.
+
+    Creates optimization variables and constraints for charge state tracking,
+    storage balance equations, and optional investment sizing.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Storage/>
+    """
 
     element: Storage
 

@@ -2,125 +2,82 @@
 
 A Storage component represents energy or material accumulation with charging/discharging flows, state of charge tracking, and efficiency losses.
 
-**Implementation:**
+=== "Variables"
 
-- **Component Class:** [`Storage`][flixopt.components.Storage]
-- **Model Class:** [`StorageModel`][flixopt.components.StorageModel]
+    | Symbol | Python Name | Description | Domain | Created When |
+    |--------|-------------|-------------|--------|--------------|
+    | $c(\text{t}_i)$ | `charge_state` | State of charge at time $\text{t}_i$ | $\mathbb{R}_+$ | Always |
+    | $p_{f_\text{in}}(\text{t}_i)$ | - | Input flow rate (charging power) at time $\text{t}_i$ | $\mathbb{R}_+$ | Always (from `charging` Flow) |
+    | $p_{f_\text{out}}(\text{t}_i)$ | - | Output flow rate (discharging power) at time $\text{t}_i$ | $\mathbb{R}_+$ | Always (from `discharging` Flow) |
+    | - | `netto_discharge` | Net discharge rate (discharge - charge) | $\mathbb{R}$ | Always |
+    | $\text C$ | `size` | Storage capacity (decision variable) | $\mathbb{R}_+$ | `capacity_in_flow_hours` is `InvestParameters` |
 
-**Related:** [`Flow`](Flow.md) · [`Bus`](Bus.md) · [`LinearConverter`](LinearConverter.md)
+=== "Constraints"
 
----
+    **State of charge bounds** (always active):
 
-=== "Core Formulation"
-
-    ## State of Charge Bounds
-
-    The state of charge $c(\text{t}_i)$ is bounded by the storage size and relative limits:
-
-    $$ \label{eq:Storage_Bounds}
-        \text C \cdot \text c^{\text{L}}_{\text{rel}}(\text t_{i})
-        \leq c(\text{t}_i) \leq
-        \text C \cdot \text c^{\text{U}}_{\text{rel}}(\text t_{i})
+    $$\label{eq:Storage_Bounds}
+    \text C \cdot \text c^{\text{L}}_{\text{rel}}(\text t_{i})
+    \leq c(\text{t}_i) \leq
+    \text C \cdot \text c^{\text{U}}_{\text{rel}}(\text t_{i})
     $$
 
-    ??? info "Variables"
-        | Symbol | Description | Domain |
-        |--------|-------------|--------|
-        | $c(\text{t}_i)$ | State of charge at time $\text{t}_i$ | $\mathbb{R}_+$ |
-        | $\text C$ | Storage capacity | $\mathbb{R}_+$ or decision variable (with [InvestParameters](../features/InvestParameters.md)) |
+    ---
 
-    ??? info "Parameters"
-        | Symbol | Description | Typical Value |
-        |--------|-------------|---------------|
-        | $\text c^{\text{L}}_{\text{rel}}(\text t_{i})$ | Relative lower bound at time $\text{t}_i$ | 0 |
-        | $\text c^{\text{U}}_{\text{rel}}(\text t_{i})$ | Relative upper bound at time $\text{t}_i$ | 1 |
+    **Storage balance equation** (always active):
 
-    ### Simplified Form
-
-    With standard bounds $\text c^{\text{L}}_{\text{rel}} = 0$ and $\text c^{\text{U}}_{\text{rel}} = 1$, equation $\eqref{eq:Storage_Bounds}$ simplifies to:
-
-    $$ 0 \leq c(\text t_{i}) \leq \text C $$
-
-    ## Storage Balance Equation
-
-    The state of charge evolves according to charging/discharging flows and self-discharge losses:
-
-    $$
+    $$\label{eq:storage_balance}
     \begin{align}
-        c(\text{t}_{i+1}) &= c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i))^{\Delta \text{t}_{i}} \nonumber \\
-        &\quad + p_{f_\text{in}}(\text{t}_i) \cdot \Delta \text{t}_i \cdot \eta_\text{in}(\text{t}_i) \nonumber \\
-        &\quad - p_{f_\text{out}}(\text{t}_i) \cdot \Delta \text{t}_i / \eta_\text{out}(\text{t}_i)
-        \label{eq:storage_balance}
+    c(\text{t}_{i+1}) &= c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i))^{\Delta \text{t}_{i}} \nonumber \\
+    &\quad + p_{f_\text{in}}(\text{t}_i) \cdot \Delta \text{t}_i \cdot \eta_\text{in}(\text{t}_i) \nonumber \\
+    &\quad - p_{f_\text{out}}(\text{t}_i) \cdot \Delta \text{t}_i / \eta_\text{out}(\text{t}_i)
     \end{align}
     $$
 
-    ??? info "Flow Variables"
-        | Symbol | Description | Domain |
-        |--------|-------------|--------|
-        | $p_{f_\text{in}}(\text{t}_i)$ | Input flow rate (charging power) at time $\text{t}_i$ | $\mathbb{R}_+$ |
-        | $p_{f_\text{out}}(\text{t}_i)$ | Output flow rate (discharging power) at time $\text{t}_i$ | $\mathbb{R}_+$ |
+    ---
 
-    ??? info "Efficiency Parameters"
-        | Symbol | Description | Typical Range | Units |
-        |--------|-------------|---------------|-------|
-        | $\eta_\text{in}(\text{t}_i)$ | Charging efficiency | 0.85-0.98 | dimensionless |
-        | $\eta_\text{out}(\text{t}_i)$ | Discharging efficiency | 0.85-0.98 | dimensionless |
-        | $\dot{\text{c}}_\text{rel,loss}(\text{t}_i)$ | Relative self-discharge rate | 0-0.05 | per hour |
-        | $\Delta \text{t}_{i}$ | Timestep duration | - | hours |
+    **Initial charge state** (when `initial_charge_state` specified):
 
-    **Physical Interpretation:**
-
-    - The first term represents self-discharge (exponential decay)
-    - The second term adds energy from charging (accounting for charging losses)
-    - The third term subtracts energy from discharging (accounting for discharging losses)
-
-=== "Advanced & Edge Cases"
-
-    ## Initial State of Charge
-
-    The storage must be initialized with a starting charge state:
-
-    - **Parameter:** `initial_charge_state` sets $c(\text{t}_0)$
-    - **Default:** Often set to some fraction of capacity (e.g., 0.5 × $\text C$)
-
-    ## Final State of Charge Constraints
-
-    Optional bounds on the state of charge at the end of the optimization horizon:
-
-    $$
-        \text c^{\text{L}}_{\text{final}} \leq c(\text{t}_\text{end}) \leq \text c^{\text{U}}_{\text{final}}
+    $$\label{eq:storage_initial}
+    c(\text{t}_0) = \text{c}_\text{initial}
     $$
 
-    **Use Case:** Ensure the storage ends with sufficient charge for the next optimization period, or enforce cyclic conditions.
+    Or for cyclic condition (`initial_charge_state='equals_final'`):
 
-    **Parameters:**
-    - `minimal_final_charge_state`: Lower bound $\text c^{\text{L}}_{\text{final}}$
-    - `maximal_final_charge_state`: Upper bound $\text c^{\text{U}}_{\text{final}}$
+    $$\label{eq:storage_cyclic}
+    c(\text{t}_0) = c(\text{t}_\text{end})
+    $$
 
-    ## Investment Sizing
+    ---
 
-    When using [InvestParameters](../features/InvestParameters.md), the storage capacity $\text C$ becomes an optimization variable:
+    **Final charge state bounds** (when `minimal_final_charge_state` or `maximal_final_charge_state` specified):
 
-    - Storage size is determined by the optimizer to minimize total system cost
-    - Flow capacities (charging/discharging rates) can be independently sized or linked to storage capacity
+    $$\label{eq:storage_final}
+    \text c^{\text{L}}_{\text{final}} \leq c(\text{t}_\text{end}) \leq \text c^{\text{U}}_{\text{final}}
+    $$
 
-    ## Prevent Simultaneous Charging/Discharging
+    **Mathematical Patterns:** [Basic Bounds](../modeling-patterns/bounds-and-states.md#basic-bounds), [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)
 
-    Some storage types (e.g., batteries with shared converters) cannot charge and discharge simultaneously. This is modeled using [OnOffParameters](../features/OnOffParameters.md) on the input/output flows with appropriate constraints.
+=== "Parameters"
 
-    ## Variable Timesteps
+    | Symbol | Python Parameter | Description | Default |
+    |--------|------------------|-------------|---------|
+    | $\text C$ | `capacity_in_flow_hours` | Storage capacity | Required |
+    | $\text c^{\text{L}}_{\text{rel}}(\text t_{i})$ | `relative_minimum_charge_state` | Relative lower bound (fraction of capacity) | 0 |
+    | $\text c^{\text{U}}_{\text{rel}}(\text t_{i})$ | `relative_maximum_charge_state` | Relative upper bound (fraction of capacity) | 1 |
+    | $\text{c}_\text{initial}$ | `initial_charge_state` | Charge at start | 0 |
+    | $\text c^{\text{L}}_{\text{final}}$ | `minimal_final_charge_state` | Minimum absolute charge required at end | None |
+    | $\text c^{\text{U}}_{\text{final}}$ | `maximal_final_charge_state` | Maximum absolute charge allowed at end | None |
+    | $\Delta \text{t}_{i}$ | - | Timestep duration | hours |
+    | $\dot{\text{c}}_\text{rel,loss}(\text{t}_i)$ | `relative_loss_per_hour` | Relative self-discharge rate per hour | 0 |
+    | $\eta_\text{in}(\text{t}_i)$ | `eta_charge` | Charging efficiency (0-1) | 1 |
+    | $\eta_\text{out}(\text{t}_i)$ | `eta_discharge` | Discharging efficiency (0-1) | 1 |
+    | - | `balanced` | If True, forces charging and discharging flows to have equal sizes | False |
+    | - | `prevent_simultaneous_charge_and_discharge` | Prevents charging and discharging simultaneously | True |
+    | - | `relative_minimum_final_charge_state` | Minimum relative charge at end | None |
+    | - | `relative_maximum_final_charge_state` | Maximum relative charge at end | None |
 
-    The formulation naturally handles variable timestep durations $\Delta \text{t}_i$ through the balance equation $\eqref{eq:storage_balance}$.
-
-=== "Mathematical Patterns"
-
-    Storage formulation builds on the following modeling patterns:
-
-    - **[Basic Bounds](../modeling-patterns/bounds-and-states.md#basic-bounds)** - Charge state bounds (equation $\eqref{eq:Storage_Bounds}$)
-    - **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - Flow rate bounds relative to storage size
-    - **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - When using [InvestParameters](../features/InvestParameters.md) for capacity investment
-
-=== "Examples"
+=== "Use Cases"
 
     ## Basic Battery Storage
 
@@ -129,8 +86,8 @@ A Storage component represents energy or material accumulation with charging/dis
 
     battery = Storage(
         label='battery',
-        inputs=[Flow(label='charge', bus='electricity', size=50)],  # 50 kW charging
-        outputs=[Flow(label='discharge', bus='electricity', size=50)],  # 50 kW discharging
+        charging=Flow(label='charge', bus='electricity', size=50),  # 50 kW charging
+        discharging=Flow(label='discharge', bus='electricity', size=50),  # 50 kW discharging
         capacity_in_flow_hours=200,  # 200 kWh capacity
         initial_charge_state=100,  # Start at 100 kWh (50% SOC)
         eta_charge=0.95,  # 95% charging efficiency
@@ -139,6 +96,12 @@ A Storage component represents energy or material accumulation with charging/dis
     )
     ```
 
+    **Variables:** `charge_state[t]`, flow rates, `netto_discharge[t]`
+
+    **Constraints:** $\eqref{eq:Storage_Bounds}$ with $0 \leq c(t) \leq 200$ kWh, $\eqref{eq:storage_balance}$, $\eqref{eq:storage_initial}$ with $c(t_0) = 100$ kWh
+
+    ---
+
     ## Thermal Storage with Final State Constraint
 
     ```python
@@ -146,8 +109,8 @@ A Storage component represents energy or material accumulation with charging/dis
 
     thermal_storage = Storage(
         label='heat_tank',
-        inputs=[Flow(label='heat_in', bus='heating', size=100)],
-        outputs=[Flow(label='heat_out', bus='heating', size=100)],
+        charging=Flow(label='heat_in', bus='heating', size=100),
+        discharging=Flow(label='heat_out', bus='heating', size=100),
         capacity_in_flow_hours=500,  # 500 kWh thermal capacity
         initial_charge_state=250,  # Start half-full
         minimal_final_charge_state=250,  # End at least half-full
@@ -157,6 +120,12 @@ A Storage component represents energy or material accumulation with charging/dis
     )
     ```
 
+    **Variables:** `charge_state[t]`, flow rates, `netto_discharge[t]`
+
+    **Constraints:** $\eqref{eq:Storage_Bounds}$, $\eqref{eq:storage_balance}$, $\eqref{eq:storage_initial}$, $\eqref{eq:storage_final}$ with $c(t_\text{end}) \geq 250$ kWh
+
+    ---
+
     ## Storage with Investment Decision
 
     ```python
@@ -164,8 +133,8 @@ A Storage component represents energy or material accumulation with charging/dis
 
     optimized_battery = Storage(
         label='battery_investment',
-        inputs=[Flow(label='charge', bus='electricity', size=100)],
-        outputs=[Flow(label='discharge', bus='electricity', size=100)],
+        charging=Flow(label='charge', bus='electricity', size=100),
+        discharging=Flow(label='discharge', bus='electricity', size=100),
         capacity_in_flow_hours=InvestParameters(
             minimum_size=0,  # Can choose not to build
             maximum_size=1000,  # Up to 1 MWh
@@ -177,11 +146,42 @@ A Storage component represents energy or material accumulation with charging/dis
     )
     ```
 
+    **Variables:** `charge_state[t]`, flow rates, `netto_discharge[t]`, `size` (decision variable)
+
+    **Constraints:** $\eqref{eq:Storage_Bounds}$ with variable $\text C$, $\eqref{eq:storage_balance}$, plus investment constraints from [InvestParameters](../features/InvestParameters.md)
+
+    ---
+
+    ## Cyclic Storage Condition
+
+    ```python
+    from flixopt import Storage, Flow
+
+    pumped_hydro = Storage(
+        label='pumped_hydro',
+        charging=Flow(label='pump', bus='electricity', size=100),
+        discharging=Flow(label='turbine', bus='electricity', size=120),
+        capacity_in_flow_hours=10000,  # 10 MWh
+        initial_charge_state='equals_final',  # End with same charge as start
+        eta_charge=0.85,  # Pumping efficiency
+        eta_discharge=0.90,  # Turbine efficiency
+        relative_loss_per_hour=0.0001,  # Minimal evaporation
+    )
+    ```
+
+    **Variables:** `charge_state[t]`, flow rates, `netto_discharge[t]`
+
+    **Constraints:** $\eqref{eq:Storage_Bounds}$, $\eqref{eq:storage_balance}$, $\eqref{eq:storage_cyclic}$ enforcing $c(t_0) = c(t_\text{end})$
+
 ---
+
+## Implementation
+
+- **Component Class:** [`Storage`][flixopt.components.Storage]
+- **Model Class:** [`StorageModel`][flixopt.components.StorageModel]
 
 ## See Also
 
-- **Elements:** [Flow](Flow.md) · [Bus](Bus.md)
+- **Elements:** [Flow](Flow.md) · [Bus](Bus.md) · [LinearConverter](LinearConverter.md)
 - **Features:** [InvestParameters](../features/InvestParameters.md) · [OnOffParameters](../features/OnOffParameters.md)
-- **Patterns:** [Modeling Patterns](../modeling-patterns/index.md)
-- **Components:** [LinearConverter](LinearConverter.md)
+- **Patterns:** [Modeling Patterns](../modeling-patterns/index.md) · [Bounds and States](../modeling-patterns/bounds-and-states.md)
