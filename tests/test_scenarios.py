@@ -22,13 +22,13 @@ def test_system():
     scenarios = pd.Index(['Scenario A', 'Scenario B'], name='scenario')
 
     # Create scenario weights
-    weights = np.array([0.7, 0.3])
+    scenario_weights = np.array([0.7, 0.3])
 
     # Create a flow system with scenarios
     flow_system = FlowSystem(
         timesteps=timesteps,
         scenarios=scenarios,
-        weights=weights,
+        scenario_weights=scenario_weights,
     )
 
     # Create demand profiles that differ between scenarios
