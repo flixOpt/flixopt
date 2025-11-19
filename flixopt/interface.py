@@ -1133,10 +1133,10 @@ class OnOffParameters(Interface):
         effects_per_running_hour: Ongoing costs or impacts while equipment operates
             in the on state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-        on_hours_total_min: Minimum total operating hours across the entire time horizon.
+        on_hours_min: Minimum total operating hours per period.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
-        on_hours_total_max: Maximum total operating hours across the entire time horizon.
+        on_hours_max: Maximum total operating hours per period.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
         consecutive_on_hours_min: Minimum continuous operating duration once started.
@@ -1152,11 +1152,11 @@ class OnOffParameters(Interface):
         consecutive_off_hours_max: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-        switch_on_total_max: Maximum number of startup operations across the time horizon.
+        switch_on_max: Maximum number of startup operations per period.
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).
         force_switch_on: When True, creates switch-on variables even without explicit
-            switch_on_total_max constraint. Useful for tracking or reporting startup
+            switch_on_max constraint. Useful for tracking or reporting startup
             events without enforcing limits.
 
     Note:
@@ -1182,7 +1182,7 @@ class OnOffParameters(Interface):
             },
             consecutive_on_hours_min=8,  # Minimum 8-hour run once started
             consecutive_off_hours_min=4,  # Minimum 4-hour cooling period
-            on_hours_total_max=6000,  # Annual operating limit
+            on_hours_max=6000,  # Annual operating limit
         )
         ```
 
@@ -1203,8 +1203,8 @@ class OnOffParameters(Interface):
             consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
             consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
             consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_total_max=200,  # Maximum 200 batches per period
-            on_hours_total_max=4000,  # Maximum production time
+            switch_on_max=200,  # Maximum 200 batches per period
+            on_hours_max=4000,  # Maximum production time
         )
         ```
 
@@ -1222,9 +1222,9 @@ class OnOffParameters(Interface):
             },
             consecutive_on_hours_min=1,  # Minimum 1-hour run to avoid cycling
             consecutive_off_hours_min=0.5,  # 30-minute minimum off time
-            switch_on_total_max=2000,  # Limit cycling for compressor life
-            on_hours_total_min=2000,  # Minimum operation for humidity control
-            on_hours_total_max=5000,  # Maximum operation for energy budget
+            switch_on_max=2000,  # Limit cycling for compressor life
+            on_hours_min=2000,  # Minimum operation for humidity control
+            on_hours_max=5000,  # Maximum operation for energy budget
         )
         ```
 
@@ -1244,9 +1244,9 @@ class OnOffParameters(Interface):
             },
             consecutive_on_hours_min=0.5,  # Minimum test duration (30 min)
             consecutive_off_hours_max=720,  # Maximum 30 days between tests
-            switch_on_total_max=52,  # Weekly testing limit
-            on_hours_total_min=26,  # Minimum annual testing (0.5h × 52)
-            on_hours_total_max=200,  # Maximum runtime (emergencies + tests)
+            switch_on_max=52,  # Weekly testing limit
+            on_hours_min=26,  # Minimum annual testing (0.5h × 52)
+            on_hours_max=200,  # Maximum runtime (emergencies + tests)
         )
         ```
 
@@ -1266,7 +1266,7 @@ class OnOffParameters(Interface):
             consecutive_on_hours_min=1,  # Minimum discharge duration
             consecutive_on_hours_max=4,  # Maximum continuous discharge
             consecutive_off_hours_min=1,  # Minimum rest between cycles
-            switch_on_total_max=365,  # Daily cycling limit
+            switch_on_max=365,  # Daily cycling limit
             force_switch_on=True,  # Track all cycling events
         )
         ```
@@ -1285,24 +1285,31 @@ class OnOffParameters(Interface):
         self,
         effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
         effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_hours_total_min: Numeric_PS | None = None,
-        on_hours_total_max: Numeric_PS | None = None,
+        on_hours_min: Numeric_PS | None = None,
+        on_hours_max: Numeric_PS | None = None,
         consecutive_on_hours_min: Numeric_TPS | None = None,
         consecutive_on_hours_max: Numeric_TPS | None = None,
         consecutive_off_hours_min: Numeric_TPS | None = None,
         consecutive_off_hours_max: Numeric_TPS | None = None,
-        switch_on_total_max: Numeric_PS | None = None,
+        switch_on_max: Numeric_PS | None = None,
         force_switch_on: bool = False,
+        **kwargs,
     ):
+        # Handle deprecated parameters
+        on_hours_min = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min)
+        on_hours_max = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max)
+        switch_on_max = self._handle_deprecated_kwarg(kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max)
+        self._validate_kwargs(kwargs)
+
         self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
         self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_total_min = on_hours_total_min
-        self.on_hours_total_max = on_hours_total_max
+        self.on_hours_min = on_hours_min
+        self.on_hours_max = on_hours_max
         self.consecutive_on_hours_min = consecutive_on_hours_min
         self.consecutive_on_hours_max = consecutive_on_hours_max
         self.consecutive_off_hours_min = consecutive_off_hours_min
         self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_total_max = switch_on_total_max
+        self.switch_on_max = switch_on_max
         self.force_switch_on: bool = force_switch_on
 
     def transform_data(self, name_prefix: str = '') -> None:
@@ -1328,14 +1335,14 @@ class OnOffParameters(Interface):
         self.consecutive_off_hours_max = self._fit_coords(
             f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
         )
-        self.on_hours_total_max = self._fit_coords(
-            f'{name_prefix}|on_hours_total_max', self.on_hours_total_max, dims=['period', 'scenario']
+        self.on_hours_max = self._fit_coords(
+            f'{name_prefix}|on_hours_max', self.on_hours_max, dims=['period', 'scenario']
         )
-        self.on_hours_total_min = self._fit_coords(
-            f'{name_prefix}|on_hours_total_min', self.on_hours_total_min, dims=['period', 'scenario']
+        self.on_hours_min = self._fit_coords(
+            f'{name_prefix}|on_hours_min', self.on_hours_min, dims=['period', 'scenario']
         )
-        self.switch_on_total_max = self._fit_coords(
-            f'{name_prefix}|switch_on_total_max', self.switch_on_total_max, dims=['period', 'scenario']
+        self.switch_on_max = self._fit_coords(
+            f'{name_prefix}|switch_on_max', self.switch_on_max, dims=['period', 'scenario']
         )
 
     @property
@@ -1363,6 +1370,79 @@ class OnOffParameters(Interface):
             self._has_value(param)
             for param in [
                 self.effects_per_switch_on,
-                self.switch_on_total_max,
+                self.switch_on_max,
             ]
         )
+
+    # Backwards compatible properties (deprecated)
+    @property
+    def on_hours_total_min(self):
+        """DEPRECATED: Use 'on_hours_min' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.on_hours_min
+
+    @on_hours_total_min.setter
+    def on_hours_total_min(self, value):
+        """DEPRECATED: Use 'on_hours_min' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.on_hours_min = value
+
+    @property
+    def on_hours_total_max(self):
+        """DEPRECATED: Use 'on_hours_max' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.on_hours_max
+
+    @on_hours_total_max.setter
+    def on_hours_total_max(self, value):
+        """DEPRECATED: Use 'on_hours_max' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.on_hours_max = value
+
+    @property
+    def switch_on_total_max(self):
+        """DEPRECATED: Use 'switch_on_max' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.switch_on_max
+
+    @switch_on_total_max.setter
+    def switch_on_total_max(self, value):
+        """DEPRECATED: Use 'switch_on_max' property instead."""
+        import warnings
+
+        warnings.warn(
+            "Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.switch_on_max = value

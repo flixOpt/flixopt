@@ -165,15 +165,15 @@ class Converters:
                         effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
                     on_off_parameters=fx.OnOffParameters(
-                        on_hours_total_min=0,
-                        on_hours_total_max=1000,
+                        on_hours_min=0,
+                        on_hours_max=1000,
                         consecutive_on_hours_max=10,
                         consecutive_on_hours_min=1,
                         consecutive_off_hours_max=10,
                         effects_per_switch_on=0.01,
-                        switch_on_total_max=1000,
+                        switch_on_max=1000,
                     ),
-                    flow_hours_total_max=1e6,
+                    flow_hours_max=1e6,
                 ),
                 fuel_flow=fx.Flow('Q_fu', bus='Gas', size=200, relative_minimum=0, relative_maximum=1),
             )
@@ -451,7 +451,7 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
 
     # Create flow system
     flow_system = fx.FlowSystem(
-        base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), weights=np.array([0.5, 0.25, 0.25])
+        base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), scenario_weights=np.array([0.5, 0.25, 0.25])
     )
     flow_system.add_elements(*Buses.defaults())
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)

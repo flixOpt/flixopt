@@ -647,7 +647,7 @@ class Transmission(Component):
             on_off_parameters=OnOffParameters(
                 effects_per_switch_on={'maintenance': 0.1},
                 consecutive_on_hours_min=2,  # Minimum 2-hour operation
-                switch_on_total_max=10,  # Maximum 10 starts per day
+                switch_on_max=10,  # Maximum 10 starts per day
             ),
         )
         ```

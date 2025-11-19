@@ -186,6 +186,42 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
 
+    @property
+    def scenario_weights(self) -> xr.DataArray:
+        """
+        Scenario weights of model. With optional normalization.
+        """
+        if self.flow_system.scenarios is None:
+            return xr.DataArray(1)
+
+        if self.flow_system.scenario_weights is None:
+            scenario_weights = xr.DataArray(
+                np.ones(self.flow_system.scenarios.size, dtype=float),
+                coords={'scenario': self.flow_system.scenarios},
+                dims=['scenario'],
+                name='scenario_weights',
+            )
+        else:
+            scenario_weights = self.flow_system.scenario_weights
+
+        if not self.normalize_weights:
+            return scenario_weights
+
+        norm = scenario_weights.sum('scenario')
+        if np.isclose(norm, 0.0).any():
+            raise ValueError('FlowSystemModel.scenario_weights: weights sum to 0; cannot normalize.')
+        return scenario_weights / norm
+
+    @property
+    def objective_weights(self) -> xr.DataArray:
+        """
+        Objective weights of model. With optional normalization of scenario weights.
+        """
+        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        scenario_weights = self.scenario_weights
+
+        return period_weights * scenario_weights
+
     def get_coords(
         self,
         dims: Collection[str] | None = None,
@@ -216,19 +252,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             coords['time'] = self.flow_system.timesteps_extra
 
         return xr.Coordinates(coords) if coords else None
-
-    @property
-    def weights(self) -> int | xr.DataArray:
-        """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
-        if self.flow_system.weights is not None:
-            weights = self.flow_system.weights
-        else:
-            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
-
-        if not self.normalize_weights:
-            return weights
-
-        return weights / weights.sum()
 
     def __repr__(self) -> str:
         """
@@ -497,6 +520,7 @@ class Interface:
         current_value: Any = None,
         transform: callable = None,
         check_conflict: bool = True,
+        additional_warning_message: str = '',
     ) -> Any:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
@@ -512,6 +536,7 @@ class Interface:
             check_conflict: Whether to check if both old and new parameters are specified (default: True).
                 Note: For parameters with non-None default values (e.g., bool parameters with default=False),
                 set check_conflict=False since we cannot distinguish between an explicit value and the default.
+            additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
 
         Returns:
             The value to use (either from old parameter or current_value)
@@ -532,10 +557,13 @@ class Interface:
         """
         import warnings
 
+        if additional_warning_message:
+            additional_warning_message = r'\n ' + additional_warning_message
+
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.',
+                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.{additional_warning_message}',
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )

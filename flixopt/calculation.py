@@ -48,7 +48,7 @@ class Calculation:
         name: name of calculation
         flow_system: flow_system which should be calculated
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
         active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 
@@ -182,7 +182,7 @@ class FullCalculation(Calculation):
         name: name of calculation
         flow_system: flow_system which should be calculated
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
         active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
     """
 

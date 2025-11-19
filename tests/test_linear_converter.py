@@ -143,9 +143,7 @@ class TestLinearConverterModel:
         output_flow = fx.Flow('output', bus='output_bus', size=100)
 
         # Create OnOffParameters
-        on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
-        )
+        on_off_params = fx.OnOffParameters(on_hours_min=10, on_hours_max=40, effects_per_running_hour={'costs': 5})
 
         # Create a linear converter with OnOffParameters
         converter = fx.LinearConverter(
@@ -396,9 +394,7 @@ class TestLinearConverterModel:
         )
 
         # Create OnOffParameters
-        on_off_params = fx.OnOffParameters(
-            on_hours_total_min=10, on_hours_total_max=40, effects_per_running_hour={'costs': 5}
-        )
+        on_off_params = fx.OnOffParameters(on_hours_min=10, on_hours_max=40, effects_per_running_hour={'costs': 5})
 
         # Create a linear converter with piecewise conversion and on/off parameters
         converter = fx.LinearConverter(

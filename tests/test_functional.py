@@ -490,7 +490,7 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=1),
+                on_off_parameters=fx.OnOffParameters(on_hours_max=1),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -540,7 +540,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=2),
+                on_off_parameters=fx.OnOffParameters(on_hours_max=2),
             ),
         ),
         fx.linear_converters.Boiler(
@@ -551,7 +551,7 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_min=3),
+                on_off_parameters=fx.OnOffParameters(on_hours_min=3),
             ),
         ),
     )

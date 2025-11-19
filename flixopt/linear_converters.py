@@ -688,7 +688,7 @@ class CHP(LinearConverter):
             on_off_parameters=OnOffParameters(
                 consecutive_on_hours_min=8,  # Minimum 8-hour operation
                 effects_per_switch_on={'startup_cost': 5000},
-                on_hours_total_max=6000,  # Annual operating limit
+                on_hours_max=6000,  # Annual operating limit
             ),
         )
         ```

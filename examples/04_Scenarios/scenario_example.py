@@ -83,7 +83,9 @@ if __name__ == '__main__':
     # Base Case: 60% probability, High Demand: 40% probability
     scenario_weights = np.array([0.6, 0.4])
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods, scenarios=scenarios, weights=scenario_weights)
+    flow_system = fx.FlowSystem(
+        timesteps=timesteps, periods=periods, scenarios=scenarios, scenario_weights=scenario_weights
+    )
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)

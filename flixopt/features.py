@@ -186,8 +186,8 @@ class OnOffModel(Submodel):
             self,
             tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
             bounds=(
-                self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
-                self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
+                self.parameters.on_hours_min if self.parameters.on_hours_min is not None else 0,
+                self.parameters.on_hours_max if self.parameters.on_hours_max is not None else np.inf,
             ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
             short_name='on_hours_total',
             coords=['period', 'scenario'],
@@ -208,10 +208,10 @@ class OnOffModel(Submodel):
                 coord='time',
             )
 
-            if self.parameters.switch_on_total_max is not None:
+            if self.parameters.switch_on_max is not None:
                 count = self.add_variables(
                     lower=0,
-                    upper=self.parameters.switch_on_total_max,
+                    upper=self.parameters.switch_on_max,
                     coords=self._model.get_coords(('period', 'scenario')),
                     short_name='switch|count',
                 )
