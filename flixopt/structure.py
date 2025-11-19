@@ -557,14 +557,20 @@ class Interface:
         """
         import warnings
 
-        if additional_warning_message:
-            additional_warning_message = r'\n ' + additional_warning_message
-
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
+            # Build base warning message
+            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
+
+            # Append additional message on a new line if provided
+            if additional_warning_message:
+                # Normalize whitespace: strip leading/trailing whitespace
+                extra_msg = additional_warning_message.strip()
+                if extra_msg:
+                    base_warning += '\n' + extra_msg
+
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. {additional_warning_message}'
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.{additional_warning_message}',
+                base_warning,
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )
