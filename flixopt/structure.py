@@ -566,7 +566,7 @@ class Interface:
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. '
+                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. {additional_warning_message}'
                 f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.{additional_warning_message}',
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller

@@ -333,7 +333,6 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_full.scenarios
     scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_full.scenario_weights = scenario_weights
-    flow_system_full.weights = flow_system_full._compute_weights()
     flow_system = flow_system_full.sel(scenario=scenarios[0:2])
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])

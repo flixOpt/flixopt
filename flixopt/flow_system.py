@@ -166,11 +166,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_flow_rates: bool | list[str] = False,
         **kwargs,
     ):
-        self._handle_deprecated_kwarg(
+        scenario_weights = self._handle_deprecated_kwarg(
             kwargs,
             'weights',
             'scenario_weights',
             scenario_weights,
+            check_conflict=False,
             additional_warning_message='This might lead to later errors if your custom weights used the period dimension.',
         )
         self._validate_kwargs(kwargs)
@@ -190,9 +191,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
-        self.scenario_weights: xr.DataArray = self.fit_to_model_coords(
-            'scenario_weights', scenario_weights, dims=['scenario']
-        )
+        self.scenario_weights = scenario_weights  # Use setter
 
         # Compute all period-related metadata using shared helper
         (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
@@ -449,6 +448,45 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
         if hours_of_previous_timesteps is not None:
             dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
+
+        return dataset
+
+    @classmethod
+    def _update_period_metadata(
+        cls,
+        dataset: xr.Dataset,
+        weight_of_last_period: int | float | None = None,
+    ) -> xr.Dataset:
+        """
+        Update period-related attributes and data variables in dataset based on its period index.
+
+        Recomputes weight_of_last_period, period_weights, and weights from the dataset's
+        period index when weight_of_last_period is None. This ensures period metadata stays
+        synchronized with the actual periods after operations like selection.
+
+        This is analogous to _update_time_metadata() for time-related metadata.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+            weight_of_last_period: Weight of the last period. If None, computed from the period index.
+
+        Returns:
+            The same dataset with updated period-related attributes and data variables
+        """
+        new_period_index = dataset.indexes.get('period')
+        if new_period_index is not None and len(new_period_index) >= 1:
+            # Use shared helper to compute all period metadata
+            _, weight_of_last_period, period_weights = cls._compute_period_metadata(
+                new_period_index, weight_of_last_period
+            )
+
+            # Update period_weights DataArray if it exists in the dataset
+            if 'period_weights' in dataset.data_vars:
+                dataset['period_weights'] = period_weights
+
+        # Update period-related attributes only when new values are provided/computed
+        if weight_of_last_period is not None:
+            dataset.attrs['weight_of_last_period'] = weight_of_last_period
 
         return dataset
 
@@ -1122,6 +1160,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._used_in_calculation
 
     @property
+    def scenario_weights(self) -> xr.DataArray | None:
+        """
+        Weights for each scenario.
+
+        Returns:
+            xr.DataArray: Scenario weights with 'scenario' dimension
+        """
+        return self._scenario_weights
+
+    @scenario_weights.setter
+    def scenario_weights(self, value: Numeric_S) -> None:
+        """
+        Set scenario weights.
+
+        Args:
+            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension)
+        """
+        self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+    @property
     def weights(self) -> Numeric_S | None:
         warnings.warn(
             'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead.',
@@ -1129,6 +1187,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             stacklevel=2,
         )
         return self.scenario_weights
+
+    @weights.setter
+    def weights(self, value: Numeric_S) -> None:
+        """
+        Set weights (deprecated - sets scenario_weights).
+
+        Args:
+            value: Scenario weights to set
+        """
+        warnings.warn(
+            'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.scenario_weights = value  # Use the scenario_weights setter
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """
