@@ -2,7 +2,6 @@
 title: Home
 hide:
   - navigation
-  - toc
 ---
 
 <div class="hero-section">
