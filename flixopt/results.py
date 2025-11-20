@@ -183,22 +183,22 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         )
 
     @classmethod
-    def from_calculation(cls, calculation: Calculation) -> Results:
-        """Create CalculationResults from a Calculation object.
+    def from_optimization(cls, optimization) -> Results:
+        """Create Results from an Optimization instance.
 
         Args:
-            calculation: Calculation object with solved model.
+            optimization: The Optimization instance to extract results from.
 
         Returns:
-            Results: New instance with extracted results.
+            Results: New instance containing the optimization results.
         """
         return cls(
-            solution=calculation.model.solution,
-            flow_system_data=calculation.flow_system.to_dataset(),
-            summary=calculation.summary,
-            model=calculation.model,
-            name=calculation.name,
-            folder=calculation.folder,
+            solution=optimization.model.solution,
+            flow_system_data=optimization.flow_system.to_dataset(),
+            summary=optimization.summary,
+            model=optimization.model,
+            name=optimization.name,
+            folder=optimization.folder,
         )
 
     def __init__(
@@ -1125,6 +1125,21 @@ class CalculationResults(Results):
                 stacklevel=2,
             )
         super().__init__(*args, **kwargs)
+
+    @classmethod
+    def from_calculation(cls, calculation):
+        """Create CalculationResults from a Calculation object.
+
+        DEPRECATED: Use Results.from_optimization() instead.
+        Backwards-compatible method that redirects to from_optimization().
+
+        Args:
+            calculation: Calculation object with solved model.
+
+        Returns:
+            CalculationResults: New instance with extracted results.
+        """
+        return cls.from_optimization(calculation)
 
 
 class _ElementResults:
@@ -2083,14 +2098,22 @@ class SegmentedResults:
     """
 
     @classmethod
-    def from_calculation(cls, calculation: SegmentedCalculation):
+    def from_optimization(cls, optimization):
+        """Create SegmentedResults from a SegmentedOptimization instance.
+
+        Args:
+            optimization: The SegmentedOptimization instance to extract results from.
+
+        Returns:
+            SegmentedResults: New instance containing the optimization results.
+        """
         return cls(
-            [calc.results for calc in calculation.sub_calculations],
-            all_timesteps=calculation.all_timesteps,
-            timesteps_per_segment=calculation.timesteps_per_segment,
-            overlap_timesteps=calculation.overlap_timesteps,
-            name=calculation.name,
-            folder=calculation.folder,
+            [calc.results for calc in optimization.sub_calculations],
+            all_timesteps=optimization.all_timesteps,
+            timesteps_per_segment=optimization.timesteps_per_segment,
+            overlap_timesteps=optimization.overlap_timesteps,
+            name=optimization.name,
+            folder=optimization.folder,
         )
 
     @classmethod
@@ -2381,6 +2404,21 @@ class SegmentedCalculationResults(SegmentedResults):
                 stacklevel=2,
             )
         super().__init__(*args, **kwargs)
+
+    @classmethod
+    def from_calculation(cls, calculation):
+        """Create SegmentedCalculationResults from a SegmentedCalculation object.
+
+        DEPRECATED: Use SegmentedResults.from_optimization() instead.
+        Backwards-compatible method that redirects to from_optimization().
+
+        Args:
+            calculation: SegmentedCalculation object with solved model.
+
+        Returns:
+            SegmentedCalculationResults: New instance with extracted results.
+        """
+        return cls.from_optimization(calculation)
 
 
 def plot_heatmap(
