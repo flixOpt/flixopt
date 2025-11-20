@@ -390,15 +390,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Extract changelog to docs
+      - name: Copy and format changelog
         run: |
-          # Install packaging dependency for changelog extraction
-          uv pip install --system packaging
+          # Copy CHANGELOG.md to docs
+          cp CHANGELOG.md docs/changelog.md
 
-          # Extract individual release files
-          python scripts/extract_changelog.py
+          # Format the changelog headers for docs
+          python scripts/format_changelog.py
 
-          echo "✅ Extracted changelog to docs/changelog/"
+          echo "✅ Copied and formatted changelog to docs/changelog.md"
 
       - name: Install documentation dependencies
         run: |
