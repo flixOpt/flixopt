@@ -40,16 +40,12 @@ if TYPE_CHECKING:
     from .structure import FlowSystemModel
 
 
-class Optimization:
+class _Optimization:
     """
-    class for defined way of solving a flow_system optimization
+    Base class for optimization implementations.
 
-    Args:
-        name: name of optimization
-        flow_system: flow_system which should be optimized
-        folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
-        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
+    This is an internal base class that provides common functionality for all optimization types.
+    Users should use Optimization, ClusteredOptimization, or SegmentedOptimization instead.
     """
 
     model: FlowSystemModel | None
@@ -171,12 +167,15 @@ class Optimization:
         return True if self.model is not None else False
 
 
-class FullOptimization(Optimization):
+class Optimization(_Optimization):
     """
-    FullOptimization solves the complete optimization problem using all time steps.
+    Standard optimization that solves the complete problem using all time steps.
 
-    This is the most comprehensive calculation type that considers every time step
-    in the optimization, providing the most accurate but computationally intensive solution.
+    This is the default optimization approach that considers every time step,
+    providing the most accurate but computationally intensive solution.
+
+    For large problems, consider using ClusteredOptimization (time aggregation)
+    or SegmentedOptimization (temporal decomposition) instead.
 
     Args:
         name: name of optimization
@@ -184,9 +183,20 @@ class FullOptimization(Optimization):
         folder: folder where results should be saved. If None, then the current working directory is used.
         normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
         active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
+
+    Examples:
+        Basic usage:
+        ```python
+        from flixopt import Optimization
+
+        opt = Optimization(name='my_optimization', flow_system=energy_system, folder=Path('results'))
+        opt.do_modeling()
+        opt.solve(solver=gurobi)
+        results = opt.results
+        ```
     """
 
-    def do_modeling(self) -> FullOptimization:
+    def do_modeling(self) -> Optimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
@@ -196,7 +206,7 @@ class FullOptimization(Optimization):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
-    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: int | None = 5) -> FullOptimization:
+    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: int | None = 5) -> Optimization:
         """Fix the sizes of the calculations to specified values.
 
         Args:
@@ -225,7 +235,7 @@ class FullOptimization(Optimization):
 
     def solve(
         self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
-    ) -> FullOptimization:
+    ) -> Optimization:
         # Auto-call do_modeling() if not already done
         if not self.modeled:
             logger.info('Model not yet created. Calling do_modeling() automatically.')
@@ -267,11 +277,11 @@ class FullOptimization(Optimization):
         return self
 
 
-class AggregatedOptimization(FullOptimization):
+class ClusteredOptimization(_Optimization):
     """
-    AggregatedOptimization reduces computational complexity by clustering time series into typical periods.
+    ClusteredOptimization reduces computational complexity by clustering time series into typical periods.
 
-    This calculation approach aggregates time series data using clustering techniques (tsam) to identify
+    This optimization approach clusters time series data using techniques from the tsam library to identify
     representative time periods, significantly reducing computation time while maintaining solution accuracy.
 
     Note:
@@ -306,14 +316,14 @@ class AggregatedOptimization(FullOptimization):
         folder: pathlib.Path | None = None,
     ):
         if flow_system.scenarios is not None:
-            raise ValueError('Aggregation is not supported for scenarios yet. Please use FullOptimization instead.')
+            raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
         super().__init__(name, flow_system, active_timesteps, folder=folder)
         self.aggregation_parameters = aggregation_parameters
         self.components_to_clusterize = components_to_clusterize
         self.aggregation: Aggregation | None = None
         self.aggregation_model: AggregationModel | None = None
 
-    def do_modeling(self) -> AggregatedOptimization:
+    def do_modeling(self) -> ClusteredOptimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
         self._perform_aggregation()
@@ -410,7 +420,7 @@ class AggregatedOptimization(FullOptimization):
         return weights
 
 
-class SegmentedOptimization(Optimization):
+class SegmentedOptimization(_Optimization):
     """Solve large optimization problems by dividing time horizon into (overlapping) segments.
 
     This class addresses memory and computational limitations of large-scale optimization
@@ -498,7 +508,7 @@ class SegmentedOptimization(Optimization):
         **Storage Systems**: Systems with large storage components benefit from longer
         overlaps to capture charge/discharge cycles effectively.
 
-        **Investment Decisions**: Use FullOptimization for problems requiring investment
+        **Investment Decisions**: Use Optimization for problems requiring investment
         optimization, as SegmentedOptimization cannot handle investment parameters.
 
     Common Use Cases:
@@ -509,12 +519,12 @@ class SegmentedOptimization(Optimization):
         - **Sensitivity Analysis**: Quick approximate solutions for parameter studies
 
     Performance Tips:
-        - Start with FullOptimization and use this class if memory issues occur
+        - Start with Optimization and use this class if memory issues occur
         - Use longer overlaps for systems with significant storage
         - Monitor solution quality at segment boundaries for discontinuities
 
     Warning:
-        The evaluation of the solution is a bit more complex than FullOptimization or AggregatedOptimization
+        The evaluation of the solution is a bit more complex than Optimization or ClusteredOptimization
         due to the overlapping individual solutions.
 
     """
@@ -532,7 +542,7 @@ class SegmentedOptimization(Optimization):
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
-        self.sub_calculations: list[FullOptimization] = []
+        self.sub_calculations: list[Optimization] = []
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
@@ -560,7 +570,7 @@ class SegmentedOptimization(Optimization):
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
-            calc = FullOptimization(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
+            calc = Optimization(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
             calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
 
             self.sub_calculations.append(calc)
@@ -572,7 +582,7 @@ class SegmentedOptimization(Optimization):
     def _solve_single_segment(
         self,
         i: int,
-        calculation: FullOptimization,
+        calculation: Optimization,
         solver: _Solver,
         log_file: pathlib.Path | None,
         log_main_results: bool,
