@@ -15,6 +15,8 @@ except (PackageNotFoundError, TypeError):
 # Import commonly used classes and functions
 from . import linear_converters, plotting, results, solvers
 from .aggregation import AggregationParameters
+
+# Import old Calculation classes for backwards compatibility (deprecated)
 from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalculation
 from .components import (
     LinearConverter,
@@ -31,6 +33,9 @@ from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 
+# Import new Optimization classes
+from .optimization import AggregatedOptimization, FullOptimization, Optimization, SegmentedOptimization
+
 __all__ = [
     'TimeSeriesData',
     'CONFIG',
@@ -45,6 +50,12 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
+    # New Optimization classes (preferred)
+    'Optimization',
+    'FullOptimization',
+    'SegmentedOptimization',
+    'AggregatedOptimization',
+    # Old Calculation classes (deprecated, for backwards compatibility)
     'FullCalculation',
     'SegmentedCalculation',
     'AggregatedCalculation',
