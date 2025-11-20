@@ -22,36 +22,44 @@ hide:
 
 ## :material-map-marker-path: Quick Navigation
 
-<div class="quick-links">
-  <a href="getting-started/" class="quick-link-card">
-    <h3>🚀 Getting Started</h3>
-    <p>New to FlixOpt? Start here with installation and your first model</p>
-  </a>
+<div class="grid cards" markdown>
 
-  <a href="examples/" class="quick-link-card">
-    <h3>💡 Examples Gallery</h3>
-    <p>Explore real-world examples from simple to complex systems</p>
-  </a>
+- :rocket: **[Getting Started](getting-started/)**
 
-  <a href="api-reference/" class="quick-link-card">
-    <h3>📚 API Reference</h3>
-    <p>Detailed documentation of all classes, methods, and parameters</p>
-  </a>
+    ---
 
-  <a href="user-guide/recipes/" class="quick-link-card">
-    <h3>📖 Recipes</h3>
-    <p>Common patterns and best practices for modeling energy systems</p>
-  </a>
+    New to FlixOpt? Start here with installation and your first model
 
-  <a href="user-guide/mathematical-notation/" class="quick-link-card">
-    <h3>∫ Mathematical Notation</h3>
-    <p>Understand the mathematical formulations behind the framework</p>
-  </a>
+- :bulb: **[Examples Gallery](examples/)**
 
-  <a href="roadmap/" class="quick-link-card">
-    <h3>🛣️ Roadmap</h3>
-    <p>See what's coming next and contribute to the future of FlixOpt</p>
-  </a>
+    ---
+
+    Explore real-world examples from simple to complex systems
+
+- :books: **[API Reference](api-reference/)**
+
+    ---
+
+    Detailed documentation of all classes, methods and parameters
+
+- :book: **[Recipes](user-guide/recipes/)**
+
+    ---
+
+    Common patterns and best practices for modeling energy systems
+
+- :material-math-integral: **[Mathematical Notation](user-guide/mathematical-notation/)**
+
+    ---
+
+    Understand the mathematical formulations behind the framework
+
+- :material-road: **[Roadmap](roadmap/)**
+
+    ---
+
+    See what's coming next and contribute to the future of FlixOpt
+
 </div>
 
 ## 🏗️ Framework Architecture
@@ -74,43 +82,31 @@ hide:
 
 ## :material-account-group: Community & Support
 
-<div class="feature-grid" markdown="1">
+<div class="grid cards" markdown>
 
-<div class="feature-card" markdown="1">
+- :fontawesome-brands-github: **GitHub**
 
-:fontawesome-brands-github:{ .feature-icon }
+    ---
 
-### GitHub
+    Report issues, request features, and contribute to the codebase
 
-Report issues, request features, and contribute to the codebase
+    [Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank" rel="noopener noreferrer"}
 
-[Visit Repository →](https://github.com/flixOpt/flixopt){target="_blank" rel="noopener noreferrer"}
+- :material-forum: **Discussions**
 
-</div>
+    ---
 
-<div class="feature-card" markdown="1">
+    Ask questions and share your projects with the community
 
-:material-forum:{ .feature-icon }
+    [Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank" rel="noopener noreferrer"}
 
-### Discussions
+- :material-book-open-page-variant: **Contributing**
 
-Ask questions and share your projects with the community
+    ---
 
-[Join Discussion →](https://github.com/flixOpt/flixopt/discussions){target="_blank" rel="noopener noreferrer"}
+    Help improve FlixOpt by contributing code, docs, or examples
 
-</div>
-
-<div class="feature-card" markdown="1">
-
-:material-book-open-page-variant:{ .feature-icon }
-
-### Contributing
-
-Help improve FlixOpt by contributing code, docs, or examples
-
-[Learn How →](contribute/){target="_blank" rel="noopener noreferrer"}
-
-</div>
+    [Learn How →](contribute/){target="_blank" rel="noopener noreferrer"}
 
 </div>
 
