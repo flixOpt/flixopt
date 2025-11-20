@@ -7,7 +7,7 @@ Get up and running with flixOpt in 5 minutes! This guide walks you through creat
 First, install flixOpt:
 
 ```bash
-pip install flixopt
+pip install "flixopt[full]"
 ```
 
 ## Your First Model
@@ -21,27 +21,21 @@ import flixopt as fx
 import numpy as np
 ```
 
-### 2. Create a Time Series
+### 2. Define your time horizon
 
 ```python
-# 24-hour period with hourly timesteps
-timesteps = 24
-time_series = fx.TimeSeriesData(
-    'hours',
-    0,
-    timesteps,
-    1
-)
+# 24h period with hourly timesteps
+timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
 ```
 
-### 3. Set Up the Flow System
+### 2. Set Up the Flow System
 
 ```python
 # Create the flow system
-system = fx.FlowSystem(time_series)
+flow_system = fx.FlowSystem(timesteps)
 
 # Define an effect to minimize (costs)
-costs = fx.Effect('costs', 'EUR', 'Minimize total system costs')
+costs = fx.Effect('costs', 'EUR', 'Minimize total system costs', is_objective=True)
 system.add_effects(costs)
 ```
 
@@ -56,12 +50,14 @@ solar_profile = np.array([0, 0, 0, 0, 0, 0, 0.2, 0.5, 0.8, 1.0,
                           1.0, 0.9, 0.8, 0.7, 0.5, 0.3, 0.1, 0,
                           0, 0, 0, 0, 0, 0])
 
-solar = fx.Component('solar', inputs=[], outputs=[
-    fx.Flow('power',
-            bus=electricity_bus,
-            size=100,  # 100 kW capacity
-            relative_maximum=solar_profile,
-            effects_per_flow_hour={costs: 0})  # Free solar
+solar = fx.Source(
+    'solar',
+    outputs=[fx.Flow(
+        'power',
+        bus=electricity_bus,
+        size=100,  # 100 kW capacity
+        relative_maximum=solar_profile
+    )
 ])
 
 # Demand
@@ -69,12 +65,12 @@ demand_profile = np.array([30, 25, 20, 20, 25, 35, 50, 70, 80, 75,
                            70, 65, 60, 65, 70, 80, 90, 95, 85, 70,
                            60, 50, 40, 35])
 
-demand = fx.Component('demand', inputs=[
+demand = fx.Sink('demand', inputs=[
     fx.Flow('consumption',
             bus=electricity_bus,
             size=1,
             fixed_relative_value=demand_profile)
-], outputs=[])
+])
 
 # Battery storage
 battery = fx.Storage(
@@ -82,54 +78,28 @@ battery = fx.Storage(
     charging=fx.Flow('charge', bus=electricity_bus, size=50),
     discharging=fx.Flow('discharge', bus=electricity_bus, size=50),
     capacity_in_flow_hours=100,  # 100 kWh capacity
-    initial_charge_state=0.5,  # Start at 50%
+    initial_charge_state=50,  # Start at 50%
     eta_charge=0.95,
     eta_discharge=0.95,
     effects_per_flow_hour={costs: 0.01}  # Small battery wear cost
 )
 
 # Add all components to system
-system.add_components(solar, demand, battery)
+flow_system.add_components(solar, demand, battery)
 ```
 
 ### 5. Run Optimization
 
 ```python
 # Create calculation
-calc = fx.FullCalculation('solar_battery_optimization', system)
-
-# Solve
-calc.solve()
+calc = fx.FullCalculation('solar_battery_optimization', system).solve()
 ```
 
-### 6. View Results
+### 6. Save Results
 
 ```python
-# Print some key results
-print(f"Total costs: {calc.results.objective_value:.2f} EUR")
-
-# Access time series results
-solar_output = calc.results.get_component('solar').get_flow('power').flow_rate
-battery_soc = calc.results.get_component('battery').charge_state
-
-# Plot results (requires matplotlib)
-import matplotlib.pyplot as plt
-
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-
-ax1.plot(solar_output, label='Solar Output')
-ax1.plot(demand_profile, label='Demand')
-ax1.set_ylabel('Power (kW)')
-ax1.legend()
-ax1.grid(True)
-
-ax2.plot(battery_soc)
-ax2.set_ylabel('Battery SOC (kWh)')
-ax2.set_xlabel('Hour')
-ax2.grid(True)
-
-plt.tight_layout()
-plt.show()
+# This includes the modeled FlowSystem. SO you can restore both results and inputs
+calc.results.to_file()
 ```
 
 ## What's Next?
@@ -151,7 +121,7 @@ Most flixOpt projects follow this pattern:
 4. **Add components** - Create generators, storage, converters, loads
 5. **Configure flows** - Set capacity, bounds, and cost parameters
 6. **Run calculation** - Solve the optimization
-7. **Analyze results** - Extract and visualize outcomes
+7. **Save Results** - For later analysis. Or only extract needed data
 
 ## Tips
 
