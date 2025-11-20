@@ -34,7 +34,7 @@ from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
 
 # Import new Optimization classes
-from .optimization import AggregatedOptimization, FullOptimization, Optimization, SegmentedOptimization
+from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
 
 __all__ = [
     'TimeSeriesData',
@@ -52,13 +52,12 @@ __all__ = [
     'FlowSystem',
     # New Optimization classes (preferred)
     'Optimization',
-    'FullOptimization',
+    'ClusteredOptimization',
     'SegmentedOptimization',
-    'AggregatedOptimization',
     # Old Calculation classes (deprecated, for backwards compatibility)
     'FullCalculation',
-    'SegmentedCalculation',
     'AggregatedCalculation',
+    'SegmentedCalculation',
     'InvestParameters',
     'OnOffParameters',
     'Piece',

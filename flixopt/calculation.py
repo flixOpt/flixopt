@@ -4,8 +4,8 @@ This module provides backwards-compatible aliases for the renamed Optimization c
 DEPRECATED: This module is deprecated. Use the optimization module instead.
 The following classes have been renamed:
     - Calculation -> Optimization
-    - FullCalculation -> FullOptimization
-    - AggregatedCalculation -> AggregatedOptimization
+    - FullCalculation -> Optimization (now the standard, no "Full" prefix)
+    - AggregatedCalculation -> ClusteredOptimization
     - SegmentedCalculation -> SegmentedOptimization
 
 Import from flixopt.optimization or use the new names from flixopt directly.
@@ -18,10 +18,7 @@ import warnings
 from typing import TYPE_CHECKING
 
 from .optimization import (
-    AggregatedOptimization as _AggregatedOptimization,
-)
-from .optimization import (
-    FullOptimization as _FullOptimization,
+    ClusteredOptimization as _ClusteredOptimization,
 )
 from .optimization import (
     Optimization as _Optimization,
@@ -81,9 +78,9 @@ class Calculation(_Optimization):
         super().__init__(name, flow_system, active_timesteps, folder, normalize_weights)
 
 
-class FullCalculation(_FullOptimization):
+class FullCalculation(_Optimization):
     """
-    DEPRECATED: Use FullOptimization instead.
+    DEPRECATED: Use Optimization instead (the "Full" prefix has been removed).
 
     FullCalculation solves the complete optimization problem using all time steps.
 
@@ -109,13 +106,13 @@ class FullCalculation(_FullOptimization):
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
-        _deprecation_warning('FullCalculation', 'FullOptimization')
+        _deprecation_warning('FullCalculation', 'Optimization')
         super().__init__(name, flow_system, active_timesteps, folder, normalize_weights)
 
 
-class AggregatedCalculation(_AggregatedOptimization):
+class AggregatedCalculation(_ClusteredOptimization):
     """
-    DEPRECATED: Use AggregatedOptimization instead.
+    DEPRECATED: Use ClusteredOptimization instead.
 
     AggregatedCalculation reduces computational complexity by clustering time series into typical periods.
 
@@ -144,7 +141,7 @@ class AggregatedCalculation(_AggregatedOptimization):
         ] = None,
         folder: pathlib.Path | None = None,
     ):
-        _deprecation_warning('AggregatedCalculation', 'AggregatedOptimization')
+        _deprecation_warning('AggregatedCalculation', 'ClusteredOptimization')
         super().__init__(name, flow_system, aggregation_parameters, components_to_clusterize, active_timesteps, folder)
 
 
