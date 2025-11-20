@@ -1109,24 +1109,24 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
-class OptimizationResults(CalculationResults):
+class Results(CalculationResults):
     """Comprehensive container for optimization results and analysis tools.
 
-    This is the new name for CalculationResults. All functionality is inherited from CalculationResults.
-    Use OptimizationResults for new code, while CalculationResults remains available for backwards compatibility.
+    This is the primary results class. All functionality is inherited from CalculationResults.
+    Use Results for new code, while CalculationResults remains available for backwards compatibility.
 
     For full documentation, see CalculationResults.
     """
 
     @classmethod
-    def from_optimization(cls, optimization) -> OptimizationResults:
-        """Create OptimizationResults from an Optimization instance.
+    def from_optimization(cls, optimization) -> Results:
+        """Create Results from an Optimization instance.
 
         Args:
             optimization: The Optimization instance to extract results from.
 
         Returns:
-            OptimizationResults: New instance containing the optimization results.
+            Results: New instance containing the optimization results.
         """
         # Call the parent from_calculation method
         return cls.from_calculation(optimization)
@@ -2371,24 +2371,24 @@ class SegmentedCalculationResults:
         logger.info(f'Saved calculation "{name}" to {path}')
 
 
-class SegmentedOptimizationResults(SegmentedCalculationResults):
+class SegmentedResults(SegmentedCalculationResults):
     """Results container for segmented optimization calculations with temporal decomposition.
 
-    This is the new name for SegmentedCalculationResults. All functionality is inherited from SegmentedCalculationResults.
-    Use SegmentedOptimizationResults for new code, while SegmentedCalculationResults remains available for backwards compatibility.
+    This is the primary segmented results class. All functionality is inherited from SegmentedCalculationResults.
+    Use SegmentedResults for new code, while SegmentedCalculationResults remains available for backwards compatibility.
 
     For full documentation, see SegmentedCalculationResults.
     """
 
     @classmethod
     def from_optimization(cls, optimization):
-        """Create SegmentedOptimizationResults from a SegmentedOptimization instance.
+        """Create SegmentedResults from a SegmentedOptimization instance.
 
         Args:
             optimization: The SegmentedOptimization instance to extract results from.
 
         Returns:
-            SegmentedOptimizationResults: New instance containing the optimization results.
+            SegmentedResults: New instance containing the optimization results.
         """
         # Call the parent from_calculation method
         return cls.from_calculation(optimization)

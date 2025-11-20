@@ -29,7 +29,7 @@ from .config import CONFIG
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
-from .results import OptimizationResults, SegmentedOptimizationResults
+from .results import Results, SegmentedResults
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -88,7 +88,7 @@ class _Optimization:
 
         self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
         self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
-        self.results: OptimizationResults | None = None
+        self.results: Results | None = None
 
         if self.folder.exists() and not self.folder.is_dir():
             raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
@@ -272,7 +272,7 @@ class Optimization(_Optimization):
                 + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
 
-        self.results = OptimizationResults.from_optimization(self)
+        self.results = Results.from_optimization(self)
 
         return self
 
@@ -684,7 +684,7 @@ class SegmentedOptimization(_Optimization):
 
         logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
-        self.results = SegmentedOptimizationResults.from_optimization(self)
+        self.results = SegmentedResults.from_optimization(self)
 
         return self
 
