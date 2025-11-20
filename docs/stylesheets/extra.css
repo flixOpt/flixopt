@@ -506,11 +506,7 @@
    ========================================================================= */
 
 /* Center home page content when navigation is hidden */
-.md-content__inner:has(.hero-section) {
-  max-width: 1400px;
-  margin-left: auto;
-  margin-right: auto;
-}
+/* Remove this rule as it conflicts with TOC layout */
 
 .hero-section {
   text-align: center;
