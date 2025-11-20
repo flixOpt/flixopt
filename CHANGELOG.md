@@ -49,38 +49,14 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
-## [Unreleased] - ????-??-??
+Until here -->
 
-**Summary**:
-
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
-
-### ✨ Added
-
-### 💥 Breaking Changes
-
-### ♻️ Changed
-
-### 🗑️ Deprecated
-
-### 🔥 Removed
-
-### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
+## [Upcoming] - ????-??-??
 
 ### 📝 Docs
 - Added missing examples to docs.
 
-### 👷 Development
-
-### 🚧 Known Issues
-
 ---
-
-Until here -->
 
 ## [4.0.0] - 2025-11-19
 
