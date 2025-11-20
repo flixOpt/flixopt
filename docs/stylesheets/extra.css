@@ -747,27 +747,38 @@ button:focus-visible {
    Footer Alignment Fix
    ========================================================================= */
 
-/* Align footer with content width */
-.md-footer-meta__inner,
-.md-footer__inner {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding-left: 1.2rem;
-  padding-right: 1.2rem;
+/* Hide the social media footer section */
+.md-footer-meta {
+  display: none;
 }
 
+/* Ensure footer navigation spans properly */
+.md-footer {
+  width: 100%;
+}
+
+/* Footer navigation content matches page width */
+.md-footer .md-grid,
+.md-footer__inner {
+  max-width: 1300px !important;
+  margin: 0 auto !important;
+  padding-left: 1.2rem !important;
+  padding-right: 1.2rem !important;
+}
+
+/* Responsive padding to match content area */
 @media screen and (min-width: 76.25em) {
-  .md-footer-meta__inner,
+  .md-footer .md-grid,
   .md-footer__inner {
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
   }
 }
 
 @media screen and (min-width: 100em) {
-  .md-footer-meta__inner,
+  .md-footer .md-grid,
   .md-footer__inner {
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
   }
 }
