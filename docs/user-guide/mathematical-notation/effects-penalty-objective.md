@@ -1,212 +1,337 @@
 # Effects, Penalty & Objective
 
-## Effects
+Effects quantify system-wide impacts like costs, emissions, or resource consumption, aggregating contributions from Elements across the FlowSystem. One Effect serves as the optimization objective, while others can be tracked and constrained.
 
-[`Effects`][flixopt.effects.Effect] are used to quantify system-wide impacts like costs, emissions, or resource consumption. These arise from **shares** contributed by **Elements** such as [Flows](elements/Flow.md), [Storage](elements/Storage.md), and other components.
+=== "Variables"
 
-**Example:**
+    | Symbol | Python Name | Description | Domain | Created When |
+    |--------|-------------|-------------|--------|--------------|
+    | $E_{e,\text{per}}$ | `(periodic)\|total` | Total periodic effect (time-independent) | $\mathbb{R}$ | Always (per Effect) |
+    | $E_{e,\text{temp}}(\text{t}_i)$ | `(temporal)\|total` | Temporal effect at time $\text{t}_i$ | $\mathbb{R}$ | Always (per Effect) |
+    | $E_e$ | `total` | Total effect (periodic + temporal combined) | $\mathbb{R}$ | Always (per Effect) |
+    | $\Phi$ | `penalty` | Penalty term for constraint violations | $\mathbb{R}_+$ | Always (system-wide) |
+    | - | `total_over_periods` | Weighted sum of total effect across all periods | $\mathbb{R}$ | `minimum_over_periods` or `maximum_over_periods` specified |
 
-[`Flows`][flixopt.elements.Flow] have an attribute `effects_per_flow_hour` that defines the effect contribution per flow-hour:
-- Costs (€/kWh)
-- Emissions (kg CO₂/kWh)
-- Primary energy consumption (kWh_primary/kWh)
+=== "Constraints"
 
-Effects are categorized into two domains:
+    **Element shares to periodic effects**:
 
-1. **Temporal effects** - Time-dependent contributions (e.g., operational costs, hourly emissions)
-2. **Periodic effects** - Time-independent contributions (e.g., investment costs, fixed annual fees)
+    $$\label{eq:Share_periodic}
+    s_{l \rightarrow e, \text{per}} = \sum_{v \in \mathcal{V}_{l, \text{per}}} v \cdot \text{a}_{v \rightarrow e}
+    $$
 
-### Multi-Dimensional Effects
+    Where $\mathcal{V}_{l, \text{per}}$ are periodic (investment-related) variables of element $l$, and $\text{a}_{v \rightarrow e}$ is the effect factor (e.g., €/kW).
 
-**The formulations below are written with time index $\text{t}_i$ only, but automatically expand when periods and/or scenarios are present.**
+    ---
 
-When the FlowSystem has additional dimensions (see [Dimensions](dimensions.md)):
+    **Element shares to temporal effects**:
 
-- **Temporal effects** are indexed by all present dimensions: $E_{e,\text{temp}}(\text{t}_i, y, s)$
-- **Periodic effects** are indexed by period only (scenario-independent within a period): $E_{e,\text{per}}(y)$
-- Effects are aggregated with dimension weights in the objective function
+    $$\label{eq:Share_temporal}
+    s_{l \rightarrow e, \text{temp}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{temp}}} v(\text{t}_i) \cdot \text{a}_{v \rightarrow e}(\text{t}_i)
+    $$
 
-For complete details on how dimensions affect effects and the objective, see [Dimensions](dimensions.md).
+    Where $\mathcal{V}_{l, \text{temp}}$ are temporal (operational) variables, and $\text{a}_{v \rightarrow e}(\text{t}_i)$ is the time-varying effect factor (e.g., €/kWh).
+
+    ---
+
+    **Total periodic effect**:
+
+    $$\label{eq:Effect_periodic}
+    E_{e, \text{per}} =
+    \sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{per}} +
+    \sum_{x \in \mathcal{E}\backslash e} E_{x, \text{per}}  \cdot \text{r}_{x \rightarrow  e,\text{per}}
+    $$
+
+    Aggregates element periodic shares plus cross-effect contributions (e.g., CO₂ → costs via carbon pricing).
+
+    ---
+
+    **Total temporal effect**:
+
+    $$\label{eq:Effect_temporal}
+    E_{e, \text{temp}}(\text{t}_{i}) =
+    \sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{temp}}(\text{t}_i) +
+    \sum_{x \in \mathcal{E}\backslash e} E_{x, \text{temp}}(\text{t}_i) \cdot \text{r}_{x \rightarrow {e},\text{temp}}(\text{t}_i)
+    $$
+
+    Aggregates element temporal shares plus cross-effect contributions at each timestep.
+
+    ---
+
+    **Total temporal effect (sum over time)**:
+
+    $$\label{eq:Effect_temporal_total}
+    E_{e,\text{temp},\text{tot}} = \sum_{i=1}^n  E_{e,\text{temp}}(\text{t}_{i})
+    $$
+
+    ---
+
+    **Total combined effect**:
+
+    $$\label{eq:Effect_Total}
+    E_{e} = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}
+    $$
+
+    ---
+
+    **Penalty term**:
+
+    $$\label{eq:Penalty}
+    \Phi = \sum_{l \in \mathcal{L}} \left( s_{l \rightarrow \Phi}  +\sum_{\text{t}_i \in \mathcal{T}} s_{l \rightarrow \Phi}(\text{t}_{i}) \right)
+    $$
+
+    Accumulates penalty shares from elements (primarily from [Bus](elements/Bus.md) via `excess_penalty_per_flow_hour`).
+
+    ---
+
+    **Objective function**:
+
+    $$\label{eq:Objective}
+    \min \left( E_{\Omega} + \Phi \right)
+    $$
+
+    Where $E_{\Omega}$ is the chosen objective effect (designated with `is_objective=True`).
+
+    ---
+
+    **Effect bounds - Temporal total** (when `minimum_temporal` or `maximum_temporal` specified):
+
+    $$\label{eq:Bounds_Temporal_Total}
+    E_{e,\text{temp}}^\text{L} \leq E_{e,\text{temp},\text{tot}} \leq E_{e,\text{temp}}^\text{U}
+    $$
+
+    ---
+
+    **Effect bounds - Temporal per timestep** (when `minimum_per_hour` or `maximum_per_hour` specified):
+
+    $$\label{eq:Bounds_Timestep}
+    E_{e,\text{temp}}^\text{L}(\text{t}_i) \leq E_{e,\text{temp}}(\text{t}_i) \leq E_{e,\text{temp}}^\text{U}(\text{t}_i)
+    $$
+
+    ---
+
+    **Effect bounds - Periodic** (when `minimum_periodic` or `maximum_periodic` specified):
+
+    $$\label{eq:Bounds_Periodic}
+    E_{e,\text{per}}^\text{L} \leq E_{e,\text{per}} \leq E_{e,\text{per}}^\text{U}
+    $$
+
+    ---
+
+    **Effect bounds - Total combined** (when `minimum_total` or `maximum_total` specified):
+
+    $$\label{eq:Bounds_Total}
+    E_e^\text{L} \leq E_e \leq E_e^\text{U}
+    $$
+
+    ---
+
+    **Effect bounds - Across all periods** (when `minimum_over_periods` or `maximum_over_periods` specified):
+
+    $$\label{eq:Bounds_Over_Periods}
+    E_e^\text{L,periods} \leq \sum_{y \in \mathcal{Y}} w_y \cdot E_e(y) \leq E_e^\text{U,periods}
+    $$
+
+    **Mathematical Patterns:** Effect Aggregation, Weighted Objectives
+
+=== "Parameters"
+
+    | Symbol | Python Parameter | Description | Default |
+    |--------|------------------|-------------|---------|
+    | $\mathcal{E}$ | - | Set of all effects in the system | From registered Effects |
+    | $\mathcal{L}$ | - | Set of all elements in the FlowSystem | From all Elements |
+    | $\mathcal{T}$ | - | Set of all timesteps | From system time index |
+    | $\mathcal{V}_{l, \text{per}}$ | - | Subset of periodic (investment) variables for element $l$ | Element-dependent |
+    | $\mathcal{V}_{l, \text{temp}}$ | - | Subset of temporal (operational) variables for element $l$ | Element-dependent |
+    | $\mathcal{Y}$ | - | Set of periods | From system dimensions |
+    | $\text{a}_{v \rightarrow e}$ | - | Effect factor (e.g., €/kW for investment) | Element-specific |
+    | $\text{a}_{v \rightarrow e}(\text{t}_i)$ | - | Time-varying effect factor (e.g., €/kWh) | Element-specific |
+    | $\text{r}_{x \rightarrow e, \text{per}}$ | `share_from_periodic` | Periodic conversion factor from effect $x$ to $e$ | None |
+    | $\text{r}_{x \rightarrow e, \text{temp}}(\text{t}_i)$ | `share_from_temporal` | Temporal conversion factor from effect $x$ to $e$ | None |
+    | $w_y$ | `weights` | Period weights (e.g., discount factors) | From FlowSystem or Effect-specific |
+    | - | `description` | Descriptive name for the effect | None |
+    | - | `is_objective` | If True, this effect is the optimization objective | False |
+    | - | `is_standard` | If True, allows direct value input without effect dictionaries | False |
+    | - | `maximum_over_periods` | Maximum weighted sum across all periods | None |
+    | - | `maximum_per_hour` | Maximum contribution per timestep | None |
+    | - | `maximum_periodic` | Maximum periodic contribution | None |
+    | - | `maximum_temporal` | Maximum total temporal contribution | None |
+    | - | `maximum_total` | Maximum total effect (periodic + temporal) | None |
+    | - | `minimum_over_periods` | Minimum weighted sum across all periods | None |
+    | - | `minimum_per_hour` | Minimum contribution per timestep | None |
+    | - | `minimum_periodic` | Minimum periodic contribution | None |
+    | - | `minimum_temporal` | Minimum total temporal contribution | None |
+    | - | `minimum_total` | Minimum total effect (periodic + temporal) | None |
+    | - | `unit` | Unit of the effect (informative only) | None |
+
+=== "Use Cases"
+
+    ## Basic Cost Objective
+
+    ```python
+    from flixopt import Effect, Flow
+
+    # Define cost effect
+    cost = Effect(
+        label='system_costs',
+        unit='€',
+        is_objective=True,  # This is what we minimize
+    )
+
+    # Elements contribute via effects parameters
+    generator = Flow(
+        label='electricity_out',
+        bus='grid',
+        size=100,
+        effects_per_flow_hour={'system_costs': 45},  # €45/MWh operational cost
+    )
+    ```
+
+    **Variables:** $E_{\text{costs},\text{per}}$, $E_{\text{costs},\text{temp}}(\text{t}_i)$, $E_{\text{costs}}$
+
+    **Constraints:** $\eqref{eq:Share_temporal}$ accumulating operational costs, $\eqref{eq:Effect_temporal}$ aggregating across elements, $\eqref{eq:Effect_Total}$ combining domains, $\eqref{eq:Objective}$ minimizing total cost
+
+    ---
+
+    ## Multi-Criteria: Cost with Emission Constraint
+
+    ```python
+    from flixopt import Effect, Flow
+
+    # Cost objective
+    cost = Effect(
+        label='costs',
+        unit='€',
+        is_objective=True,
+    )
+
+    # CO₂ emissions as constraint
+    co2 = Effect(
+        label='co2_emissions',
+        unit='kg',
+        maximum_temporal=100000,  # Max 100 tons CO₂ per period
+    )
+
+    # Generator with both effects
+    generator = Flow(
+        label='electricity_out',
+        bus='grid',
+        size=100,
+        effects_per_flow_hour={
+            'costs': 45,  # €45/MWh
+            'co2_emissions': 0.8,  # 0.8 kg CO₂/kWh
+        },
+    )
+    ```
+
+    **Variables:** $E_{\text{costs}}$, $E_{\text{CO}_2}$, $\Phi$
+
+    **Constraints:** $\eqref{eq:Objective}$ minimizing costs, $\eqref{eq:Bounds_Temporal_Total}$ with $E_{\text{CO}_2,\text{temp},\text{tot}} \leq 100{,}000$ kg
+
+    **Behavior:** ε-constraint method - optimize one objective while constraining another
+
+    ---
+
+    ## Cross-Effect: Carbon Pricing
+
+    ```python
+    from flixopt import Effect
+
+    # CO₂ emissions
+    co2 = Effect(
+        label='co2_emissions',
+        unit='kg',
+    )
+
+    # Cost with carbon pricing
+    cost = Effect(
+        label='costs',
+        unit='€',
+        is_objective=True,
+        share_from_temporal={'co2_emissions': 0.05},  # €50/ton CO₂
+    )
+    ```
+
+    **Variables:** $E_{\text{CO}_2,\text{temp}}(\text{t}_i)$, $E_{\text{costs},\text{temp}}(\text{t}_i)$
+
+    **Constraints:** $\eqref{eq:Effect_temporal}$ with cross-effect term: $E_{\text{costs},\text{temp}}(\text{t}_i) = s_{\text{costs}}(\text{t}_i) + E_{\text{CO}_2,\text{temp}}(\text{t}_i) \cdot 0.05$
+
+    **Behavior:** Weighted sum method - CO₂ emissions automatically converted to costs
+
+    ---
+
+    ## Investment Constraints
+
+    ```python
+    from flixopt import Effect, Flow, InvestParameters
+
+    # Investment budget constraint
+    capex = Effect(
+        label='capital_costs',
+        unit='€',
+        maximum_periodic=5_000_000,  # €5M investment budget
+    )
+
+    cost = Effect(
+        label='total_costs',
+        unit='€',
+        is_objective=True,
+    )
+
+    # Battery with investment
+    battery_flow = Flow(
+        label='storage_capacity',
+        bus='electricity',
+        size=InvestParameters(
+            minimum_size=0,
+            maximum_size=1000,
+            effects_of_investment_per_size={'capital_costs': 600},  # €600/kWh
+            effects_of_investment_per_size={'total_costs': 80},  # Annualized: €80/kWh/year
+        ),
+    )
+    ```
+
+    **Variables:** $E_{\text{capex},\text{per}}$, $E_{\text{costs},\text{per}}$, $E_{\text{costs},\text{temp}}(\text{t}_i)$
+
+    **Constraints:** $\eqref{eq:Share_periodic}$ from investment, $\eqref{eq:Bounds_Periodic}$ with $E_{\text{capex},\text{per}} \leq 5{,}000{,}000$ €, $\eqref{eq:Objective}$ minimizing total costs
+
+    ---
+
+    ## Hourly Peak Constraint
+
+    ```python
+    from flixopt import Effect, Flow
+
+    # Peak power limit
+    peak_power = Effect(
+        label='grid_power',
+        unit='kW',
+        maximum_per_hour=500,  # Max 500 kW at any timestep
+    )
+
+    grid_import = Flow(
+        label='grid_import',
+        bus='electricity',
+        size=1000,
+        effects_per_flow_hour={'grid_power': 1},  # 1 kW per kW flow
+    )
+    ```
+
+    **Variables:** $E_{\text{peak},\text{temp}}(\text{t}_i)$
+
+    **Constraints:** $\eqref{eq:Bounds_Timestep}$ with $E_{\text{peak},\text{temp}}(\text{t}_i) \leq 500$ kW for all $\text{t}_i$
 
 ---
 
-## Effect Formulation
+## Multi-Dimensional Objective
 
-### Shares from Elements
-
-Each element $l$ contributes shares to effect $e$ in both temporal and periodic domains:
-
-**Periodic shares** (time-independent):
-$$ \label{eq:Share_periodic}
-s_{l \rightarrow e, \text{per}} = \sum_{v \in \mathcal{V}_{l, \text{per}}} v \cdot \text{a}_{v \rightarrow e}
-$$
-
-**Temporal shares** (time-dependent):
-$$ \label{eq:Share_temporal}
-s_{l \rightarrow e, \text{temp}}(\text{t}_i) = \sum_{v \in \mathcal{V}_{l,\text{temp}}} v(\text{t}_i) \cdot \text{a}_{v \rightarrow e}(\text{t}_i)
-$$
-
-Where:
-
-- $\text{t}_i$ is the time step
-- $\mathcal{V}_l$ is the set of all optimization variables of element $l$
-- $\mathcal{V}_{l, \text{per}}$ is the subset of periodic (investment-related) variables
-- $\mathcal{V}_{l, \text{temp}}$ is the subset of temporal (operational) variables
-- $v$ is an optimization variable
-- $v(\text{t}_i)$ is the variable value at timestep $\text{t}_i$
-- $\text{a}_{v \rightarrow e}$ is the effect factor (e.g., €/kW for investment, €/kWh for operation)
-- $s_{l \rightarrow e, \text{per}}$ is the periodic share of element $l$ to effect $e$
-- $s_{l \rightarrow e, \text{temp}}(\text{t}_i)$ is the temporal share of element $l$ to effect $e$
-
-**Examples:**
-- **Periodic share**: Investment cost = $\text{size} \cdot \text{specific\_cost}$ (€/kW)
-- **Temporal share**: Operational cost = $\text{flow\_rate}(\text{t}_i) \cdot \text{price}(\text{t}_i)$ (€/kWh)
-
----
-
-### Cross-Effect Contributions
-
-Effects can contribute shares to other effects, enabling relationships like carbon pricing or resource accounting.
-
-An effect $x$ can contribute to another effect $e \in \mathcal{E}\backslash x$ via conversion factors:
-
-**Example:** CO₂ emissions (kg) → Monetary costs (€)
-- Effect $x$: "CO₂ emissions" (unit: kg)
-- Effect $e$: "costs" (unit: €)
-- Factor $\text{r}_{x \rightarrow e}$: CO₂ price (€/kg)
-
-**Note:** Circular references must be avoided.
-
-### Total Effect Calculation
-
-**Periodic effects** aggregate element shares and cross-effect contributions:
-
-$$ \label{eq:Effect_periodic}
-E_{e, \text{per}} =
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e,\text{per}} +
-\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{per}}  \cdot \text{r}_{x \rightarrow  e,\text{per}}
-$$
-
-**Temporal effects** at each timestep:
-
-$$ \label{eq:Effect_temporal}
-E_{e, \text{temp}}(\text{t}_{i}) =
-\sum_{l \in \mathcal{L}} s_{l \rightarrow e, \text{temp}}(\text{t}_i) +
-\sum_{x \in \mathcal{E}\backslash e} E_{x, \text{temp}}(\text{t}_i) \cdot \text{r}_{x \rightarrow {e},\text{temp}}(\text{t}_i)
-$$
-
-**Total temporal effects** (sum over all timesteps):
-
-$$\label{eq:Effect_temporal_total}
-E_{e,\text{temp},\text{tot}} = \sum_{i=1}^n  E_{e,\text{temp}}(\text{t}_{i})
-$$
-
-**Total effect** (combining both domains):
-
-$$ \label{eq:Effect_Total}
-E_{e} = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}
-$$
-
-Where:
-
-- $\mathcal{L}$ is the set of all elements in the FlowSystem
-- $\mathcal{E}$ is the set of all effects
-- $\text{r}_{x \rightarrow e, \text{per}}$ is the periodic conversion factor from effect $x$ to effect $e$
-- $\text{r}_{x \rightarrow e, \text{temp}}(\text{t}_i)$ is the temporal conversion factor
-
----
-
-### Constraining Effects
-
-Effects can be bounded to enforce limits on costs, emissions, or other impacts:
-
-**Total bounds** (apply to $E_{e,\text{per}}$, $E_{e,\text{temp},\text{tot}}$, or $E_e$):
-
-$$ \label{eq:Bounds_Total}
-E^\text{L} \leq E \leq E^\text{U}
-$$
-
-**Temporal bounds per timestep:**
-
-$$ \label{eq:Bounds_Timestep}
-E_{e,\text{temp}}^\text{L}(\text{t}_i) \leq E_{e,\text{temp}}(\text{t}_i) \leq E_{e,\text{temp}}^\text{U}(\text{t}_i)
-$$
-
-**Implementation:** See [`Effect`][flixopt.effects.Effect] parameters:
-- `minimum_temporal`, `maximum_temporal` - Total temporal bounds
-- `minimum_per_hour`, `maximum_per_hour` - Hourly temporal bounds
-- `minimum_periodic`, `maximum_periodic` - Periodic bounds
-- `minimum_total`, `maximum_total` - Combined total bounds
-
----
-
-## Penalty
-
-In addition to user-defined [Effects](#effects), every FlixOpt model includes a **Penalty** term $\Phi$ to:
-- Prevent infeasible problems
-- Simplify troubleshooting by allowing constraint violations with high cost
-
-Penalty shares originate from elements, similar to effect shares:
-
-$$ \label{eq:Penalty}
-\Phi = \sum_{l \in \mathcal{L}} \left( s_{l \rightarrow \Phi}  +\sum_{\text{t}_i \in \mathcal{T}} s_{l \rightarrow \Phi}(\text{t}_{i}) \right)
-$$
-
-Where:
-
-- $\mathcal{L}$ is the set of all elements
-- $\mathcal{T}$ is the set of all timesteps
-- $s_{l \rightarrow \Phi}$ is the penalty share from element $l$
-
-**Current usage:** Penalties primarily occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost.
-
----
-
-## Objective Function
-
-The optimization objective minimizes the chosen effect plus any penalties:
-
-$$ \label{eq:Objective}
-\min \left( E_{\Omega} + \Phi \right)
-$$
-
-Where:
-
-- $E_{\Omega}$ is the chosen **objective effect** (see $\eqref{eq:Effect_Total}$)
-- $\Phi$ is the [penalty](#penalty) term
-
-One effect must be designated as the objective via `is_objective=True`.
-
-### Multi-Criteria Optimization
-
-This formulation supports multiple optimization approaches:
-
-**1. Weighted Sum Method**
-- The objective effect can incorporate other effects via cross-effect factors
-- Example: Minimize costs while including carbon pricing: $\text{CO}_2 \rightarrow \text{costs}$
-
-**2. ε-Constraint Method**
-- Optimize one effect while constraining others
-- Example: Minimize costs subject to $\text{CO}_2 \leq 1000$ kg
-
----
-
-## Objective with Multiple Dimensions
-
-When the FlowSystem includes **periods** and/or **scenarios** (see [Dimensions](dimensions.md)), the objective aggregates effects across all dimensions using weights.
+When the FlowSystem includes **periods** and/or **scenarios** (see [Dimensions](dimensions.md)), the objective aggregates effects using weights.
 
 ### Time Only (Base Case)
 
 $$
 \min \quad E_{\Omega} + \Phi = \sum_{\text{t}_i \in \mathcal{T}} E_{\Omega,\text{temp}}(\text{t}_i) + E_{\Omega,\text{per}} + \Phi
 $$
-
-Where:
-- Temporal effects sum over time: $\sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i)$
-- Periodic effects are constant: $E_{\Omega,\text{per}}$
-- Penalty sums over time: $\Phi = \sum_{\text{t}_i} \Phi(\text{t}_i)$
-
----
 
 ### Time + Scenario
 
@@ -215,18 +340,9 @@ $$
 $$
 
 Where:
-- $\mathcal{S}$ is the set of scenarios
-- $w_s$ is the weight for scenario $s$ (typically scenario probability)
-- Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ (same for all $s$)
+- Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$
 - Temporal effects are **scenario-specific**: $E_{\Omega,\text{temp}}(s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, s)$
-- Penalties are **scenario-specific**: $\Phi(s) = \sum_{\text{t}_i} \Phi(\text{t}_i, s)$
-
-**Interpretation:**
-- Investment decisions (periodic) made once, used across all scenarios
-- Operations (temporal) differ by scenario
-- Objective balances expected value across scenarios
-
----
+- $w_s$ is the scenario weight (typically probability)
 
 ### Time + Period
 
@@ -234,38 +350,22 @@ $$
 \min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \left( E_{\Omega}(y) + \Phi(y) \right)
 $$
 
-Where:
-- $\mathcal{Y}$ is the set of periods (e.g., years)
-- $w_y$ is the weight for period $y$ (typically annual discount factor)
-- Each period $y$ has **independent** periodic and temporal effects
-- Each period $y$ has **independent** investment and operational decisions
+Where $w_y$ is the period weight (typically annual discount factor).
 
----
-
-### Time + Period + Scenario (Full Multi-Dimensional)
+### Time + Period + Scenario (Full)
 
 $$
 \min \quad \sum_{y \in \mathcal{Y}} \left[ w_y \cdot E_{\Omega,\text{per}}(y) + \sum_{s \in \mathcal{S}} w_{y,s} \cdot \left( E_{\Omega,\text{temp}}(y,s) + \Phi(y,s) \right) \right]
 $$
 
-Where:
-- $\mathcal{S}$ is the set of scenarios
-- $\mathcal{Y}$ is the set of periods
-- $w_y$ is the period weight (for periodic effects)
-- $w_{y,s}$ is the combined period-scenario weight (for temporal effects)
-- **Periodic effects** $E_{\Omega,\text{per}}(y)$ are period-specific but **scenario-independent**
-- **Temporal effects** $E_{\Omega,\text{temp}}(y,s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, y, s)$ are **fully indexed**
-- **Penalties** $\Phi(y,s)$ are **fully indexed**
-
 **Key Principle:**
-- Scenarios and periods are **operationally independent** (no energy/resource exchange)
-- Coupled **only through the weighted objective function**
-- **Periodic effects within a period are shared across all scenarios** (investment made once per period)
-- **Temporal effects are independent per scenario** (different operations under different conditions)
+- **Periodic effects within a period are shared across all scenarios** (investment made once)
+- **Temporal effects are independent per scenario** (different operations)
+- Scenarios and periods are **operationally independent**, coupled only through the weighted objective
 
 ---
 
-## Summary
+## Summary Table
 
 | Concept | Formulation | Time Dependency | Dimension Indexing |
 |---------|-------------|-----------------|-------------------|
@@ -278,9 +378,15 @@ Where:
 
 ---
 
+## Implementation
+
+- **Element Class:** [`Effect`][flixopt.effects.Effect]
+- **Model Class:** [`EffectModel`][flixopt.effects.EffectModel]
+- **Collection Class:** [`EffectCollection`][flixopt.effects.EffectCollection]
+
 ## See Also
 
-- [Dimensions](dimensions.md) - Complete explanation of multi-dimensional modeling
-- [Flow](elements/Flow.md) - Temporal effect contributions via `effects_per_flow_hour`
-- [InvestParameters](features/InvestParameters.md) - Periodic effect contributions via investment
-- [Effect API][flixopt.effects.Effect] - Implementation details and parameters
+- **System-Level:** [Dimensions](dimensions.md) - Multi-dimensional modeling with periods and scenarios
+- **Elements:** [Flow](elements/Flow.md) - Temporal contributions via `effects_per_flow_hour`
+- **Features:** [InvestParameters](features/InvestParameters.md) - Periodic contributions via investment effects
+- **Components:** [Bus](elements/Bus.md) - Penalty contributions via `excess_penalty_per_flow_hour`
