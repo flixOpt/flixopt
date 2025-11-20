@@ -23,7 +23,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from . import io as fx_io
-from .aggregation import Aggregation, AggregationModel, AggregationParameters
+from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
 from .config import CONFIG
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
@@ -292,22 +292,22 @@ class ClusteredOptimization(_Optimization):
     Args:
         name: Name of the optimization
         flow_system: FlowSystem to be optimized
-        aggregation_parameters: Parameters for aggregation. See AggregationParameters class documentation
+        clustering_parameters: Parameters for clustering. See ClusteringParameters class documentation
         components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for optimization. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
 
     Attributes:
-        aggregation (Aggregation | None): Contains the clustered time series data
-        aggregation_model (AggregationModel | None): Contains Variables and Constraints that equalize clusters of the time series data
+        clustering (Clustering | None): Contains the clustered time series data
+        clustering_model (ClusteringModel | None): Contains Variables and Constraints that equalize clusters of the time series data
     """
 
     def __init__(
         self,
         name: str,
         flow_system: FlowSystem,
-        aggregation_parameters: AggregationParameters,
+        clustering_parameters: ClusteringParameters,
         components_to_clusterize: list[Component] | None = None,
         active_timesteps: Annotated[
             pd.DatetimeIndex | None,
@@ -318,10 +318,10 @@ class ClusteredOptimization(_Optimization):
         if flow_system.scenarios is not None:
             raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
         super().__init__(name, flow_system, active_timesteps, folder=folder)
-        self.aggregation_parameters = aggregation_parameters
+        self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
-        self.aggregation: Aggregation | None = None
-        self.aggregation_model: AggregationModel | None = None
+        self.clustering: Clustering | None = None
+        self.clustering_model: ClusteringModel | None = None
 
     def do_modeling(self) -> ClusteredOptimization:
         t_start = timeit.default_timer()
@@ -331,16 +331,16 @@ class ClusteredOptimization(_Optimization):
         # Model the System
         self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
-        # Add Aggregation Submodel after modeling the rest
-        self.aggregation_model = AggregationModel(
-            self.model, self.aggregation_parameters, self.flow_system, self.aggregation, self.components_to_clusterize
+        # Add Clustering Submodel after modeling the rest
+        self.clustering_model = ClusteringModel(
+            self.model, self.clustering_parameters, self.flow_system, self.clustering, self.components_to_clusterize
         )
-        self.aggregation_model.do_modeling()
+        self.clustering_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
     def _perform_aggregation(self):
-        from .aggregation import Aggregation
+        from .clustering import Clustering
 
         t_start_agg = timeit.default_timer()
 
@@ -349,39 +349,38 @@ class ClusteredOptimization(_Optimization):
         dt_max = float(self.flow_system.hours_per_timestep.max().item())
         if not dt_min == dt_max:
             raise ValueError(
-                f'Aggregation failed due to inconsistent time step sizes:'
-                f'delta_t varies from {dt_min} to {dt_max} hours.'
+                f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        ratio = self.aggregation_parameters.hours_per_period / dt_max
+        ratio = self.clustering_parameters.hours_per_period / dt_max
         if not np.isclose(ratio, round(ratio), atol=1e-9):
             raise ValueError(
-                f'The selected {self.aggregation_parameters.hours_per_period=} does not match the time '
+                f'The selected {self.clustering_parameters.hours_per_period=} does not match the time '
                 f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
             )
 
         logger.info(f'{"":#^80}')
-        logger.info(f'{" Aggregating TimeSeries Data ":#^80}')
+        logger.info(f'{" Clustering TimeSeries Data ":#^80}')
 
         ds = self.flow_system.to_dataset()
 
         temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
 
-        # Aggregation - creation of aggregated timeseries:
-        self.aggregation = Aggregation(
+        # Clustering - creation of clustered timeseries:
+        self.clustering = Clustering(
             original_data=temporaly_changing_ds.to_dataframe(),
             hours_per_time_step=float(dt_min),
-            hours_per_period=self.aggregation_parameters.hours_per_period,
-            nr_of_periods=self.aggregation_parameters.nr_of_periods,
+            hours_per_period=self.clustering_parameters.hours_per_period,
+            nr_of_periods=self.clustering_parameters.nr_of_periods,
             weights=self.calculate_aggregation_weights(temporaly_changing_ds),
-            time_series_for_high_peaks=self.aggregation_parameters.labels_for_high_peaks,
-            time_series_for_low_peaks=self.aggregation_parameters.labels_for_low_peaks,
+            time_series_for_high_peaks=self.clustering_parameters.labels_for_high_peaks,
+            time_series_for_low_peaks=self.clustering_parameters.labels_for_low_peaks,
         )
 
-        self.aggregation.cluster()
-        self.aggregation.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'aggregation.html')
-        if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
+        self.clustering.cluster()
+        self.clustering.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'clustering.html')
+        if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
-            for name, series in self.aggregation.aggregated_data.items():
+            for name, series in self.clustering.aggregated_data.items():
                 da = (
                     DataConverter.to_dataarray(series, self.flow_system.coords)
                     .rename(name)
