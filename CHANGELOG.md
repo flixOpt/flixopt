@@ -51,10 +51,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [Upcoming] - ????-??-??
+## [Upcoming]
 
 ### 📝 Docs
 - Added missing examples to docs.
+
+This is not yet publicly released!
 
 ---
 
