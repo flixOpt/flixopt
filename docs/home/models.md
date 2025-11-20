@@ -1,139 +1,59 @@
-# Example Models & Use Cases
+# Model Types
 
-flixOpt can model a wide variety of energy and material flow systems. This page provides an overview of common model types and applications.
+flixOpt can model various energy and material flow systems.
 
-## Energy System Models
+## Common Model Types
 
-### Simple Dispatch
+### Dispatch Optimization
 
-Optimize operation of existing capacity with given power plants, storage, and demand.
+Optimize operation with fixed capacities:
 
-**Typical components:**
-
-- Generator flows with capacity and cost parameters
-- Storage with charge/discharge dynamics
+- Generator and storage operation
 - Fixed or time-varying demand
-- Grid connection with import/export limits
-
-**Applications:** Day-ahead dispatch, operational planning, market participation
+- Grid connection constraints
+- Typically short term time horizons
 
 ### Capacity Expansion
 
-Determine optimal investment in new capacity alongside operational decisions.
+Investment and operational decisions combined:
 
-**Typical components:**
-
-- Components with `InvestParameters` for sizing decisions
-- Multiple technology options (solar, wind, storage, etc.)
-- Long-term time series (full year or representative periods)
-- Investment cost parameters
-
-**Applications:** Generation expansion planning, storage sizing, grid reinforcement
+- Sizing with `InvestParameters`
+- Technology comparison (solar, wind, storage)
+- Annual time series or representative periods
+- Investment costs and constraints
 
 ### Multi-Period Planning
 
-Sequential investment decisions across multiple time periods with changing conditions.
+Sequential decisions across multiple periods:
 
-**Typical components:**
+- Two-stage optimization
+- Evolving costs and demand
+- Long-term transformation pathways
 
-- Two-stage optimization with investment and operational models
-- Evolving demand and technology costs
-- Existing capacity degradation
-- Long-term scenarios
-
-**Applications:** Long-term energy system pathways, infrastructure planning
-
-## Sector Coupling Models
+## Sector Coupling
 
 ### Power-to-Heat
-
-Integration of electric heat pumps, thermal storage, and power systems.
-
-**Typical components:**
-
-- Heat pumps as `LinearConverter` with COP
-- Thermal storage with temperature layers
-- Combined electricity and heat demand
+- Heat pumps (`LinearConverter` with COP)
+- Thermal storage
 - District heating networks
 
 ### Power-to-Gas
-
-Hydrogen production via electrolysis with storage and reconversion.
-
-**Typical components:**
-
-- Electrolyzer as `LinearConverter`
+- Electrolyzers
 - Hydrogen storage
-- Fuel cells or gas turbines for reconversion
-- Multiple energy carriers (electricity, hydrogen, heat)
+- Fuel cells
 
-### Combined Heat and Power (CHP)
-
-Cogeneration systems with heat and power outputs.
-
-**Typical components:**
-
-- CHP unit with fixed heat/power ratio
-- Heat and electricity buses
-- Thermal and electrical storage
+### Combined Heat and Power
+- CHP units with heat/power ratios
 - Multiple demand profiles
 
-## Industrial Applications
+## Time Resolution
 
-### Process Optimization
-
-Material and energy flows in industrial processes.
-
-**Typical components:**
-
-- Multiple material flows with conversion
-- Energy inputs (electricity, gas, heat)
-- Process constraints and sequencing
-- Quality or composition requirements
-
-### Multi-Commodity Networks
-
-Systems with multiple interacting energy carriers.
-
-**Typical components:**
-
-- Multiple bus types (electricity, gas, heat, hydrogen)
-- Conversion technologies between carriers
-- Storage for different commodities
-- Network flow constraints
-
-## Modeling Patterns
-
-### Time Series Handling
-
-- **Full resolution** - Hourly data for entire year (8760 hours)
+- **Full resolution** - 8760 hours/year
 - **Representative periods** - Typical days/weeks
-- **Aggregated periods** - Multi-hour timesteps
-- **Rolling horizon** - Sequential optimization windows
-
-### Uncertainty Modeling
-
-- **Scenario analysis** - Multiple demand/price scenarios
-- **Stochastic optimization** - Probabilistic parameters
-- **Robust optimization** - Worst-case scenarios
-- **Sensitivity analysis** - Parameter variation studies
-
-### Operational Constraints
-
-- **Ramping limits** - Maximum change between timesteps
-- **Minimum run time** - On/off parameters with duration tracking
-- **Load-following** - Constraints on partial load operation
-- **Reserve requirements** - Capacity held for contingencies
+- **Multi-hour timesteps** - Aggregated resolution
 
 ## Getting Started
 
-To build these types of models:
-
-1. **Start with examples** - See [Examples](../examples/index.md) for working code
-2. **Learn core concepts** - Read [Core Concepts](../user-guide/core-concepts.md)
-3. **Use recipes** - Follow [Recipes](../user-guide/recipes/index.md) for common patterns
-4. **Study formulations** - Review [Mathematical Notation](../user-guide/mathematical-notation/index.md)
-
-## Model Library
-
-*Coming soon: A library of reusable model templates and building blocks*
+1. Explore [Examples](../examples/index.md)
+2. Read [Core Concepts](../user-guide/core-concepts.md)
+3. Review [Mathematical Notation](../user-guide/mathematical-notation/index.md)
