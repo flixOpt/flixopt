@@ -221,7 +221,19 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             model: Linopy optimization model.
         Deprecated:
             flow_system: Use flow_system_data instead.
+
+        Note:
+            CalculationResults is deprecated. Use OptimizationResults instead.
         """
+        # Deprecation warning for CalculationResults
+        if self.__class__.__name__ == 'CalculationResults':
+            warnings.warn(
+                'CalculationResults is deprecated and will be removed in a future version. '
+                'Use OptimizationResults instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # Handle potential old "flow_system" parameter for backward compatibility
         if 'flow_system' in kwargs and flow_system_data is None:
             flow_system_data = kwargs.pop('flow_system')
@@ -1091,6 +1103,29 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
         logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
+
+
+class OptimizationResults(CalculationResults):
+    """Comprehensive container for optimization results and analysis tools.
+
+    This is the new name for CalculationResults. All functionality is inherited from CalculationResults.
+    Use OptimizationResults for new code, while CalculationResults remains available for backwards compatibility.
+
+    For full documentation, see CalculationResults.
+    """
+
+    @classmethod
+    def from_optimization(cls, optimization) -> OptimizationResults:
+        """Create OptimizationResults from an Optimization instance.
+
+        Args:
+            optimization: The Optimization instance to extract results from.
+
+        Returns:
+            OptimizationResults: New instance containing the optimization results.
+        """
+        # Call the parent from_calculation method
+        return cls.from_calculation(optimization)
 
 
 class _ElementResults:
@@ -2096,6 +2131,15 @@ class SegmentedCalculationResults:
         name: str,
         folder: pathlib.Path | None = None,
     ):
+        # Deprecation warning for SegmentedCalculationResults
+        if self.__class__.__name__ == 'SegmentedCalculationResults':
+            warnings.warn(
+                'SegmentedCalculationResults is deprecated and will be removed in a future version. '
+                'Use SegmentedOptimizationResults instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment
@@ -2321,6 +2365,29 @@ class SegmentedCalculationResults:
 
         fx_io.save_json(self.meta_data, path.with_suffix('.json'))
         logger.info(f'Saved calculation "{name}" to {path}')
+
+
+class SegmentedOptimizationResults(SegmentedCalculationResults):
+    """Results container for segmented optimization calculations with temporal decomposition.
+
+    This is the new name for SegmentedCalculationResults. All functionality is inherited from SegmentedCalculationResults.
+    Use SegmentedOptimizationResults for new code, while SegmentedCalculationResults remains available for backwards compatibility.
+
+    For full documentation, see SegmentedCalculationResults.
+    """
+
+    @classmethod
+    def from_optimization(cls, optimization):
+        """Create SegmentedOptimizationResults from a SegmentedOptimization instance.
+
+        Args:
+            optimization: The SegmentedOptimization instance to extract results from.
+
+        Returns:
+            SegmentedOptimizationResults: New instance containing the optimization results.
+        """
+        # Call the parent from_calculation method
+        return cls.from_calculation(optimization)
 
 
 def plot_heatmap(
