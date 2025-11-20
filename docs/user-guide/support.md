@@ -108,33 +108,10 @@ Want to contribute code?
 5. **Run tests** to ensure nothing breaks
 6. **Submit a pull request**
 
-## Commercial Support
-
-### Consulting
-
-For commercial support, training, or custom development:
-
-*Contact information coming soon*
-
-### Academic Collaboration
-
-Interested in collaborating on research using flixOpt?
-
-- **Institution:** Chair of Building Energy Systems and Heat Supply, TU Dresden
-- *Contact information coming soon*
-
 ## Stay Updated
 
-### Release Notes
-
-Follow development and new features:
-
 - **[Release Notes](../changelog.md)** - What's new in each version
-- **[Roadmap](../roadmap.md)** - Planned features and improvements
-
-### Social Media
-
-*Coming soon: Social media channels for updates and announcements*
+- **[Roadmap](../roadmap.md)** - Planned features
 
 ## Response Time
 
