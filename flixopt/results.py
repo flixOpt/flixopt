@@ -51,8 +51,8 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
-class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
-    """Comprehensive container for optimization calculation results and analysis tools.
+class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
+    """Comprehensive container for optimization results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
     component states, bus balances, and system effects. It offers powerful analysis
@@ -91,7 +91,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
         ```python
         # Load results from file
-        results = CalculationResults.from_file('results', 'annual_optimization')
+        results = Results.from_file('results', 'annual_optimization')
 
         # Access specific component results
         boiler_results = results['Boiler_01']
@@ -148,7 +148,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
     model: linopy.Model | None
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> Results:
         """Load CalculationResults from saved files.
 
         Args:
@@ -156,7 +156,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             name: Base name of saved files (without extensions).
 
         Returns:
-            CalculationResults: Loaded instance.
+            Results: Loaded instance.
         """
         folder = pathlib.Path(folder)
         paths = fx_io.CalculationResultsPaths(folder, name)
@@ -181,14 +181,14 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         )
 
     @classmethod
-    def from_calculation(cls, calculation: Calculation) -> CalculationResults:
+    def from_calculation(cls, calculation: Calculation) -> Results:
         """Create CalculationResults from a Calculation object.
 
         Args:
             calculation: Calculation object with solved model.
 
         Returns:
-            CalculationResults: New instance with extracted results.
+            Results: New instance with extracted results.
         """
         return cls(
             solution=calculation.model.solution,
@@ -1092,46 +1092,39 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
         if save_linopy_model:
             if self.model is None:
-                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
+                logger.critical('No model in the Results. Saving the model is not possible.')
             else:
                 self.model.to_netcdf(paths.linopy_model, engine='netcdf4')
 
         if document_model:
             if self.model is None:
-                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
+                logger.critical('No model in the Results. Documenting the model is not possible.')
             else:
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
         logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
-class Results(CalculationResults):
-    """Comprehensive container for optimization results and analysis tools.
+class CalculationResults(Results):
+    """DEPRECATED: Use Results instead.
 
-    This is the primary results class. All functionality is inherited from CalculationResults.
-    Use Results for new code, while CalculationResults remains available for backwards compatibility.
-
-    For full documentation, see CalculationResults.
+    Backwards-compatible alias for Results class.
+    All functionality is inherited from Results.
     """
 
-    @classmethod
-    def from_optimization(cls, optimization) -> Results:
-        """Create Results from an Optimization instance.
-
-        Args:
-            optimization: The Optimization instance to extract results from.
-
-        Returns:
-            Results: New instance containing the optimization results.
-        """
-        # Call the parent from_calculation method
-        return cls.from_calculation(optimization)
+    def __init__(self, *args, **kwargs):
+        # Only warn if directly instantiating CalculationResults (not subclasses)
+        if self.__class__.__name__ == 'CalculationResults':
+            warnings.warn(
+                'CalculationResults is deprecated and will be removed in a future version. Use Results instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        super().__init__(*args, **kwargs)
 
 
 class _ElementResults:
-    def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
-    ):
+    def __init__(self, calculation_results: Results, label: str, variables: list[str], constraints: list[str]):
         self._calculation_results = calculation_results
         self.label = label
         self._variable_names = variables
@@ -1214,7 +1207,7 @@ class _ElementResults:
 class _NodeResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: CalculationResults,
+        calculation_results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1956,7 +1949,7 @@ class EffectResults(_ElementResults):
 class FlowResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: CalculationResults,
+        calculation_results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1989,7 +1982,7 @@ class FlowResults(_ElementResults):
             return xr.DataArray(np.nan).rename(name)
 
 
-class SegmentedCalculationResults:
+class SegmentedResults:
     """Results container for segmented optimization calculations with temporal decomposition.
 
     This class manages results from SegmentedCalculation runs where large optimization
@@ -2016,7 +2009,7 @@ class SegmentedCalculationResults:
 
         ```python
         # Load segmented calculation results
-        results = SegmentedCalculationResults.from_file('results', 'annual_segmented')
+        results = SegmentedResults.from_file('results', 'annual_segmented')
 
         # Access unified results across all segments
         full_timeline = results.all_timesteps
@@ -2045,7 +2038,7 @@ class SegmentedCalculationResults:
         segmented_calc.do_modeling_and_solve(solver='gurobi')
 
         # Extract unified results
-        results = SegmentedCalculationResults.from_calculation(segmented_calc)
+        results = SegmentedResults.from_calculation(segmented_calc)
 
         # Save combined results
         results.to_file(compression=5)
@@ -2097,7 +2090,7 @@ class SegmentedCalculationResults:
         )
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedCalculationResults:
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedResults:
         """Load SegmentedCalculationResults from saved files.
 
         Args:
@@ -2105,14 +2098,14 @@ class SegmentedCalculationResults:
             name: Base name of saved files.
 
         Returns:
-            SegmentedCalculationResults: Loaded instance.
+            SegmentedResults: Loaded instance.
         """
         folder = pathlib.Path(folder)
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
         meta_data = fx_io.load_json(path.with_suffix('.json'))
         return cls(
-            [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
+            [Results.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -2367,27 +2360,23 @@ class SegmentedCalculationResults:
         logger.info(f'Saved calculation "{name}" to {path}')
 
 
-class SegmentedResults(SegmentedCalculationResults):
-    """Results container for segmented optimization calculations with temporal decomposition.
+class SegmentedCalculationResults(SegmentedResults):
+    """DEPRECATED: Use SegmentedResults instead.
 
-    This is the primary segmented results class. All functionality is inherited from SegmentedCalculationResults.
-    Use SegmentedResults for new code, while SegmentedCalculationResults remains available for backwards compatibility.
-
-    For full documentation, see SegmentedCalculationResults.
+    Backwards-compatible alias for SegmentedResults class.
+    All functionality is inherited from SegmentedResults.
     """
 
-    @classmethod
-    def from_optimization(cls, optimization):
-        """Create SegmentedResults from a SegmentedOptimization instance.
-
-        Args:
-            optimization: The SegmentedOptimization instance to extract results from.
-
-        Returns:
-            SegmentedResults: New instance containing the optimization results.
-        """
-        # Call the parent from_calculation method
-        return cls.from_calculation(optimization)
+    def __init__(self, *args, **kwargs):
+        # Only warn if directly instantiating SegmentedCalculationResults (not subclasses)
+        if self.__class__.__name__ == 'SegmentedCalculationResults':
+            warnings.warn(
+                'SegmentedCalculationResults is deprecated and will be removed in a future version. '
+                'Use SegmentedResults instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        super().__init__(*args, **kwargs)
 
 
 def plot_heatmap(
@@ -2416,7 +2405,7 @@ def plot_heatmap(
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
     This function provides a standalone interface to the heatmap plotting capabilities,
-    supporting the same modern features as CalculationResults.plot_heatmap().
+    supporting the same modern features as Results.plot_heatmap().
 
     Args:
         data: Data to plot. Can be a single DataArray or an xarray Dataset.
