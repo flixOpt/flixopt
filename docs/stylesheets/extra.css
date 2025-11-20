@@ -505,12 +505,20 @@
    Home Page Inline Styles (moved from docs/index.md)
    ========================================================================= */
 
+/* Center home page content when navigation is hidden */
+.md-content__inner:has(.hero-section) {
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .hero-section {
   text-align: center;
   padding: 4rem 2rem 3rem 2rem;
   background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
   border-radius: 1rem;
-  margin-bottom: 3rem;
+  margin: 0 auto 3rem auto;
+  max-width: 1200px;
 }
 
 .hero-section h1 {
@@ -570,18 +578,13 @@
 }
 
 .architecture-section {
-  margin: 4rem 0;
+  margin: 4rem auto;
   padding: 2rem;
   background: var(--md-code-bg-color);
   border-radius: 0.75rem;
+  max-width: 1200px;
 }
 
-.quick-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 3rem 0;
-}
 
 
 @media screen and (max-width: 768px) {
