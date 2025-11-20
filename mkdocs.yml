@@ -7,6 +7,7 @@ site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
+edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
