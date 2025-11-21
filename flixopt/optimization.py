@@ -10,6 +10,7 @@ There are three different Optimization types:
 
 from __future__ import annotations
 
+import logging
 import math
 import pathlib
 import sys
@@ -19,7 +20,6 @@ from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
-from loguru import logger
 from tqdm import tqdm
 
 from . import io as fx_io
@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from .elements import Component
     from .solvers import _Solver
     from .structure import FlowSystemModel
+
+logger = logging.getLogger('flixopt')
 
 
 class _Optimization:
@@ -263,11 +265,9 @@ class Optimization(_Optimization):
 
         # Log the formatted output
         should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
-        if should_log:
-            logger.opt(lazy=True).info(
-                '{result}',
-                result=lambda: f'{" Main Results ":#^80}\n'
-                + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
+        if should_log and logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True)
             )
 
         self.results = Results.from_optimization(self)
@@ -347,7 +347,8 @@ class ClusteredOptimization(_Optimization):
         dt_max = float(self.flow_system.hours_per_timestep.max().item())
         if not dt_min == dt_max:
             raise ValueError(
-                f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'
+                f'Clustering failed due to inconsistent time step sizes: '
+                f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
         ratio = self.clustering_parameters.hours_per_period / dt_max
         if not np.isclose(ratio, round(ratio), atol=1e-9):
