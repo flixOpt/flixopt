@@ -50,6 +50,12 @@ class MultilineFormatter(logging.Formatter):
         # Split into lines
         lines = record.getMessage().split('\n')
 
+        # Add exception info if present (critical for logger.exception())
+        if record.exc_info:
+            lines.extend(self.formatException(record.exc_info).split('\n'))
+        if record.stack_info:
+            lines.extend(record.stack_info.rstrip().split('\n'))
+
         # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
         # formatTime doesn't support %f, so use datetime directly
         import datetime
@@ -82,6 +88,12 @@ if COLORLOG_AVAILABLE:
             """Format multi-line messages with colors and box-style borders."""
             # Split into lines
             lines = record.getMessage().split('\n')
+
+            # Add exception info if present (critical for logger.exception())
+            if record.exc_info:
+                lines.extend(self.formatException(record.exc_info).split('\n'))
+            if record.stack_info:
+                lines.extend(record.stack_info.rstrip().split('\n'))
 
             # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
             import datetime
