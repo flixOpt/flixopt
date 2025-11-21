@@ -60,8 +60,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 💥 Breaking Changes
 
 **Class and module renaming:**
-- `Calculation` → `Optimization`
-- `AggregatedCalculation` → `AggregatedOptimization`
+- `FullCalculation` → `Optimization`
+- `AggregatedCalculation` → `ClusteredOptimization`
 - `SegmentedCalculation` → `SegmentedOptimization`
 - `CalculationResults` → `Results`
 - `SegmentedCalculationResults` → `SegmentedResults`
