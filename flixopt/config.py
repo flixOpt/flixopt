@@ -748,5 +748,5 @@ def change_logging_level(level_name: str | int) -> None:
 
 
 # Initialize logger with default configuration (silent: WARNING level, no handlers)
-_flixopt_logger = logging.getLogger('flixopt')
-_flixopt_logger.setLevel(logging.WARNING)
+# This ensures flixopt is a well-behaved library that doesn't produce output by default
+logging.getLogger('flixopt').setLevel(logging.WARNING)
