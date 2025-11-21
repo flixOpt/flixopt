@@ -257,7 +257,7 @@ class FullCalculation(Calculation):
 
         # Log the formatted output
         should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
-        if should_log:
+        if should_log and logger.isEnabledFor(logging.INFO):
             logger.info(
                 f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True)
             )
