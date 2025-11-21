@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import os
 import pathlib
 import re
@@ -14,13 +15,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
-from loguru import logger
 
 if TYPE_CHECKING:
     import linopy
 
     from .types import Numeric_TPS
 
+logger = logging.getLogger('flixopt')
 
 def remove_none_and_empty(obj):
     """Recursively removes None and empty dicts and lists values from a dictionary or list."""

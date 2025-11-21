@@ -17,9 +17,9 @@ import timeit
 import warnings
 from collections import Counter
 from typing import TYPE_CHECKING, Annotated, Any
+import logging
 
 import numpy as np
-from loguru import logger
 from tqdm import tqdm
 
 from . import io as fx_io
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from .solvers import _Solver
     from .structure import FlowSystemModel
 
+logger = logging.getLogger('flixopt')
 
 class Calculation:
     """

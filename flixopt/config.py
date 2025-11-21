@@ -1,31 +1,121 @@
 from __future__ import annotations
 
+import logging
 import os
-import sys
 import warnings
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
-from loguru import logger
+try:
+    import colorlog
 
-__all__ = ['CONFIG', 'change_logging_level']
+    COLORLOG_AVAILABLE = True
+except ImportError:
+    COLORLOG_AVAILABLE = False
+
+__all__ = ['CONFIG', 'get_logger', 'change_logging_level']
+
+# Add custom SUCCESS level (between INFO and WARNING)
+SUCCESS_LEVEL = 25
+logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
+
+
+def _success(self, message, *args, **kwargs):
+    """Log a message with severity 'SUCCESS'."""
+    if self.isEnabledFor(SUCCESS_LEVEL):
+        self._log(SUCCESS_LEVEL, message, args, **kwargs)
+
+
+# Add success() method to Logger class
+logging.Logger.success = _success
+
+
+class MultilineFormatter(logging.Formatter):
+    """Custom formatter that handles multi-line messages with box-style borders."""
+
+    def format(self, record):
+        """Format multi-line messages with box-style borders for better readability."""
+        # Split into lines
+        lines = record.getMessage().split('\n')
+
+        # Single line - return standard format
+        if len(lines) == 1:
+            return super().format(record)
+
+        # Multi-line - use box format
+        level_str = f'{record.levelname: <8}'
+        result = f'{level_str} ┌─ {lines[0]}'
+        for line in lines[1:-1]:
+            result += f'\n{" " * 8} │  {line}'
+        result += f'\n{" " * 8} └─ {lines[-1]}'
+
+        return result
+
+
+if COLORLOG_AVAILABLE:
+
+    class ColoredMultilineFormatter(colorlog.ColoredFormatter):
+        """Colored formatter with multi-line message support."""
+
+        def format(self, record):
+            """Format multi-line messages with colors and box-style borders."""
+            # Split into lines
+            lines = record.getMessage().split('\n')
+
+            # Single line - return standard colored format
+            if len(lines) == 1:
+                return super().format(record)
+
+            # Multi-line - use box format with colors
+            # Get the color for this level
+            log_colors = self.log_colors
+            level_name = record.levelname
+            color_name = log_colors.get(level_name, '')
+
+            # Convert color name to ANSI escape code
+            from colorlog.escape_codes import escape_codes
+            color = escape_codes.get(color_name, '')
+            reset = escape_codes['reset']
+
+            level_str = f'{level_name: <8}'
+            result = f'{color}{level_str}{reset} {color}┌─ {lines[0]}{reset}'
+            for line in lines[1:-1]:
+                result += f'\n{" " * 8} {color}│  {line}{reset}'
+            result += f'\n{" " * 8} {color}└─ {lines[-1]}{reset}'
+
+            return result
+
+
+def get_logger(name: str = 'flixopt') -> logging.Logger:
+    """Get flixopt logger.
+
+    Args:
+        name: Logger name (default: 'flixopt')
+
+    Returns:
+        Logger instance that can be configured via standard logging module.
+
+    Examples:
+        ```python
+        # Get the logger
+        logger = get_logger()
+        logger.info('Starting optimization')
+
+        # Configure manually with standard logging
+        import logging
+
+        logging.basicConfig(level=logging.DEBUG)
+        ```
+    """
+    return logging.getLogger(name)
 
 
 # SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
 _DEFAULTS = MappingProxyType(
     {
         'config_name': 'flixopt',
-        'logging': MappingProxyType(
-            {
-                'level': 'INFO',
-                'file': None,
-                'console': False,
-                'max_file_size': 10_485_760,  # 10MB
-                'backup_count': 5,
-                'verbose_tracebacks': False,
-            }
-        ),
         'modeling': MappingProxyType(
             {
                 'big': 10_000_000,
@@ -58,86 +148,211 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    Always call ``CONFIG.apply()`` after changes.
-
     Note:
-        flixopt uses `loguru <https://loguru.readthedocs.io/>`_ for logging.
+        flixopt uses standard Python logging. Configure it via:
+        - Quick helpers: ``CONFIG.Logging.enable_console('INFO')``
+        - Standard logging: ``import logging; logging.basicConfig(level=logging.DEBUG)``
 
     Attributes:
-        Logging: Logging configuration.
+        Logging: Logging configuration helpers.
         Modeling: Optimization modeling parameters.
         Solving: Solver configuration and default parameters.
         Plotting: Plotting configuration.
         config_name: Configuration name.
 
     Examples:
+        Quick colored console output:
+
         ```python
-        CONFIG.Logging.console = True
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.apply()
+        CONFIG.Logging.enable_console('DEBUG')
         ```
 
-        Load from YAML file:
+        File logging with rotation:
 
-        ```yaml
-        logging:
-          level: DEBUG
-          console: true
-          file: app.log
-        solving:
-          mip_gap: 0.001
-          time_limit_seconds: 600
+        ```python
+        CONFIG.Logging.enable_file('INFO', 'app.log')
+        ```
+
+        Both console and file:
+
+        ```python
+        CONFIG.Logging.enable_console('INFO')
+        CONFIG.Logging.enable_file('DEBUG', 'debug.log')
+        ```
+
+        Full control (advanced):
+
+        ```python
+        import logging
+
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.FileHandler('app.log'), logging.StreamHandler()],
+        )
         ```
     """
 
     class Logging:
-        """Logging configuration.
+        """Minimal logging helpers.
 
-        Silent by default. Enable via ``console=True`` or ``file='path'``.
-
-        Attributes:
-            level: Logging level (DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL).
-            file: Log file path for file logging (None to disable).
-            console: Enable console output (True/'stdout' or 'stderr').
-            max_file_size: Max file size in bytes before rotation.
-            backup_count: Number of backup files to keep.
-            verbose_tracebacks: Show detailed tracebacks with variable values.
+        For advanced configuration, use Python's logging module directly.
+        flixopt is silent by default (WARNING level, no handlers).
 
         Examples:
-            ```python
-            # Enable console logging
-            CONFIG.Logging.console = True
-            CONFIG.Logging.level = 'DEBUG'
-            CONFIG.apply()
+            Quick colored console output:
 
-            # File logging with rotation
-            CONFIG.Logging.file = 'app.log'
-            CONFIG.Logging.max_file_size = 5_242_880  # 5MB
-            CONFIG.apply()
+                CONFIG.Logging.enable_console('INFO')
 
-            # Console to stderr
-            CONFIG.Logging.console = 'stderr'
-            CONFIG.apply()
-            ```
+            File logging with rotation:
 
-        Note:
-            For advanced formatting or custom loguru configuration,
-            use loguru's API directly after calling CONFIG.apply():
+                CONFIG.Logging.enable_file('DEBUG', 'app.log',
+                                          max_bytes=10*1024*1024, backup_count=3)
 
-            ```python
-            from loguru import logger
+            Both console and file:
 
-            CONFIG.apply()  # Basic setup
-            logger.add('custom.log', format='{time} {message}')
-            ```
+                CONFIG.Logging.enable_console('INFO')
+                CONFIG.Logging.enable_file('DEBUG', 'debug.log')
+
+            Disable colors:
+
+                CONFIG.Logging.enable_console('INFO', colored=False)
+
+            Full control (advanced):
+
+                import logging
+                logging.getLogger('flixopt').addHandler(your_custom_handler)
         """
 
-        level: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL'] = _DEFAULTS['logging']['level']
-        file: str | None = _DEFAULTS['logging']['file']
-        console: bool | Literal['stdout', 'stderr'] = _DEFAULTS['logging']['console']
-        max_file_size: int = _DEFAULTS['logging']['max_file_size']
-        backup_count: int = _DEFAULTS['logging']['backup_count']
-        verbose_tracebacks: bool = _DEFAULTS['logging']['verbose_tracebacks']
+        @classmethod
+        def enable_console(cls, level: str | int = 'INFO', colored: bool = True) -> None:
+            """Enable colored console logging.
+
+            Args:
+                level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
+                colored: Use colored output if colorlog is available (default: True)
+
+            Note:
+                For full control over formatting, use logging.basicConfig() instead.
+
+            Examples:
+                ```python
+                # Colored output (default)
+                CONFIG.Logging.enable_console('INFO')
+
+                # Plain text output
+                CONFIG.Logging.enable_console('INFO', colored=False)
+
+                # Using logging constants
+                import logging
+
+                CONFIG.Logging.enable_console(logging.DEBUG)
+                ```
+            """
+            logger = logging.getLogger('flixopt')
+
+            # Convert string level to logging constant
+            if isinstance(level, str):
+                level = getattr(logging, level.upper())
+
+            logger.setLevel(level)
+
+            # Remove existing console handlers to avoid duplicates
+            logger.handlers = [
+                h
+                for h in logger.handlers
+                if not isinstance(h, logging.StreamHandler) or isinstance(h, RotatingFileHandler)
+            ]
+
+            if colored and COLORLOG_AVAILABLE:
+                handler = colorlog.StreamHandler()
+                handler.setFormatter(
+                    ColoredMultilineFormatter(
+                        '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
+                        log_colors={
+                            'DEBUG': 'cyan',
+                            'INFO': 'white',
+                            'SUCCESS': 'green',
+                            'WARNING': 'yellow',
+                            'ERROR': 'red',
+                            'CRITICAL': 'red,bg_white',
+                        },
+                    )
+                )
+            else:
+                handler = logging.StreamHandler()
+                handler.setFormatter(MultilineFormatter('%(levelname)-8s %(message)s'))
+
+            logger.addHandler(handler)
+            logger.propagate = False  # Don't propagate to root
+
+        @classmethod
+        def enable_file(
+            cls,
+            level: str | int = 'INFO',
+            path: str | Path = 'flixopt.log',
+            max_bytes: int = 10 * 1024 * 1024,
+            backup_count: int = 5,
+        ) -> None:
+            """Enable file logging with rotation.
+
+            Args:
+                level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
+                path: Path to log file (default: 'flixopt.log')
+                max_bytes: Maximum file size before rotation in bytes (default: 10MB)
+                backup_count: Number of backup files to keep (default: 5)
+
+            Note:
+                For full control over formatting and handlers, use logging module directly.
+
+            Examples:
+                ```python
+                # Basic file logging
+                CONFIG.Logging.enable_file('INFO', 'app.log')
+
+                # With custom rotation
+                CONFIG.Logging.enable_file('DEBUG', 'debug.log', max_bytes=50 * 1024 * 1024, backup_count=10)
+                ```
+            """
+            logger = logging.getLogger('flixopt')
+
+            # Convert string level to logging constant
+            if isinstance(level, str):
+                level = getattr(logging, level.upper())
+
+            logger.setLevel(level)
+
+            # Remove existing file handlers to avoid duplicates
+            logger.handlers = [
+                h
+                for h in logger.handlers
+                if not isinstance(h, (logging.FileHandler, RotatingFileHandler))
+                or isinstance(h, logging.StreamHandler)
+                and not isinstance(h, RotatingFileHandler)
+            ]
+
+            # Create log directory if needed
+            log_path = Path(path)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            handler = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count)
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+            logger.addHandler(handler)
+            logger.propagate = False  # Don't propagate to root
+
+        @classmethod
+        def disable(cls) -> None:
+            """Disable all flixopt logging.
+
+            Examples:
+                ```python
+                CONFIG.Logging.disable()
+                ```
+            """
+            logger = logging.getLogger('flixopt')
+            logger.handlers.clear()
+            logger.setLevel(logging.CRITICAL)
 
     class Modeling:
         """Optimization modeling parameters.
@@ -167,7 +382,6 @@ class CONFIG:
             CONFIG.Solving.mip_gap = 0.001
             CONFIG.Solving.time_limit_seconds = 600
             CONFIG.Solving.log_to_console = False
-            CONFIG.apply()
             ```
         """
 
@@ -193,15 +407,10 @@ class CONFIG:
 
         Examples:
             ```python
-            # Set consistent theming
-            CONFIG.Plotting.plotly_template = 'plotly_dark'
-            CONFIG.apply()
-
             # Configure default export and color settings
             CONFIG.Plotting.default_dpi = 600
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
-            CONFIG.apply()
             ```
         """
 
@@ -215,11 +424,8 @@ class CONFIG:
     config_name: str = _DEFAULTS['config_name']
 
     @classmethod
-    def reset(cls):
+    def reset(cls) -> None:
         """Reset all configuration values to defaults."""
-        for key, value in _DEFAULTS['logging'].items():
-            setattr(cls.Logging, key, value)
-
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
 
@@ -230,78 +436,6 @@ class CONFIG:
             setattr(cls.Plotting, key, value)
 
         cls.config_name = _DEFAULTS['config_name']
-        cls.apply()
-
-    @classmethod
-    def apply(cls):
-        """Apply current configuration to logging system."""
-        valid_levels = ['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']
-        if cls.Logging.level.upper() not in valid_levels:
-            raise ValueError(f"Invalid log level '{cls.Logging.level}'. Must be one of: {', '.join(valid_levels)}")
-
-        if cls.Logging.max_file_size <= 0:
-            raise ValueError('max_file_size must be positive')
-
-        if cls.Logging.backup_count < 0:
-            raise ValueError('backup_count must be non-negative')
-
-        if cls.Logging.console not in (False, True, 'stdout', 'stderr'):
-            raise ValueError(f"console must be False, True, 'stdout', or 'stderr', got {cls.Logging.console}")
-
-        _setup_logging(
-            default_level=cls.Logging.level,
-            log_file=cls.Logging.file,
-            console=cls.Logging.console,
-            max_file_size=cls.Logging.max_file_size,
-            backup_count=cls.Logging.backup_count,
-            verbose_tracebacks=cls.Logging.verbose_tracebacks,
-        )
-
-    @classmethod
-    def load_from_file(cls, config_file: str | Path):
-        """Load configuration from YAML file and apply it.
-
-        Args:
-            config_file: Path to the YAML configuration file.
-
-        Raises:
-            FileNotFoundError: If the config file does not exist.
-        """
-        # Import here to avoid circular import
-        from . import io as fx_io
-
-        config_path = Path(config_file)
-        if not config_path.exists():
-            raise FileNotFoundError(f'Config file not found: {config_file}')
-
-        config_dict = fx_io.load_yaml(config_path)
-        cls._apply_config_dict(config_dict)
-
-        cls.apply()
-
-    @classmethod
-    def _apply_config_dict(cls, config_dict: dict):
-        """Apply configuration dictionary to class attributes.
-
-        Args:
-            config_dict: Dictionary containing configuration values.
-        """
-        for key, value in config_dict.items():
-            if key == 'logging' and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    if hasattr(cls.Logging, nested_key):
-                        setattr(cls.Logging, nested_key, nested_value)
-            elif key == 'modeling' and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    setattr(cls.Modeling, nested_key, nested_value)
-            elif key == 'solving' and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    setattr(cls.Solving, nested_key, nested_value)
-            elif key == 'plotting' and isinstance(value, dict):
-                for nested_key, nested_value in value.items():
-                    setattr(cls.Plotting, nested_key, nested_value)
-            elif hasattr(cls, key):
-                setattr(cls, key, value)
 
     @classmethod
     def to_dict(cls) -> dict:
@@ -312,14 +446,6 @@ class CONFIG:
         """
         return {
             'config_name': cls.config_name,
-            'logging': {
-                'level': cls.Logging.level,
-                'file': cls.Logging.file,
-                'console': cls.Logging.console,
-                'max_file_size': cls.Logging.max_file_size,
-                'backup_count': cls.Logging.backup_count,
-                'verbose_tracebacks': cls.Logging.verbose_tracebacks,
-            },
             'modeling': {
                 'big': cls.Modeling.big,
                 'epsilon': cls.Modeling.epsilon,
@@ -345,45 +471,37 @@ class CONFIG:
     def silent(cls) -> type[CONFIG]:
         """Configure for silent operation.
 
-        Disables console logging, solver output, and result logging
-        for clean production runs. Does not show plots. Automatically calls apply().
+        Disables all logging, solver output, and result logging
+        for clean production runs. Does not show plots.
         """
-        cls.Logging.console = False
+        cls.Logging.disable()
         cls.Plotting.default_show = False
-        cls.Logging.file = None
         cls.Solving.log_to_console = False
         cls.Solving.log_main_results = False
-        cls.apply()
         return cls
 
     @classmethod
     def debug(cls) -> type[CONFIG]:
         """Configure for debug mode with verbose output.
 
-        Enables console logging at DEBUG level, verbose tracebacks,
-        and all solver output for troubleshooting. Automatically calls apply().
+        Enables console logging at DEBUG level and all solver output for troubleshooting.
         """
-        cls.Logging.console = True
-        cls.Logging.level = 'DEBUG'
-        cls.Logging.verbose_tracebacks = True
+        cls.Logging.enable_console('DEBUG')
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
-        cls.apply()
         return cls
 
     @classmethod
     def exploring(cls) -> type[CONFIG]:
-        """Configure for exploring flixopt
+        """Configure for exploring flixopt.
 
         Enables console logging at INFO level and all solver output.
-        Also enables browser plotting for plotly with showing plots per default
+        Also enables browser plotting for plotly with showing plots per default.
         """
-        cls.Logging.console = True
-        cls.Logging.level = 'INFO'
+        cls.Logging.enable_console('INFO')
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
         cls.browser_plotting()
-        cls.apply()
         return cls
 
     @classmethod
@@ -407,129 +525,30 @@ class CONFIG:
         return cls
 
 
-def _format_multiline(record):
-    """Format multi-line messages with box-style borders for better readability.
-
-    Single-line messages use standard format.
-    Multi-line messages use boxed format with ┌─, │, └─ characters.
-
-    Note: Escapes curly braces in messages to prevent format string errors.
-    """
-    # Escape curly braces in message to prevent format string errors
-    message = record['message'].replace('{', '{{').replace('}', '}}')
-    lines = message.split('\n')
-
-    # Format timestamp and level
-    time_str = record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # milliseconds
-    level_str = f'{record["level"].name: <8}'
-
-    # Single line messages - standard format
-    if len(lines) == 1:
-        result = f'<dim>{time_str}</dim> | <level>{level_str}</level> | <level>{message}</level>\n'
-        if record['exception']:
-            result += '{exception}'
-        return result
-
-    # Multi-line messages - boxed format
-    indent = ' ' * len(time_str)  # Match timestamp length
-
-    # Build the boxed output
-    result = f'<dim>{time_str}</dim> | <level>{level_str}</level> | <level>┌─ {lines[0]}</level>\n'
-    for line in lines[1:-1]:
-        result += f'<dim>{indent}</dim> | <level>{" " * 8}</level> | <level>│  {line}</level>\n'
-    result += f'<dim>{indent}</dim> | <level>{" " * 8}</level> | <level>└─ {lines[-1]}</level>\n'
-
-    # Add exception info if present
-    if record['exception']:
-        result += '\n{exception}'
-
-    return result
-
-
-def _setup_logging(
-    default_level: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO',
-    log_file: str | None = None,
-    console: bool | Literal['stdout', 'stderr'] = False,
-    max_file_size: int = 10_485_760,
-    backup_count: int = 5,
-    verbose_tracebacks: bool = False,
-) -> None:
-    """Internal function to setup logging - use CONFIG.apply() instead.
-
-    Configures loguru logger with console and/or file handlers.
-    Multi-line messages are automatically formatted with box-style borders.
-
-    Args:
-        default_level: Logging level for the logger.
-        log_file: Path to log file (None to disable file logging).
-        console: Enable console logging (True/'stdout' or 'stderr').
-        max_file_size: Maximum log file size in bytes before rotation.
-        backup_count: Number of backup log files to keep.
-        verbose_tracebacks: If True, show detailed tracebacks with variable values.
-    """
-    # Remove all existing handlers
-    logger.remove()
-
-    # Console handler with multi-line formatting
-    if console:
-        stream = sys.stdout if console is True or console == 'stdout' else sys.stderr
-        logger.add(
-            stream,
-            format=_format_multiline,
-            level=default_level.upper(),
-            colorize=True,
-            backtrace=verbose_tracebacks,
-            diagnose=verbose_tracebacks,
-            enqueue=False,
-        )
-
-    # File handler with rotation (plain format for files)
-    if log_file:
-        log_path = Path(log_file)
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-        except PermissionError as e:
-            raise PermissionError(f"Cannot create log directory '{log_path.parent}': Permission denied") from e
-
-        logger.add(
-            log_file,
-            format='{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}',
-            level=default_level.upper(),
-            colorize=False,
-            rotation=max_file_size,
-            retention=backup_count,
-            encoding='utf-8',
-            backtrace=verbose_tracebacks,
-            diagnose=verbose_tracebacks,
-            enqueue=False,
-        )
-
-
-def change_logging_level(level_name: Literal['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']):
+def change_logging_level(level_name: str | int) -> None:
     """Change the logging level for the flixopt logger.
 
-    .. deprecated:: 2.1.11
-        Use ``CONFIG.Logging.level = level_name`` and ``CONFIG.apply()`` instead.
-        This function will be removed in version 3.0.0.
+    .. deprecated:: 5.0.0
+        Use ``CONFIG.Logging.enable_console(level)`` instead.
+        This function will be removed in version 6.0.0.
 
     Args:
-        level_name: The logging level to set.
+        level_name: The logging level to set (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant).
 
     Examples:
         >>> change_logging_level('DEBUG')  # deprecated
         >>> # Use this instead:
-        >>> CONFIG.Logging.level = 'DEBUG'
-        >>> CONFIG.apply()
+        >>> CONFIG.Logging.enable_console('DEBUG')
     """
     warnings.warn(
-        'change_logging_level is deprecated and will be removed in version 3.0.0. '
-        'Use CONFIG.Logging.level = level_name and CONFIG.apply() instead.',
+        'change_logging_level is deprecated and will be removed in version 6.0.0. '
+        'Use CONFIG.Logging.enable_console(level) instead.',
         DeprecationWarning,
         stacklevel=2,
     )
-    CONFIG.Logging.level = level_name.upper()
-    CONFIG.apply()
+    CONFIG.Logging.enable_console(level_name)
 
 
-# Initialize default config
-CONFIG.apply()
+# Initialize logger with default configuration (silent: WARNING level, no handlers)
+_flixopt_logger = logging.getLogger('flixopt')
+_flixopt_logger.setLevel(logging.WARNING)

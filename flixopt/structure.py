@@ -6,6 +6,7 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
+import logging
 import re
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -21,7 +22,6 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
 from .core import DEPRECATION_REMOVAL_VERSION, FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
@@ -34,6 +34,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .flow_system import FlowSystem
     from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
+logger = logging.getLogger('flixopt')
 
 CLASS_REGISTRY = {}
 

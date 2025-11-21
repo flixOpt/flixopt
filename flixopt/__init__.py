@@ -23,7 +23,7 @@ from .components import (
     Storage,
     Transmission,
 )
-from .config import CONFIG, change_logging_level
+from .config import CONFIG, change_logging_level, get_logger
 from .core import TimeSeriesData
 from .effects import Effect
 from .elements import Bus, Flow
@@ -34,6 +34,7 @@ __all__ = [
     'TimeSeriesData',
     'CONFIG',
     'change_logging_level',
+    'get_logger',
     'Flow',
     'Bus',
     'Effect',

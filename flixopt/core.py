@@ -3,6 +3,7 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
+import logging
 import warnings
 from itertools import permutations
 from typing import Any, Literal, Union
@@ -10,9 +11,10 @@ from typing import Any, Literal, Union
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from .types import NumericOrBool
+
+logger = logging.getLogger('flixopt')
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""

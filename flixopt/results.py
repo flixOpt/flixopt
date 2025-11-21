@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import logging
 import pathlib
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
@@ -10,7 +11,6 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
 from . import plotting
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .calculation import Calculation, SegmentedCalculation
     from .core import FlowSystemDimensions
 
+logger = logging.getLogger('flixopt')
 
 def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
     """Load color mapping from JSON or YAML file.

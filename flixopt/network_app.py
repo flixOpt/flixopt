@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 from typing import TYPE_CHECKING, Any
 
-from loguru import logger
 
 try:
     import dash_cytoscape as cyto
@@ -25,6 +25,7 @@ from .elements import Bus
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
+logger = logging.getLogger('flixopt')
 
 # Configuration class for better organization
 class VisualizationConfig:

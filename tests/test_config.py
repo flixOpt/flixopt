@@ -1,13 +1,14 @@
 """Tests for the config module."""
 
+import logging
 import sys
 from pathlib import Path
 
 import pytest
-from loguru import logger
 
 from flixopt.config import _DEFAULTS, CONFIG, _setup_logging
 
+logger = logging.getLogger('flixopt')
 
 # All tests in this class will run in the same worker to prevent issues with global config altering
 @pytest.mark.xdist_group(name='config_tests')
