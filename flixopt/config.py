@@ -514,7 +514,6 @@ class CONFIG:
         Respects FLIXOPT_CI environment variable if set.
         """
         cls.Plotting.default_show = True
-        cls.apply()
 
         # Only set to True if environment variable hasn't overridden it
         if 'FLIXOPT_CI' not in os.environ:

@@ -5,12 +5,14 @@ into a label-to-color mapping dictionary, without needing to know about the plot
 """
 
 from __future__ import annotations
+import logging
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import plotly.express as px
-from loguru import logger
 from plotly.exceptions import PlotlyError
+
+logger = logging.getLogger('flixopt')
 
 
 def _rgb_string_to_hex(color: str) -> str:

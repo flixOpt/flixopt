@@ -9,9 +9,9 @@ import copy
 import pathlib
 import timeit
 from typing import TYPE_CHECKING
+import logging
 
 import numpy as np
-from loguru import logger
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from .elements import Component
     from .flow_system import FlowSystem
 
+logger = logging.getLogger('flixopt')
 
 class Aggregation:
     """
