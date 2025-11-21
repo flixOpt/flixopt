@@ -92,16 +92,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ✨ Added
 
-**Logging presets**:
+**New logging presets**:
 ```python
-CONFIG.exploring()              # Console INFO + solver output + browser plots
 CONFIG.notebook()               # Console INFO + inline plots + solver output
-CONFIG.debug()                  # Console DEBUG + all solver output
 CONFIG.production('app.log')    # File-only, no console/plots
-CONFIG.silent()                 # No output
 ```
 
-**Logging methods**:
+**New logging methods**:
 - `CONFIG.Logging.enable_console(level, colored, stream)` - Console output with colors
 - `CONFIG.Logging.enable_file(level, path, max_bytes, backup_count)` - File logging with rotation
 - `CONFIG.Logging.disable()` - Disable all logging
