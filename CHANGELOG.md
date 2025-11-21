@@ -81,132 +81,99 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [4.1.0] - 2025-11-21
 
-**Summary**: Logging system migration from loguru back to standard Python logging for better stability, security, and compatibility. The new logging API is simpler and more powerful, with convenient presets for common use cases.
+**Summary**: Logging migrated from loguru to standard Python logging for stability and security. Simpler API with convenient presets.
 
 !!! info "Migration Required?"
-    **Most users**: No action needed - default behavior unchanged (silent by default).
-
-    **If you customized logging**: Update to new API (simple migration, see below).
-
-    **If you directly used loguru**: This is a breaking change (but loguru was only in v3.6.0-v4.0.0, ~1 week).
+    **Most users**: No action needed (silent by default).
+    **If you customized logging**: Simple API update (see migration below).
+    **If you used loguru directly**: Breaking change (loguru only in v3.6.0-v4.0.0, ~4 days).
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
-**New logging presets** - Quick configuration for common scenarios:
+**Logging presets**:
 ```python
-CONFIG.exploring()   # Console INFO logs, solver output, browser plots
-CONFIG.notebook()    # Console INFO logs, inline plots, solver output
-CONFIG.debug()       # Console DEBUG logs, all solver output
-CONFIG.production('app.log')  # File-only logging, no plots/console
-CONFIG.silent()      # No output at all
+CONFIG.exploring()              # Console INFO + solver output + browser plots
+CONFIG.notebook()               # Console INFO + inline plots + solver output
+CONFIG.debug()                  # Console DEBUG + all solver output
+CONFIG.production('app.log')    # File-only, no console/plots
+CONFIG.silent()                 # No output
 ```
 
-**New logging methods**:
-- `CONFIG.Logging.enable_console(level, colored, stream)` - Colored console output
+**Logging methods**:
+- `CONFIG.Logging.enable_console(level, colored, stream)` - Console output with colors
 - `CONFIG.Logging.enable_file(level, path, max_bytes, backup_count)` - File logging with rotation
 - `CONFIG.Logging.disable()` - Disable all logging
-- `CONFIG.Logging.set_colors(log_colors)` - Customize log level colors
+- `CONFIG.Logging.set_colors(log_colors)` - Customize colors
 
-**Enhanced formatters**:
-- Multi-line log messages now display with elegant box borders (┌─, │, └─)
-- Exception tracebacks automatically formatted with proper indentation
-- Timestamps show with date and milliseconds: `2025-11-21 14:30:45.123`
+**Enhanced formatting**:
+- Multi-line messages with box borders (┌─, │, └─)
+- Exception tracebacks with proper indentation
+- Timestamps: `2025-11-21 14:30:45.123`
 
 ### 💥 Breaking Changes
 
-**Logging system migration** (affects edge cases only):
+**Logging migration** (edge cases only):
 
-| What Changed | Old (v3.6.0-v4.0.0) | New (v4.1.0+) | Migration |
-|-------------|---------------------|---------------|-----------|
-| Logging library | loguru | Python logging + colorlog | Automatic for most users |
-| Configuration | `CONFIG.apply()` | Immediate via helper methods | Remove `.apply()` calls |
-| Log level setting | `CONFIG.Logging.level = 'INFO'` | `CONFIG.Logging.enable_console('INFO')` | Update call |
-| Console control | `CONFIG.Logging.console = True` | `CONFIG.Logging.enable_console()` | Update call |
-| File logging | `CONFIG.Logging.file = 'app.log'` | `CONFIG.Logging.enable_file('INFO', 'app.log')` | Update call |
-| Lazy logging | `logger.opt(lazy=True)` | Built-in with `isEnabledFor()` guards | Automatic in flixopt internals |
-| Verbose tracebacks | `CONFIG.Logging.verbose_tracebacks` | Use standard Python debugging tools | N/A |
+| Old (v3.6.0-v4.0.0) | New (v4.1.0+) |
+|---------------------|---------------|
+| `CONFIG.Logging.level = 'INFO'`<br>`CONFIG.Logging.console = True`<br>`CONFIG.apply()` | `CONFIG.Logging.enable_console('INFO')`<br>or `CONFIG.exploring()` |
+| `CONFIG.Logging.file = 'app.log'` | `CONFIG.Logging.enable_file('INFO', 'app.log')` |
+| `logger.opt(lazy=True)` | Built-in (automatic) |
 
-**Migration examples**:
+**Migration**:
+```python
+# Before (v3.6.0-v4.0.0)
+CONFIG.Logging.level = 'INFO'
+CONFIG.Logging.console = True
+CONFIG.apply()
 
-=== "Before (v3.6.0-v4.0.0 with loguru)"
-    ```python
-    # Old way
-    CONFIG.Logging.level = 'INFO'
-    CONFIG.Logging.console = True
-    CONFIG.Logging.file = 'app.log'
-    CONFIG.apply()
-    ```
-
-=== "After (v4.1.0+ with standard logging)"
-    ```python
-    # New way - simpler and immediate
-    CONFIG.Logging.enable_console('INFO')
-    CONFIG.Logging.enable_file('INFO', 'app.log')
-    # No .apply() needed!
-
-    # Or use a preset
-    CONFIG.exploring()  # Console INFO + solver output + plots
-    ```
+# After (v4.1.0+)
+CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
+```
 
 ### ♻️ Changed
 
-**Logging system modernization**:
-- Replaced loguru with Python's standard `logging` module for better ecosystem compatibility
-- Added `colorlog` for optional colored console output (gracefully degrades if unavailable)
-- Configuration now applies immediately - no need to call `CONFIG.apply()`
-- Log format improved: `[dimmed timestamp] [colored level] │ message`
-- Logs output to `stdout` by default (configurable via `stream` parameter)
-- SUCCESS log level preserved (green color, level 25 between INFO and WARNING)
-- Users can still use `logging.basicConfig()` for full customization
-
-**Performance optimizations**:
-- Expensive logging operations (YAML formatting, cluster descriptions) now guarded with `logger.isEnabledFor()` checks
-- Prevents unnecessary computation when logging is disabled
+- Replaced loguru with Python `logging` + optional `colorlog` for colors
+- Configuration immediate (no `CONFIG.apply()` needed)
+- Log format: `[dimmed timestamp] [colored level] │ message`
+- Logs to `stdout` by default (configurable)
+- SUCCESS level preserved (green, level 25)
+- Performance: Expensive operations guarded with `logger.isEnabledFor()` checks
 
 ### 🗑️ Deprecated
 
-- `change_logging_level(level)` - Use `CONFIG.Logging.enable_console(level)` instead. Will be removed in v5.0.0.
+- `change_logging_level(level)` → Use `CONFIG.Logging.enable_console(level)`. Removal in v5.0.0.
 
 ### 🔥 Removed
 
-**Logging attributes and methods**:
-- `CONFIG.apply()` - Configuration now immediate via helper methods
-- `CONFIG.Logging.level` - Use `CONFIG.Logging.enable_console(level)`
-- `CONFIG.Logging.console` - Use `CONFIG.Logging.enable_console()`
-- `CONFIG.Logging.file` - Use `CONFIG.Logging.enable_file()`
-- `CONFIG.Logging.verbose_tracebacks` - Use standard Python debugging tools instead
-- loguru-specific features (`logger.opt(lazy=True)`, etc.)
+**CONFIG methods/attributes**:
+- `CONFIG.apply()` → Use helper methods directly
+- `CONFIG.Logging.level`, `.console`, `.file` → Use `enable_console()`/`enable_file()`
+- `CONFIG.Logging.verbose_tracebacks`, `.rich`, `.Colors`, `.date_format`, `.format`, `.console_width`, `.show_path`, `.show_logger_name` → Use standard logging
+- loguru features (`logger.opt()`, etc.)
 
 ### 🐛 Fixed
 
-- Fixed potential `TypeError` in `check_bounds()` when using loguru-style `{}`-placeholder formatting with standard logging
-- Fixed exception tracebacks not appearing in custom formatters (critical for debugging)
-- Fixed inconsistent formatting between console and file logs
+- `TypeError` in `check_bounds()` with loguru-style formatting
+- Exception tracebacks not appearing in custom formatters
+- Inconsistent formatting between console and file logs
 
 ### 🔒 Security
 
-- Removed loguru dependency, addressing potential supply chain security concerns
-- Reduced dependency footprint by using standard library where possible
+- Removed loguru dependency for reduced supply chain risk
 
 ### 📦 Dependencies
 
 - **Removed:** `loguru >= 0.7.0`
-- **Added:** `colorlog >= 6.8.0, < 7` (optional, gracefully degrades if unavailable)
+- **Added:** `colorlog >= 6.8.0, < 7` (optional)
 
 ### 📝 Docs
 
-**Enhanced documentation**:
-- Added comprehensive preset comparison table in `CONFIG.Logging` docstring
-- Added color customization examples showing comma-separated attributes (`'bold_red,bg_white'`)
-- Updated all examples to use new logging API
-- Clarified that flixopt is silent by default (library best practice)
-
-**Migration guide**:
-- Clear before/after examples for all common logging configurations
-- Explanation of when 5.0.0 would be needed vs 4.1.0
-- Troubleshooting guide for users who directly used loguru
+- Preset comparison table in `CONFIG.Logging` docstring
+- Color customization examples
+- Migration guide with before/after code
 
 ---
 
