@@ -167,12 +167,3 @@ class TestConfigModule:
         with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
             change_logging_level('INFO')
 
-    def test_get_logger_function(self):
-        """Test get_logger() function."""
-        from flixopt.config import get_logger
-
-        test_logger = get_logger()
-        assert test_logger.name == 'flixopt'
-
-        custom_logger = get_logger('flixopt.custom')
-        assert custom_logger.name == 'flixopt.custom'

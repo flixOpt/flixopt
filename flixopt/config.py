@@ -113,30 +113,6 @@ if COLORLOG_AVAILABLE:
             return result
 
 
-def get_logger(name: str = 'flixopt') -> logging.Logger:
-    """Get flixopt logger.
-
-    Args:
-        name: Logger name (default: 'flixopt')
-
-    Returns:
-        Logger instance that can be configured via standard logging module.
-
-    Examples:
-        ```python
-        # Get the logger
-        logger = get_logger()
-        logger.info('Starting optimization')
-
-        # Configure manually with standard logging
-        import logging
-
-        logging.basicConfig(level=logging.DEBUG)
-        ```
-    """
-    return logging.getLogger(name)
-
-
 # SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
 _DEFAULTS = MappingProxyType(
     {
