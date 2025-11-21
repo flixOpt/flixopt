@@ -12,13 +12,12 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
-    DEPRECATION_REMOVAL_VERSION,
     Element,
     ElementModel,
     FlowSystemModel,

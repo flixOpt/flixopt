@@ -15,9 +15,10 @@ from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
+from .config import DEPRECATION_REMOVAL_VERSION
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
-from .structure import DEPRECATION_REMOVAL_VERSION, FlowSystemModel, register_class_for_io
+from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy

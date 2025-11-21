@@ -19,9 +19,6 @@ logger = logging.getLogger('flixopt')
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
-# Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '5.0.0'
-
 
 class PlausibilityError(Exception):
     """Error for a failing Plausibility check."""

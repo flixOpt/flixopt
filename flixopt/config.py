@@ -21,6 +21,9 @@ __all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'ColoredMulti
 SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
+# Deprecation removal version - update this when planning the next major version
+DEPRECATION_REMOVAL_VERSION = '5.0.0'
+
 
 def _success(self, message, *args, **kwargs):
     """Log a message with severity 'SUCCESS'."""
@@ -715,7 +718,7 @@ def change_logging_level(level_name: str | int) -> None:
         >>> CONFIG.Logging.enable_console('DEBUG')
     """
     warnings.warn(
-        'change_logging_level is deprecated and will be removed in version 6.0.0. '
+        f'change_logging_level is deprecated and will be removed in version {DEPRECATION_REMOVAL_VERSION} '
         'Use CONFIG.Logging.enable_console(level) instead.',
         DeprecationWarning,
         stacklevel=2,

@@ -24,7 +24,8 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .core import DEPRECATION_REMOVAL_VERSION, FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
+from .config import DEPRECATION_REMOVAL_VERSION
+from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib

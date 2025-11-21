@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import CONFIG
-from .structure import DEPRECATION_REMOVAL_VERSION, Interface, register_class_for_io
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator

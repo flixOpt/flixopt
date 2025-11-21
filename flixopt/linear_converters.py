@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .components import LinearConverter
+from .config import DEPRECATION_REMOVAL_VERSION
 from .core import TimeSeriesData
-from .structure import DEPRECATION_REMOVAL_VERSION, register_class_for_io
+from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
