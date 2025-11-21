@@ -17,7 +17,7 @@ import logging
 import warnings
 from typing import TYPE_CHECKING
 
-from .core import DEPRECATION_REMOVAL_VERSION
+from .config import DEPRECATION_REMOVAL_VERSION
 from .optimization import (
     ClusteredOptimization as _ClusteredOptimization,
 )
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from .clustering import AggregationParameters, ClusteringParameters
+    from .clustering import AggregationParameters
     from .elements import Component
     from .flow_system import FlowSystem
 

@@ -15,8 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG
-from .core import DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ResultsContainer
 
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
     import plotly
     import pyvis
 
-    from .calculation import Calculation, SegmentedCalculation
     from .core import FlowSystemDimensions
 
 logger = logging.getLogger('flixopt')
@@ -152,7 +150,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
     @classmethod
     def from_file(cls, folder: str | pathlib.Path, name: str) -> Results:
-        """Load CalculationResults from saved files.
+        """Load Results from saved files.
 
         Args:
             folder: Directory containing saved files.
@@ -229,14 +227,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         Note:
             The legacy alias `CalculationResults` is deprecated. Use `Results` instead.
         """
-        # Deprecation warning for the legacy CalculationResults alias
-        if self.__class__.__name__ == 'CalculationResults':
-            warnings.warn(
-                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
         # Handle potential old "flow_system" parameter for backward compatibility
         if 'flow_system' in kwargs and flow_system_data is None:
             flow_system_data = kwargs.pop('flow_system')
@@ -2119,7 +2109,7 @@ class SegmentedResults:
 
     @classmethod
     def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedResults:
-        """Load SegmentedCalculationResults from saved files.
+        """Load SegmentedResults from saved files.
 
         Args:
             folder: Directory containing saved files.
