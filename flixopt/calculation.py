@@ -17,6 +17,7 @@ import logging
 import warnings
 from typing import TYPE_CHECKING
 
+from .core import DEPRECATION_REMOVAL_VERSION
 from .optimization import (
     ClusteredOptimization as _ClusteredOptimization,
 )
@@ -43,7 +44,7 @@ logger = logging.getLogger('flixopt')
 def _deprecation_warning(old_name: str, new_name: str):
     """Issue a deprecation warning for renamed classes."""
     warnings.warn(
-        f'{old_name} is deprecated and will be removed in a future version. Use {new_name} instead.',
+        f'{old_name} is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use {new_name} instead.',
         DeprecationWarning,
         stacklevel=3,
     )
