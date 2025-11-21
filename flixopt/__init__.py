@@ -67,7 +67,12 @@ __all__ = [
 
 # tsam: Time series aggregation library
 # - UserWarning: Informational message about minimal value constraints during clustering.
-warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*', module='tsam')
+warnings.filterwarnings(
+    'ignore',
+    category=UserWarning,
+    message='.*minimal value.*exceeds.*',
+    module='tsam.timeseriesaggregation',  # More specific if possible
+)
 # TODO: Might be able to fix it in flixopt?
 
 # linopy: Linear optimization library
