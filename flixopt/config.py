@@ -745,8 +745,3 @@ def change_logging_level(level_name: str | int) -> None:
         stacklevel=2,
     )
     CONFIG.Logging.enable_console(level_name)
-
-
-# Initialize logger with default configuration (silent: WARNING level, no handlers)
-# This ensures flixopt is a well-behaved library that doesn't produce output by default
-logging.getLogger('flixopt').setLevel(logging.WARNING)
