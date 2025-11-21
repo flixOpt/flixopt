@@ -348,7 +348,7 @@ class ClusteringModel(Submodel):
         penalty = self.clustering_parameters.penalty_of_period_freedom
         if (self.clustering_parameters.percentage_of_period_freedom > 0) and penalty != 0:
             for variable in self.variables_direct.values():
-                self._model.effects.add_share_to_penalty('Aggregation', variable * penalty)
+                self._model.effects.add_share_to_penalty('Clustering', variable * penalty)
 
     def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
         assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'

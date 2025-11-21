@@ -59,13 +59,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 💥 Breaking Changes
 
-**Class renaming:**
+**Class and module renaming:**
 - `Calculation` → `Optimization`
 - `AggregatedCalculation` → `AggregatedOptimization`
 - `SegmentedCalculation` → `SegmentedOptimization`
 - `CalculationResults` → `Results`
 - `SegmentedCalculationResults` → `SegmentedResults`
+- `Aggregation` → `Clustering`
+- `AggregationParameters` → `ClusteringParameters`
+- `AggregationModel` → `ClusteringModel`
 - Module: `calculation.py` → `optimization.py`
+- Module: `aggregation.py` → `clustering.py`
 
 Old names remain available with deprecation warnings (removed in v5.0.0).
 
