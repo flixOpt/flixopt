@@ -61,18 +61,39 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ♻️ Changed
 
+**Logging system simplified:**
+- Replaced loguru with standard Python logging module
+- Added optional colorlog for colored console output (enabled by default)
+- New simplified API:
+  - `CONFIG.Logging.enable_console('INFO')` - enable colored console logging
+  - `CONFIG.Logging.enable_file('INFO', 'app.log')` - enable file logging with rotation
+  - `CONFIG.Logging.disable()` - disable all logging
+- Removed `CONFIG.apply()` - configuration is now immediate
+- Users can still use standard `logging.basicConfig()` for full control
+
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
+
+**Logging:**
+- Removed `CONFIG.apply()` method - configuration is now immediate via helper methods
+- Removed `CONFIG.Logging.level`, `CONFIG.Logging.console`, `CONFIG.Logging.file` attributes - use new helper methods instead
+- Removed loguru dependency
 
 ### 🐛 Fixed
 
 ### 🔒 Security
 
+- Addressed security concerns by removing loguru dependency
+
 ### 📦 Dependencies
+
+- **Replaced:** `loguru` → `colorlog` (optional, for colored console output)
+- **Added:** `colorlog >= 6.8.0, < 7` as a core dependency (optional import)
 
 ### 📝 Docs
 - Added missing examples to docs.
+- Updated logging documentation to reflect new simplified API
 
 ### 👷 Development
 
