@@ -172,7 +172,7 @@ def test_converter_resample(complex_fs):
     fs_r = complex_fs.resample('4h', method='mean')
     assert 'boiler' in fs_r.components
     boiler = fs_r.components['boiler']
-    assert hasattr(boiler, 'eta')
+    assert hasattr(boiler, 'thermal_efficiency')
 
 
 def test_invest_resample(complex_fs):
