@@ -286,7 +286,7 @@ class CONFIG:
                             'SUCCESS': 'green',
                             'WARNING': 'yellow',
                             'ERROR': 'red',
-                            'CRITICAL': 'red,bg_white',
+                            'CRITICAL': 'bold_red',
                         },
                     )
                 )
