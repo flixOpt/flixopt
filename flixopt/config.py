@@ -83,8 +83,8 @@ if COLORLOG_AVAILABLE:
             import datetime
             from colorlog.escape_codes import escape_codes
 
-            # Use dim attribute for timestamp
-            dim = escape_codes['dim']
+            # Use thin attribute for timestamp
+            dim = escape_codes['thin']
             reset = escape_codes['reset']
             # formatTime doesn't support %f, so use datetime directly
             dt = datetime.datetime.fromtimestamp(record.created)
