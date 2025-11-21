@@ -15,7 +15,7 @@ try:
 except ImportError:
     COLORLOG_AVAILABLE = False
 
-__all__ = ['CONFIG', 'get_logger', 'change_logging_level']
+__all__ = ['CONFIG', 'get_logger', 'change_logging_level', 'MultilineFormatter', 'ColoredMultilineFormatter']
 
 # Add custom SUCCESS level (between INFO and WARNING)
 SUCCESS_LEVEL = 25
@@ -224,6 +224,14 @@ class CONFIG:
         For advanced configuration, use Python's logging module directly.
         flixopt is silent by default (WARNING level, no handlers).
 
+        Customization:
+            The default formatters (MultilineFormatter and ColoredMultilineFormatter)
+            provide pretty output with box borders for multi-line messages. You can:
+
+            1. Use standard logging for full control
+            2. Customize colors via log_colors parameter
+            3. Create custom formatters inheriting from MultilineFormatter
+
         Examples:
             Quick colored console output:
 
@@ -243,10 +251,37 @@ class CONFIG:
 
                 CONFIG.Logging.enable_console('INFO', colored=False)
 
-            Full control (advanced):
+            Custom colors:
 
                 import logging
-                logging.getLogger('flixopt').addHandler(your_custom_handler)
+                import colorlog
+                from flixopt.config import ColoredMultilineFormatter
+
+                logger = logging.getLogger('flixopt')
+                handler = colorlog.StreamHandler()
+                handler.setFormatter(
+                    ColoredMultilineFormatter(
+                        '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
+                        log_colors={
+                            'DEBUG': 'bold_blue',
+                            'INFO': 'bold_white',
+                            'SUCCESS': 'bold_green,bg_black',  # Green text on black background
+                            'WARNING': 'bold_yellow',
+                            'ERROR': 'bold_red',
+                            'CRITICAL': 'bold_white,bg_red',  # White text on red background
+                        },
+                    )
+                )
+                logger.addHandler(handler)
+                logger.setLevel(logging.INFO)
+
+            Full control with standard logging:
+
+                import logging
+                logging.basicConfig(
+                    level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                )
         """
 
         @classmethod
@@ -359,13 +394,7 @@ class CONFIG:
             logger.setLevel(level)
 
             # Remove existing file handlers to avoid duplicates
-            logger.handlers = [
-                h
-                for h in logger.handlers
-                if not isinstance(h, (logging.FileHandler, RotatingFileHandler))
-                or isinstance(h, logging.StreamHandler)
-                and not isinstance(h, RotatingFileHandler)
-            ]
+            logger.handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, (logging.FileHandler, RotatingFileHandler))]
 
             # Create log directory if needed
             log_path = Path(path)
@@ -389,6 +418,64 @@ class CONFIG:
             logger = logging.getLogger('flixopt')
             logger.handlers.clear()
             logger.setLevel(logging.CRITICAL)
+
+        @classmethod
+        def set_colors(cls, log_colors: dict[str, str]) -> None:
+            """Customize log level colors for console output.
+
+            This updates the colors for the current console handler.
+            If no console handler exists, this does nothing.
+
+            Args:
+                log_colors: Dictionary mapping log levels to color names.
+                    Colors can be comma-separated for multiple attributes
+                    (e.g., 'bold_red,bg_white').
+
+            Available colors:
+                - Basic: black, red, green, yellow, blue, purple, cyan, white
+                - Bold: bold_red, bold_green, bold_yellow, bold_blue, etc.
+                - Light: light_red, light_green, light_yellow, light_blue, etc.
+                - Backgrounds: bg_red, bg_green, bg_light_red, etc.
+                - Combined: 'bold_white,bg_red' for white text on red background
+
+            Examples:
+                ```python
+                # Enable console first
+                CONFIG.Logging.enable_console('INFO')
+
+                # Then customize colors
+                CONFIG.Logging.set_colors({
+                    'DEBUG': 'cyan',
+                    'INFO': 'bold_white',
+                    'SUCCESS': 'bold_green',
+                    'WARNING': 'bold_yellow,bg_black',  # Yellow on black
+                    'ERROR': 'bold_red',
+                    'CRITICAL': 'bold_white,bg_red',  # White on red
+                })
+                ```
+
+            Note:
+                Requires colorlog to be installed. Has no effect on file handlers.
+            """
+            if not COLORLOG_AVAILABLE:
+                warnings.warn('colorlog is not installed. Colors cannot be customized.', stacklevel=2)
+                return
+
+            logger = logging.getLogger('flixopt')
+
+            # Find and update ColoredMultilineFormatter
+            for handler in logger.handlers:
+                if isinstance(handler, logging.StreamHandler):
+                    formatter = handler.formatter
+                    if isinstance(formatter, ColoredMultilineFormatter):
+                        formatter.log_colors = log_colors
+                        return
+
+            warnings.warn(
+                'No ColoredMultilineFormatter found. '
+                'Call CONFIG.Logging.enable_console() with colored=True first.',
+                stacklevel=2,
+            )
 
     class Modeling:
         """Optimization modeling parameters.
