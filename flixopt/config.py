@@ -726,10 +726,6 @@ class CONFIG:
 def change_logging_level(level_name: str | int) -> None:
     """Change the logging level for the flixopt logger.
 
-    .. deprecated:: 5.0.0
-        Use ``CONFIG.Logging.enable_console(level)`` instead.
-        This function will be removed in version 6.0.0.
-
     Args:
         level_name: The logging level to set (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant).
 
