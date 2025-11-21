@@ -173,115 +173,95 @@ _DEFAULTS = MappingProxyType(
 class CONFIG:
     """Configuration for flixopt library.
 
-    Note:
-        flixopt uses standard Python logging. Configure it via:
-        - Quick helpers: ``CONFIG.Logging.enable_console('INFO')``
-        - Standard logging: ``import logging; logging.basicConfig(level=logging.DEBUG)``
-
     Attributes:
-        Logging: Logging configuration helpers.
+        Logging: Logging configuration helpers (see CONFIG.Logging for presets and options).
         Modeling: Optimization modeling parameters.
         Solving: Solver configuration and default parameters.
         Plotting: Plotting configuration.
         config_name: Configuration name.
 
-    Examples:
-        Quick colored console output:
-
+    Quick Start:
         ```python
-        CONFIG.Logging.enable_console('DEBUG')
+        # For interactive exploration (console logs + browser plots)
+        CONFIG.exploring()
+
+        # For Jupyter notebooks (console logs + inline plots)
+        CONFIG.notebook()
+
+        # For debugging (verbose console logs)
+        CONFIG.debug()
+
+        # For production (file logs only, no console)
+        CONFIG.production('app.log')
+
+        # For silent operation (no output)
+        CONFIG.silent()
         ```
 
-        File logging with rotation:
+        See ``CONFIG.Logging`` docstring for detailed logging configuration options.
 
+    Advanced:
         ```python
-        CONFIG.Logging.enable_file('INFO', 'app.log')
-        ```
-
-        Both console and file:
-
-        ```python
+        # Direct control
         CONFIG.Logging.enable_console('INFO')
         CONFIG.Logging.enable_file('DEBUG', 'debug.log')
-        ```
 
-        Full control (advanced):
-
-        ```python
+        # Standard Python logging
         import logging
-
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[logging.FileHandler('app.log'), logging.StreamHandler()],
-        )
+        logging.basicConfig(level=logging.DEBUG)
         ```
     """
 
     class Logging:
-        """Minimal logging helpers.
+        """Logging configuration helpers.
 
-        For advanced configuration, use Python's logging module directly.
         flixopt is silent by default (WARNING level, no handlers).
+        Use presets for quick setup or direct methods for fine control.
 
-        Customization:
-            The default formatters (MultilineFormatter and ColoredMultilineFormatter)
-            provide pretty output with box borders for multi-line messages. You can:
+        Presets (recommended):
+            | Preset | Console | File | Use Case |
+            |--------|---------|------|----------|
+            | ``CONFIG.exploring()`` | INFO (colored) | No | Interactive exploration |
+            | ``CONFIG.notebook()`` | INFO (colored) | No | Jupyter notebooks |
+            | ``CONFIG.debug()`` | DEBUG (colored) | No | Troubleshooting |
+            | ``CONFIG.production()`` | No | INFO | Production deployments |
+            | ``CONFIG.silent()`` | No | No | Silent operation |
 
-            1. Use standard logging for full control
-            2. Customize colors via log_colors parameter
-            3. Create custom formatters inheriting from MultilineFormatter
+        Direct Methods:
+            - ``enable_console(level, colored=True, stream=None)`` - Console logging
+            - ``enable_file(level, path, max_bytes, backup_count)`` - File logging with rotation
+            - ``disable()`` - Disable all logging
+            - ``set_colors(log_colors)`` - Customize log level colors
 
         Examples:
-            Quick colored console output:
+            ```python
+            # Console and file logging
+            CONFIG.Logging.enable_console('INFO')
+            CONFIG.Logging.enable_file('DEBUG', 'debug.log')
 
-                CONFIG.Logging.enable_console('INFO')
+            # Customize colors after enabling console
+            CONFIG.Logging.set_colors({
+                'INFO': 'bold_white',
+                'SUCCESS': 'bold_green,bg_black',
+                'CRITICAL': 'bold_white,bg_red',
+            })
 
-            File logging with rotation:
+            # Advanced: custom formatter
+            from flixopt.config import ColoredMultilineFormatter
+            import colorlog, logging
 
-                CONFIG.Logging.enable_file('DEBUG', 'app.log',
-                                          max_bytes=10*1024*1024, backup_count=3)
+            handler = colorlog.StreamHandler()
+            handler.setFormatter(ColoredMultilineFormatter(...))
+            logging.getLogger('flixopt').addHandler(handler)
 
-            Both console and file:
+            # Or use standard Python logging
+            import logging
+            logging.basicConfig(level=logging.DEBUG)
+            ```
 
-                CONFIG.Logging.enable_console('INFO')
-                CONFIG.Logging.enable_file('DEBUG', 'debug.log')
-
-            Disable colors:
-
-                CONFIG.Logging.enable_console('INFO', colored=False)
-
-            Custom colors:
-
-                import logging
-                import colorlog
-                from flixopt.config import ColoredMultilineFormatter
-
-                logger = logging.getLogger('flixopt')
-                handler = colorlog.StreamHandler()
-                handler.setFormatter(
-                    ColoredMultilineFormatter(
-                        '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
-                        log_colors={
-                            'DEBUG': 'bold_blue',
-                            'INFO': 'bold_white',
-                            'SUCCESS': 'bold_green,bg_black',  # Green text on black background
-                            'WARNING': 'bold_yellow',
-                            'ERROR': 'bold_red',
-                            'CRITICAL': 'bold_white,bg_red',  # White text on red background
-                        },
-                    )
-                )
-                logger.addHandler(handler)
-                logger.setLevel(logging.INFO)
-
-            Full control with standard logging:
-
-                import logging
-                logging.basicConfig(
-                    level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-                )
+        Note:
+            The default formatters (MultilineFormatter and ColoredMultilineFormatter)
+            provide pretty output with box borders for multi-line messages.
         """
 
         @classmethod
@@ -548,7 +528,19 @@ class CONFIG:
 
     @classmethod
     def reset(cls) -> None:
-        """Reset all configuration values to defaults."""
+        """Reset all configuration values to defaults.
+
+        This resets modeling, solving, and plotting settings to their default values,
+        and disables all logging handlers (back to silent mode).
+
+        Examples:
+            ```python
+            CONFIG.debug()  # Enable debug mode
+            # ... do some work ...
+            CONFIG.reset()  # Back to defaults (silent)
+            ```
+        """
+        # Reset settings
         for key, value in _DEFAULTS['modeling'].items():
             setattr(cls.Modeling, key, value)
 
@@ -559,6 +551,9 @@ class CONFIG:
             setattr(cls.Plotting, key, value)
 
         cls.config_name = _DEFAULTS['config_name']
+
+        # Reset logging to default (silent)
+        cls.Logging.disable()
 
     @classmethod
     def to_dict(cls) -> dict:
@@ -596,6 +591,13 @@ class CONFIG:
 
         Disables all logging, solver output, and result logging
         for clean production runs. Does not show plots.
+
+        Examples:
+            ```python
+            CONFIG.silent()
+            # Now run optimizations with no output
+            result = optimization.solve()
+            ```
         """
         cls.Logging.disable()
         cls.Plotting.default_show = False
@@ -608,6 +610,13 @@ class CONFIG:
         """Configure for debug mode with verbose output.
 
         Enables console logging at DEBUG level and all solver output for troubleshooting.
+
+        Examples:
+            ```python
+            CONFIG.debug()
+            # See detailed DEBUG logs and full solver output
+            optimization.solve()
+            ```
         """
         cls.Logging.enable_console('DEBUG')
         cls.Solving.log_to_console = True
@@ -620,11 +629,64 @@ class CONFIG:
 
         Enables console logging at INFO level and all solver output.
         Also enables browser plotting for plotly with showing plots per default.
+
+        Examples:
+            ```python
+            CONFIG.exploring()
+            # Perfect for interactive sessions
+            optimization.solve()  # Shows INFO logs and solver output
+            result.plot()         # Opens plots in browser
+            ```
         """
         cls.Logging.enable_console('INFO')
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
         cls.browser_plotting()
+        return cls
+
+    @classmethod
+    def production(cls, log_file: str | Path = 'flixopt.log') -> type[CONFIG]:
+        """Configure for production use.
+
+        Enables file logging only (no console output), disables plots,
+        and disables solver console output for clean production runs.
+
+        Args:
+            log_file: Path to log file (default: 'flixopt.log')
+
+        Examples:
+            ```python
+            CONFIG.production('production.log')
+            # Logs to file, no console output
+            optimization.solve()
+            ```
+        """
+        cls.Logging.disable()  # Clear any console handlers
+        cls.Logging.enable_file('INFO', log_file)
+        cls.Plotting.default_show = False
+        cls.Solving.log_to_console = False
+        cls.Solving.log_main_results = False
+        return cls
+
+    @classmethod
+    def notebook(cls) -> type[CONFIG]:
+        """Configure for Jupyter notebooks.
+
+        Enables console logging at INFO level with colors, shows plots inline,
+        and enables solver output for interactive analysis.
+
+        Examples:
+            ```python
+            # In Jupyter notebook
+            CONFIG.notebook()
+            optimization.solve()  # Shows colored logs
+            result.plot()         # Shows plots inline
+            ```
+        """
+        cls.Logging.enable_console('INFO')
+        cls.Plotting.default_show = True
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
         return cls
 
     @classmethod
@@ -635,6 +697,12 @@ class CONFIG:
         and viewing interactive plots. Does NOT modify CONFIG.Plotting settings.
 
         Respects FLIXOPT_CI environment variable if set.
+
+        Examples:
+            ```python
+            CONFIG.browser_plotting()
+            result.plot()  # Opens in browser instead of inline
+            ```
         """
         cls.Plotting.default_show = True
 
