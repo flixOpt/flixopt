@@ -12,7 +12,6 @@ import numpy as np
 
 from .components import LinearConverter
 from .config import DEPRECATION_REMOVAL_VERSION
-from .core import TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:

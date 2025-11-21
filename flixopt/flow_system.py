@@ -8,7 +8,7 @@ import logging
 import warnings
 from collections import defaultdict
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, NumericOrBool
+    from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
 

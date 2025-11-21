@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,6 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')

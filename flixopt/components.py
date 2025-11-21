@@ -23,7 +23,6 @@ from .structure import FlowSystemModel, register_class_for_io
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')

@@ -6,7 +6,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 import logging
 import warnings
 from itertools import permutations
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd

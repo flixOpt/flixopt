@@ -28,13 +28,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import (
-        Bool_PS,
-        Bool_S,
-        Bool_TPS,
-        Effect_PS,
-        Effect_S,
         Effect_TPS,
         Numeric_PS,
         Numeric_S,

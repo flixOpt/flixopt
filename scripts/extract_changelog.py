@@ -4,7 +4,6 @@ Extract individual releases from CHANGELOG.md to docs/changelog/
 Simple script to create one file per release.
 """
 
-import os
 import re
 from pathlib import Path
 

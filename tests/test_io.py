@@ -1,6 +1,5 @@
 import uuid
 
-import numpy as np
 import pytest
 
 import flixopt as fx
@@ -83,7 +82,6 @@ def test_flow_system_io(flow_system):
 def test_suppress_output_file_descriptors(tmp_path):
     """Test that suppress_output() redirects file descriptors to /dev/null."""
     import os
-    import sys
 
     from flixopt.io import suppress_output
 

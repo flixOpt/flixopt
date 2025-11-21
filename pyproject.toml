@@ -162,7 +162,6 @@ select = [
     "TCH",   # flake8-type-checking (optimize imports for type checking)
 ]
 ignore = [  # Ignore specific rules
-    "F401",  # Allow unused imports in some cases (use __all__)
     "UP038",
     "E501"  # ignore long lines
 ]

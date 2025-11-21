@@ -594,8 +594,6 @@ def test_selective_scenario_independence():
 
 def test_scenario_parameters_io_persistence():
     """Test that scenario_independent_sizes and scenario_independent_flow_rates persist through IO operations."""
-    import shutil
-    import tempfile
 
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
