@@ -1,41 +1,37 @@
 ---
-title: 'Gala: A Python package for galactic dynamics'
+title: 'Flixopt: A framework for optimization of flow-systems'
 tags:
-  - Python
-  - astronomy
-  - dynamics
-  - galactic dynamics
-  - milky way
+  - flow-system
+  - mixed-integer linear programming
+  - MILP
+  - optimization-based framework
+  - optimization of operation and design
+  - investment decision
+  - energy system optimization
 authors:
-  - name: Adrian M. Price-Whelan
-    orcid: 0000-0000-0000-0000
+  - name: Felix Panitz
+    orcid: 0009-0007-7030-6987
     equal-contrib: true
     affiliation: "1, 2" # (Multiple affiliations must be quoted)
-  - name: Author Without ORCID
+  - name: Felix Bumann
+    orcid: 0009-0006-0765-4789
     equal-contrib: true # (This is how you can denote equal contributions between multiple authors)
-    affiliation: 2
-  - name: Author with no affiliation
+    affiliation: 1
+  - name: Peter Stange
+    orcid: 0009-0001-6407-1495
+    equal-contrib: true
     corresponding: true # (This is how to denote the corresponding author)
-    affiliation: 3
-  - given-names: Ludwig
-    dropping-particle: van
-    surname: Beethoven
-    affiliation: 3
+    affiliation: 1
 affiliations:
- - name: Lyman Spitzer, Jr. Fellow, Princeton University, United States
+ - name: Technische Universität Dresden, Germany
    index: 1
-   ror: 00hx57361
- - name: Institution Name, Country
+   ror: 042aqky30
+ - name: Fraunhofer Research Institution for Energy Infrastructures and Geotechnologies IEG, Germany
    index: 2
- - name: Independent Researcher, Country
-   index: 3
-date: 13 August 2017
+   ror: 00y718461
+date: 21 November 2025
 bibliography: paper.bib
 
-# Optional fields if submitting to a AAS journal too, see this blog post:
-# https://blog.joss.theoj.org/2018/12/a-new-collaboration-with-aas-publishing
-aas-doi: 10.3847/xxxxx <- update this with the DOI from AAS once you know it.
-aas-journal: Astrophysical Journal <- The name of the AAS journal.
 ---
 
 # Summary
