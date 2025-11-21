@@ -89,12 +89,12 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 
 ### Other Changes
 
-| Category | Old (v2.x) | New (v3.0.0) |
-|----------|------------|--------------|
-| System model class | `SystemModel` | `FlowSystemModel` |
-| Element submodel | `Model` | `Submodel` |
-| Logging default | Enabled | Disabled |
-| Enable logging | (default) | `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()` |
+| Category               | Old (v2.x) | New (v3.0.0+) |
+|------------------------|------------|---------------|
+| System model class     | `SystemModel` | `FlowSystemModel` |
+| Element submodel       | `Model` | `Submodel` |
+| Logging default        | Enabled | Disabled (silent) |
+| Enable console logging | (default) | `fx.CONFIG.Logging.enable_console('INFO')` or `fx.CONFIG.exploring()` |
 
 ---
 

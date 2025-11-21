@@ -4,15 +4,15 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
@@ -41,6 +41,8 @@ if TYPE_CHECKING:
         Numeric_TPS,
         Scalar,
     )
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
