@@ -10,10 +10,12 @@ from typing import Literal
 
 try:
     import colorlog
+    from colorlog.escape_codes import escape_codes
 
     COLORLOG_AVAILABLE = True
 except ImportError:
     COLORLOG_AVAILABLE = False
+    escape_codes = None
 
 __all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'ColoredMultilineFormatter']
 
@@ -97,8 +99,6 @@ if COLORLOG_AVAILABLE:
 
             # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
             import datetime
-
-            from colorlog.escape_codes import escape_codes
 
             # Use thin attribute for timestamp
             dim = escape_codes['thin']
