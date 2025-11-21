@@ -174,41 +174,27 @@ class CONFIG:
     """Configuration for flixopt library.
 
     Attributes:
-        Logging: Logging configuration helpers (see CONFIG.Logging for presets and options).
+        Logging: Logging configuration (see CONFIG.Logging for details).
         Modeling: Optimization modeling parameters.
         Solving: Solver configuration and default parameters.
         Plotting: Plotting configuration.
         config_name: Configuration name.
 
-    Quick Start:
+    Examples:
         ```python
-        # For interactive exploration (console logs + browser plots)
-        CONFIG.exploring()
-
-        # For Jupyter notebooks (console logs + inline plots)
-        CONFIG.notebook()
-
-        # For debugging (verbose console logs)
-        CONFIG.debug()
-
-        # For production (file logs only, no console)
-        CONFIG.production('app.log')
-
-        # For silent operation (no output)
-        CONFIG.silent()
-        ```
-
-        See ``CONFIG.Logging`` docstring for detailed logging configuration options.
-
-    Advanced:
-        ```python
-        # Direct control
+        # Quick logging setup
         CONFIG.Logging.enable_console('INFO')
-        CONFIG.Logging.enable_file('DEBUG', 'debug.log')
 
-        # Standard Python logging
-        import logging
-        logging.basicConfig(level=logging.DEBUG)
+        # Or use presets (affects logging, plotting, solver output)
+        CONFIG.exploring()   # Interactive exploration
+        CONFIG.notebook()    # Jupyter notebooks
+        CONFIG.debug()       # Troubleshooting
+        CONFIG.production()  # Production deployment
+        CONFIG.silent()      # No output
+
+        # Adjust other settings
+        CONFIG.Solving.mip_gap = 0.001
+        CONFIG.Plotting.default_dpi = 600
         ```
     """
 
@@ -216,37 +202,56 @@ class CONFIG:
         """Logging configuration helpers.
 
         flixopt is silent by default (WARNING level, no handlers).
-        Use presets for quick setup or direct methods for fine control.
 
-        Presets (recommended):
-            | Preset | Console | File | Use Case |
-            |--------|---------|------|----------|
-            | ``CONFIG.exploring()`` | INFO (colored) | No | Interactive exploration |
-            | ``CONFIG.notebook()`` | INFO (colored) | No | Jupyter notebooks |
-            | ``CONFIG.debug()`` | DEBUG (colored) | No | Troubleshooting |
-            | ``CONFIG.production()`` | No | INFO | Production deployments |
-            | ``CONFIG.silent()`` | No | No | Silent operation |
+        Quick Start - Use Presets:
+            These presets configure logging along with plotting and solver output:
 
-        Direct Methods:
-            - ``enable_console(level, colored=True, stream=None)`` - Console logging
-            - ``enable_file(level, path, max_bytes, backup_count)`` - File logging with rotation
-            - ``disable()`` - Disable all logging
-            - ``set_colors(log_colors)`` - Customize log level colors
+            | Preset | Console Logs | File Logs | Plots | Solver Output | Use Case |
+            |--------|-------------|-----------|-------|---------------|----------|
+            | ``CONFIG.exploring()`` | INFO (colored) | No | Browser | Yes | Interactive exploration |
+            | ``CONFIG.notebook()`` | INFO (colored) | No | Inline | Yes | Jupyter notebooks |
+            | ``CONFIG.debug()`` | DEBUG (colored) | No | Default | Yes | Troubleshooting |
+            | ``CONFIG.production('app.log')`` | No | INFO | No | No | Production deployments |
+            | ``CONFIG.silent()`` | No | No | No | No | Silent operation |
 
-        Examples:
+            Examples:
+                ```python
+                CONFIG.exploring()  # Start exploring interactively
+                CONFIG.debug()      # See everything for troubleshooting
+                CONFIG.production('logs/prod.log')  # Production mode
+                ```
+
+        Direct Control - Logging Only:
+            For fine-grained control of logging without affecting other settings:
+
+            Methods:
+                - ``enable_console(level='INFO', colored=True, stream=None)``
+                - ``enable_file(level='INFO', path='flixopt.log', max_bytes=10MB, backup_count=5)``
+                - ``disable()`` - Remove all handlers
+                - ``set_colors(log_colors)`` - Customize level colors
+
+            Examples:
+                ```python
+                # Console and file logging
+                CONFIG.Logging.enable_console('INFO')
+                CONFIG.Logging.enable_file('DEBUG', 'debug.log')
+
+                # Customize colors
+                CONFIG.Logging.set_colors({
+                    'INFO': 'bold_white',
+                    'SUCCESS': 'bold_green,bg_black',
+                    'CRITICAL': 'bold_white,bg_red',
+                })
+
+                # Non-colored output
+                CONFIG.Logging.enable_console('INFO', colored=False)
+                ```
+
+        Advanced Customization:
+            For full control, use Python's standard logging or create custom formatters:
+
             ```python
-            # Console and file logging
-            CONFIG.Logging.enable_console('INFO')
-            CONFIG.Logging.enable_file('DEBUG', 'debug.log')
-
-            # Customize colors after enabling console
-            CONFIG.Logging.set_colors({
-                'INFO': 'bold_white',
-                'SUCCESS': 'bold_green,bg_black',
-                'CRITICAL': 'bold_white,bg_red',
-            })
-
-            # Advanced: custom formatter
+            # Custom formatter
             from flixopt.config import ColoredMultilineFormatter
             import colorlog, logging
 
@@ -254,13 +259,16 @@ class CONFIG:
             handler.setFormatter(ColoredMultilineFormatter(...))
             logging.getLogger('flixopt').addHandler(handler)
 
-            # Or use standard Python logging
+            # Or standard Python logging
             import logging
-            logging.basicConfig(level=logging.DEBUG)
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format='%(asctime)s - %(levelname)s - %(message)s'
+            )
             ```
 
         Note:
-            The default formatters (MultilineFormatter and ColoredMultilineFormatter)
+            Default formatters (MultilineFormatter and ColoredMultilineFormatter)
             provide pretty output with box borders for multi-line messages.
         """
 
