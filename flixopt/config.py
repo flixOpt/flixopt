@@ -225,23 +225,28 @@ class CONFIG:
         """
 
         @classmethod
-        def enable_console(cls, level: str | int = 'INFO', colored: bool = True) -> None:
+        def enable_console(cls, level: str | int = 'INFO', colored: bool = True, stream=None) -> None:
             """Enable colored console logging.
 
             Args:
                 level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
                 colored: Use colored output if colorlog is available (default: True)
+                stream: Output stream (default: sys.stdout). Can be sys.stdout or sys.stderr.
 
             Note:
                 For full control over formatting, use logging.basicConfig() instead.
 
             Examples:
                 ```python
-                # Colored output (default)
+                # Colored output to stdout (default)
                 CONFIG.Logging.enable_console('INFO')
 
                 # Plain text output
                 CONFIG.Logging.enable_console('INFO', colored=False)
+
+                # Log to stderr instead
+                import sys
+                CONFIG.Logging.enable_console('INFO', stream=sys.stderr)
 
                 # Using logging constants
                 import logging
@@ -249,6 +254,8 @@ class CONFIG:
                 CONFIG.Logging.enable_console(logging.DEBUG)
                 ```
             """
+            import sys
+
             logger = logging.getLogger('flixopt')
 
             # Convert string level to logging constant
@@ -256,6 +263,10 @@ class CONFIG:
                 level = getattr(logging, level.upper())
 
             logger.setLevel(level)
+
+            # Default to stdout
+            if stream is None:
+                stream = sys.stdout
 
             # Remove existing console handlers to avoid duplicates
             logger.handlers = [
@@ -265,7 +276,7 @@ class CONFIG:
             ]
 
             if colored and COLORLOG_AVAILABLE:
-                handler = colorlog.StreamHandler()
+                handler = colorlog.StreamHandler(stream)
                 handler.setFormatter(
                     ColoredMultilineFormatter(
                         '%(log_color)s%(levelname)-8s%(reset)s %(message)s',
@@ -280,7 +291,7 @@ class CONFIG:
                     )
                 )
             else:
-                handler = logging.StreamHandler()
+                handler = logging.StreamHandler(stream)
                 handler.setFormatter(MultilineFormatter('%(levelname)-8s %(message)s'))
 
             logger.addHandler(handler)
