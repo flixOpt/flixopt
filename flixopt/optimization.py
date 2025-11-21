@@ -96,8 +96,6 @@ class _Optimization:
 
     @property
     def main_results(self) -> dict[str, int | float | dict]:
-        from flixopt.features import InvestmentModel
-
         main_results = {
             'Objective': self.model.objective.value,
             'Penalty': self.model.effects.penalty.total.solution.values,

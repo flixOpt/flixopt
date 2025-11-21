@@ -209,8 +209,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         model: linopy.Model | None = None,
         **kwargs,  # To accept old "flow_system" parameter
     ):
-        """Initialize CalculationResults with optimization data.
-        Usually, this class is instantiated by the Calculation class, or by loading from file.
+        """Initialize Results with optimization data.
+        Usually, this class is instantiated by an Optimization object via `Results.from_optimization()`
+        or by loading from file using `Results.from_file()`.
 
         Args:
             solution: Optimization solution dataset.
@@ -223,13 +224,12 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             flow_system: Use flow_system_data instead.
 
         Note:
-            CalculationResults is deprecated. Use OptimizationResults instead.
+            The legacy alias `CalculationResults` is deprecated. Use `Results` instead.
         """
-        # Deprecation warning for CalculationResults
+        # Deprecation warning for the legacy CalculationResults alias
         if self.__class__.__name__ == 'CalculationResults':
             warnings.warn(
-                'CalculationResults is deprecated and will be removed in a future version. '
-                'Use OptimizationResults instead.',
+                'CalculationResults is deprecated and will be removed in a future version. Use Results instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2140,22 +2140,13 @@ class SegmentedResults:
 
     def __init__(
         self,
-        segment_results: list[CalculationResults],
+        segment_results: list[Results],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
         name: str,
         folder: pathlib.Path | None = None,
     ):
-        # Deprecation warning for SegmentedCalculationResults
-        if self.__class__.__name__ == 'SegmentedCalculationResults':
-            warnings.warn(
-                'SegmentedCalculationResults is deprecated and will be removed in a future version. '
-                'Use SegmentedOptimizationResults instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment
