@@ -17,7 +17,10 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'ColoredMultilineFormatter']
+__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter']
+
+if COLORLOG_AVAILABLE:
+    __all__.append('ColoredMultilineFormatter')
 
 # Add custom SUCCESS level (between INFO and WARNING)
 SUCCESS_LEVEL = 25
