@@ -193,3 +193,44 @@ class TestConfigModule:
         assert 'An error occurred' in captured
         assert 'ValueError: Test exception non-colored' in captured
         assert 'Traceback' in captured
+
+    def test_enable_file_preserves_custom_handlers(self, tmp_path, capfd):
+        """Test that enable_file preserves custom non-file handlers."""
+        # Add a custom console handler first
+        CONFIG.Logging.enable_console('INFO')
+        logger.info('console test')
+        assert 'console test' in capfd.readouterr().out
+
+        # Now add file logging - should keep the console handler
+        log_file = tmp_path / 'test.log'
+        CONFIG.Logging.enable_file('INFO', str(log_file))
+
+        logger.info('both outputs')
+
+        # Check console still works
+        console_output = capfd.readouterr().out
+        assert 'both outputs' in console_output
+
+        # Check file was created and has the message
+        assert log_file.exists()
+        assert 'both outputs' in log_file.read_text()
+
+    def test_enable_file_removes_duplicate_file_handlers(self, tmp_path):
+        """Test that enable_file removes existing file handlers to avoid duplicates."""
+        log_file = tmp_path / 'test.log'
+
+        # Enable file logging twice
+        CONFIG.Logging.enable_file('INFO', str(log_file))
+        CONFIG.Logging.enable_file('INFO', str(log_file))
+
+        logger.info('duplicate test')
+
+        # Count file handlers - should only be 1
+        from logging.handlers import RotatingFileHandler
+
+        file_handlers = [h for h in logger.handlers if isinstance(h, (logging.FileHandler, RotatingFileHandler))]
+        assert len(file_handlers) == 1
+
+        # Message should appear only once in the file
+        log_content = log_file.read_text()
+        assert log_content.count('duplicate test') == 1

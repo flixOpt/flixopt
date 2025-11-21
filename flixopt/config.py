@@ -350,7 +350,7 @@ class CONFIG:
             max_bytes: int = 10 * 1024 * 1024,
             backup_count: int = 5,
         ) -> None:
-            """Enable file logging with rotation.
+            """Enable file logging with rotation. Removes all existing file handlers!
 
             Args:
                 level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
@@ -378,12 +378,9 @@ class CONFIG:
 
             logger.setLevel(level)
 
-            # Remove existing file handlers to avoid duplicates
+            # Remove existing file handlers to avoid duplicates, keep all non-file handlers (including custom handlers)
             logger.handlers = [
-                h
-                for h in logger.handlers
-                if isinstance(h, logging.StreamHandler)
-                and not isinstance(h, (logging.FileHandler, RotatingFileHandler))
+                h for h in logger.handlers if not isinstance(h, (logging.FileHandler, RotatingFileHandler))
             ]
 
             # Create log directory if needed
