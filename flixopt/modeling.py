@@ -1,10 +1,13 @@
+import logging
+
 import linopy
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 from .config import CONFIG
 from .structure import Submodel
+
+logger = logging.getLogger('flixopt')
 
 
 class ModelingUtilitiesAbstract:

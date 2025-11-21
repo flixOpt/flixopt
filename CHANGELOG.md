@@ -80,6 +80,45 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 ### 🔥 Removed
 
+**Deprecated parameters removed** (all were deprecated in v4.0.0 or earlier):
+
+**TimeSeriesData:**
+- `agg_group` → use `aggregation_group`
+- `agg_weight` → use `aggregation_weight`
+- Properties: `agg_group`, `agg_weight`
+
+**Effect:**
+- Constructor parameters: `minimum_operation` → use `minimum_temporal`, `maximum_operation` → use `maximum_temporal`, `minimum_invest` → use `minimum_periodic`, `maximum_invest` → use `maximum_periodic`, `minimum_operation_per_hour` → use `minimum_per_hour`, `maximum_operation_per_hour` → use `maximum_per_hour`
+- Properties: `minimum_operation`, `maximum_operation`, `minimum_invest`, `maximum_invest`, `minimum_operation_per_hour`, `maximum_operation_per_hour`, `minimum_total_per_period`, `maximum_total_per_period`
+
+**Flow:**
+- Constructor parameters: `flow_hours_per_period_max` → use `flow_hours_max`, `flow_hours_per_period_min` → use `flow_hours_min`, `flow_hours_total_max` → use `flow_hours_max`, `flow_hours_total_min` → use `flow_hours_min`, `total_flow_hours_max` → use `flow_hours_max_over_periods`, `total_flow_hours_min` → use `flow_hours_min_over_periods`
+- Properties: `flow_hours_total_max`, `flow_hours_total_min`
+
+**InvestParameters:**
+- Constructor parameters: `fix_effects` → use `effects_of_investment`, `specific_effects` → use `effects_of_investment_per_size`, `divest_effects` → use `effects_of_retirement`, `piecewise_effects` → use `piecewise_effects_of_investment`, `optional` → use `mandatory` (with inverted logic)
+- Properties: `optional`, `fix_effects`, `specific_effects`, `divest_effects`, `piecewise_effects`
+
+**OnOffParameters:**
+- Constructor parameters: `on_hours_total_min` → use `on_hours_min`, `on_hours_total_max` → use `on_hours_max`, `switch_on_total_max` → use `switch_on_max`
+
+**Storage:**
+- `initial_charge_state="lastValueOfSim"` → use `initial_charge_state="equals_final"`
+
+**Source, Sink, SourceAndSink:**
+- Constructor parameters:
+  - Source: `source` → use `outputs`
+  - Sink: `sink` → use `inputs`
+  - SourceAndSink: `source` → use `outputs`, `sink` → use `inputs`, `prevent_simultaneous_sink_and_source` → use `prevent_simultaneous_flow_rates`
+- Properties:
+  - Source: `source` property
+  - Sink: `sink` property
+  - SourceAndSink: `source`, `sink`, `prevent_simultaneous_sink_and_source` properties
+
+**Linear Converters** (Boiler, CHP, HeatPump, etc.):
+- Flow parameters: `Q_fu` → use `fuel_flow`, `P_el` → use `electrical_flow`, `Q_th` → use `thermal_flow`, `Q_ab` → use `heat_source_flow`
+- Efficiency parameters: `eta` → use `thermal_efficiency`, `eta_th` → use `thermal_efficiency`, `eta_el` → use `electrical_efficiency`, `COP` → use `cop`
+
 ### 🐛 Fixed
 
 ### 🔒 Security
@@ -87,11 +126,104 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 ### 📦 Dependencies
 
 ### 📝 Docs
-- Added missing examples to docs.
 
 ### 👷 Development
 
 ### 🚧 Known Issues
+
+---
+
+## [4.1.0] - 2025-11-21
+
+**Summary**: Logging migrated from loguru to standard Python logging for stability and security. Simpler API with convenient presets.
+
+!!! info "Migration Required?"
+    **Most users**: No action needed (silent by default). Methods like `CONFIG.exploring()`, `CONFIG.debug()`, etc. continue to work exactly as before.
+    **If you customized logging**: Simple API update (see migration below).
+    **If you used loguru directly**: Breaking change (loguru only in v3.6.0-v4.0.0, ~4 days).
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+**New logging presets**:
+```python
+CONFIG.production('app.log')    # File-only, no console/plots
+```
+
+**New logging methods**:
+- `CONFIG.Logging.enable_console(level, colored, stream)` - Console output with colors
+- `CONFIG.Logging.enable_file(level, path, max_bytes, backup_count)` - File logging with rotation
+- `CONFIG.Logging.disable()` - Disable all logging
+- `CONFIG.Logging.set_colors(log_colors)` - Customize colors
+
+**Enhanced formatting**:
+- Multi-line messages with box borders (┌─, │, └─)
+- Exception tracebacks with proper indentation
+- Timestamps: `2025-11-21 14:30:45.123`
+
+### 💥 Breaking Changes
+
+**Logging migration** (edge cases only):
+
+| Old (v3.6.0-v4.0.0) | New (v4.1.0+) |
+|---------------------|---------------|
+| `CONFIG.Logging.level = 'INFO'`<br>`CONFIG.Logging.console = True`<br>`CONFIG.apply()` | `CONFIG.Logging.enable_console('INFO')`<br>or `CONFIG.exploring()` |
+| `CONFIG.Logging.file = 'app.log'` | `CONFIG.Logging.enable_file('INFO', 'app.log')` |
+| `logger.opt(lazy=True)` | Built-in (automatic) |
+
+**Migration**:
+```python
+# Before (v3.6.0-v4.0.0)
+CONFIG.Logging.level = 'INFO'
+CONFIG.Logging.console = True
+CONFIG.apply()
+
+# After (v4.1.0+)
+CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
+```
+
+### ♻️ Changed
+
+- Replaced loguru with Python `logging` + optional `colorlog` for colors
+- Configuration immediate (no `CONFIG.apply()` needed)
+- Log format: `[dimmed timestamp] [colored level] │ message`
+- Logs to `stdout` by default (configurable)
+- SUCCESS level preserved (green, level 25)
+- Performance: Expensive operations guarded with `logger.isEnabledFor()` checks
+
+### 🗑️ Deprecated
+
+- `change_logging_level(level)` → Use `CONFIG.Logging.enable_console(level)`. Removal in v5.0.0.
+
+### 🔥 Removed
+
+**CONFIG methods/attributes**:
+- `CONFIG.apply()` → Use helper methods directly
+- `CONFIG.Logging.level`, `.console`, `.file` → Use `enable_console()`/`enable_file()`
+- `CONFIG.Logging.verbose_tracebacks`, `.rich`, `.Colors`, `.date_format`, `.format`, `.console_width`, `.show_path`, `.show_logger_name` → Use standard logging
+- loguru features (`logger.opt()`, etc.)
+
+### 🐛 Fixed
+
+- `TypeError` in `check_bounds()` with loguru-style formatting
+- Exception tracebacks not appearing in custom formatters
+- Inconsistent formatting between console and file logs
+
+### 🔒 Security
+
+- Removed loguru dependency for reduced supply chain risk
+
+### 📦 Dependencies
+
+- **Removed:** `loguru >= 0.7.0`
+- **Added:** `colorlog >= 6.8.0, < 7` (optional)
+
+### 📝 Docs
+
+- Preset comparison table in `CONFIG.Logging` docstring
+- Color customization examples
+- Migration guide with before/after code
 
 ---
 

@@ -2,6 +2,7 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
+import logging
 import warnings
 from importlib.metadata import PackageNotFoundError, version
 
@@ -71,6 +72,11 @@ __all__ = [
     'solvers',
 ]
 
+# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.WARNING)
+logger.addHandler(logging.NullHandler())
+
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
 # They are suppressed at runtime to provide a cleaner user experience.
@@ -78,7 +84,12 @@ __all__ = [
 
 # tsam: Time series aggregation library
 # - UserWarning: Informational message about minimal value constraints during clustering.
-warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*', module='tsam')
+warnings.filterwarnings(
+    'ignore',
+    category=UserWarning,
+    message='.*minimal value.*exceeds.*',
+    module='tsam.timeseriesaggregation',  # More specific if possible
+)
 # TODO: Might be able to fix it in flixopt?
 
 # linopy: Linear optimization library

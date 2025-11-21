@@ -3,6 +3,7 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
+import logging
 import warnings
 from itertools import permutations
 from typing import Any, Literal, Union
@@ -10,15 +11,14 @@ from typing import Any, Literal, Union
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
+from .config import DEPRECATION_REMOVAL_VERSION
 from .types import NumericOrBool
+
+logger = logging.getLogger('flixopt')
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
-
-# Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '5.0.0'
 
 
 class PlausibilityError(Exception):
@@ -43,8 +43,6 @@ class TimeSeriesData(xr.DataArray):
         *args: Any,
         aggregation_group: str | None = None,
         aggregation_weight: float | None = None,
-        agg_group: str | None = None,
-        agg_weight: float | None = None,
         **kwargs: Any,
     ):
         """
@@ -52,26 +50,8 @@ class TimeSeriesData(xr.DataArray):
             *args: Arguments passed to DataArray
             aggregation_group: Aggregation group name
             aggregation_weight: Aggregation weight (0-1)
-            agg_group: Deprecated, use aggregation_group instead
-            agg_weight: Deprecated, use aggregation_weight instead
             **kwargs: Additional arguments passed to DataArray
         """
-        if agg_group is not None:
-            warnings.warn(
-                f'agg_group is deprecated, use aggregation_group instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            aggregation_group = agg_group
-        if agg_weight is not None:
-            warnings.warn(
-                f'agg_weight is deprecated, use aggregation_weight instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            aggregation_weight = agg_weight
 
         if (aggregation_group is not None) and (aggregation_weight is not None):
             raise ValueError('Use either aggregation_group or aggregation_weight, not both')
@@ -142,26 +122,6 @@ class TimeSeriesData(xr.DataArray):
 
         info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
-
-    @property
-    def agg_group(self):
-        warnings.warn(
-            f'agg_group is deprecated, use aggregation_group instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.aggregation_group
-
-    @property
-    def agg_weight(self):
-        warnings.warn(
-            f'agg_weight is deprecated, use aggregation_weight instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.aggregation_weight
 
 
 class DataConverter:

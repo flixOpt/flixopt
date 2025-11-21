@@ -13,6 +13,7 @@ Import from flixopt.optimization or use the new names from flixopt directly.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING
 
@@ -37,6 +38,8 @@ if TYPE_CHECKING:
     from .elements import Component
     from .flow_system import FlowSystem
     from .solvers import _Solver
+
+logger = logging.getLogger('flixopt')
 
 
 def _deprecation_warning(old_name: str, new_name: str):
