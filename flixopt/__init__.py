@@ -61,10 +61,10 @@ __all__ = [
     'solvers',
 ]
 
-# Initialize logger with default configuration (silent: WARNING level, no handlers)
-_logger = logging.getLogger('flixopt')
-_logger.setLevel(logging.WARNING)
-_logger.addHandler(logging.NullHandler())
+# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.WARNING)
+logger.addHandler(logging.NullHandler())
 
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
