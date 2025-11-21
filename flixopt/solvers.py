@@ -12,6 +12,7 @@ from flixopt.config import CONFIG
 
 logger = logging.getLogger('flixopt')
 
+
 @dataclass
 class _Solver:
     """

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
+
 def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
     """Load color mapping from JSON or YAML file.
 

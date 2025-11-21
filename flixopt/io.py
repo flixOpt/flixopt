@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
+
 def remove_none_and_empty(obj):
     """Recursively removes None and empty dicts and lists values from a dictionary or list."""
 

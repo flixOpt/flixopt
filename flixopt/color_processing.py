@@ -5,6 +5,7 @@ into a label-to-color mapping dictionary, without needing to know about the plot
 """
 
 from __future__ import annotations
+
 import logging
 
 import matplotlib.colors as mcolors

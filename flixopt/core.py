@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .config import DEPRECATION_REMOVAL_VERSION
 from .types import NumericOrBool
 
 logger = logging.getLogger('flixopt')

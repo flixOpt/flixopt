@@ -24,6 +24,7 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
 logger = logging.getLogger('flixopt')
 
+
 @register_class_for_io
 class Piece(Interface):
     """Define a single linear segment with specified domain boundaries.

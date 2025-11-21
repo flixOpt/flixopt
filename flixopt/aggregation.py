@@ -6,10 +6,10 @@ Through this, aggregating TimeSeriesData is possible.
 from __future__ import annotations
 
 import copy
+import logging
 import pathlib
 import timeit
 from typing import TYPE_CHECKING
-import logging
 
 import numpy as np
 
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
+
 
 class Aggregation:
     """

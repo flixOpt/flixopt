@@ -12,10 +12,10 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
+from .config import DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
-from .config import DEPRECATION_REMOVAL_VERSION
 from .interface import InvestParameters, OnOffParameters, PiecewiseConversion
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
+
 
 @register_class_for_io
 class LinearConverter(Component):

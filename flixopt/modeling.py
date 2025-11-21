@@ -9,6 +9,7 @@ from .structure import Submodel
 
 logger = logging.getLogger('flixopt')
 
+
 class ModelingUtilitiesAbstract:
     """Utility functions for modeling calculations - leveraging xarray for temporal data"""
 

@@ -14,9 +14,9 @@ import timeit
 import pandas as pd
 import xarray as xr
 
-logger = logging.getLogger('flixopt')
-
 import flixopt as fx
+
+logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
     fx.CONFIG.exploring()

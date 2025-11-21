@@ -2,8 +2,8 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
-import warnings
 import logging
+import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 try:

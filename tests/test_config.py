@@ -81,9 +81,7 @@ class TestConfigModule:
     def test_multiline_formatting(self):
         """Test that multi-line messages get box borders."""
         formatter = MultilineFormatter()
-        record = logging.LogRecord(
-            'test', logging.INFO, '', 1, 'Line 1\nLine 2\nLine 3', (), None
-        )
+        record = logging.LogRecord('test', logging.INFO, '', 1, 'Line 1\nLine 2\nLine 3', (), None)
         formatted = formatter.format(record)
         assert '┌─' in formatted
         assert '└─' in formatted
@@ -166,4 +164,3 @@ class TestConfigModule:
 
         with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
             change_logging_level('INFO')
-

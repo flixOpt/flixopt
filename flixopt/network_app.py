@@ -5,7 +5,6 @@ import socket
 import threading
 from typing import TYPE_CHECKING, Any
 
-
 try:
     import dash_cytoscape as cyto
     import dash_daq as daq
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
+
 
 # Configuration class for better organization
 class VisualizationConfig:

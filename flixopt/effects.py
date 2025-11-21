@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
+
 @register_class_for_io
 class Effect(Element):
     """

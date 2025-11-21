@@ -53,6 +53,7 @@ class MultilineFormatter(logging.Formatter):
         # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
         # formatTime doesn't support %f, so use datetime directly
         import datetime
+
         dt = datetime.datetime.fromtimestamp(record.created)
         time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
@@ -84,6 +85,7 @@ if COLORLOG_AVAILABLE:
 
             # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
             import datetime
+
             from colorlog.escape_codes import escape_codes
 
             # Use thin attribute for timestamp
@@ -165,11 +167,11 @@ class CONFIG:
         CONFIG.Logging.enable_console('INFO')
 
         # Or use presets (affects logging, plotting, solver output)
-        CONFIG.exploring()   # Interactive exploration
-        CONFIG.notebook()    # Jupyter notebooks
-        CONFIG.debug()       # Troubleshooting
+        CONFIG.exploring()  # Interactive exploration
+        CONFIG.notebook()  # Jupyter notebooks
+        CONFIG.debug()  # Troubleshooting
         CONFIG.production()  # Production deployment
-        CONFIG.silent()      # No output
+        CONFIG.silent()  # No output
 
         # Adjust other settings
         CONFIG.Solving.mip_gap = 0.001
@@ -196,7 +198,7 @@ class CONFIG:
             Examples:
                 ```python
                 CONFIG.exploring()  # Start exploring interactively
-                CONFIG.debug()      # See everything for troubleshooting
+                CONFIG.debug()  # See everything for troubleshooting
                 CONFIG.production('logs/prod.log')  # Production mode
                 ```
 
@@ -216,11 +218,13 @@ class CONFIG:
                 CONFIG.Logging.enable_file('DEBUG', 'debug.log')
 
                 # Customize colors
-                CONFIG.Logging.set_colors({
-                    'INFO': 'bold_white',
-                    'SUCCESS': 'bold_green,bg_black',
-                    'CRITICAL': 'bold_white,bg_red',
-                })
+                CONFIG.Logging.set_colors(
+                    {
+                        'INFO': 'bold_white',
+                        'SUCCESS': 'bold_green,bg_black',
+                        'CRITICAL': 'bold_white,bg_red',
+                    }
+                )
 
                 # Non-colored output
                 CONFIG.Logging.enable_console('INFO', colored=False)
@@ -240,10 +244,8 @@ class CONFIG:
 
             # Or standard Python logging
             import logging
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='%(asctime)s - %(levelname)s - %(message)s'
-            )
+
+            logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
             ```
 
         Note:
@@ -273,6 +275,7 @@ class CONFIG:
 
                 # Log to stderr instead
                 import sys
+
                 CONFIG.Logging.enable_console('INFO', stream=sys.stderr)
 
                 # Using logging constants
@@ -361,7 +364,12 @@ class CONFIG:
             logger.setLevel(level)
 
             # Remove existing file handlers to avoid duplicates
-            logger.handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, (logging.FileHandler, RotatingFileHandler))]
+            logger.handlers = [
+                h
+                for h in logger.handlers
+                if isinstance(h, logging.StreamHandler)
+                and not isinstance(h, (logging.FileHandler, RotatingFileHandler))
+            ]
 
             # Create log directory if needed
             log_path = Path(path)
@@ -411,14 +419,16 @@ class CONFIG:
                 CONFIG.Logging.enable_console('INFO')
 
                 # Then customize colors
-                CONFIG.Logging.set_colors({
-                    'DEBUG': 'cyan',
-                    'INFO': 'bold_white',
-                    'SUCCESS': 'bold_green',
-                    'WARNING': 'bold_yellow,bg_black',  # Yellow on black
-                    'ERROR': 'bold_red',
-                    'CRITICAL': 'bold_white,bg_red',  # White on red
-                })
+                CONFIG.Logging.set_colors(
+                    {
+                        'DEBUG': 'cyan',
+                        'INFO': 'bold_white',
+                        'SUCCESS': 'bold_green',
+                        'WARNING': 'bold_yellow,bg_black',  # Yellow on black
+                        'ERROR': 'bold_red',
+                        'CRITICAL': 'bold_white,bg_red',  # White on red
+                    }
+                )
                 ```
 
             Note:
@@ -439,8 +449,7 @@ class CONFIG:
                         return
 
             warnings.warn(
-                'No ColoredMultilineFormatter found. '
-                'Call CONFIG.Logging.enable_console() with colored=True first.',
+                'No ColoredMultilineFormatter found. Call CONFIG.Logging.enable_console() with colored=True first.',
                 stacklevel=2,
             )
 
@@ -622,7 +631,7 @@ class CONFIG:
             CONFIG.exploring()
             # Perfect for interactive sessions
             optimization.solve()  # Shows INFO logs and solver output
-            result.plot()         # Opens plots in browser
+            result.plot()  # Opens plots in browser
             ```
         """
         cls.Logging.enable_console('INFO')
@@ -667,7 +676,7 @@ class CONFIG:
             # In Jupyter notebook
             CONFIG.notebook()
             optimization.solve()  # Shows colored logs
-            result.plot()         # Shows plots inline
+            result.plot()  # Shows plots inline
             ```
         """
         cls.Logging.enable_console('INFO')
