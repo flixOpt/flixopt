@@ -15,7 +15,7 @@ try:
 except ImportError:
     COLORLOG_AVAILABLE = False
 
-__all__ = ['CONFIG', 'get_logger', 'change_logging_level', 'MultilineFormatter', 'ColoredMultilineFormatter']
+__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'ColoredMultilineFormatter']
 
 # Add custom SUCCESS level (between INFO and WARNING)
 SUCCESS_LEVEL = 25
