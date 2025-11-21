@@ -401,7 +401,7 @@ class CONFIG:
             log_path.parent.mkdir(parents=True, exist_ok=True)
 
             handler = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count)
-            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            handler.setFormatter(MultilineFormatter())
 
             logger.addHandler(handler)
             logger.propagate = False  # Don't propagate to root
