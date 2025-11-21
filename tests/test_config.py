@@ -111,13 +111,6 @@ class TestConfigModule:
         logger.debug('debug')
         assert 'debug' in capfd.readouterr().out
 
-    def test_preset_notebook(self, capfd):
-        """Test notebook preset."""
-        CONFIG.notebook()
-        logger.info('notebook')
-        assert 'notebook' in capfd.readouterr().out
-        assert CONFIG.Plotting.default_show is True
-
     def test_preset_production(self, tmp_path):
         """Test production preset."""
         log_file = tmp_path / 'prod.log'

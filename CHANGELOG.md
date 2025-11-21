@@ -94,7 +94,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 **New logging presets**:
 ```python
-CONFIG.notebook()               # Console INFO + inline plots + solver output
 CONFIG.production('app.log')    # File-only, no console/plots
 ```
 

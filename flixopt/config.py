@@ -183,7 +183,6 @@ class CONFIG:
 
         # Or use presets (affects logging, plotting, solver output)
         CONFIG.exploring()  # Interactive exploration
-        CONFIG.notebook()  # Jupyter notebooks
         CONFIG.debug()  # Troubleshooting
         CONFIG.production()  # Production deployment
         CONFIG.silent()  # No output
@@ -205,7 +204,6 @@ class CONFIG:
             | Preset | Console Logs | File Logs | Plots | Solver Output | Use Case |
             |--------|-------------|-----------|-------|---------------|----------|
             | ``CONFIG.exploring()`` | INFO (colored) | No | Browser | Yes | Interactive exploration |
-            | ``CONFIG.notebook()`` | INFO (colored) | No | Inline | Yes | Jupyter notebooks |
             | ``CONFIG.debug()`` | DEBUG (colored) | No | Default | Yes | Troubleshooting |
             | ``CONFIG.production('app.log')`` | No | INFO | No | No | Production deployments |
             | ``CONFIG.silent()`` | No | No | No | No | Silent operation |
@@ -674,27 +672,6 @@ class CONFIG:
         cls.Plotting.default_show = False
         cls.Solving.log_to_console = False
         cls.Solving.log_main_results = False
-        return cls
-
-    @classmethod
-    def notebook(cls) -> type[CONFIG]:
-        """Configure for Jupyter notebooks.
-
-        Enables console logging at INFO level with colors, shows plots inline,
-        and enables solver output for interactive analysis.
-
-        Examples:
-            ```python
-            # In Jupyter notebook
-            CONFIG.notebook()
-            optimization.solve()  # Shows colored logs
-            result.plot()  # Shows plots inline
-            ```
-        """
-        cls.Logging.enable_console('INFO')
-        cls.Plotting.default_show = True
-        cls.Solving.log_to_console = True
-        cls.Solving.log_main_results = True
         return cls
 
     @classmethod
