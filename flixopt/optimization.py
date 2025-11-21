@@ -26,7 +26,7 @@ from . import io as fx_io
 from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
 from .config import CONFIG
-from .core import DataConverter, TimeSeriesData, drop_constant_arrays
+from .core import DEPRECATION_REMOVAL_VERSION, DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import Results, SegmentedResults
@@ -71,7 +71,7 @@ class _Optimization:
 
         if active_timesteps is not None:
             warnings.warn(
-                "The 'active_timesteps' parameter is deprecated and will be removed in a future version. "
+                f"The 'active_timesteps' parameter is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. "
                 'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
                 'the FlowSystem to the Optimization instead.',
                 DeprecationWarning,

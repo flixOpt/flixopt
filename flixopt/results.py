@@ -16,6 +16,7 @@ from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG
+from .core import DEPRECATION_REMOVAL_VERSION
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
 
@@ -229,7 +230,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         # Deprecation warning for the legacy CalculationResults alias
         if self.__class__.__name__ == 'CalculationResults':
             warnings.warn(
-                'CalculationResults is deprecated and will be removed in a future version. Use Results instead.',
+                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1116,7 +1117,7 @@ class CalculationResults(Results):
         # Only warn if directly instantiating CalculationResults (not subclasses)
         if self.__class__.__name__ == 'CalculationResults':
             warnings.warn(
-                'CalculationResults is deprecated and will be removed in a future version. Use Results instead.',
+                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2385,7 +2386,7 @@ class SegmentedCalculationResults(SegmentedResults):
         # Only warn if directly instantiating SegmentedCalculationResults (not subclasses)
         if self.__class__.__name__ == 'SegmentedCalculationResults':
             warnings.warn(
-                'SegmentedCalculationResults is deprecated and will be removed in a future version. '
+                f'SegmentedCalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
                 'Use SegmentedResults instead.',
                 DeprecationWarning,
                 stacklevel=2,

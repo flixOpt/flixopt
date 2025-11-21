@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from loguru import logger
 
+from .core import DEPRECATION_REMOVAL_VERSION
+
 try:
     import tsam.timeseriesaggregation as tsam
 
@@ -393,10 +395,10 @@ class ClusteringModel(Submodel):
 # ===== Deprecated aliases for backward compatibility =====
 
 
-def _create_deprecation_warning(old_name: str, new_name: str, removal_version: str = 'v6.0.0'):
+def _create_deprecation_warning(old_name: str, new_name: str):
     """Helper to create a deprecation warning"""
     _warnings.warn(
-        f"'{old_name}' is deprecated and will be removed in {removal_version}. Use '{new_name}' instead.",
+        f"'{old_name}' is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use '{new_name}' instead.",
         DeprecationWarning,
         stacklevel=3,
     )
