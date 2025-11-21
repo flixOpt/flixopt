@@ -6,12 +6,12 @@ Through this, aggregating TimeSeriesData is possible.
 from __future__ import annotations
 
 import copy
+import logging
 import pathlib
 import timeit
 from typing import TYPE_CHECKING
 
 import numpy as np
-from loguru import logger
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from .core import Scalar, TimeSeriesData
     from .elements import Component
     from .flow_system import FlowSystem
+
+logger = logging.getLogger('flixopt')
 
 
 class Aggregation:
@@ -104,7 +106,8 @@ class Aggregation:
         self.aggregated_data = self.tsam.predictOriginalData()
 
         self.clustering_duration_seconds = timeit.default_timer() - start_time  # Zeit messen:
-        logger.opt(lazy=True).info('{result}', result=lambda: self.describe_clusters())
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(self.describe_clusters())
 
     def describe_clusters(self) -> str:
         description = {}

@@ -5,7 +5,7 @@ import warnings
 import pytest
 
 import flixopt as fx
-from flixopt.core import DEPRECATION_REMOVAL_VERSION
+from flixopt.config import DEPRECATION_REMOVAL_VERSION
 from flixopt.linear_converters import CHP, Boiler, HeatPump, HeatPumpWithSource, Power2Heat
 
 

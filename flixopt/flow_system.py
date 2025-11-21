@@ -4,6 +4,7 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections import defaultdict
 from itertools import chain
@@ -12,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
 from .config import CONFIG
@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     import pyvis
 
     from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, NumericOrBool
+
+logger = logging.getLogger('flixopt')
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):

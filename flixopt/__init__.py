@@ -2,6 +2,7 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
+import logging
 import warnings
 from importlib.metadata import PackageNotFoundError, version
 
@@ -59,6 +60,11 @@ __all__ = [
     'linear_converters',
     'solvers',
 ]
+
+# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.WARNING)
+logger.addHandler(logging.NullHandler())
 
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
