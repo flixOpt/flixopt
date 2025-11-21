@@ -780,7 +780,7 @@ def shownetwork(graph: nx.DiGraph):
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    print(f'Network visualization started on http://127.0.0.1:{port}/')
+    logger.success(f'Network visualization started on http://127.0.0.1:{port}/')
 
     # Store server reference for cleanup
     app.server_instance = server
