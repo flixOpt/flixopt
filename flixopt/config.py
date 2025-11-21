@@ -47,10 +47,11 @@ class MultilineFormatter(logging.Formatter):
         # Split into lines
         lines = record.getMessage().split('\n')
 
-        # Format time with milliseconds
-        time_str = self.formatTime(record, '%H:%M:%S')
-        # Add milliseconds
-        time_str = f'{time_str}.{int(record.msecs):03d}'
+        # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
+        # formatTime doesn't support %f, so use datetime directly
+        import datetime
+        dt = datetime.datetime.fromtimestamp(record.created)
+        time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
         # Single line - return standard format
         if len(lines) == 1:
@@ -60,7 +61,7 @@ class MultilineFormatter(logging.Formatter):
         # Multi-line - use box format
         level_str = f'{record.levelname: <8}'
         result = f'{time_str} {level_str} │ ┌─ {lines[0]}'
-        indent = ' ' * 12  # 12 spaces for time with ms (HH:MM:SS.mmm)
+        indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
         for line in lines[1:-1]:
             result += f'\n{indent} {" " * 8} │ │  {line}'
         result += f'\n{indent} {" " * 8} │ └─ {lines[-1]}'
@@ -78,13 +79,15 @@ if COLORLOG_AVAILABLE:
             # Split into lines
             lines = record.getMessage().split('\n')
 
-            # Format time (dimmed) with milliseconds
+            # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
+            import datetime
             from colorlog.escape_codes import escape_codes
+
             dim = escape_codes.get('thin', '')
             reset = escape_codes['reset']
-            time_str = self.formatTime(record, '%H:%M:%S')
-            # Add milliseconds
-            time_str = f'{time_str}.{int(record.msecs):03d}'
+            # formatTime doesn't support %f, so use datetime directly
+            dt = datetime.datetime.fromtimestamp(record.created)
+            time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             time_formatted = f'{dim}{time_str}{reset}'
 
             # Get the color for this level
@@ -101,7 +104,7 @@ if COLORLOG_AVAILABLE:
 
             # Multi-line - use box format with colors
             result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
-            indent = ' ' * 12  # 12 spaces for time with ms (HH:MM:SS.mmm)
+            indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
             for line in lines[1:-1]:
                 result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│  {line}{reset}'
             result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─ {lines[-1]}{reset}'
