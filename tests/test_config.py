@@ -164,3 +164,32 @@ class TestConfigModule:
 
         with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
             change_logging_level('INFO')
+
+    def test_exception_logging(self, capfd):
+        """Test that exceptions are properly logged with tracebacks."""
+        CONFIG.Logging.enable_console('INFO')
+
+        try:
+            raise ValueError('Test exception')
+        except ValueError:
+            logger.exception('An error occurred')
+
+        captured = capfd.readouterr().out
+        assert 'An error occurred' in captured
+        assert 'ValueError' in captured
+        assert 'Test exception' in captured
+        assert 'Traceback' in captured
+
+    def test_exception_logging_non_colored(self, capfd):
+        """Test that exceptions are properly logged with tracebacks in non-colored mode."""
+        CONFIG.Logging.enable_console('INFO', colored=False)
+
+        try:
+            raise ValueError('Test exception non-colored')
+        except ValueError:
+            logger.exception('An error occurred')
+
+        captured = capfd.readouterr().out
+        assert 'An error occurred' in captured
+        assert 'ValueError: Test exception non-colored' in captured
+        assert 'Traceback' in captured
