@@ -18,7 +18,7 @@ from .color_processing import process_colors
 from .config import CONFIG
 from .core import DEPRECATION_REMOVAL_VERSION
 from .flow_system import FlowSystem
-from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
+from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     import pyvis
 
     from .core import FlowSystemDimensions
-    from .optimization import Optimization, SegmentedOptimization
 
 logger = logging.getLogger('flixopt')
 

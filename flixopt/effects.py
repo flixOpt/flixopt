@@ -23,7 +23,6 @@ from .structure import Element, ElementContainer, ElementModel, FlowSystemModel,
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 logger = logging.getLogger('flixopt')

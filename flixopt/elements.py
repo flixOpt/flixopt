@@ -12,7 +12,7 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
@@ -28,13 +28,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import (
-        Bool_PS,
-        Bool_S,
-        Bool_TPS,
-        Effect_PS,
-        Effect_S,
         Effect_TPS,
         Numeric_PS,
         Numeric_S,

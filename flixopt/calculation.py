@@ -30,14 +30,13 @@ from .optimization import (
 
 if TYPE_CHECKING:
     import pathlib
-    from typing import Annotated, Any
+    from typing import Annotated
 
     import pandas as pd
 
-    from .clustering import AggregationParameters, ClusteringParameters
+    from .clustering import AggregationParameters
     from .elements import Component
     from .flow_system import FlowSystem
-    from .solvers import _Solver
 
 logger = logging.getLogger('flixopt')
 

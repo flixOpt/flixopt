@@ -5,14 +5,11 @@ This Module contains high-level classes to easily model a FlowSystem.
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .components import LinearConverter
-from .config import DEPRECATION_REMOVAL_VERSION
-from .core import TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
