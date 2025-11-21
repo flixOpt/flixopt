@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .core import DEPRECATION_REMOVAL_VERSION
+from .config import DEPRECATION_REMOVAL_VERSION
 
 try:
     import tsam.timeseriesaggregation as tsam
