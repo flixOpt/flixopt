@@ -84,7 +84,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 **Summary**: Logging migrated from loguru to standard Python logging for stability and security. Simpler API with convenient presets.
 
 !!! info "Migration Required?"
-    **Most users**: No action needed (silent by default).
+    **Most users**: No action needed (silent by default). Methods like `CONFIG.exploring()`, `CONFIG.debug()`, etc. continue to work exactly as before.
     **If you customized logging**: Simple API update (see migration below).
     **If you used loguru directly**: Breaking change (loguru only in v3.6.0-v4.0.0, ~4 days).
 
