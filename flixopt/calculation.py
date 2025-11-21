@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from .aggregation import AggregationParameters
+    from .clustering import AggregationParameters, ClusteringParameters
     from .elements import Component
     from .flow_system import FlowSystem
     from .solvers import _Solver

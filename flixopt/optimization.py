@@ -2,8 +2,8 @@
 This module contains the Optimization functionality for the flixopt framework.
 It is used to optimize a FlowSystemModel for a given FlowSystem through a solver.
 There are three different Optimization types:
-    1. FullOptimization: Optimizes the FlowSystemModel for the full FlowSystem
-    2. AggregatedOptimization: Optimizes the FlowSystemModel for the full FlowSystem, but aggregates the TimeSeriesData.
+    1. Optimization: Optimizes the FlowSystemModel for the full FlowSystem
+    2. ClusteredOptimization: Optimizes the FlowSystemModel for the full FlowSystem, but clusters the TimeSeriesData.
         This simplifies the mathematical model and usually speeds up the solving process.
     3. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
 """
@@ -393,7 +393,7 @@ class ClusteredOptimization(_Optimization):
 
             self.flow_system = FlowSystem.from_dataset(ds)
         self.flow_system.connect_and_transform()
-        self.durations['aggregation'] = round(timeit.default_timer() - t_start_agg, 2)
+        self.durations['clustering'] = round(timeit.default_timer() - t_start_agg, 2)
 
     @classmethod
     def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
