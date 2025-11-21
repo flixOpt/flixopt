@@ -47,8 +47,10 @@ class MultilineFormatter(logging.Formatter):
         # Split into lines
         lines = record.getMessage().split('\n')
 
-        # Format time
+        # Format time with milliseconds
         time_str = self.formatTime(record, '%H:%M:%S')
+        # Add milliseconds
+        time_str = f'{time_str}.{int(record.msecs):03d}'
 
         # Single line - return standard format
         if len(lines) == 1:
@@ -58,7 +60,7 @@ class MultilineFormatter(logging.Formatter):
         # Multi-line - use box format
         level_str = f'{record.levelname: <8}'
         result = f'{time_str} {level_str} │ ┌─ {lines[0]}'
-        indent = ' ' * 8  # 8 spaces for time
+        indent = ' ' * 12  # 12 spaces for time with ms (HH:MM:SS.mmm)
         for line in lines[1:-1]:
             result += f'\n{indent} {" " * 8} │ │  {line}'
         result += f'\n{indent} {" " * 8} │ └─ {lines[-1]}'
@@ -76,11 +78,13 @@ if COLORLOG_AVAILABLE:
             # Split into lines
             lines = record.getMessage().split('\n')
 
-            # Format time (dimmed)
+            # Format time (dimmed) with milliseconds
             from colorlog.escape_codes import escape_codes
             dim = escape_codes.get('thin', '')
             reset = escape_codes['reset']
             time_str = self.formatTime(record, '%H:%M:%S')
+            # Add milliseconds
+            time_str = f'{time_str}.{int(record.msecs):03d}'
             time_formatted = f'{dim}{time_str}{reset}'
 
             # Get the color for this level
@@ -97,7 +101,7 @@ if COLORLOG_AVAILABLE:
 
             # Multi-line - use box format with colors
             result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
-            indent = ' ' * 8  # 8 spaces for time
+            indent = ' ' * 12  # 12 spaces for time with ms (HH:MM:SS.mmm)
             for line in lines[1:-1]:
                 result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│  {line}{reset}'
             result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─ {lines[-1]}{reset}'
