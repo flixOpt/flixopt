@@ -35,21 +35,33 @@ logging.Logger.success = _success
 class MultilineFormatter(logging.Formatter):
     """Custom formatter that handles multi-line messages with box-style borders."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set default format with time
+        if not self._fmt:
+            self._fmt = '%(asctime)s %(levelname)-8s │ %(message)s'
+            self._style = logging.PercentStyle(self._fmt)
+
     def format(self, record):
         """Format multi-line messages with box-style borders for better readability."""
         # Split into lines
         lines = record.getMessage().split('\n')
 
+        # Format time
+        time_str = self.formatTime(record, '%H:%M:%S')
+
         # Single line - return standard format
         if len(lines) == 1:
-            return super().format(record)
+            level_str = f'{record.levelname: <8}'
+            return f'{time_str} {level_str} │ {lines[0]}'
 
         # Multi-line - use box format
         level_str = f'{record.levelname: <8}'
-        result = f'{level_str} ┌─ {lines[0]}'
+        result = f'{time_str} {level_str} │ ┌─ {lines[0]}'
+        indent = ' ' * 8  # 8 spaces for time
         for line in lines[1:-1]:
-            result += f'\n{" " * 8} │  {line}'
-        result += f'\n{" " * 8} └─ {lines[-1]}'
+            result += f'\n{indent} {" " * 8} │ │  {line}'
+        result += f'\n{indent} {" " * 8} │ └─ {lines[-1]}'
 
         return result
 
@@ -64,26 +76,31 @@ if COLORLOG_AVAILABLE:
             # Split into lines
             lines = record.getMessage().split('\n')
 
-            # Single line - return standard colored format
-            if len(lines) == 1:
-                return super().format(record)
+            # Format time (dimmed)
+            from colorlog.escape_codes import escape_codes
+            dim = escape_codes.get('thin', '')
+            reset = escape_codes['reset']
+            time_str = self.formatTime(record, '%H:%M:%S')
+            time_formatted = f'{dim}{time_str}{reset}'
 
-            # Multi-line - use box format with colors
             # Get the color for this level
             log_colors = self.log_colors
             level_name = record.levelname
             color_name = log_colors.get(level_name, '')
-
-            # Convert color name to ANSI escape code
-            from colorlog.escape_codes import escape_codes
             color = escape_codes.get(color_name, '')
-            reset = escape_codes['reset']
 
             level_str = f'{level_name: <8}'
-            result = f'{color}{level_str}{reset} {color}┌─ {lines[0]}{reset}'
+
+            # Single line - return standard colored format
+            if len(lines) == 1:
+                return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
+
+            # Multi-line - use box format with colors
+            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
+            indent = ' ' * 8  # 8 spaces for time
             for line in lines[1:-1]:
-                result += f'\n{" " * 8} {color}│  {line}{reset}'
-            result += f'\n{" " * 8} {color}└─ {lines[-1]}{reset}'
+                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│  {line}{reset}'
+            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─ {lines[-1]}{reset}'
 
             return result
 

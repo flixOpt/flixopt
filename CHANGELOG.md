@@ -65,10 +65,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Replaced loguru with standard Python logging module
 - Added optional colorlog for colored console output (enabled by default)
 - New simplified API:
-  - `CONFIG.Logging.enable_console('INFO')` - enable colored console logging
+  - `CONFIG.Logging.enable_console('INFO')` - enable colored console logging to stdout (configurable)
   - `CONFIG.Logging.enable_file('INFO', 'app.log')` - enable file logging with rotation
   - `CONFIG.Logging.disable()` - disable all logging
 - Removed `CONFIG.apply()` - configuration is now immediate
+- Improved log format: `[dimmed time] [colored level] │ message`
+- Logs go to stdout by default (configurable via `stream` parameter)
+- Preserved SUCCESS log level (green) and multi-line formatting with box borders
 - Users can still use standard `logging.basicConfig()` for full control
 
 ### 🗑️ Deprecated
