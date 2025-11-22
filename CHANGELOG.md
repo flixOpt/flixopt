@@ -82,6 +82,11 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 ### 🐛 Fixed
 
+- Fixed xarray truth-value ambiguity in `main_results` buses with excess filter
+- Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
+- Fixed `active_timesteps` type annotation to include `None`
+- Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
+
 ### 🔒 Security
 
 ### 📦 Dependencies
