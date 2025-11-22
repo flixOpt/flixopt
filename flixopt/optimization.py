@@ -167,7 +167,15 @@ class Optimization:
         ```
     """
 
+    # Attributes set by __init__ / _initialize_optimization_common
+    name: str
+    flow_system: FlowSystem
+    folder: pathlib.Path
+    results: Results | None
+    durations: dict[str, float]
     model: FlowSystemModel | None
+    normalize_weights: bool
+    _active_timesteps: pd.DatetimeIndex | None
 
     def __init__(
         self,
@@ -363,6 +371,12 @@ class ClusteredOptimization(Optimization):
         clustering (Clustering | None): Contains the clustered time series data
         clustering_model (ClusteringModel | None): Contains Variables and Constraints that equalize clusters of the time series data
     """
+
+    # ClusteredOptimization-specific attributes (inherits others from Optimization)
+    clustering_parameters: ClusteringParameters
+    components_to_clusterize: list[Component] | None
+    clustering: Clustering | None
+    clustering_model: ClusteringModel | None
 
     def __init__(
         self,
@@ -588,6 +602,26 @@ class SegmentedOptimization:
         due to the overlapping individual solutions.
 
     """
+
+    # Attributes set by __init__ / _initialize_optimization_common
+    name: str
+    flow_system: FlowSystem
+    folder: pathlib.Path
+    results: SegmentedResults | None
+    durations: dict[str, float]
+    model: None  # SegmentedOptimization doesn't use a single model
+    normalize_weights: bool
+    _active_timesteps: pd.DatetimeIndex | None
+
+    # SegmentedOptimization-specific attributes
+    timesteps_per_segment: int
+    overlap_timesteps: int
+    nr_of_previous_values: int
+    sub_calculations: list[Optimization]
+    segment_names: list[str]
+    _timesteps_per_segment: list[pd.DatetimeIndex]
+    _original_start_values: dict[str, Any]
+    _transfered_start_values: list[dict[str, Any]]
 
     def __init__(
         self,
