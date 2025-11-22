@@ -1110,7 +1110,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             "The 'all_elements' property is deprecated. Use dict-like interface instead: "
             "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
             'flow_system.values(), or flow_system.items(). '
-            'This property will be removed in v4.0.0.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

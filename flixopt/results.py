@@ -2402,7 +2402,7 @@ def plot_heatmap(
 
         warnings.warn(
             "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
             f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
