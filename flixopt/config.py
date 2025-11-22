@@ -30,16 +30,6 @@ logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 DEPRECATION_REMOVAL_VERSION = '5.0.0'
 
 
-def _success(self, message, *args, **kwargs):
-    """Log a message with severity 'SUCCESS'."""
-    if self.isEnabledFor(SUCCESS_LEVEL):
-        self._log(SUCCESS_LEVEL, message, args, **kwargs)
-
-
-# Add success() method to Logger class
-logging.Logger.success = _success
-
-
 class MultilineFormatter(logging.Formatter):
     """Custom formatter that handles multi-line messages with box-style borders."""
 
@@ -235,19 +225,20 @@ class CONFIG:
 
             Examples:
                 ```python
+                import logging
+                from flixopt.config import CONFIG, SUCCESS_LEVEL
+
                 # Console and file logging
                 CONFIG.Logging.enable_console('INFO')
                 CONFIG.Logging.enable_file('DEBUG', 'debug.log')
 
-                # Use custom SUCCESS level
+                # Use SUCCESS level with logger.log()
+                logger = logging.getLogger('flixopt')
                 CONFIG.Logging.enable_console('SUCCESS')  # Shows SUCCESS, WARNING, ERROR, CRITICAL
-                logger.success('Operation completed successfully!')
+                logger.log(SUCCESS_LEVEL, 'Operation completed successfully!')
 
-                # Using numeric level or constant
-                from flixopt.config import SUCCESS_LEVEL
-
-                CONFIG.Logging.enable_console(SUCCESS_LEVEL)
-                CONFIG.Logging.enable_console(25)  # Same as SUCCESS_LEVEL
+                # Or use numeric level directly
+                logger.log(25, 'Also works with numeric level')
 
                 # Customize colors
                 CONFIG.Logging.set_colors(

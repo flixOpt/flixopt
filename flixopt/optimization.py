@@ -25,7 +25,7 @@ from tqdm import tqdm
 from . import io as fx_io
 from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
-from .config import CONFIG
+from .config import CONFIG, SUCCESS_LEVEL
 from .core import DEPRECATION_REMOVAL_VERSION, DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -255,7 +255,7 @@ class Optimization(_Optimization):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
-        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
         logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
@@ -272,8 +272,9 @@ class Optimization(_Optimization):
         # Log the formatted output
         should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
         if should_log and logger.isEnabledFor(logging.INFO):
-            logger.success(
-                f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True)
+            logger.log(
+                SUCCESS_LEVEL,
+                f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
 
         self.results = Results.from_optimization(self)
@@ -692,7 +693,7 @@ class SegmentedOptimization(_Optimization):
             for key, value in calc.durations.items():
                 self.durations[key] += value
 
-        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
         self.results = SegmentedResults.from_optimization(self)
 

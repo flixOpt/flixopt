@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from flixopt.config import CONFIG, MultilineFormatter
+from flixopt.config import CONFIG, SUCCESS_LEVEL, MultilineFormatter
 
 logger = logging.getLogger('flixopt')
 
@@ -75,7 +75,7 @@ class TestConfigModule:
     def test_custom_success_level(self, capfd):
         """Test custom SUCCESS log level."""
         CONFIG.Logging.enable_console('INFO')
-        logger.success('success message')
+        logger.log(SUCCESS_LEVEL, 'success message')
         assert 'success message' in capfd.readouterr().out
 
     def test_success_level_as_minimum(self, capfd):
@@ -87,7 +87,7 @@ class TestConfigModule:
         assert 'info message' not in capfd.readouterr().out
 
         # SUCCESS should appear (level 25)
-        logger.success('success message')
+        logger.log(SUCCESS_LEVEL, 'success message')
         assert 'success message' in capfd.readouterr().out
 
         # WARNING should appear (level 30 > 25)
@@ -97,15 +97,13 @@ class TestConfigModule:
     def test_success_level_numeric(self, capfd):
         """Test setting SUCCESS level using numeric value."""
         CONFIG.Logging.enable_console(25)
-        logger.success('success with numeric level')
+        logger.log(25, 'success with numeric level')
         assert 'success with numeric level' in capfd.readouterr().out
 
     def test_success_level_constant(self, capfd):
         """Test using SUCCESS_LEVEL constant."""
-        from flixopt.config import SUCCESS_LEVEL
-
         CONFIG.Logging.enable_console(SUCCESS_LEVEL)
-        logger.success('success with constant')
+        logger.log(SUCCESS_LEVEL, 'success with constant')
         assert 'success with constant' in capfd.readouterr().out
         assert SUCCESS_LEVEL == 25
 
@@ -118,7 +116,7 @@ class TestConfigModule:
         logger.info('info not logged')
 
         # SUCCESS should be logged
-        logger.success('success logged to file')
+        logger.log(SUCCESS_LEVEL, 'success logged to file')
 
         content = log_file.read_text()
         assert 'info not logged' not in content
@@ -136,7 +134,7 @@ class TestConfigModule:
             }
         )
 
-        logger.success('colored success')
+        logger.log(SUCCESS_LEVEL, 'colored success')
         output = capfd.readouterr().out
         assert 'colored success' in output
 
