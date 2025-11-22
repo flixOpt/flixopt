@@ -755,3 +755,59 @@ class SegmentedOptimization(_Optimization):
     @property
     def all_timesteps(self) -> pd.DatetimeIndex:
         return self.flow_system.timesteps
+
+    @property
+    def modeled(self) -> bool:
+        """Returns True if all segments have been modeled."""
+        if len(self.sub_calculations) == 0:
+            return False
+        return all(calc.modeled for calc in self.sub_calculations)
+
+    @property
+    def main_results(self) -> dict[str, int | float | dict]:
+        """Aggregated main results from all segments.
+
+        Note:
+            For SegmentedOptimization, results are aggregated from SegmentedResults
+            which handles the overlapping segments properly. Individual segment results
+            should not be summed directly as they contain overlapping timesteps.
+        """
+        if self.results is None:
+            raise RuntimeError(
+                'SegmentedOptimization has not been solved yet. '
+                'Call do_modeling_and_solve() first to access main_results.'
+            )
+
+        # Use SegmentedResults to get the proper aggregated solution
+        return {
+            'Note': 'SegmentedOptimization results are aggregated via SegmentedResults',
+            'Number of segments': len(self.sub_calculations),
+            'Total timesteps': len(self.all_timesteps),
+            'Objective (total)': sum(calc.model.objective.value for calc in self.sub_calculations if calc.modeled),
+        }
+
+    @property
+    def summary(self):
+        """Summary of the segmented optimization with aggregated information from all segments."""
+        if len(self.sub_calculations) == 0:
+            raise RuntimeError(
+                'SegmentedOptimization has no segments yet. Call do_modeling_and_solve() first to access summary.'
+            )
+
+        # Aggregate constraints and variables from all segments
+        total_constraints = sum(calc.model.constraints.ncons for calc in self.sub_calculations if calc.modeled)
+        total_variables = sum(calc.model.variables.nvars for calc in self.sub_calculations if calc.modeled)
+
+        return {
+            'Name': self.name,
+            'Number of timesteps': len(self.flow_system.timesteps),
+            'Calculation Type': self.__class__.__name__,
+            'Number of segments': len(self.sub_calculations),
+            'Timesteps per segment': self.timesteps_per_segment,
+            'Overlap timesteps': self.overlap_timesteps,
+            'Constraints (total across segments)': total_constraints,
+            'Variables (total across segments)': total_variables,
+            'Main Results': self.main_results if self.results else 'Not yet solved',
+            'Durations': self.durations,
+            'Config': CONFIG.to_dict(),
+        }
