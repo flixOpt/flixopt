@@ -187,7 +187,14 @@ class Optimization:
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
-        _initialize_optimization_common(self, name, flow_system, active_timesteps, folder, normalize_weights)
+        _initialize_optimization_common(
+            self,
+            name=name,
+            flow_system=flow_system,
+            active_timesteps=active_timesteps,
+            folder=folder,
+            normalize_weights=normalize_weights,
+        )
 
     def do_modeling(self) -> Optimization:
         t_start = timeit.default_timer()
@@ -385,7 +392,12 @@ class ClusteredOptimization(Optimization):
     ):
         if flow_system.scenarios is not None:
             raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
-        super().__init__(name, flow_system, active_timesteps, folder=folder)
+        super().__init__(
+            name=name,
+            flow_system=flow_system,
+            active_timesteps=active_timesteps,
+            folder=folder,
+        )
         self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
         self.clustering: Clustering | None = None
