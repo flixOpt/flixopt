@@ -17,7 +17,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter']
+__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'SUCCESS_LEVEL']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -224,11 +224,30 @@ class CONFIG:
                 - ``disable()`` - Remove all handlers
                 - ``set_colors(log_colors)`` - Customize level colors
 
+            Log Levels:
+                Standard levels plus custom SUCCESS level (between INFO and WARNING):
+                - DEBUG (10): Detailed debugging information
+                - INFO (20): General informational messages
+                - SUCCESS (25): Success messages (custom level)
+                - WARNING (30): Warning messages
+                - ERROR (40): Error messages
+                - CRITICAL (50): Critical error messages
+
             Examples:
                 ```python
                 # Console and file logging
                 CONFIG.Logging.enable_console('INFO')
                 CONFIG.Logging.enable_file('DEBUG', 'debug.log')
+
+                # Use custom SUCCESS level
+                CONFIG.Logging.enable_console('SUCCESS')  # Shows SUCCESS, WARNING, ERROR, CRITICAL
+                logger.success('Operation completed successfully!')
+
+                # Using numeric level or constant
+                from flixopt.config import SUCCESS_LEVEL
+
+                CONFIG.Logging.enable_console(SUCCESS_LEVEL)
+                CONFIG.Logging.enable_console(25)  # Same as SUCCESS_LEVEL
 
                 # Customize colors
                 CONFIG.Logging.set_colors(
