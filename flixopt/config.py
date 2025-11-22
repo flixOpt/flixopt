@@ -303,7 +303,7 @@ class CONFIG:
 
             # Convert string level to logging constant
             if isinstance(level, str):
-                if level.upper().strip() == 'DEBUG':
+                if level.upper().strip() == 'SUCCESS':
                     level = 25
                 else:
                     level = getattr(logging, level.upper())
@@ -375,7 +375,10 @@ class CONFIG:
 
             # Convert string level to logging constant
             if isinstance(level, str):
-                level = getattr(logging, level.upper())
+                if level.upper().strip() == 'SUCCESS':
+                    level = 25
+                else:
+                    level = getattr(logging, level.upper())
 
             logger.setLevel(level)
 
