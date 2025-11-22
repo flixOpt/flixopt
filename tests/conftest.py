@@ -705,8 +705,8 @@ def assert_almost_equal_numeric(
 
 def create_calculation_and_solve(
     flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
-) -> fx.FullCalculation:
-    calculation = fx.FullCalculation(name, flow_system)
+) -> fx.Optimization:
+    calculation = fx.Optimization(name, flow_system)
     calculation.do_modeling()
     try:
         calculation.solve(solver)
@@ -726,9 +726,9 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
         flow_system: The FlowSystem to build the model from.
 
     Returns:
-        FlowSystemModel: The built model from FullCalculation.do_modeling().
+        FlowSystemModel: The built model from Optimization.do_modeling().
     """
-    calculation = fx.FullCalculation('GenericName', flow_system)
+    calculation = fx.Optimization('GenericName', flow_system)
     calculation.do_modeling()
     return calculation.model
 

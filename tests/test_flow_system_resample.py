@@ -206,7 +206,7 @@ def test_modeling(with_dim):
     )
 
     fs_r = fs.resample('4h', method='mean')
-    calc = fx.FullCalculation('test', fs_r)
+    calc = fx.Optimization('test', fs_r)
     calc.do_modeling()
 
     assert calc.model is not None
@@ -225,11 +225,11 @@ def test_model_structure_preserved():
         fx.Source(label='s', outputs=[fx.Flow(label='out', bus='h', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
-    calc_orig = fx.FullCalculation('orig', fs)
+    calc_orig = fx.Optimization('orig', fs)
     calc_orig.do_modeling()
 
     fs_r = fs.resample('4h', method='mean')
-    calc_r = fx.FullCalculation('resamp', fs_r)
+    calc_r = fx.Optimization('resamp', fs_r)
     calc_r.do_modeling()
 
     # Same number of variable/constraint types

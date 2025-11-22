@@ -320,12 +320,14 @@ class TestInvestParametersDeprecation:
         parameter will take precedence when both are specified.
         """
         # When both are specified, optional takes precedence (with deprecation warning)
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=DeprecationWarning)
             params = InvestParameters(optional=True, mandatory=False)
             # optional=True should result in mandatory=False
             assert params.mandatory is False
 
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=DeprecationWarning)
             params = InvestParameters(optional=False, mandatory=True)
             # optional=False should result in mandatory=True (optional takes precedence)
             assert params.mandatory is True

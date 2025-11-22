@@ -39,7 +39,7 @@ def test_flow_system_file_io(flow_system, highs_solver, request):
     worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
     test_id = f'{worker_id}-{unique_id}'
 
-    calculation_0 = fx.FullCalculation(f'IO-{test_id}', flow_system=flow_system)
+    calculation_0 = fx.Optimization(f'IO-{test_id}', flow_system=flow_system)
     calculation_0.do_modeling()
     calculation_0.solve(highs_solver)
     calculation_0.flow_system.plot_network()
@@ -48,7 +48,7 @@ def test_flow_system_file_io(flow_system, highs_solver, request):
     paths = CalculationResultsPaths(calculation_0.folder, calculation_0.name)
     flow_system_1 = fx.FlowSystem.from_netcdf(paths.flow_system)
 
-    calculation_1 = fx.FullCalculation(f'Loaded_IO-{test_id}', flow_system=flow_system_1)
+    calculation_1 = fx.Optimization(f'Loaded_IO-{test_id}', flow_system=flow_system_1)
     calculation_1.do_modeling()
     calculation_1.solve(highs_solver)
     calculation_1.flow_system.plot_network()

@@ -295,7 +295,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     )
     calc.results.to_file()
 
-    res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
+    res = fx.results.Results.from_file('results', 'test_full_scenario')
     fx.FlowSystem.from_dataset(res.flow_system_data)
     calc = create_calculation_and_solve(
         flow_system_piecewise_conversion_scenarios,
@@ -317,7 +317,7 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     )
     calc.results.to_file()
 
-    res = fx.results.CalculationResults.from_file('results', 'test_full_scenario')
+    res = fx.results.Results.from_file('results', 'test_full_scenario')
     flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system_data)
     calc_2 = create_calculation_and_solve(
         flow_system_2,
@@ -339,7 +339,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
 
-    calc = fx.FullCalculation(flow_system=flow_system, name='test_full_scenario', normalize_weights=False)
+    calc = fx.Optimization(flow_system=flow_system, name='test_full_scenario', normalize_weights=False)
     calc.do_modeling()
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
@@ -484,7 +484,7 @@ def test_size_equality_constraints():
 
     fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.FullCalculation('test', fs)
+    calc = fx.Optimization('test', fs)
     calc.do_modeling()
 
     # Check that size equality constraint exists
@@ -524,7 +524,7 @@ def test_flow_rate_equality_constraints():
 
     fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.FullCalculation('test', fs)
+    calc = fx.Optimization('test', fs)
     calc.do_modeling()
 
     # Check that flow_rate equality constraint exists
@@ -566,7 +566,7 @@ def test_selective_scenario_independence():
 
     fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.FullCalculation('test', fs)
+    calc = fx.Optimization('test', fs)
     calc.do_modeling()
 
     constraint_names = [str(c) for c in calc.model.constraints]
@@ -674,13 +674,13 @@ def test_scenario_parameters_io_with_calculation():
 
     try:
         # Solve and save
-        calc = fx.FullCalculation('test_io', fs, folder=temp_dir)
+        calc = fx.Optimization('test_io', fs, folder=temp_dir)
         calc.do_modeling()
         calc.solve(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
         calc.results.to_file()
 
         # Load results
-        results = fx.results.CalculationResults.from_file(temp_dir, 'test_io')
+        results = fx.results.Results.from_file(temp_dir, 'test_io')
         fs_loaded = fx.FlowSystem.from_dataset(results.flow_system_data)
 
         # Verify parameters persisted
@@ -688,7 +688,7 @@ def test_scenario_parameters_io_with_calculation():
         assert fs_loaded.scenario_independent_flow_rates == fs.scenario_independent_flow_rates
 
         # Verify constraints are recreated correctly
-        calc2 = fx.FullCalculation('test_io_2', fs_loaded, folder=temp_dir)
+        calc2 = fx.Optimization('test_io_2', fs_loaded, folder=temp_dir)
         calc2.do_modeling()
 
         constraint_names1 = [str(c) for c in calc.model.constraints]

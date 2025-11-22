@@ -59,6 +59,21 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 💥 Breaking Changes
 
+**Class and module renaming:**
+- `FullCalculation` → `Optimization`
+- `AggregatedCalculation` → `ClusteredOptimization`
+- `SegmentedCalculation` → `SegmentedOptimization`
+- `CalculationResults` → `Results`
+- `SegmentedCalculationResults` → `SegmentedResults`
+- `Aggregation` → `Clustering`
+- `AggregationParameters` → `ClusteringParameters`
+- `AggregationModel` → `ClusteringModel`
+- Module: `calculation.py` → `optimization.py`
+- Module: `aggregation.py` → `clustering.py`
+
+Old names remain available with deprecation warnings (removed in v5.0.0).
+
+
 ### ♻️ Changed
 
 ### 🗑️ Deprecated
@@ -66,6 +81,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 🔥 Removed
 
 ### 🐛 Fixed
+
+- Fixed xarray truth-value ambiguity in `main_results` buses with excess filter
+- Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
+- Fixed `active_timesteps` type annotation to include `None`
+- Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
 
 ### 🔒 Security
 

@@ -17,7 +17,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter']
+__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'SUCCESS_LEVEL']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -28,16 +28,6 @@ logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
 # Deprecation removal version - update this when planning the next major version
 DEPRECATION_REMOVAL_VERSION = '5.0.0'
-
-
-def _success(self, message, *args, **kwargs):
-    """Log a message with severity 'SUCCESS'."""
-    if self.isEnabledFor(SUCCESS_LEVEL):
-        self._log(SUCCESS_LEVEL, message, args, **kwargs)
-
-
-# Add success() method to Logger class
-logging.Logger.success = _success
 
 
 class MultilineFormatter(logging.Formatter):
@@ -124,11 +114,11 @@ if COLORLOG_AVAILABLE:
                 return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
 
             # Multi-line - use box format with colors
-            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
+            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─{reset} {lines[0]}'
             indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
             for line in lines[1:-1]:
-                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│  {line}{reset}'
-            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─ {lines[-1]}{reset}'
+                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│{reset}  {line}'
+            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─{reset} {lines[-1]}'
 
             return result
 
@@ -224,11 +214,31 @@ class CONFIG:
                 - ``disable()`` - Remove all handlers
                 - ``set_colors(log_colors)`` - Customize level colors
 
+            Log Levels:
+                Standard levels plus custom SUCCESS level (between INFO and WARNING):
+                - DEBUG (10): Detailed debugging information
+                - INFO (20): General informational messages
+                - SUCCESS (25): Success messages (custom level)
+                - WARNING (30): Warning messages
+                - ERROR (40): Error messages
+                - CRITICAL (50): Critical error messages
+
             Examples:
                 ```python
+                import logging
+                from flixopt.config import CONFIG, SUCCESS_LEVEL
+
                 # Console and file logging
                 CONFIG.Logging.enable_console('INFO')
                 CONFIG.Logging.enable_file('DEBUG', 'debug.log')
+
+                # Use SUCCESS level with logger.log()
+                logger = logging.getLogger('flixopt')
+                CONFIG.Logging.enable_console('SUCCESS')  # Shows SUCCESS, WARNING, ERROR, CRITICAL
+                logger.log(SUCCESS_LEVEL, 'Operation completed successfully!')
+
+                # Or use numeric level directly
+                logger.log(25, 'Also works with numeric level')
 
                 # Customize colors
                 CONFIG.Logging.set_colors(
@@ -303,7 +313,10 @@ class CONFIG:
 
             # Convert string level to logging constant
             if isinstance(level, str):
-                level = getattr(logging, level.upper())
+                if level.upper().strip() == 'SUCCESS':
+                    level = 25
+                else:
+                    level = getattr(logging, level.upper())
 
             logger.setLevel(level)
 
@@ -372,7 +385,10 @@ class CONFIG:
 
             # Convert string level to logging constant
             if isinstance(level, str):
-                level = getattr(logging, level.upper())
+                if level.upper().strip() == 'SUCCESS':
+                    level = 25
+                else:
+                    level = getattr(logging, level.upper())
 
             logger.setLevel(level)
 
