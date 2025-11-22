@@ -111,7 +111,7 @@ if COLORLOG_AVAILABLE:
 
             # Single line - return standard colored format
             if len(lines) == 1:
-                return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
+                return f'{time_formatted} {color}{level_str}{reset} │ {color}{lines[0]}{reset}'
 
             # Multi-line - use box format with colors
             result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
