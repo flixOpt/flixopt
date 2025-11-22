@@ -52,7 +52,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_last_timestep: Duration of the last timestep. If None, computed from the last time interval.
         hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the first time interval.
             Can be a scalar (all previous timesteps have same duration) or array (different durations).
-            Used to calculate previous values (e.g., consecutive_on_hours).
+            Used to calculate previous values (e.g., uptime and downtime).
         weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
             Used for calculating sums over periods in multi-period models.
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
@@ -76,7 +76,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         >>> flow_system = fx.FlowSystem(timesteps)
         >>>
         >>> # Add elements to the system
-        >>> boiler = fx.Component('Boiler', inputs=[heat_flow], on_off_parameters=...)
+        >>> boiler = fx.Component('Boiler', inputs=[heat_flow], status_parameters=...)
         >>> heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e4)
         >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
         >>> flow_system.add_elements(boiler, heat_bus, costs)

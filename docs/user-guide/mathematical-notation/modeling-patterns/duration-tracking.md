@@ -15,6 +15,7 @@ d(t) \leq s(t) \cdot M \quad \forall t
 $$
 
 With:
+
 - $d(t)$ being the duration variable (continuous, non-negative)
 - $s(t) \in \{0, 1\}$ being the binary state variable
 - $M$ being a sufficiently large constant (big-M)
@@ -38,6 +39,7 @@ d(t+1) \geq d(t) + \Delta d(t) + (s(t+1) - 1) \cdot M \quad \forall t
 $$
 
 With:
+
 - $\Delta d(t)$ being the duration increment for time step $t$ (typically $\Delta t_i$ from the time series)
 - $M$ being a sufficiently large constant
 
@@ -56,6 +58,7 @@ d(0) = (\Delta d(0) + d_\text{prev}) \cdot s(0)
 $$
 
 With:
+
 - $d_\text{prev}$ being the duration from before the optimization period
 - $\Delta d(0)$ being the duration increment for the first time step
 
@@ -89,6 +92,7 @@ d(t) \geq (s(t-1) - s(t)) \cdot d_\text{min}(t-1) \quad \forall t > 0
 $$
 
 With:
+
 - $d_\text{min}(t)$ being the required minimum duration at time $t$
 
 **Behavior:**
@@ -116,7 +120,7 @@ Ensuring equipment runs for a minimum duration once started:
 # State: 1 when running, 0 when off
 # Require at least 2 hours of operation
 duration = modeling.consecutive_duration_tracking(
-    state_variable=on_state,
+    state=on_state,
     duration_per_step=time_step_hours,
     minimum_duration=2.0
 )
@@ -129,7 +133,7 @@ Tracking time since startup for gradual ramp-up constraints:
 ```python
 # Track startup duration
 startup_duration = modeling.consecutive_duration_tracking(
-    state_variable=on_state,
+    state=on_state,
     duration_per_step=time_step_hours
 )
 # Constrain output based on startup duration
@@ -143,7 +147,7 @@ Tracking time in a state before allowing transitions:
 ```python
 # Track maintenance duration
 maintenance_duration = modeling.consecutive_duration_tracking(
-    state_variable=maintenance_state,
+    state=maintenance_state,
     duration_per_step=time_step_hours,
     minimum_duration=scheduled_maintenance_hours
 )
@@ -154,6 +158,7 @@ maintenance_duration = modeling.consecutive_duration_tracking(
 ## Used In
 
 This pattern is used in:
-- [`OnOffParameters`](../features/OnOffParameters.md) - Minimum on/off times
+
+- [`StatusParameters`](../features/StatusParameters.md) - Minimum active/inactive times
 - Operating mode constraints with minimum durations
 - Startup/shutdown sequence modeling

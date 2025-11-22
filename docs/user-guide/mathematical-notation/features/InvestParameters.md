@@ -15,6 +15,7 @@ v_\text{invest} = s_\text{invest} \cdot \text{size}_\text{fixed}
 $$
 
 With:
+
 - $v_\text{invest}$ being the resulting investment size
 - $s_\text{invest} \in \{0, 1\}$ being the binary investment decision
 - $\text{size}_\text{fixed}$ being the predefined component size
@@ -34,6 +35,7 @@ s_\text{invest} \cdot \text{size}_\text{min} \leq v_\text{invest} \leq s_\text{i
 $$
 
 With:
+
 - $v_\text{invest}$ being the investment size variable (continuous)
 - $s_\text{invest} \in \{0, 1\}$ being the binary investment decision
 - $\text{size}_\text{min}$ being the minimum investment size (if investing)
@@ -80,6 +82,7 @@ E_{e,\text{fix}} = s_\text{invest} \cdot \text{fix}_e
 $$
 
 With:
+
 - $E_{e,\text{fix}}$ being the fixed contribution to effect $e$
 - $\text{fix}_e$ being the fixed effect value (e.g., fixed installation cost)
 
@@ -99,6 +102,7 @@ E_{e,\text{spec}} = v_\text{invest} \cdot \text{spec}_e
 $$
 
 With:
+
 - $E_{e,\text{spec}}$ being the size-dependent contribution to effect $e$
 - $\text{spec}_e$ being the specific effect value per unit size (e.g., €/kW)
 
@@ -123,6 +127,7 @@ v_\text{invest} = \sum_{k=1}^{K} \lambda_k \cdot v_k
 $$
 
 With:
+
 - $E_{e,\text{pw}}$ being the piecewise contribution to effect $e$
 - $\lambda_k$ being the piecewise lambda variables (see [Piecewise](../features/Piecewise.md))
 - $r_{e,k}$ being the effect rate at piece $k$
@@ -146,6 +151,7 @@ E_{e,\text{retirement}} = (1 - s_\text{invest}) \cdot \text{retirement}_e
 $$
 
 With:
+
 - $E_{e,\text{retirement}}$ being the retirement contribution to effect $e$
 - $\text{retirement}_e$ being the retirement effect value
 
@@ -210,6 +216,7 @@ $$\label{eq:annualization}
 $$
 
 With:
+
 - $\text{cost}_\text{capital}$ being the upfront investment cost
 - $r$ being the discount rate
 - $n$ being the equipment lifetime in years
@@ -226,6 +233,7 @@ $$
 **Python Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
 
 **Key Parameters:**
+
 - `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
 - `minimum_size`, `maximum_size`: For continuous sizing
 - `mandatory`: Whether investment is required (default: `False`)
