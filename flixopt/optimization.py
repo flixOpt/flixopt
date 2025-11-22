@@ -615,7 +615,13 @@ class SegmentedOptimization:
         nr_of_previous_values: int = 1,
         folder: pathlib.Path | None = None,
     ):
-        _initialize_optimization_common(self, name, flow_system, folder=folder)
+        _initialize_optimization_common(
+            self,
+            name=name,
+            flow_system=flow_system,
+            active_timesteps=None,
+            folder=folder,
+        )
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
