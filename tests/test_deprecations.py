@@ -1,6 +1,5 @@
 """Comprehensive pytest-based test for all deprecation warnings with v5.0.0 removal message."""
 
-import pathlib
 import warnings
 
 import numpy as np
