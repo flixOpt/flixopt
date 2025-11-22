@@ -2185,7 +2185,7 @@ class SegmentedResults:
 
         This method applies the same color configuration to all segments, ensuring
         consistent visualization across the entire segmented optimization. The color
-        mapping is propagated to each segment's CalculationResults instance.
+        mapping is propagated to each segment's Results instance.
 
         Args:
             config: Configuration for color assignment. Can be:

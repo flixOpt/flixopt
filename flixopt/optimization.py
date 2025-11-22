@@ -864,6 +864,10 @@ class SegmentedOptimization:
             For SegmentedOptimization, results are aggregated from SegmentedResults
             which handles the overlapping segments properly. Individual segment results
             should not be summed directly as they contain overlapping timesteps.
+
+            The objective value shown is the sum of all segment objectives and includes
+            double-counting from overlapping regions. It does not represent a true
+            full-horizon objective value.
         """
         if self.results is None:
             raise RuntimeError(
@@ -876,7 +880,9 @@ class SegmentedOptimization:
             'Note': 'SegmentedOptimization results are aggregated via SegmentedResults',
             'Number of segments': len(self.sub_optimizations),
             'Total timesteps': len(self.all_timesteps),
-            'Objective (total)': sum(calc.model.objective.value for calc in self.sub_optimizations if calc.modeled),
+            'Objective (sum of segments, includes overlaps)': sum(
+                calc.model.objective.value for calc in self.sub_optimizations if calc.modeled
+            ),
         }
 
     @property
