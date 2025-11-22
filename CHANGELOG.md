@@ -56,6 +56,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
+- exporting logger.SUCESS level
 
 ### 💥 Breaking Changes
 
@@ -75,6 +76,7 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 
 ### ♻️ Changed
+- logger coloring improved
 
 ### 🗑️ Deprecated
 
@@ -86,6 +88,7 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 - Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
 - Fixed `active_timesteps` type annotation to include `None`
 - Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
+- Logging with success level now works properly with any logger defined by the user
 
 ### 🔒 Security
 
