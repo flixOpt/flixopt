@@ -170,13 +170,13 @@ if __name__ == '__main__':
     calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
 
     if full:
-        calculation = fx.FullCalculation('Full', flow_system)
+        calculation = fx.FullCalculation('Full', flow_system.copy())
         calculation.do_modeling()
         calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     if segmented:
-        calculation = fx.SegmentedCalculation('Segmented', flow_system, segment_length, overlap_length)
+        calculation = fx.SegmentedCalculation('Segmented', flow_system.copy(), segment_length, overlap_length)
         calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
@@ -184,7 +184,7 @@ if __name__ == '__main__':
         if keep_extreme_periods:
             aggregation_parameters.time_series_for_high_peaks = [TS_heat_demand]
             aggregation_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
-        calculation = fx.AggregatedCalculation('Aggregated', flow_system, aggregation_parameters)
+        calculation = fx.AggregatedCalculation('Aggregated', flow_system.copy(), aggregation_parameters)
         calculation.do_modeling()
         calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
@@ -197,7 +197,7 @@ if __name__ == '__main__':
                 dataarrays.append(calc.results.solution_without_overlap(variable).rename(calc.name))
             else:
                 dataarrays.append(calc.results.model.variables[variable].solution.rename(calc.name))
-        return xr.merge(dataarrays)
+        return xr.merge(dataarrays, join='outer')
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
