@@ -154,7 +154,7 @@ class _Optimization:
         }
 
     @property
-    def active_timesteps(self) -> pd.DatetimeIndex:
+    def active_timesteps(self) -> pd.DatetimeIndex | None:
         warnings.warn(
             'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
             DeprecationWarning,
@@ -206,7 +206,7 @@ class Optimization(_Optimization):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
-    def fix_sizes(self, ds: xr.Dataset, decimal_rounding: int | None = 5) -> Optimization:
+    def fix_sizes(self, ds: xr.Dataset | None = None, decimal_rounding: int | None = 5) -> Optimization:
         """Fix the sizes of the calculations to specified values.
 
         Args:
@@ -215,6 +215,12 @@ class Optimization(_Optimization):
         """
         if not self.modeled:
             raise RuntimeError('Model was not created. Call do_modeling() first.')
+
+        if ds is None:
+            if self.results is None:
+                raise RuntimeError('No dataset provided and no results available to load sizes from.')
+            ds = self.results.solution
+
         if decimal_rounding is not None:
             ds = ds.round(decimal_rounding)
 
@@ -539,6 +545,13 @@ class SegmentedOptimization(_Optimization):
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
+
+        # Validate nr_of_previous_values
+        if self.nr_of_previous_values < 0:
+            raise ValueError('nr_of_previous_values must be non-negative.')
+        if self.nr_of_previous_values > self.timesteps_per_segment:
+            raise ValueError('nr_of_previous_values cannot exceed timesteps_per_segment.')
+
         self.sub_calculations: list[Optimization] = []
 
         self.segment_names = [
