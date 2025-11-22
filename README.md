@@ -42,11 +42,11 @@ flow_system = fx.FlowSystem(timesteps)
 flow_system.add_elements(buses, components, effects)
 
 # 2. Create and solve
-calculation = fx.FullCalculation("MyModel", flow_system)
-calculation.solve()
+optimization = fx.Optimization("MyModel", flow_system)
+optimization.solve(fx.solvers.HighsSolver())
 
 # 3. Analyze results
-calculation.results.solution
+optimization.results.solution
 ```
 
 **Get started with real examples:**
@@ -90,8 +90,8 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 **Multi-criteria optimization:** Model costs, emissions, resource use - any custom metric. Optimize single objectives or use weighted combinations and ε-constraints.
 → [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/)
 
-**Performance at any scale:** Choose calculation modes without changing your model - Full, Segmented, or Aggregated (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
-→ [Calculation modes](https://flixopt.github.io/flixopt/latest/api-reference/calculation/)
+**Performance at any scale:** Choose optimization modes without changing your model - Optimization, SegmentedOptimization, or ClusteredOptimization (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
+→ [Optimization modes](https://flixopt.github.io/flixopt/latest/api-reference/optimization/)
 
 **Built for reproducibility:** Self-contained NetCDF result files with complete model information. Load results months later - everything is preserved.
 → [Results documentation](https://flixopt.github.io/flixopt/latest/api-reference/results/)
