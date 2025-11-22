@@ -194,7 +194,7 @@ if __name__ == '__main__':
         print(f'Network app requires extra dependencies: {e}')
 
     # --- Solve FlowSystem ---
-    calculation = fx.FullCalculation('complex example', flow_system, time_indices)
+    calculation = fx.Optimization('complex example', flow_system, time_indices)
     calculation.do_modeling()
 
     calculation.solve(fx.solvers.HighsSolver(0.01, 60))

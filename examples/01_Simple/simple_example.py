@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     # --- Define and Run Calculation ---
     # Create a calculation object to model the Flow System
-    calculation = fx.FullCalculation(name='Sim1', flow_system=flow_system)
+    calculation = fx.Optimization(name='Sim1', flow_system=flow_system)
     calculation.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
 
     # --- Solve the Calculation and Save Results ---

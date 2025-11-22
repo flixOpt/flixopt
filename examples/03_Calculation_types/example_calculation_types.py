@@ -20,7 +20,7 @@ if __name__ == '__main__':
     segment_length, overlap_length = 96, 1
 
     # Aggregated Properties
-    aggregation_parameters = fx.AggregationParameters(
+    clustering_parameters = fx.ClusteringParameters(
         hours_per_period=6,
         nr_of_periods=4,
         fix_storage_flows=False,
@@ -167,24 +167,24 @@ if __name__ == '__main__':
     flow_system.plot_network()
 
     # Calculations
-    calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
+    calculations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
 
     if full:
-        calculation = fx.FullCalculation('Full', flow_system.copy())
+        calculation = fx.Optimization('Full', flow_system.copy())
         calculation.do_modeling()
         calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     if segmented:
-        calculation = fx.SegmentedCalculation('Segmented', flow_system.copy(), segment_length, overlap_length)
+        calculation = fx.SegmentedOptimization('Segmented', flow_system.copy(), segment_length, overlap_length)
         calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)
 
     if aggregated:
         if keep_extreme_periods:
-            aggregation_parameters.time_series_for_high_peaks = [TS_heat_demand]
-            aggregation_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
-        calculation = fx.AggregatedCalculation('Aggregated', flow_system.copy(), aggregation_parameters)
+            clustering_parameters.time_series_for_high_peaks = [TS_heat_demand]
+            clustering_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
+        calculation = fx.ClusteredOptimization('Aggregated', flow_system.copy(), clustering_parameters)
         calculation.do_modeling()
         calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         calculations.append(calculation)

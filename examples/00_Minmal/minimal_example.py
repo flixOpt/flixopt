@@ -32,5 +32,5 @@ if __name__ == '__main__':
         ),
     )
 
-    calculation = fx.FullCalculation('Simulation1', flow_system).solve(fx.solvers.HighsSolver(0.01, 60))
+    calculation = fx.Optimization('Simulation1', flow_system).solve(fx.solvers.HighsSolver(0.01, 60))
     calculation.results['Heat'].plot_node_balance()
