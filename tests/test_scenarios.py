@@ -9,7 +9,7 @@ from flixopt import Effect, InvestParameters, Sink, Source, Storage
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
-from .conftest import create_calculation_and_solve, create_linopy_model
+from .conftest import create_linopy_model, create_optimization_and_solve
 
 
 @pytest.fixture
@@ -288,7 +288,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
-    calc = create_calculation_and_solve(
+    calc = create_optimization_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
         name='test_full_scenario',
@@ -297,7 +297,7 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
 
     res = fx.results.Results.from_file('results', 'test_full_scenario')
     fx.FlowSystem.from_dataset(res.flow_system_data)
-    calc = create_calculation_and_solve(
+    calc = create_optimization_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
         name='test_full_scenario',
@@ -310,7 +310,7 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
-    calc = create_calculation_and_solve(
+    calc = create_optimization_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
         name='test_full_scenario',
@@ -319,7 +319,7 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios):
 
     res = fx.results.Results.from_file('results', 'test_full_scenario')
     flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system_data)
-    calc_2 = create_calculation_and_solve(
+    calc_2 = create_optimization_and_solve(
         flow_system_2,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
         name='test_full_scenario_2',

@@ -703,7 +703,7 @@ def assert_almost_equal_numeric(
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 
-def create_calculation_and_solve(
+def create_optimization_and_solve(
     flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
 ) -> fx.Optimization:
     calculation = fx.Optimization(name, flow_system)

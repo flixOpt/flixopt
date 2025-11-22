@@ -4,7 +4,7 @@ import flixopt as fx
 
 from .conftest import (
     assert_almost_equal_numeric,
-    create_calculation_and_solve,
+    create_optimization_and_solve,
 )
 
 
@@ -13,7 +13,7 @@ class TestFlowSystem:
         """
         Test the effects of the simple energy system model
         """
-        calculation = create_calculation_and_solve(simple_flow_system, highs_solver, 'test_simple_flow_system')
+        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_simple_flow_system')
 
         effects = calculation.flow_system.effects
 
@@ -31,7 +31,7 @@ class TestFlowSystem:
         """
         Test the component flows of the simple energy system model
         """
-        calculation = create_calculation_and_solve(simple_flow_system, highs_solver, 'test_model_components')
+        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
         comps = calculation.flow_system.components
 
         # Boiler assertions
@@ -53,7 +53,7 @@ class TestFlowSystem:
         Test saving and loading results
         """
         # Save results to file
-        calculation = create_calculation_and_solve(simple_flow_system, highs_solver, 'test_model_components')
+        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
 
         calculation.results.to_file()
 
@@ -71,7 +71,7 @@ class TestFlowSystem:
 
 class TestComplex:
     def test_basic_flow_system(self, flow_system_base, highs_solver):
-        calculation = create_calculation_and_solve(flow_system_base, highs_solver, 'test_basic_flow_system')
+        calculation = create_optimization_and_solve(flow_system_base, highs_solver, 'test_basic_flow_system')
 
         # Assertions
         assert_almost_equal_numeric(
@@ -204,7 +204,7 @@ class TestComplex:
         )
 
     def test_piecewise_conversion(self, flow_system_piecewise_conversion, highs_solver):
-        calculation = create_calculation_and_solve(
+        calculation = create_optimization_and_solve(
             flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion'
         )
 

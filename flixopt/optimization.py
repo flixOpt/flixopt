@@ -124,7 +124,7 @@ def _initialize_optimization_common(
     obj._active_timesteps = active_timesteps  # deprecated
     obj.normalize_weights = normalize_weights
 
-    flow_system._used_in_calculation = True
+    flow_system._used_in_optimization = True
 
     obj.flow_system = flow_system
     obj.model = None

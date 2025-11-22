@@ -44,7 +44,7 @@ class Effect(Element):
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         unit: The unit of the effect (e.g., '€', 'kg_CO2', 'kWh_primary', 'm²').
-            This is informative only and does not affect optimization calculations.
+            This is informative only and does not affect optimization.
         description: Descriptive name explaining what this effect represents.
         is_standard: If True, this is a standard effect allowing direct value input
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
