@@ -67,6 +67,8 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 🐛 Fixed
 
+- Fixed missing `DEPRECATION_REMOVAL_VERSION` import in `calculation.py`, `effects.py`, `flow_system.py`, and `results.py`
+
 ### 🔒 Security
 
 ### 📦 Dependencies
