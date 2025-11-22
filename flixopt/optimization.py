@@ -651,10 +651,13 @@ class SegmentedOptimization:
         ]
         self._timesteps_per_segment = self._calculate_timesteps_per_segment()
 
-        assert timesteps_per_segment > 2, 'The Segment length must be greater 2, due to unwanted internal side effects'
-        assert self.timesteps_per_segment_with_overlap <= len(self.all_timesteps), (
-            f'{self.timesteps_per_segment_with_overlap=} cant be greater than the total length {len(self.all_timesteps)}'
-        )
+        if timesteps_per_segment <= 2:
+            raise ValueError('timesteps_per_segment must be greater than 2 due to internal side effects.')
+        if self.timesteps_per_segment_with_overlap > len(self.all_timesteps):
+            raise ValueError(
+                f'timesteps_per_segment_with_overlap ({self.timesteps_per_segment_with_overlap}) '
+                f'cannot exceed total timesteps ({len(self.all_timesteps)}).'
+            )
 
         self.flow_system._connect_network()  # Connect network to ensure that all Flows know their Component
         # Storing all original start values
@@ -696,7 +699,7 @@ class SegmentedOptimization:
 
         optimization.do_modeling()
 
-        # Warn about Investments, but only in first run
+        # Check for unsupported Investments, but only in first run
         if i == 0:
             invest_elements = [
                 model.label_full
@@ -705,9 +708,10 @@ class SegmentedOptimization:
                 if isinstance(model, InvestmentModel)
             ]
             if invest_elements:
-                logger.critical(
-                    f'Investments are not supported in Segmented Calculation! '
-                    f'Following InvestmentModels were found: {invest_elements}'
+                raise ValueError(
+                    f'Investments are not supported in SegmentedOptimization. '
+                    f'Found InvestmentModels: {invest_elements}. '
+                    f'Please use Optimization instead for problems with investments.'
                 )
 
         log_path = pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log'
