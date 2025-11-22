@@ -1320,8 +1320,6 @@ class _NodeResults(_ElementResults):
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
 
-            import warnings
-
             warnings.warn(
                 f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
                 f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
@@ -1455,8 +1453,6 @@ class _NodeResults(_ElementResults):
                 raise ValueError(
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
-
-            import warnings
 
             warnings.warn(
                 f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
@@ -1596,8 +1592,6 @@ class _NodeResults(_ElementResults):
                 raise ValueError(
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
-
-            import warnings
 
             warnings.warn(
                 f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
@@ -1744,8 +1738,6 @@ class ComponentResults(_NodeResults):
                 raise ValueError(
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
-
-            import warnings
 
             warnings.warn(
                 f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
@@ -2263,8 +2255,6 @@ class SegmentedCalculationResults:
                     "and new parameter 'reshape_time'. Use only 'reshape_time'."
                 )
 
-            import warnings
-
             warnings.warn(
                 "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
                 f"Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
@@ -2282,8 +2272,6 @@ class SegmentedCalculationResults:
                 raise ValueError(
                     "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
                 )
-
-            import warnings
 
             warnings.warn(
                 f"The 'color_map' parameter is deprecated. Use 'colors' instead. "
@@ -2412,11 +2400,10 @@ def plot_heatmap(
                 "and new parameter 'reshape_time'. Use only 'reshape_time'."
             )
 
-        import warnings
-
         warnings.warn(
             "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
             "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2431,10 +2418,9 @@ def plot_heatmap(
                 "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
             )
 
-        import warnings
-
         warnings.warn(
-            "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+            f"The 'color_map' parameter is deprecated. Use 'colors' instead."
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2447,8 +2433,6 @@ def plot_heatmap(
             raise ValueError(
                 "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
             )
-
-        import warnings
 
         warnings.warn(
             f"The 'indexer' parameter is deprecated. Use 'select' instead. "
