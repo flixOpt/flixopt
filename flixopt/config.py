@@ -111,14 +111,14 @@ if COLORLOG_AVAILABLE:
 
             # Single line - return standard colored format
             if len(lines) == 1:
-                return f'{time_formatted} {color}{level_str}{reset} │ {color}{lines[0]}{reset}'
+                return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
 
             # Multi-line - use box format with colors
-            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─ {lines[0]}{reset}'
+            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─{reset} {lines[0]}'
             indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
             for line in lines[1:-1]:
-                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│  {line}{reset}'
-            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─ {lines[-1]}{reset}'
+                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│{reset}  {line}'
+            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─{reset} {lines[-1]}'
 
             return result
 
