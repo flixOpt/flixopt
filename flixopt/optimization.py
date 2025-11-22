@@ -17,7 +17,7 @@ import sys
 import timeit
 import warnings
 from collections import Counter
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Protocol, runtime_checkable
 
 import numpy as np
 from tqdm import tqdm
@@ -42,132 +42,103 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-class _Optimization:
+@runtime_checkable
+class OptimizationProtocol(Protocol):
     """
-    Base class for optimization implementations.
+    Protocol defining the interface that all optimization types should implement.
 
-    This is an internal base class that provides common functionality for all optimization types.
-    Users should use Optimization, ClusteredOptimization, or SegmentedOptimization instead.
+    This protocol ensures type consistency across different optimization approaches
+    without forcing them into an artificial inheritance hierarchy.
+
+    Attributes:
+        name: Name of the optimization
+        flow_system: FlowSystem being optimized
+        folder: Directory where results are saved
+        results: Results object after solving
+        durations: Dictionary tracking time spent in different phases
     """
 
-    model: FlowSystemModel | None
-
-    def __init__(
-        self,
-        name: str,
-        flow_system: FlowSystem,
-        active_timesteps: Annotated[
-            pd.DatetimeIndex | None,
-            'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
-        ] = None,
-        folder: pathlib.Path | None = None,
-        normalize_weights: bool = True,
-    ):
-        self.name = name
-        if flow_system.used_in_calculation:
-            logger.warning(
-                f'This FlowSystem is already used in an optimization:\n{flow_system}\n'
-                f'Creating a copy of the FlowSystem for Optimization "{self.name}".'
-            )
-            flow_system = flow_system.copy()
-
-        if active_timesteps is not None:
-            warnings.warn(
-                f"The 'active_timesteps' parameter is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. "
-                'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
-                'the FlowSystem to the Optimization instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            flow_system = flow_system.sel(time=active_timesteps)
-        self._active_timesteps = active_timesteps  # deprecated
-        self.normalize_weights = normalize_weights
-
-        flow_system._used_in_calculation = True
-
-        self.flow_system = flow_system
-        self.model = None
-
-        self.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
-        self.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
-        self.results: Results | None = None
-
-        if self.folder.exists() and not self.folder.is_dir():
-            raise NotADirectoryError(f'Path {self.folder} exists and is not a directory.')
-        self.folder.mkdir(parents=False, exist_ok=True)
-
-    @property
-    def main_results(self) -> dict[str, int | float | dict]:
-        main_results = {
-            'Objective': self.model.objective.value,
-            'Penalty': self.model.effects.penalty.total.solution.values,
-            'Effects': {
-                f'{effect.label} [{effect.unit}]': {
-                    'temporal': effect.submodel.temporal.total.solution.values,
-                    'periodic': effect.submodel.periodic.total.solution.values,
-                    'total': effect.submodel.total.solution.values,
-                }
-                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
-            },
-            'Invest-Decisions': {
-                'Invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
-                },
-                'Not invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
-                },
-            },
-            'Buses with excess': [
-                {
-                    bus.label_full: {
-                        'input': bus.submodel.excess_input.solution.sum('time'),
-                        'output': bus.submodel.excess_output.solution.sum('time'),
-                    }
-                }
-                for bus in self.flow_system.buses.values()
-                if bus.with_excess
-                and (
-                    bus.submodel.excess_input.solution.sum() > 1e-3 or bus.submodel.excess_output.solution.sum() > 1e-3
-                )
-            ],
-        }
-
-        return fx_io.round_nested_floats(main_results)
-
-    @property
-    def summary(self):
-        return {
-            'Name': self.name,
-            'Number of timesteps': len(self.flow_system.timesteps),
-            'Calculation Type': self.__class__.__name__,
-            'Constraints': self.model.constraints.ncons,
-            'Variables': self.model.variables.nvars,
-            'Main Results': self.main_results,
-            'Durations': self.durations,
-            'Config': CONFIG.to_dict(),
-        }
-
-    @property
-    def active_timesteps(self) -> pd.DatetimeIndex | None:
-        warnings.warn(
-            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._active_timesteps
+    name: str
+    flow_system: FlowSystem
+    folder: pathlib.Path
+    results: Results | SegmentedResults | None
+    durations: dict[str, float]
 
     @property
     def modeled(self) -> bool:
-        return True if self.model is not None else False
+        """Returns True if the optimization has been modeled."""
+        ...
+
+    @property
+    def main_results(self) -> dict[str, int | float | dict]:
+        """Returns main results including objective, effects, and investment decisions."""
+        ...
+
+    @property
+    def summary(self) -> dict:
+        """Returns summary information about the optimization."""
+        ...
 
 
-class Optimization(_Optimization):
+def _initialize_optimization_common(
+    obj: Any,
+    name: str,
+    flow_system: FlowSystem,
+    active_timesteps: pd.DatetimeIndex | None = None,
+    folder: pathlib.Path | None = None,
+    normalize_weights: bool = True,
+) -> None:
+    """
+    Shared initialization logic for all optimization types.
+
+    This helper function encapsulates common initialization code to avoid duplication
+    across Optimization, ClusteredOptimization, and SegmentedOptimization.
+
+    Args:
+        obj: The optimization object being initialized
+        name: Name of the optimization
+        flow_system: FlowSystem to optimize
+        active_timesteps: DEPRECATED. Use flow_system.sel(time=...) instead
+        folder: Directory for saving results
+        normalize_weights: Whether to normalize scenario weights
+    """
+    obj.name = name
+
+    if flow_system.used_in_calculation:
+        logger.warning(
+            f'This FlowSystem is already used in an optimization:\n{flow_system}\n'
+            f'Creating a copy of the FlowSystem for Optimization "{obj.name}".'
+        )
+        flow_system = flow_system.copy()
+
+    if active_timesteps is not None:
+        warnings.warn(
+            f"The 'active_timesteps' parameter is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. "
+            'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
+            'the FlowSystem to the Optimization instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        flow_system = flow_system.sel(time=active_timesteps)
+
+    obj._active_timesteps = active_timesteps  # deprecated
+    obj.normalize_weights = normalize_weights
+
+    flow_system._used_in_calculation = True
+
+    obj.flow_system = flow_system
+    obj.model = None
+
+    obj.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
+    obj.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
+    obj.results: Results | None = None
+
+    if obj.folder.exists() and not obj.folder.is_dir():
+        raise NotADirectoryError(f'Path {obj.folder} exists and is not a directory.')
+    obj.folder.mkdir(parents=False, exist_ok=True)
+
+
+class Optimization:
     """
     Standard optimization that solves the complete problem using all time steps.
 
@@ -195,6 +166,21 @@ class Optimization(_Optimization):
         results = opt.results
         ```
     """
+
+    model: FlowSystemModel | None
+
+    def __init__(
+        self,
+        name: str,
+        flow_system: FlowSystem,
+        active_timesteps: Annotated[
+            pd.DatetimeIndex | None,
+            'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
+        ] = None,
+        folder: pathlib.Path | None = None,
+        normalize_weights: bool = True,
+    ):
+        _initialize_optimization_common(self, name, flow_system, active_timesteps, folder, normalize_weights)
 
     def do_modeling(self) -> Optimization:
         t_start = timeit.default_timer()
@@ -280,6 +266,76 @@ class Optimization(_Optimization):
         self.results = Results.from_optimization(self)
 
         return self
+
+    @property
+    def main_results(self) -> dict[str, int | float | dict]:
+        main_results = {
+            'Objective': self.model.objective.value,
+            'Penalty': self.model.effects.penalty.total.solution.values,
+            'Effects': {
+                f'{effect.label} [{effect.unit}]': {
+                    'temporal': effect.submodel.temporal.total.solution.values,
+                    'periodic': effect.submodel.periodic.total.solution.values,
+                    'total': effect.submodel.total.solution.values,
+                }
+                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
+            },
+            'Invest-Decisions': {
+                'Invested': {
+                    model.label_of_element: model.size.solution
+                    for component in self.flow_system.components.values()
+                    for model in component.submodel.all_submodels
+                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
+                },
+                'Not invested': {
+                    model.label_of_element: model.size.solution
+                    for component in self.flow_system.components.values()
+                    for model in component.submodel.all_submodels
+                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
+                },
+            },
+            'Buses with excess': [
+                {
+                    bus.label_full: {
+                        'input': bus.submodel.excess_input.solution.sum('time'),
+                        'output': bus.submodel.excess_output.solution.sum('time'),
+                    }
+                }
+                for bus in self.flow_system.buses.values()
+                if bus.with_excess
+                and (
+                    bus.submodel.excess_input.solution.sum() > 1e-3 or bus.submodel.excess_output.solution.sum() > 1e-3
+                )
+            ],
+        }
+
+        return fx_io.round_nested_floats(main_results)
+
+    @property
+    def summary(self):
+        return {
+            'Name': self.name,
+            'Number of timesteps': len(self.flow_system.timesteps),
+            'Calculation Type': self.__class__.__name__,
+            'Constraints': self.model.constraints.ncons,
+            'Variables': self.model.variables.nvars,
+            'Main Results': self.main_results,
+            'Durations': self.durations,
+            'Config': CONFIG.to_dict(),
+        }
+
+    @property
+    def active_timesteps(self) -> pd.DatetimeIndex | None:
+        warnings.warn(
+            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._active_timesteps
+
+    @property
+    def modeled(self) -> bool:
+        return True if self.model is not None else False
 
 
 class ClusteredOptimization(Optimization):
@@ -424,7 +480,7 @@ class ClusteredOptimization(Optimization):
         return weights
 
 
-class SegmentedOptimization(_Optimization):
+class SegmentedOptimization:
     """Solve large optimization problems by dividing time horizon into (overlapping) segments.
 
     This class addresses memory and computational limitations of large-scale optimization
@@ -542,7 +598,7 @@ class SegmentedOptimization(_Optimization):
         nr_of_previous_values: int = 1,
         folder: pathlib.Path | None = None,
     ):
-        super().__init__(name, flow_system, folder=folder)
+        _initialize_optimization_common(self, name, flow_system, folder=folder)
         self.timesteps_per_segment = timesteps_per_segment
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
@@ -811,3 +867,12 @@ class SegmentedOptimization(_Optimization):
             'Durations': self.durations,
             'Config': CONFIG.to_dict(),
         }
+
+    @property
+    def active_timesteps(self) -> pd.DatetimeIndex | None:
+        warnings.warn(
+            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._active_timesteps
