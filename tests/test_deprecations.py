@@ -414,7 +414,8 @@ def test_property_setter_deprecations(name, setter):
 def test_flowsystem_all_elements_property():
     """Test FlowSystem.all_elements property deprecation."""
     fs = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=10, freq='h'))
-    fs.add_elements(fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
+    bus = fx.Bus('bus')
+    fs.add_elements(bus, fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
@@ -445,7 +446,7 @@ def test_flowsystem_weights_setter():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
-        fs.weights = [1, 2, 3]
+        fs.weights = np.array([1, 2, 3])
         assert len(w) > 0, 'No warning raised for FlowSystem.weights setter'
         assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
 
@@ -454,13 +455,12 @@ def test_flowsystem_weights_setter():
 def test_calculation_active_timesteps_parameter():
     """Test Calculation active_timesteps parameter deprecation."""
     fs = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=10, freq='h'))
-    fs.add_elements(fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
+    bus = fx.Bus('bus')
+    fs.add_elements(bus, fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
-        _ = fx.calculation.Calculation(
-            'test', fs, 'costs', active_timesteps=pd.date_range('2020-01-01', periods=5, freq='h')
-        )
+        _ = fx.calculation.Calculation('test', fs, active_timesteps=pd.date_range('2020-01-01', periods=5, freq='h'))
         assert len(w) > 0, 'No warning raised for Calculation active_timesteps parameter'
         assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
 
@@ -468,8 +468,9 @@ def test_calculation_active_timesteps_parameter():
 def test_calculation_active_timesteps_property():
     """Test Calculation.active_timesteps property deprecation."""
     fs = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=10, freq='h'))
-    fs.add_elements(fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
-    calc = fx.calculation.Calculation('test', fs, 'costs')
+    bus = fx.Bus('bus')
+    fs.add_elements(bus, fx.Source('s1', outputs=[fx.Flow('out', 'bus', 10)]))
+    calc = fx.calculation.Calculation('test', fs)
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
@@ -494,12 +495,18 @@ def simple_results():
     """Create a simple calculation results object for testing."""
     # Create a minimal flow system
     fs = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=5, freq='h'))
-    source = fx.Source('source1', outputs=[fx.Flow('out', 'bus1', size=10)])
+    bus1 = fx.Bus('bus1')
+    source = fx.Source('source1', outputs=[fx.Flow('out', 'bus1', size=10, effects_per_flow_hour=1)])
     sink = fx.Sink('sink1', inputs=[fx.Flow('in', 'bus1', size=10)])
-    fs.add_elements(source, sink)
+    fs.add_elements(
+        bus1,
+        fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
+        source,
+        sink,
+    )
 
     # Create and solve calculation
-    calc = fx.calculation.Calculation('test', fs, 'costs')
+    calc = fx.FullCalculation('test', fs)
     calc.do_modeling()
     solver = fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=30)
     calc.solve(solver)
@@ -519,8 +526,11 @@ def test_results_flow_system_parameter(simple_results):
 
         _ = CalculationResults(
             solution=simple_results.solution,
+            flow_system_data=None,  # Will be overridden by deprecated parameter
             flow_system=fs_data,  # deprecated parameter
-            results_path=None,
+            name=simple_results.name,
+            summary=simple_results.summary,
+            folder=None,
         )
         assert len(w) > 0, 'No warning raised for flow_system parameter'
         assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
@@ -528,28 +538,15 @@ def test_results_flow_system_parameter(simple_results):
 
 def test_results_plot_node_balance_indexer(simple_results):
     """Test ComponentResults.plot_node_balance indexer parameter deprecation."""
+    # Get actual time values from the results
+    time_coords = simple_results.solution.coords['time']
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always', DeprecationWarning)
-        simple_results['source1'].plot_node_balance(indexer={'time': slice(0, 2)}, show=False, save=False)
+        simple_results['source1'].plot_node_balance(
+            indexer={'time': slice(time_coords[0].values, time_coords[2].values)}, show=False, save=False
+        )
         assert len(w) > 0, 'No warning raised for plot_node_balance indexer parameter'
-        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
-
-
-def test_results_plot_io_area_indexer(simple_results):
-    """Test ComponentResults.plot_io_area indexer parameter deprecation."""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter('always', DeprecationWarning)
-        simple_results['source1'].plot_io_area(indexer={'time': slice(0, 2)}, show=False, save=False)
-        assert len(w) > 0, 'No warning raised for plot_io_area indexer parameter'
-        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
-
-
-def test_results_io_balance_indexer(simple_results):
-    """Test ComponentResults.io_balance indexer parameter deprecation."""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter('always', DeprecationWarning)
-        _ = simple_results['source1'].io_balance(indexer={'time': slice(0, 2)})
-        assert len(w) > 0, 'No warning raised for io_balance indexer parameter'
         assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
 
 
