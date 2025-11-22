@@ -166,47 +166,6 @@ class _Optimization:
     def modeled(self) -> bool:
         return True if self.model is not None else False
 
-    def solve(
-        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
-    ) -> _Optimization:
-        # Auto-call do_modeling() if not already done
-        if not self.modeled:
-            logger.info('Model not yet created. Calling do_modeling() automatically.')
-            self.do_modeling()
-
-        t_start = timeit.default_timer()
-
-        self.model.solve(
-            log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-            solver_name=solver.name,
-            **solver.options,
-        )
-        self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
-        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
-        logger.info(f'Model status after solve: {self.model.status}')
-
-        if self.model.status == 'warning':
-            # Save the model and the flow_system to file in case of infeasibility
-            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
-            from .io import document_linopy_model
-
-            document_linopy_model(self.model, paths.model_documentation)
-            self.flow_system.to_netcdf(paths.flow_system)
-            raise RuntimeError(
-                f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
-            )
-
-        # Log the formatted output
-        should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
-        if should_log and logger.isEnabledFor(logging.INFO):
-            logger.info(
-                f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True)
-            )
-
-        self.results = Results.from_optimization(self)
-
-        return self
-
 
 class Optimization(_Optimization):
     """
@@ -274,8 +233,49 @@ class Optimization(_Optimization):
 
         return self
 
+    def solve(
+        self, solver: _Solver, log_file: pathlib.Path | None = None, log_main_results: bool | None = None
+    ) -> Optimization:
+        # Auto-call do_modeling() if not already done
+        if not self.modeled:
+            logger.info('Model not yet created. Calling do_modeling() automatically.')
+            self.do_modeling()
 
-class ClusteredOptimization(_Optimization):
+        t_start = timeit.default_timer()
+
+        self.model.solve(
+            log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
+            solver_name=solver.name,
+            **solver.options,
+        )
+        self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
+        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.info(f'Model status after solve: {self.model.status}')
+
+        if self.model.status == 'warning':
+            # Save the model and the flow_system to file in case of infeasibility
+            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
+            from .io import document_linopy_model
+
+            document_linopy_model(self.model, paths.model_documentation)
+            self.flow_system.to_netcdf(paths.flow_system)
+            raise RuntimeError(
+                f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
+            )
+
+        # Log the formatted output
+        should_log = log_main_results if log_main_results is not None else CONFIG.Solving.log_main_results
+        if should_log and logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True)
+            )
+
+        self.results = Results.from_optimization(self)
+
+        return self
+
+
+class ClusteredOptimization(Optimization):
     """
     ClusteredOptimization reduces computational complexity by clustering time series into typical periods.
 
