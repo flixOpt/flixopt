@@ -15,7 +15,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
     DataConverter,
@@ -995,7 +995,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     warnings.warn(
                         f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
-                        f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
+                        f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead. '
+                        f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                         DeprecationWarning,
                         stacklevel=1,
                     )
@@ -1109,7 +1110,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             "The 'all_elements' property is deprecated. Use dict-like interface instead: "
             "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
             'flow_system.values(), or flow_system.items(). '
-            'This property will be removed in v4.0.0.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1165,7 +1166,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def weights(self) -> Numeric_S | None:
         warnings.warn(
-            'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead.',
+            f'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1180,7 +1182,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             value: Scenario weights to set
         """
         warnings.warn(
-            'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead.',
+            f'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
