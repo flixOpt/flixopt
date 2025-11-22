@@ -25,7 +25,7 @@ from tqdm import tqdm
 from . import io as fx_io
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -79,7 +79,7 @@ class Calculation:
             warnings.warn(
                 "The 'active_timesteps' parameter is deprecated and will be removed in a future version. "
                 'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
-                'the FlowSystem to the Calculation instead.',
+                f'the FlowSystem to the Calculation instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -162,7 +162,8 @@ class Calculation:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex:
         warnings.warn(
-            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
+            f'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

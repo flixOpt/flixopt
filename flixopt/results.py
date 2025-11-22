@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
 
@@ -229,7 +229,8 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             flow_system_data = kwargs.pop('flow_system')
             warnings.warn(
                 "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
-                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1322,7 +1323,8 @@ class _NodeResults(_ElementResults):
             import warnings
 
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1457,7 +1459,8 @@ class _NodeResults(_ElementResults):
             import warnings
 
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1597,7 +1600,8 @@ class _NodeResults(_ElementResults):
             import warnings
 
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1744,7 +1748,8 @@ class ComponentResults(_NodeResults):
             import warnings
 
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2262,7 +2267,8 @@ class SegmentedCalculationResults:
 
             warnings.warn(
                 "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-                "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+                f"Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2280,7 +2286,8 @@ class SegmentedCalculationResults:
             import warnings
 
             warnings.warn(
-                "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+                f"The 'color_map' parameter is deprecated. Use 'colors' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2444,7 +2451,8 @@ def plot_heatmap(
         import warnings
 
         warnings.warn(
-            "The 'indexer' parameter is deprecated. Use 'select' instead.",
+            f"The 'indexer' parameter is deprecated. Use 'select' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

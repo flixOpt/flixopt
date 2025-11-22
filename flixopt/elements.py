@@ -516,7 +516,8 @@ class Flow(Element):
             self.bus = bus.label_full
             warnings.warn(
                 f'Bus {bus.label} is passed as a Bus object to {self.label}. This is deprecated and will be removed '
-                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow.',
+                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 UserWarning,
                 stacklevel=1,
             )

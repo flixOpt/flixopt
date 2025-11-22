@@ -16,6 +16,7 @@ import linopy
 import numpy as np
 import xarray as xr
 
+from .config import DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -252,7 +253,8 @@ class Effect(Element):
     def minimum_operation(self):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
         warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -262,7 +264,8 @@ class Effect(Element):
     def minimum_operation(self, value):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
         warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -272,7 +275,8 @@ class Effect(Element):
     def maximum_operation(self):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
         warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -282,7 +286,8 @@ class Effect(Element):
     def maximum_operation(self, value):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
         warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -292,7 +297,8 @@ class Effect(Element):
     def minimum_invest(self):
         """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
+            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -302,7 +308,8 @@ class Effect(Element):
     def minimum_invest(self, value):
         """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
+            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -312,7 +319,8 @@ class Effect(Element):
     def maximum_invest(self):
         """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
+            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -322,7 +330,8 @@ class Effect(Element):
     def maximum_invest(self, value):
         """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
+            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -332,7 +341,8 @@ class Effect(Element):
     def minimum_operation_per_hour(self):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -342,7 +352,8 @@ class Effect(Element):
     def minimum_operation_per_hour(self, value):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -352,7 +363,8 @@ class Effect(Element):
     def maximum_operation_per_hour(self):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -362,7 +374,8 @@ class Effect(Element):
     def maximum_operation_per_hour(self, value):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -372,7 +385,8 @@ class Effect(Element):
     def minimum_total_per_period(self):
         """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -382,7 +396,8 @@ class Effect(Element):
     def minimum_total_per_period(self, value):
         """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -392,7 +407,8 @@ class Effect(Element):
     def maximum_total_per_period(self):
         """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -402,7 +418,8 @@ class Effect(Element):
     def maximum_total_per_period(self, value):
         """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -617,7 +634,8 @@ class EffectCollection(ElementContainer[Effect]):
             if isinstance(eff, Effect):
                 warnings.warn(
                     f'The use of effect objects when specifying EffectValues is deprecated. '
-                    f'Use the label of the effect instead. Used effect: {eff.label_full}',
+                    f'Use the label of the effect instead. Used effect: {eff.label_full}. '
+                    f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                     UserWarning,
                     stacklevel=2,
                 )
