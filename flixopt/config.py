@@ -6,7 +6,10 @@ import warnings
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 try:
     import colorlog
@@ -277,7 +280,7 @@ class CONFIG:
         """
 
         @classmethod
-        def enable_console(cls, level: str | int = 'INFO', colored: bool = True, stream=None) -> None:
+        def enable_console(cls, level: str | int = 'INFO', colored: bool = True, stream: TextIO | None = None) -> None:
             """Enable colored console logging.
 
             Args:

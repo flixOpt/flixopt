@@ -50,7 +50,7 @@ class Effect(Element):
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
-        weights: Optional custom weights for periods and scenarios (Numeric_PS).
+        period_weights: Optional custom weights for periods and scenarios (Numeric_PS).
             If provided, overrides the FlowSystem's default period weights for this effect.
             Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
             If None, uses FlowSystem's default weights.

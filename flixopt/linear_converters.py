@@ -40,9 +40,6 @@ class Boiler(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        eta: *Deprecated*. Use `thermal_efficiency` instead.
-        Q_fu: *Deprecated*. Use `fuel_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Natural gas boiler:
@@ -203,9 +200,6 @@ class Power2Heat(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        eta: *Deprecated*. Use `thermal_efficiency` instead.
-        P_el: *Deprecated*. Use `electrical_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Electric resistance heater:
@@ -369,9 +363,6 @@ class HeatPump(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        COP: *Deprecated*. Use `cop` instead.
-        P_el: *Deprecated*. Use `electrical_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Air-source heat pump with constant COP:
@@ -532,8 +523,6 @@ class CoolingTower(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        P_el: *Deprecated*. Use `electrical_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Industrial cooling tower:
@@ -677,11 +666,6 @@ class CHP(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        eta_th: *Deprecated*. Use `thermal_efficiency` instead.
-        eta_el: *Deprecated*. Use `electrical_efficiency` instead.
-        Q_fu: *Deprecated*. Use `fuel_flow` instead.
-        P_el: *Deprecated*. Use `electrical_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Natural gas CHP unit:
@@ -923,10 +907,6 @@ class HeatPumpWithSource(LinearConverter):
         on_off_parameters: Parameters defining binary operation constraints and costs.
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
-        COP: *Deprecated*. Use `cop` instead.
-        P_el: *Deprecated*. Use `electrical_flow` instead.
-        Q_ab: *Deprecated*. Use `heat_source_flow` instead.
-        Q_th: *Deprecated*. Use `thermal_flow` instead.
 
     Examples:
         Ground-source heat pump with explicit ground coupling:

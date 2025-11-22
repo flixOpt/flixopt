@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     import pyvis
 
     from .core import FlowSystemDimensions
+    from .optimization import Optimization, SegmentedOptimization
 
 logger = logging.getLogger('flixopt')
 
@@ -182,7 +183,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         )
 
     @classmethod
-    def from_optimization(cls, optimization) -> Results:
+    def from_optimization(cls, optimization: Optimization) -> Results:
         """Create Results from an Optimization instance.
 
         Args:
@@ -1118,7 +1119,7 @@ class CalculationResults(Results):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def from_calculation(cls, calculation):
+    def from_calculation(cls, calculation: Optimization) -> CalculationResults:
         """Create CalculationResults from a Calculation object.
 
         DEPRECATED: Use Results.from_optimization() instead.
@@ -2089,7 +2090,7 @@ class SegmentedResults:
     """
 
     @classmethod
-    def from_optimization(cls, optimization):
+    def from_optimization(cls, optimization: SegmentedOptimization) -> SegmentedResults:
         """Create SegmentedResults from a SegmentedOptimization instance.
 
         Args:
@@ -2388,7 +2389,7 @@ class SegmentedCalculationResults(SegmentedResults):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def from_calculation(cls, calculation):
+    def from_calculation(cls, calculation: SegmentedOptimization) -> SegmentedCalculationResults:
         """Create SegmentedCalculationResults from a SegmentedCalculation object.
 
         DEPRECATED: Use SegmentedResults.from_optimization() instead.
