@@ -850,7 +850,7 @@ def calculate_all_conversion_paths(
     # Track all paths by keeping path history to avoid cycles
     # Iterate over each domain in the dictionary
     for origin in conversion_dict:
-        # Keep track of visited paths to avoid repeating calculations
+        # Keep track of visited paths to avoid repeating optimizations
         processed_paths = set()
         # Use a queue with (current_domain, factor, path_history)
         queue = deque([(origin, 1, [origin])])

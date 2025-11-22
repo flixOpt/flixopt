@@ -85,7 +85,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         buses: Dictionary mapping bus labels to BusResults objects
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
-        hours_per_timestep: Duration of each timestep for proper energy calculations
+        hours_per_timestep: Duration of each timestep for proper energy optimizations
 
     Examples:
         Load and analyze saved results:
@@ -343,7 +343,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
     @property
     def flow_system(self) -> FlowSystem:
-        """The restored flow_system that was used to create the calculation.
+        """The restored flow_system that was used to create the optimization.
         Contains all input parameters."""
         if self._flow_system is None:
             # Temporarily disable all logging to suppress messages during restoration
@@ -1993,7 +1993,7 @@ class FlowResults(_ElementResults):
 
 
 class SegmentedResults:
-    """Results container for segmented optimization calculations with temporal decomposition.
+    """Results container for segmented optimization optimizations with temporal decomposition.
 
     This class manages results from SegmentedCalculation runs where large optimization
     problems are solved by dividing the time horizon into smaller, overlapping segments.
@@ -2099,7 +2099,7 @@ class SegmentedResults:
             SegmentedResults: New instance containing the optimization results.
         """
         return cls(
-            [calc.results for calc in optimization.sub_calculations],
+            [calc.results for calc in optimization.sub_optimizations],
             all_timesteps=optimization.all_timesteps,
             timesteps_per_segment=optimization.timesteps_per_segment,
             overlap_timesteps=optimization.overlap_timesteps,
@@ -2123,7 +2123,7 @@ class SegmentedResults:
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
         meta_data = fx_io.load_json(path.with_suffix('.json'))
         return cls(
-            [Results.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
+            [Results.from_file(folder, sub_name) for sub_name in meta_data['sub_optimizations']],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -2157,7 +2157,7 @@ class SegmentedResults:
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
             'overlap_timesteps': self.overlap_timesteps,
-            'sub_calculations': [calc.name for calc in self.segment_results],
+            'sub_optimizations': [calc.name for calc in self.segment_results],
         }
 
     @property
@@ -2184,7 +2184,7 @@ class SegmentedResults:
         Setup colors for all variables across all segment results.
 
         This method applies the same color configuration to all segments, ensuring
-        consistent visualization across the entire segmented calculation. The color
+        consistent visualization across the entire segmented optimization. The color
         mapping is propagated to each segment's CalculationResults instance.
 
         Args:

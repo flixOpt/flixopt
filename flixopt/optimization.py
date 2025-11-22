@@ -200,7 +200,7 @@ class Optimization:
         return self
 
     def fix_sizes(self, ds: xr.Dataset | None = None, decimal_rounding: int | None = 5) -> Optimization:
-        """Fix the sizes of the calculations to specified values.
+        """Fix the sizes of the optimizations to specified values.
 
         Args:
             ds: The dataset that contains the variable names mapped to their sizes. If None, the dataset is loaded from the results.
@@ -502,7 +502,7 @@ class SegmentedOptimization:
         **Sequential Solving**: Each segment solved independently but with coupling
 
     Limitations and Constraints:
-        **Investment Parameters**: InvestParameters are not supported in segmented calculations
+        **Investment Parameters**: InvestParameters are not supported in segmented optimizations
         as investment decisions must be made for the entire time horizon, not per segment.
 
         **Global Constraints**: Time-horizon-wide constraints (flow_hours_total_min/max,
@@ -626,7 +626,7 @@ class SegmentedOptimization:
         if self.nr_of_previous_values > self.timesteps_per_segment:
             raise ValueError('nr_of_previous_values cannot exceed timesteps_per_segment.')
 
-        self.sub_calculations: list[Optimization] = []
+        self.sub_optimizations: list[Optimization] = []
 
         self.segment_names = [
             f'Segment_{i + 1}' for i in range(math.ceil(len(self.all_timesteps) / self.timesteps_per_segment))
@@ -650,14 +650,14 @@ class SegmentedOptimization:
         }
         self._transfered_start_values: list[dict[str, Any]] = []
 
-    def _create_sub_calculations(self):
+    def _create_sub_optimizations(self):
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
             calc = Optimization(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
             calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
 
-            self.sub_calculations.append(calc)
+            self.sub_optimizations.append(calc)
             logger.info(
                 f'{segment_name} [{i + 1:>2}/{len(self.segment_names):<2}] '
                 f'({timesteps_of_segment[0]} -> {timesteps_of_segment[-1]}):'
@@ -666,23 +666,23 @@ class SegmentedOptimization:
     def _solve_single_segment(
         self,
         i: int,
-        calculation: Optimization,
+        optimization: Optimization,
         solver: _Solver,
         log_file: pathlib.Path | None,
         log_main_results: bool,
         suppress_output: bool,
     ) -> None:
-        """Solve a single segment calculation."""
+        """Solve a single segment optimization."""
         if i > 0 and self.nr_of_previous_values > 0:
             self._transfer_start_values(i)
 
-        calculation.do_modeling()
+        optimization.do_modeling()
 
         # Warn about Investments, but only in first run
         if i == 0:
             invest_elements = [
                 model.label_full
-                for component in calculation.flow_system.components.values()
+                for component in optimization.flow_system.components.values()
                 for model in component.submodel.all_submodels
                 if isinstance(model, InvestmentModel)
             ]
@@ -696,9 +696,9 @@ class SegmentedOptimization:
 
         if suppress_output:
             with fx_io.suppress_output():
-                calculation.solve(solver, log_file=log_path, log_main_results=log_main_results)
+                optimization.solve(solver, log_file=log_path, log_main_results=log_main_results)
         else:
-            calculation.solve(solver, log_file=log_path, log_main_results=log_main_results)
+            optimization.solve(solver, log_file=log_path, log_main_results=log_main_results)
 
     def do_modeling_and_solve(
         self,
@@ -707,9 +707,9 @@ class SegmentedOptimization:
         log_main_results: bool = False,
         show_individual_solves: bool = False,
     ) -> SegmentedOptimization:
-        """Model and solve all segments of the segmented calculation.
+        """Model and solve all segments of the segmented optimization.
 
-        This method creates sub-calculations for each time segment, then iteratively
+        This method creates sub-optimizations for each time segment, then iteratively
         models and solves each segment. It supports two output modes: a progress bar
         for compact output, or detailed individual solve information.
 
@@ -732,21 +732,21 @@ class SegmentedOptimization:
         """
         logger.info(f'{"":#^80}')
         logger.info(f'{" Segmented Solving ":#^80}')
-        self._create_sub_calculations()
+        self._create_sub_optimizations()
 
         if show_individual_solves:
             # Path 1: Show individual solves with detailed output
-            for i, calculation in enumerate(self.sub_calculations):
+            for i, optimization in enumerate(self.sub_optimizations):
                 logger.info(
-                    f'Solving segment {i + 1}/{len(self.sub_calculations)}: '
-                    f'{calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]}'
+                    f'Solving segment {i + 1}/{len(self.sub_optimizations)}: '
+                    f'{optimization.flow_system.timesteps[0]} -> {optimization.flow_system.timesteps[-1]}'
                 )
-                self._solve_single_segment(i, calculation, solver, log_file, log_main_results, suppress_output=False)
+                self._solve_single_segment(i, optimization, solver, log_file, log_main_results, suppress_output=False)
         else:
             # Path 2: Show only progress bar with suppressed output
             progress_bar = tqdm(
-                enumerate(self.sub_calculations),
-                total=len(self.sub_calculations),
+                enumerate(self.sub_optimizations),
+                total=len(self.sub_optimizations),
                 desc='Solving segments',
                 unit='segment',
                 file=sys.stdout,
@@ -754,15 +754,17 @@ class SegmentedOptimization:
             )
 
             try:
-                for i, calculation in progress_bar:
+                for i, optimization in progress_bar:
                     progress_bar.set_description(
-                        f'Solving ({calculation.flow_system.timesteps[0]} -> {calculation.flow_system.timesteps[-1]})'
+                        f'Solving ({optimization.flow_system.timesteps[0]} -> {optimization.flow_system.timesteps[-1]})'
                     )
-                    self._solve_single_segment(i, calculation, solver, log_file, log_main_results, suppress_output=True)
+                    self._solve_single_segment(
+                        i, optimization, solver, log_file, log_main_results, suppress_output=True
+                    )
             finally:
                 progress_bar.close()
 
-        for calc in self.sub_calculations:
+        for calc in self.sub_optimizations:
             for key, value in calc.durations.items():
                 self.durations[key] += value
 
@@ -777,17 +779,17 @@ class SegmentedOptimization:
         This function gets the last values of the previous solved segment and
         inserts them as start values for the next segment
         """
-        timesteps_of_prior_segment = self.sub_calculations[i - 1].flow_system.timesteps_extra
+        timesteps_of_prior_segment = self.sub_optimizations[i - 1].flow_system.timesteps_extra
 
-        start = self.sub_calculations[i].flow_system.timesteps[0]
+        start = self.sub_optimizations[i].flow_system.timesteps[0]
         start_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - self.nr_of_previous_values]
         end_previous_values = timesteps_of_prior_segment[self.timesteps_per_segment - 1]
 
         logger.debug(
             f'Start of next segment: {start}. Indices of previous values: {start_previous_values} -> {end_previous_values}'
         )
-        current_flow_system = self.sub_calculations[i - 1].flow_system
-        next_flow_system = self.sub_calculations[i].flow_system
+        current_flow_system = self.sub_optimizations[i - 1].flow_system
+        next_flow_system = self.sub_optimizations[i].flow_system
 
         start_values_of_this_segment = {}
 
@@ -832,9 +834,9 @@ class SegmentedOptimization:
     @property
     def modeled(self) -> bool:
         """Returns True if all segments have been modeled."""
-        if len(self.sub_calculations) == 0:
+        if len(self.sub_optimizations) == 0:
             return False
-        return all(calc.modeled for calc in self.sub_calculations)
+        return all(calc.modeled for calc in self.sub_optimizations)
 
     @property
     def main_results(self) -> dict[str, int | float | dict]:
@@ -854,28 +856,28 @@ class SegmentedOptimization:
         # Use SegmentedResults to get the proper aggregated solution
         return {
             'Note': 'SegmentedOptimization results are aggregated via SegmentedResults',
-            'Number of segments': len(self.sub_calculations),
+            'Number of segments': len(self.sub_optimizations),
             'Total timesteps': len(self.all_timesteps),
-            'Objective (total)': sum(calc.model.objective.value for calc in self.sub_calculations if calc.modeled),
+            'Objective (total)': sum(calc.model.objective.value for calc in self.sub_optimizations if calc.modeled),
         }
 
     @property
     def summary(self):
         """Summary of the segmented optimization with aggregated information from all segments."""
-        if len(self.sub_calculations) == 0:
+        if len(self.sub_optimizations) == 0:
             raise RuntimeError(
                 'SegmentedOptimization has no segments yet. Call do_modeling_and_solve() first to access summary.'
             )
 
         # Aggregate constraints and variables from all segments
-        total_constraints = sum(calc.model.constraints.ncons for calc in self.sub_calculations if calc.modeled)
-        total_variables = sum(calc.model.variables.nvars for calc in self.sub_calculations if calc.modeled)
+        total_constraints = sum(calc.model.constraints.ncons for calc in self.sub_optimizations if calc.modeled)
+        total_variables = sum(calc.model.variables.nvars for calc in self.sub_optimizations if calc.modeled)
 
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.timesteps),
             'Calculation Type': self.__class__.__name__,
-            'Number of segments': len(self.sub_calculations),
+            'Number of segments': len(self.sub_optimizations),
             'Timesteps per segment': self.timesteps_per_segment,
             'Overlap timesteps': self.overlap_timesteps,
             'Constraints (total across segments)': total_constraints,

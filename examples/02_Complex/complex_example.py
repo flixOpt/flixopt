@@ -15,7 +15,7 @@ if __name__ == '__main__':
     check_penalty = False
     excess_penalty = 1e5
     use_chp_with_piecewise_conversion = True
-    time_indices = None  # Define specific time steps for custom calculations, or use the entire series
+    time_indices = None  # Define specific time steps for custom optimizations, or use the entire series
 
     # --- Define Demand and Price Profiles ---
     # Input data for electricity and heat demands, as well as electricity price
@@ -194,17 +194,17 @@ if __name__ == '__main__':
         print(f'Network app requires extra dependencies: {e}')
 
     # --- Solve FlowSystem ---
-    calculation = fx.Optimization('complex example', flow_system, time_indices)
-    calculation.do_modeling()
+    optimization = fx.Optimization('complex example', flow_system, time_indices)
+    optimization.do_modeling()
 
-    calculation.solve(fx.solvers.HighsSolver(0.01, 60))
+    optimization.solve(fx.solvers.HighsSolver(0.01, 60))
 
     # --- Results ---
     # You can analyze results directly or save them to file and reload them later.
-    calculation.results.to_file()
+    optimization.results.to_file()
 
     # But let's plot some results anyway
-    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    calculation.results['BHKW2'].plot_node_balance()
-    calculation.results['Speicher'].plot_charge_state()
-    calculation.results['Fernwärme'].plot_node_balance_pie()
+    optimization.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
+    optimization.results['BHKW2'].plot_node_balance()
+    optimization.results['Speicher'].plot_charge_state()
+    optimization.results['Fernwärme'].plot_node_balance_pie()

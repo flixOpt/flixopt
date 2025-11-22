@@ -706,16 +706,16 @@ def assert_almost_equal_numeric(
 def create_optimization_and_solve(
     flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
 ) -> fx.Optimization:
-    calculation = fx.Optimization(name, flow_system)
-    calculation.do_modeling()
+    optimization = fx.Optimization(name, flow_system)
+    optimization.do_modeling()
     try:
-        calculation.solve(solver)
+        optimization.solve(solver)
     except RuntimeError as e:
         if allow_infeasible:
             pass
         else:
             raise RuntimeError from e
-    return calculation
+    return optimization
 
 
 def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
@@ -728,9 +728,9 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
     Returns:
         FlowSystemModel: The built model from Optimization.do_modeling().
     """
-    calculation = fx.Optimization('GenericName', flow_system)
-    calculation.do_modeling()
-    return calculation.model
+    optimization = fx.Optimization('GenericName', flow_system)
+    optimization.do_modeling()
+    return optimization.model
 
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):

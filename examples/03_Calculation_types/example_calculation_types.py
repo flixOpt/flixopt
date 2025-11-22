@@ -167,29 +167,29 @@ if __name__ == '__main__':
     flow_system.plot_network()
 
     # Calculations
-    calculations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
+    optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
 
     if full:
-        calculation = fx.Optimization('Full', flow_system.copy())
-        calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
+        optimization = fx.Optimization('Full', flow_system.copy())
+        optimization.do_modeling()
+        optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
     if segmented:
-        calculation = fx.SegmentedOptimization('Segmented', flow_system.copy(), segment_length, overlap_length)
-        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
+        optimization = fx.SegmentedOptimization('Segmented', flow_system.copy(), segment_length, overlap_length)
+        optimization.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
     if aggregated:
         if keep_extreme_periods:
             clustering_parameters.time_series_for_high_peaks = [TS_heat_demand]
             clustering_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
-        calculation = fx.ClusteredOptimization('Aggregated', flow_system.copy(), clustering_parameters)
-        calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
+        optimization = fx.ClusteredOptimization('Aggregated', flow_system.copy(), clustering_parameters)
+        optimization.do_modeling()
+        optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
-    # Get solutions for plotting for different calculations
+    # Get solutions for plotting for different optimizations
     def get_solutions(calcs: list, variable: str) -> xr.Dataset:
         dataarrays = []
         for calc in calcs:
@@ -201,7 +201,7 @@ if __name__ == '__main__':
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'Speicher|charge_state'),
+        get_solutions(optimizations, 'Speicher|charge_state'),
         mode='line',
         title='Charge State Comparison',
         ylabel='Charge state',
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate'),
+        get_solutions(optimizations, 'BHKW2(Q_th)|flow_rate'),
         mode='line',
         title='BHKW2(Q_th) Flow Rate Comparison',
         ylabel='Flow rate',
@@ -217,7 +217,7 @@ if __name__ == '__main__':
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(temporal)|per_timestep'),
+        get_solutions(optimizations, 'costs(temporal)|per_timestep'),
         mode='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
@@ -225,14 +225,16 @@ if __name__ == '__main__':
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(temporal)|per_timestep').sum('time'),
+        get_solutions(optimizations, 'costs(temporal)|per_timestep').sum('time'),
         mode='stacked_bar',
         title='Total Cost Comparison',
         ylabel='Costs [€]',
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]).to_xarray(),
+        pd.DataFrame(
+            [calc.durations for calc in optimizations], index=[calc.name for calc in optimizations]
+        ).to_xarray(),
         mode='stacked_bar',
     ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'

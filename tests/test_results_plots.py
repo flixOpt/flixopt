@@ -43,8 +43,8 @@ def color_spec(request):
 
 @pytest.mark.slow
 def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
-    calculation = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
-    results = calculation.results
+    optimization = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_results_plots')
+    results = optimization.results
 
     results['Boiler'].plot_node_balance(engine=plotting_engine, save=save, show=show, colors=color_spec)
 
@@ -78,8 +78,8 @@ def test_results_plots(flow_system, plotting_engine, show, save, color_spec):
 @pytest.mark.slow
 def test_color_handling_edge_cases(flow_system, plotting_engine, show, save):
     """Test edge cases for color handling"""
-    calculation = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_color_edge_cases')
-    results = calculation.results
+    optimization = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 30), 'test_color_edge_cases')
+    results = optimization.results
 
     # Test with empty color list (should fall back to default)
     results['Boiler'].plot_node_balance(engine=plotting_engine, save=save, show=show, colors=[])

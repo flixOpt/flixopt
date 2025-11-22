@@ -94,10 +94,10 @@ def flow_system_minimal(timesteps) -> fx.FlowSystem:
 
 
 def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.results.Results:
-    calculation = fx.Optimization('Calculation', flow_system)
-    calculation.do_modeling()
-    calculation.solve(solver)
-    return calculation.results
+    optimization = fx.Optimization('Calculation', flow_system)
+    optimization.do_modeling()
+    optimization.solve(solver)
+    return optimization.results
 
 
 @pytest.fixture

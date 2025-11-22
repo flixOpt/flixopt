@@ -13,9 +13,9 @@ class TestFlowSystem:
         """
         Test the effects of the simple energy system model
         """
-        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_simple_flow_system')
+        optimization = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_simple_flow_system')
 
-        effects = calculation.flow_system.effects
+        effects = optimization.flow_system.effects
 
         # Cost assertions
         assert_almost_equal_numeric(
@@ -31,8 +31,8 @@ class TestFlowSystem:
         """
         Test the component flows of the simple energy system model
         """
-        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
-        comps = calculation.flow_system.components
+        optimization = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
+        comps = optimization.flow_system.components
 
         # Boiler assertions
         assert_almost_equal_numeric(
@@ -53,12 +53,12 @@ class TestFlowSystem:
         Test saving and loading results
         """
         # Save results to file
-        calculation = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
+        optimization = create_optimization_and_solve(simple_flow_system, highs_solver, 'test_model_components')
 
-        calculation.results.to_file()
+        optimization.results.to_file()
 
         # Load results from file
-        results = fx.results.Results.from_file(calculation.folder, calculation.name)
+        results = fx.results.Results.from_file(optimization.folder, optimization.name)
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
@@ -71,17 +71,17 @@ class TestFlowSystem:
 
 class TestComplex:
     def test_basic_flow_system(self, flow_system_base, highs_solver):
-        calculation = create_optimization_and_solve(flow_system_base, highs_solver, 'test_basic_flow_system')
+        optimization = create_optimization_and_solve(flow_system_base, highs_solver, 'test_basic_flow_system')
 
         # Assertions
         assert_almost_equal_numeric(
-            calculation.results.model['costs'].solution.item(),
+            optimization.results.model['costs'].solution.item(),
             -11597.873624489237,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['costs(temporal)|per_timestep'].solution.values,
+            optimization.results.model['costs(temporal)|per_timestep'].solution.values,
             [
                 -2.38500000e03,
                 -2.21681333e03,
@@ -97,66 +97,66 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            sum(calculation.results.model['CO2(temporal)->costs(temporal)'].solution.values),
+            sum(optimization.results.model['CO2(temporal)->costs(temporal)'].solution.values),
             258.63729669618675,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Kessel(Q_th)->costs(temporal)'].solution.values),
+            sum(optimization.results.model['Kessel(Q_th)->costs(temporal)'].solution.values),
             0.01,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Kessel->costs(temporal)'].solution.values),
+            sum(optimization.results.model['Kessel->costs(temporal)'].solution.values),
             -0.0,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Gastarif(Q_Gas)->costs(temporal)'].solution.values),
+            sum(optimization.results.model['Gastarif(Q_Gas)->costs(temporal)'].solution.values),
             39.09153113079115,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['Einspeisung(P_el)->costs(temporal)'].solution.values),
+            sum(optimization.results.model['Einspeisung(P_el)->costs(temporal)'].solution.values),
             -14196.61245231646,
             'costs doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            sum(calculation.results.model['KWK->costs(temporal)'].solution.values),
+            sum(optimization.results.model['KWK->costs(temporal)'].solution.values),
             0.0,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Kessel(Q_th)->costs(periodic)'].solution.values,
+            optimization.results.model['Kessel(Q_th)->costs(periodic)'].solution.values,
             1000 + 500,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher->costs(periodic)'].solution.values,
+            optimization.results.model['Speicher->costs(periodic)'].solution.values,
             800 + 1,
             'costs doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(temporal)'].solution.values,
+            optimization.results.model['CO2(temporal)'].solution.values,
             1293.1864834809337,
             'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['CO2(periodic)'].solution.values,
+            optimization.results.model['CO2(periodic)'].solution.values,
             0.9999999999999994,
             'CO2 doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['Kessel(Q_th)|flow_rate'].solution.values,
+            optimization.results.model['Kessel(Q_th)|flow_rate'].solution.values,
             [0, 0, 0, 45, 0, 0, 0, 0, 0],
             'Kessel doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['KWK(Q_th)|flow_rate'].solution.values,
+            optimization.results.model['KWK(Q_th)|flow_rate'].solution.values,
             [
                 7.50000000e01,
                 6.97111111e01,
@@ -171,7 +171,7 @@ class TestComplex:
             'KWK Q_th doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['KWK(P_el)|flow_rate'].solution.values,
+            optimization.results.model['KWK(P_el)|flow_rate'].solution.values,
             [
                 6.00000000e01,
                 5.57688889e01,
@@ -187,29 +187,29 @@ class TestComplex:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher|netto_discharge'].solution.values,
+            optimization.results.model['Speicher|netto_discharge'].solution.values,
             [-45.0, -69.71111111, 15.0, -10.0, 36.06697198, -55.0, 20.0, 20.0, 20.0],
             'Speicher nettoFlow doesnt match expected value',
         )
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher|charge_state'].solution.values,
+            optimization.results.model['Speicher|charge_state'].solution.values,
             [0.0, 40.5, 100.0, 77.0, 79.84, 37.38582802, 83.89496178, 57.18336484, 32.60869565, 10.0],
             'Speicher nettoFlow doesnt match expected value',
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model['Speicher|PiecewiseEffects|costs'].solution.values,
+            optimization.results.model['Speicher|PiecewiseEffects|costs'].solution.values,
             800,
             'Speicher|PiecewiseEffects|costs doesnt match expected value',
         )
 
     def test_piecewise_conversion(self, flow_system_piecewise_conversion, highs_solver):
-        calculation = create_optimization_and_solve(
+        optimization = create_optimization_and_solve(
             flow_system_piecewise_conversion, highs_solver, 'test_piecewise_conversion'
         )
 
-        effects = calculation.flow_system.effects
-        comps = calculation.flow_system.components
+        effects = optimization.flow_system.effects
+        comps = optimization.flow_system.components
 
         # Compare expected values with actual values
         assert_almost_equal_numeric(
@@ -253,7 +253,7 @@ class TestModelingTypes:
     @pytest.fixture(params=['full', 'segmented', 'aggregated'])
     def modeling_calculation(self, request, flow_system_long, highs_solver):
         """
-        Fixture to run calculations with different modeling types
+        Fixture to run optimizations with different modeling types
         """
         # Extract flow system and data from the fixture
         flow_system = flow_system_long[0]

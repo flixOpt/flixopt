@@ -126,7 +126,7 @@ class AggregatedCalculation(_ClusteredOptimization):
         aggregation_parameters: Parameters for aggregation. See AggregationParameters class documentation
         components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
             This equalizes variables in the components according to the typical periods computed in the aggregation
-        active_timesteps: DatetimeIndex of timesteps to use for calculation. If None, all timesteps are used
+        active_timesteps: DatetimeIndex of timesteps to use for optimization. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
     """
 

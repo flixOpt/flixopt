@@ -11,7 +11,7 @@ logger = logging.getLogger('flixopt')
 
 
 class ModelingUtilitiesAbstract:
-    """Utility functions for modeling calculations - leveraging xarray for temporal data"""
+    """Utility functions for modeling - leveraging xarray for temporal data"""
 
     @staticmethod
     def to_binary(

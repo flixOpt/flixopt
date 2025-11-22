@@ -748,7 +748,7 @@ class InvestParameters(Interface):
         For long-term investments, the cost values should be annualized to the corresponding operation time (annuity).
 
         - Use equivalent annual cost (capital cost / equipment lifetime)
-        - Apply appropriate discount rates for present value calculations
+        - Apply appropriate discount rates for present value optimizations
         - Account for inflation, escalation, and financing costs
 
         Example: €1M equipment with 20-year life → €50k/year fixed cost
