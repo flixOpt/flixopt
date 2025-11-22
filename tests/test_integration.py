@@ -58,7 +58,7 @@ class TestFlowSystem:
         calculation.results.to_file()
 
         # Load results from file
-        results = fx.results.CalculationResults.from_file(calculation.folder, calculation.name)
+        results = fx.results.Results.from_file(calculation.folder, calculation.name)
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
@@ -263,7 +263,7 @@ class TestModelingTypes:
         # Create calculation based on modeling type
         modeling_type = request.param
         if modeling_type == 'full':
-            calc = fx.FullCalculation('fullModel', flow_system)
+            calc = fx.Optimization('fullModel', flow_system)
             calc.do_modeling()
             calc.solve(highs_solver)
         elif modeling_type == 'segmented':
@@ -318,7 +318,7 @@ class TestModelingTypes:
         calc, modeling_type = modeling_calculation
         if modeling_type == 'segmented':
             calc.results.to_file()
-            _ = fx.results.SegmentedCalculationResults.from_file(calc.folder, calc.name)
+            _ = fx.results.SegmentedResults.from_file(calc.folder, calc.name)
 
 
 if __name__ == '__main__':
