@@ -239,6 +239,12 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
                 stacklevel=2,
             )
 
+        # Validate that flow_system_data is provided
+        if flow_system_data is None:
+            raise TypeError(
+                "flow_system_data is required (or use deprecated 'flow_system' for backward compatibility)."
+            )
+
         self.solution = solution
         self.flow_system_data = flow_system_data
         self.summary = summary
