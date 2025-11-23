@@ -238,6 +238,6 @@ if __name__ == '__main__':
             [calc.durations for calc in optimizations], index=[calc.name for calc in optimizations]
         ).to_xarray(),
         mode='stacked_bar',
-    ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
+    ).update_layout(title='Duration Comparison', xaxis_title='Optimization type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )
