@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from flixopt.config import CONFIG, MultilineFormatter
+from flixopt.config import CONFIG, SUCCESS_LEVEL, MultilineFormatter
 
 logger = logging.getLogger('flixopt')
 
@@ -71,6 +71,72 @@ class TestConfigModule:
 
         logger.info('should not appear')
         assert 'should not appear' not in capfd.readouterr().out
+
+    def test_custom_success_level(self, capfd):
+        """Test custom SUCCESS log level."""
+        CONFIG.Logging.enable_console('INFO')
+        logger.log(SUCCESS_LEVEL, 'success message')
+        assert 'success message' in capfd.readouterr().out
+
+    def test_success_level_as_minimum(self, capfd):
+        """Test setting SUCCESS as minimum log level."""
+        CONFIG.Logging.enable_console('SUCCESS')
+
+        # INFO should not appear (level 20 < 25)
+        logger.info('info message')
+        assert 'info message' not in capfd.readouterr().out
+
+        # SUCCESS should appear (level 25)
+        logger.log(SUCCESS_LEVEL, 'success message')
+        assert 'success message' in capfd.readouterr().out
+
+        # WARNING should appear (level 30 > 25)
+        logger.warning('warning message')
+        assert 'warning message' in capfd.readouterr().out
+
+    def test_success_level_numeric(self, capfd):
+        """Test setting SUCCESS level using numeric value."""
+        CONFIG.Logging.enable_console(25)
+        logger.log(25, 'success with numeric level')
+        assert 'success with numeric level' in capfd.readouterr().out
+
+    def test_success_level_constant(self, capfd):
+        """Test using SUCCESS_LEVEL constant."""
+        CONFIG.Logging.enable_console(SUCCESS_LEVEL)
+        logger.log(SUCCESS_LEVEL, 'success with constant')
+        assert 'success with constant' in capfd.readouterr().out
+        assert SUCCESS_LEVEL == 25
+
+    def test_success_file_logging(self, tmp_path):
+        """Test SUCCESS level with file logging."""
+        log_file = tmp_path / 'test_success.log'
+        CONFIG.Logging.enable_file('SUCCESS', str(log_file))
+
+        # INFO should not be logged
+        logger.info('info not logged')
+
+        # SUCCESS should be logged
+        logger.log(SUCCESS_LEVEL, 'success logged to file')
+
+        content = log_file.read_text()
+        assert 'info not logged' not in content
+        assert 'success logged to file' in content
+
+    def test_success_color_customization(self, capfd):
+        """Test customizing SUCCESS level color."""
+        CONFIG.Logging.enable_console('SUCCESS')
+
+        # Customize SUCCESS color
+        CONFIG.Logging.set_colors(
+            {
+                'SUCCESS': 'bold_green,bg_black',
+                'WARNING': 'yellow',
+            }
+        )
+
+        logger.log(SUCCESS_LEVEL, 'colored success')
+        output = capfd.readouterr().out
+        assert 'colored success' in output
 
     def test_multiline_formatting(self):
         """Test that multi-line messages get box borders."""
