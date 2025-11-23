@@ -203,6 +203,7 @@ Where:
 - Results include breakdown: temporal, periodic, and total penalty contributions
 - Penalty is always added to the objective function (cannot be disabled)
 - Access via `flow_system.effects.penalty_effect` or `flow_system.effects[fx.PENALTY_EFFECT_LABEL]`
+- **Scenario weighting**: Penalty is weighted identically to the objective effect—see [Time + Scenario](#time--scenario) for details
 
 ---
 
@@ -267,6 +268,7 @@ Where:
 - Investment decisions (periodic) made once, used across all scenarios
 - Operations (temporal) differ by scenario
 - Objective balances expected value across scenarios
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) are weighted identically by $w_s$**
 
 ---
 
@@ -281,6 +283,7 @@ Where:
 - $w_y$ is the weight for period $y$ (typically annual discount factor)
 - Each period $y$ has **independent** periodic and temporal effects (including penalty)
 - Each period $y$ has **independent** investment and operational decisions
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) are weighted identically by $w_y$**
 
 ---
 
@@ -303,6 +306,7 @@ Where:
 - Coupled **only through the weighted objective function**
 - **Periodic effects within a period are shared across all scenarios** (investment made once per period)
 - **Temporal effects are independent per scenario** (different operations under different conditions)
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) use identical weighting** ($w_y$ for periodic, $w_{y,s}$ for temporal)
 
 ---
 
@@ -315,7 +319,7 @@ Where:
 | **Total temporal effect** | $E_{e,\text{temp},\text{tot}} = \sum_{\text{t}_i} E_{e,\text{temp}}(\text{t}_i)$ | Sum over time | Depends on dimensions |
 | **Total periodic effect** | $E_{e,\text{per}}$ | Constant | $(y)$ when periods present |
 | **Total effect** | $E_e = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}$ | Combined | Depends on dimensions |
-| **Penalty effect** | $E_\Phi = E_{\Phi,\text{per}} + E_{\Phi,\text{temp},\text{tot}}$ | Combined (same as effects) | Same as other effects |
+| **Penalty effect** | $E_\Phi = E_{\Phi,\text{per}} + E_{\Phi,\text{temp},\text{tot}}$ | Combined (same as effects) | **Weighted identically to objective effect** |
 | **Objective** | $\min(E_{\Omega} + E_{\Phi})$ | With weights when multi-dimensional | See formulations above |
 
 ---
