@@ -710,11 +710,9 @@ def create_optimization_and_solve(
     optimization.do_modeling()
     try:
         optimization.solve(solver)
-    except RuntimeError as e:
-        if allow_infeasible:
-            pass
-        else:
-            raise RuntimeError from e
+    except RuntimeError:
+        if not allow_infeasible:
+            raise
     return optimization
 
 
