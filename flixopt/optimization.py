@@ -283,6 +283,9 @@ class Optimization:
 
     @property
     def main_results(self) -> dict[str, int | float | dict]:
+        if self.model is None:
+            raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing main_results.')
+
         main_results = {
             'Objective': self.model.objective.value,
             'Penalty': self.model.effects.penalty.total.solution.values,
@@ -329,6 +332,9 @@ class Optimization:
 
     @property
     def summary(self):
+        if self.model is None:
+            raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing summary.')
+
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.timesteps),
@@ -375,6 +381,7 @@ class ClusteredOptimization(Optimization):
             This equalizes variables in the components according to the typical periods computed in the aggregation
         active_timesteps: DatetimeIndex of timesteps to use for optimization. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
+        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving
 
     Attributes:
         clustering (Clustering | None): Contains the clustered time series data
@@ -392,14 +399,18 @@ class ClusteredOptimization(Optimization):
             'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
         ] = None,
         folder: pathlib.Path | None = None,
+        normalize_weights: bool = True,
     ):
         if flow_system.scenarios is not None:
             raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
+        if flow_system.periods is not None:
+            raise ValueError('Clustering is not supported for periods yet. Please use Optimization instead.')
         super().__init__(
             name=name,
             flow_system=flow_system,
             active_timesteps=active_timesteps,
             folder=folder,
+            normalize_weights=normalize_weights,
         )
         self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
