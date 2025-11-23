@@ -102,7 +102,6 @@ class Calculation:
 
     @property
     def main_results(self) -> dict[str, int | float | dict]:
-        from flixopt.effects import PENALTY_EFFECT_LABEL
         from flixopt.features import InvestmentModel
 
         main_results = {
@@ -119,7 +118,6 @@ class Calculation:
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
-                if effect.label != PENALTY_EFFECT_LABEL  # Exclude penalty from Effects (shown separately)
             },
             'Invest-Decisions': {
                 'Invested': {

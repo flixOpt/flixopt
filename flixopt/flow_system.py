@@ -603,16 +603,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flow_system._add_buses(bus)
 
         # Restore effects
-        from .effects import PENALTY_EFFECT_LABEL
-
         effects_structure = reference_structure.get('effects', {})
         for effect_label, effect_data in effects_structure.items():
-            # Skip penalty effect as it's automatically created in FlowSystem.__init__
-            if effect_label == PENALTY_EFFECT_LABEL:
-                continue
             effect = cls._resolve_reference_structure(effect_data, arrays_dict)
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')
+
             flow_system._add_effects(effect)
 
         return flow_system
