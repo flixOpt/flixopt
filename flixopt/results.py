@@ -2146,7 +2146,6 @@ class SegmentedResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
         self._colors = {}
 
     @property
