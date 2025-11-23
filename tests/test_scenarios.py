@@ -351,11 +351,12 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     calc.results.to_file()
 
-    # Penalty is now a dict with 'temporal', 'periodic', and 'total' keys
+    # Penalty has same structure as other effects: 'Penalty' is the total, 'Penalty(temporal)' and 'Penalty(periodic)' are components
     np.testing.assert_allclose(
         calc.results.objective,
         (
-            (calc.results.solution['costs'] * flow_system.weights).sum() + calc.results.solution['Penalty']['total']
+            (calc.results.solution['costs'] * flow_system.weights).sum()
+            + (calc.results.solution['Penalty'] * flow_system.weights).sum()
         ).item(),
     )  ## Account for rounding errors
 
