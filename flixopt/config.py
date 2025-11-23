@@ -284,7 +284,7 @@ class CONFIG:
             """Enable colored console logging.
 
             Args:
-                level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
+                level: Log level (DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL or numeric level)
                 colored: Use colored output if colorlog is available (default: True)
                 stream: Output stream (default: sys.stdout). Can be sys.stdout or sys.stderr.
 
@@ -367,7 +367,7 @@ class CONFIG:
             """Enable file logging with rotation. Removes all existing file handlers!
 
             Args:
-                level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant)
+                level: Log level (DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL or numeric level)
                 path: Path to log file (default: 'flixopt.log')
                 max_bytes: Maximum file size before rotation in bytes (default: 10MB)
                 backup_count: Number of backup files to keep (default: 5)
