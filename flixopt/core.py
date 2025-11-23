@@ -52,8 +52,10 @@ class TimeSeriesData(xr.DataArray):
         """
         Args:
             *args: Arguments passed to DataArray
-            clustering_group: Clustering group name
-            clustering_weight: Clustering weight (0-1)
+            clustering_group: Clustering group name. Use this when multiple time series should share the same
+                clustering weight (1/n where n is the number of series in the group). Mutually exclusive with clustering_weight.
+            clustering_weight: Clustering weight (0-1). Use this to assign a specific weight to a single time series.
+                Mutually exclusive with clustering_group.
             aggregation_group: Deprecated, use clustering_group instead
             aggregation_weight: Deprecated, use clustering_weight instead
             agg_group: Deprecated, use clustering_group instead
