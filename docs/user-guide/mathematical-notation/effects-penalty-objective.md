@@ -142,11 +142,30 @@ $$
 
 ## Penalty
 
-Every FlixOpt model automatically includes a special **Penalty Effect** $E_\Phi$ to:
+Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
 - Prevent infeasible problems
 - Simplify troubleshooting by allowing constraint violations with high cost
 
-The Penalty is implemented as a standard Effect (labeled `_penalty`) with the same structure as user-defined effects:
+The Penalty is implemented as a standard Effect (labeled `Penalty`) with the same structure as user-defined effects.
+
+**User-Definable:**
+Users can optionally define their own Penalty effect with custom properties (unit, constraints, etc.):
+
+```python
+import flixopt as fx
+
+# Define custom penalty effect (must use fx.PENALTY_EFFECT_LABEL)
+custom_penalty = fx.Effect(
+    fx.PENALTY_EFFECT_LABEL,  # Always use this constant: 'Penalty'
+    unit='€',
+    description='Penalty costs for constraint violations',
+    maximum_total=1e6,  # Limit total penalty for debugging
+)
+
+flow_system.add_elements(custom_penalty)
+```
+
+If not user-defined, the Penalty effect is automatically created during modeling with default settings.
 
 **Periodic penalty shares** (time-independent):
 $$ \label{eq:Penalty_periodic}
@@ -173,10 +192,11 @@ Where:
 **Primary usage:** Penalties occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost, and in time series aggregation to allow period flexibility.
 
 **Key properties:**
-- Penalty shares are added via `add_share_to_effects(name, expressions={'_penalty': ...}, target='temporal'/'periodic')`
+- Penalty shares are added via `add_share_to_effects(name, expressions={fx.PENALTY_EFFECT_LABEL: ...}, target='temporal'/'periodic')`
 - Like other effects, penalty can be constrained (e.g., `maximum_total` for debugging)
 - Results include breakdown: temporal, periodic, and total penalty contributions
 - Penalty is always added to the objective function (cannot be disabled)
+- Access via `flow_system.effects.penalty_effect` or `flow_system.effects[fx.PENALTY_EFFECT_LABEL]`
 
 ---
 

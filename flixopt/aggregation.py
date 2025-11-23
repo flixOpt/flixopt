@@ -346,11 +346,13 @@ class AggregationModel(Submodel):
 
         penalty = self.aggregation_parameters.penalty_of_period_freedom
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
+            from .effects import PENALTY_EFFECT_LABEL
+
             for variable in self.variables_direct.values():
                 # Add penalty shares as temporal effects (time-dependent binary variables)
                 self._model.effects.add_share_to_effects(
                     name='Aggregation',
-                    expressions={'_penalty': variable * penalty},
+                    expressions={PENALTY_EFFECT_LABEL: variable * penalty},
                     target='temporal',
                 )
 

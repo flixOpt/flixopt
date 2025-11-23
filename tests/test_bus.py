@@ -60,10 +60,10 @@ class TestBusModel:
             == 0,
         )
 
-        # Penalty is now added as shares to the _penalty effect's temporal model
+        # Penalty is now added as shares to the Penalty effect's temporal model
         # Check that the penalty shares exist
-        assert 'TestBus->_penalty(temporal)' in model.constraints
-        assert 'TestBus->_penalty(temporal)' in model.variables
+        assert 'TestBus->Penalty(temporal)' in model.constraints
+        assert 'TestBus->Penalty(temporal)' in model.variables
 
         # The penalty share should equal the excess times the penalty cost
         # Note: Each excess (input and output) creates its own share constraint, so we have two

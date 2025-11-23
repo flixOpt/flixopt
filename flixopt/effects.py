@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
+# Penalty effect label constant
+PENALTY_EFFECT_LABEL = 'Penalty'
+
 
 @register_class_for_io
 class Effect(Element):
@@ -603,19 +606,26 @@ class EffectCollection(ElementContainer[Effect]):
         return self.submodel
 
     def _create_penalty_effect(self) -> Effect:
-        """Create and register the penalty effect (called internally by FlowSystem)"""
-        if self._penalty_effect is not None:
-            raise ValueError('Penalty effect already created!')
+        """
+        Create and register the penalty effect (called internally by FlowSystem).
+        Only creates if user hasn't already defined a Penalty effect.
+        """
+        # Check if user has already defined a Penalty effect
+        if PENALTY_EFFECT_LABEL in self:
+            self._penalty_effect = self[PENALTY_EFFECT_LABEL]
+            logger.info(f'Using user-defined Penalty Effect: {PENALTY_EFFECT_LABEL}')
+            return self._penalty_effect
 
+        # Auto-create penalty effect
         self._penalty_effect = Effect(
-            label='_penalty',
+            label=PENALTY_EFFECT_LABEL,
             unit='penalty_units',
             description='Penalty for constraint violations and modeling artifacts',
             is_standard=False,
             is_objective=False,
         )
         self.add(self._penalty_effect)  # Add to container
-        logger.info(f'Registered Penalty Effect: {self._penalty_effect.label}')
+        logger.info(f'Auto-created Penalty Effect: {PENALTY_EFFECT_LABEL}')
         return self._penalty_effect
 
     def add_effects(self, *effects: Effect) -> None:
@@ -752,10 +762,25 @@ class EffectCollection(ElementContainer[Effect]):
 
     @property
     def penalty_effect(self) -> Effect:
-        """The penalty effect (automatically created)"""
-        if self._penalty_effect is None:
-            raise KeyError('Penalty effect not initialized!')
-        return self._penalty_effect
+        """
+        The penalty effect (auto-created during modeling if not user-defined).
+
+        Returns the Penalty effect whether user-defined or auto-created.
+        """
+        # If already set, return it
+        if self._penalty_effect is not None:
+            return self._penalty_effect
+
+        # Check if user has defined a Penalty effect
+        if PENALTY_EFFECT_LABEL in self:
+            self._penalty_effect = self[PENALTY_EFFECT_LABEL]
+            return self._penalty_effect
+
+        # Not yet created - will be created during modeling
+        raise KeyError(
+            f'Penalty effect not yet created. It will be auto-created during modeling, '
+            f'or you can define your own using: Effect("{PENALTY_EFFECT_LABEL}", ...)'
+        )
 
     def calculate_effect_share_factors(
         self,
@@ -818,6 +843,13 @@ class EffectCollectionModel(Submodel):
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Ensure penalty effect exists (auto-create if user hasn't defined one)
+        if self.effects._penalty_effect is None:
+            penalty_effect = self.effects._create_penalty_effect()
+            # Link to FlowSystem (should already be linked, but ensure it)
+            if penalty_effect._flow_system is None:
+                penalty_effect._set_flow_system(self._model.flow_system)
 
         # Create EffectModel for each effect
         for effect in self.effects.values():

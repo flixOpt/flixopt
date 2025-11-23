@@ -957,14 +957,16 @@ class BusModel(ElementModel):
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
             # Add penalty shares as temporal effects (time-dependent)
+            from .effects import PENALTY_EFFECT_LABEL
+
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={'_penalty': self.excess_input * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.excess_input * excess_penalty},
                 target='temporal',
             )
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={'_penalty': self.excess_output * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.excess_output * excess_penalty},
                 target='temporal',
             )
 
