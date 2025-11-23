@@ -213,6 +213,14 @@ class Effect(Element):
         self.unit = unit
         self.description = description
         self.is_standard = is_standard
+
+        # Validate that Penalty cannot be set as objective
+        if is_objective and label == PENALTY_EFFECT_LABEL:
+            raise ValueError(
+                f'The Penalty effect ("{PENALTY_EFFECT_LABEL}") cannot be set as the objective effect. '
+                f'Please use a different effect as the optimization objective.'
+            )
+
         self.is_objective = is_objective
         self.period_weights = period_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
@@ -756,6 +764,12 @@ class EffectCollection(ElementContainer[Effect]):
 
     @objective_effect.setter
     def objective_effect(self, value: Effect) -> None:
+        # Check Penalty first to give users a more specific error message
+        if value.label == PENALTY_EFFECT_LABEL:
+            raise ValueError(
+                f'The Penalty effect ("{PENALTY_EFFECT_LABEL}") cannot be set as the objective effect. '
+                f'Please use a different effect as the optimization objective.'
+            )
         if self._objective_effect is not None:
             raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
         self._objective_effect = value
