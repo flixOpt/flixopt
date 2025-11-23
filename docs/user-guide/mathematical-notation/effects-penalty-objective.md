@@ -146,14 +146,21 @@ Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
 - Prevent infeasible problems
 - Simplify troubleshooting by allowing constraint violations with high cost
 
-The Penalty is implemented as a standard Effect (labeled `Penalty`) with the same structure as user-defined effects.
-
-**User-Definable:**
-Users can optionally define their own Penalty effect with custom properties (unit, constraints, etc.):
+**Key Feature:** Penalty is implemented as a standard Effect (labeled `Penalty`), so you can **add penalty contributions anywhere effects are used**:
 
 ```python
 import flixopt as fx
 
+# Add penalty contributions just like any other effect
+on_off = fx.OnOffParameters(
+    effects_per_switch_on={'Penalty': 1}  #Instead of costs, just add a metric to switching on operations
+)
+```
+
+**Optionally Define Custom Penalty:**
+Users can define their own Penalty effect with custom properties (unit, constraints, etc.):
+
+```python
 # Define custom penalty effect (must use fx.PENALTY_EFFECT_LABEL)
 custom_penalty = fx.Effect(
     fx.PENALTY_EFFECT_LABEL,  # Always use this constant: 'Penalty'
@@ -161,7 +168,6 @@ custom_penalty = fx.Effect(
     description='Penalty costs for constraint violations',
     maximum_total=1e6,  # Limit total penalty for debugging
 )
-
 flow_system.add_elements(custom_penalty)
 ```
 
