@@ -341,7 +341,8 @@ class Optimization:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex | None:
         warnings.warn(
-            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
+            f'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -949,7 +950,8 @@ class SegmentedOptimization:
     @property
     def active_timesteps(self) -> pd.DatetimeIndex | None:
         warnings.warn(
-            'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead.',
+            f'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
