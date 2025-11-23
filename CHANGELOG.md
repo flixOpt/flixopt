@@ -83,6 +83,19 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
+
+Until here -->
+
+## [4.1.1] - 2025-11-23
+
+**Summary**: Fix missing releae notes of 4.1.0
+
+### 🐛 Fixed
+
+- Missing release notes of v4.1.0
+
+---
+
 ## [4.1.0] - 2025-11-21
 
 **Summary**: Logging migrated from loguru to standard Python logging for stability and security. Simpler API with convenient presets.
@@ -176,8 +189,6 @@ CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 - Migration guide with before/after code
 
 ---
-
-Until here -->
 
 ## [4.0.0] - 2025-11-19
 
