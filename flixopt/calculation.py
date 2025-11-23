@@ -106,7 +106,11 @@ class Calculation:
 
         main_results = {
             'Objective': self.model.objective.value,
-            'Penalty': self.model.effects.penalty.total.solution.values,
+            'Penalty': {
+                'temporal': self.flow_system.effects.penalty_effect.submodel.temporal.total.solution.values,
+                'periodic': self.flow_system.effects.penalty_effect.submodel.periodic.total.solution.values,
+                'total': self.flow_system.effects.penalty_effect.submodel.total.solution.values,
+            },
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
                     'temporal': effect.submodel.temporal.total.solution.values,
@@ -114,6 +118,7 @@ class Calculation:
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
+                if effect.label != '_penalty'  # Exclude penalty from Effects (shown separately)
             },
             'Invest-Decisions': {
                 'Invested': {

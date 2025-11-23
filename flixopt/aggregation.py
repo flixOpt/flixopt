@@ -347,7 +347,12 @@ class AggregationModel(Submodel):
         penalty = self.aggregation_parameters.penalty_of_period_freedom
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
             for variable in self.variables_direct.values():
-                self._model.effects.add_share_to_penalty('Aggregation', variable * penalty)
+                # Add penalty shares as temporal effects (time-dependent binary variables)
+                self._model.effects.add_share_to_effects(
+                    name='Aggregation',
+                    expressions={'_penalty': variable * penalty},
+                    target='temporal',
+                )
 
     def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
         assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'

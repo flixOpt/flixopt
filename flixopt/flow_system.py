@@ -208,6 +208,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
         self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses', truncate_repr=10)
         self.effects: EffectCollection = EffectCollection(truncate_repr=10)
+
+        # Create penalty effect after EffectCollection exists
+        penalty_effect = self.effects._create_penalty_effect()
+        penalty_effect._set_flow_system(self)  # Link to FlowSystem
+
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
@@ -604,6 +609,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Restore effects
         effects_structure = reference_structure.get('effects', {})
         for effect_label, effect_data in effects_structure.items():
+            # Skip penalty effect as it's automatically created in FlowSystem.__init__
+            if effect_label == '_penalty':
+                continue
             effect = cls._resolve_reference_structure(effect_data, arrays_dict)
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')

@@ -592,6 +592,7 @@ class EffectCollection(ElementContainer[Effect]):
         super().__init__(element_type_name='effects', truncate_repr=truncate_repr)
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
+        self._penalty_effect: Effect | None = None
 
         self.submodel = None
         self.add_effects(*effects)
@@ -600,6 +601,22 @@ class EffectCollection(ElementContainer[Effect]):
         self._plausibility_checks()
         self.submodel = EffectCollectionModel(model, self)
         return self.submodel
+
+    def _create_penalty_effect(self) -> Effect:
+        """Create and register the penalty effect (called internally by FlowSystem)"""
+        if self._penalty_effect is not None:
+            raise ValueError('Penalty effect already created!')
+
+        self._penalty_effect = Effect(
+            label='_penalty',
+            unit='penalty_units',
+            description='Penalty for constraint violations and modeling artifacts',
+            is_standard=False,
+            is_objective=False,
+        )
+        self.add(self._penalty_effect)  # Add to container
+        logger.info(f'Registered Penalty Effect: {self._penalty_effect.label}')
+        return self._penalty_effect
 
     def add_effects(self, *effects: Effect) -> None:
         for effect in list(effects):
@@ -733,6 +750,13 @@ class EffectCollection(ElementContainer[Effect]):
             raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
         self._objective_effect = value
 
+    @property
+    def penalty_effect(self) -> Effect:
+        """The penalty effect (automatically created)"""
+        if self._penalty_effect is None:
+            raise KeyError('Penalty effect not initialized!')
+        return self._penalty_effect
+
     def calculate_effect_share_factors(
         self,
     ) -> tuple[
@@ -767,7 +791,6 @@ class EffectCollectionModel(Submodel):
 
     def __init__(self, model: FlowSystemModel, effects: EffectCollection):
         self.effects = effects
-        self.penalty: ShareAllocationModel | None = None
         super().__init__(model, label_of_element='Effects')
 
     def add_share_to_effects(
@@ -792,11 +815,6 @@ class EffectCollectionModel(Submodel):
             else:
                 raise ValueError(f'Target {target} not supported!')
 
-    def add_share_to_penalty(self, name: str, expression: linopy.LinearExpression) -> None:
-        if expression.ndim != 0:
-            raise TypeError(f'Penalty shares must be scalar expressions! ({expression.ndim=})')
-        self.penalty.add_share(name, expression, dims=())
-
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
@@ -805,19 +823,13 @@ class EffectCollectionModel(Submodel):
         for effect in self.effects.values():
             effect.create_model(self._model)
 
-        # Create penalty allocation model
-        self.penalty = self.add_submodels(
-            ShareAllocationModel(self._model, dims=(), label_of_element='Penalty'),
-            short_name='penalty',
-        )
-
         # Add cross-effect shares
         self._add_share_between_effects()
 
-        # Use objective weights with objective effect
+        # Use objective weights with objective effect and penalty effect
         self._model.add_objective(
             (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
-            + self.penalty.total.sum()
+            + (self.effects.penalty_effect.submodel.total * self._model.objective_weights).sum()
         )
 
     def _add_share_between_effects(self):
