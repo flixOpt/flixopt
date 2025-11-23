@@ -34,7 +34,7 @@ class ConversionError(Exception):
 
 
 class TimeSeriesData(xr.DataArray):
-    """Minimal TimeSeriesData that inherits from xr.DataArray with aggregation metadata."""
+    """Minimal TimeSeriesData that inherits from xr.DataArray with clustering metadata."""
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
