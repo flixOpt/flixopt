@@ -10,6 +10,18 @@ import xarray as xr
 
 import flixopt as fx
 
+
+# Get solutions for plotting for different optimizations
+def get_solutions(optimizations: list, variable: str) -> xr.Dataset:
+    dataarrays = []
+    for optimization in optimizations:
+        if optimization.name == 'Segmented':
+            dataarrays.append(optimization.results.solution_without_overlap(variable).rename(optimization.name))
+        else:
+            dataarrays.append(optimization.results.solution[variable].rename(optimization.name))
+    return xr.merge(dataarrays, join='outer')
+
+
 if __name__ == '__main__':
     fx.CONFIG.exploring()
 
@@ -166,7 +178,7 @@ if __name__ == '__main__':
     )
     flow_system.plot_network()
 
-    # Calculations
+    # Optimizations
     optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
 
     if full:
@@ -188,16 +200,6 @@ if __name__ == '__main__':
         optimization.do_modeling()
         optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
         optimizations.append(optimization)
-
-    # Get solutions for plotting for different optimizations
-    def get_solutions(calcs: list, variable: str) -> xr.Dataset:
-        dataarrays = []
-        for calc in calcs:
-            if calc.name == 'Segmented':
-                dataarrays.append(calc.results.solution_without_overlap(variable).rename(calc.name))
-            else:
-                dataarrays.append(calc.results.model.variables[variable].solution.rename(calc.name))
-        return xr.merge(dataarrays, join='outer')
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
