@@ -51,21 +51,51 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Penalty reimplemented as a standard Effect, enabling dimensional penalties, user-defined constraints, and unified interface.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
+- **User-definable Penalty Effect**: Users can now define custom Penalty effects with constraints:
+  ```python
+  custom_penalty = fx.Effect(
+      fx.PENALTY_EFFECT_LABEL,  # Use this constant
+      unit='€',
+      description='Custom penalty',
+      maximum_total=1e6,  # Add constraints!
+  )
+  flow_system.add_elements(custom_penalty)
+  ```
+- **PENALTY_EFFECT_LABEL constant**: Exported constant `fx.PENALTY_EFFECT_LABEL` for accessing penalty effect
+- **Dimensional penalties**: Penalty now supports temporal and periodic dimensions like other effects
+- **penalty_effect property**: Added `flow_system.effects.penalty_effect` for convenient access
 - Added proper deprecation tests
 
 ### 💥 Breaking Changes
 
+- **Penalty is now an Effect**: Penalty reimplemented as a standard `Effect` instead of `ShareAllocationModel`
+  - **Old**: `add_share_to_penalty(name, expression)` method
+  - **New**: `add_share_to_effects(name, expressions={fx.PENALTY_EFFECT_LABEL: ...}, target='temporal'/'periodic')`
+  - Internal usage in Bus and Aggregation updated automatically
+- **Results structure changed**:
+  - **Old**: `results.solution['Penalty']` returned scalar value
+  - **New**: `results.solution['Penalty']` returns dict with `{'temporal': ..., 'periodic': ..., 'total': ...}`
+  - Use `results.solution['Penalty']['total']` to get total penalty
+- **Effect label changed**: Penalty effect label changed from `_penalty` to `Penalty` (user-facing)
+
 ### ♻️ Changed
+
+- **Unified penalty interface**: Penalties now added using same `add_share_to_effects()` method as other effects
+- **Penalty in objective**: Penalty effect is always added to objective function (unchanged behavior)
+- **Auto-creation**: Penalty effect auto-created during modeling if not user-defined
+- **I/O handling**: Penalty effect automatically skipped when loading from dataset (auto-recreated)
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
+
+- **add_share_to_penalty() method**: Removed from `EffectCollectionModel` (use `add_share_to_effects()` instead)
 
 ### 🐛 Fixed
 
@@ -76,6 +106,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+
+- Updated mathematical notation documentation for Penalty as Effect
+- Added user-definable Penalty section with examples
+- Updated all objective function formulations to reflect new structure
 
 ### 👷 Development
 
