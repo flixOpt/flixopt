@@ -131,7 +131,7 @@ def _initialize_optimization_common(
 
     obj.durations = {'modeling': 0.0, 'solving': 0.0, 'saving': 0.0}
     obj.folder = pathlib.Path.cwd() / 'results' if folder is None else pathlib.Path(folder)
-    obj.results: Results | None = None
+    obj.results = None
 
     if obj.folder.exists() and not obj.folder.is_dir():
         raise NotADirectoryError(f'Path {obj.folder} exists and is not a directory.')
