@@ -72,6 +72,13 @@ class TestBusModel:
         assert penalty_effect.submodel is not None
         assert 'TestBus' in penalty_effect.submodel.temporal.shares
 
+        assert_conequal(
+            model.constraints['TestBus->Penalty(temporal)'],
+            model.variables['TestBus->Penalty(temporal)']
+            == model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step
+            + model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step,
+        )
+
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
         """Test bus behavior across different coordinate configurations."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
