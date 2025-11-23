@@ -373,7 +373,9 @@ class AggregationModel(Submodel):
             variable.name in self._model.variables.binaries
             and self.aggregation_parameters.percentage_of_period_freedom > 0
         ):
-            sel = variable.isel(time=indices[0])
+            # Get unique time indices to avoid duplicate coordinates
+            unique_time_indices = np.unique(indices[0])
+            sel = variable.isel(time=unique_time_indices)
             coords = sel.coords
             var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1|{variable.name}')
 
@@ -385,7 +387,10 @@ class AggregationModel(Submodel):
             # --> correction On(p3) can be:
             #  On(p1,t) = 1 -> On(p3) can be 0 -> K0=1 (,K1=0)
             #  On(p1,t) = 0 -> On(p3) can be 1 -> K1=1 (,K0=1)
-            con.lhs += 1 * var_k1 - 1 * var_k0
+            # Select the correction variables at the constraint time coordinates
+            # Get the time coordinates from the constrained variable selection
+            time_coords_at_indices = variable.isel(time=indices[0]).coords['time']
+            con.lhs += 1 * var_k1.sel(time=time_coords_at_indices) - 1 * var_k0.sel(time=time_coords_at_indices)
 
             # interlock var_k1 and var_K2:
             # eq: var_k0(t)+var_k1(t) <= 1
