@@ -71,8 +71,9 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 💥 Breaking Changes
 
-- **Results structure**: `results.solution['Penalty']` now returns `{'temporal': ..., 'periodic': ..., 'total': ...}` instead of scalar
-  - Use `results.solution['Penalty']['total']` for total penalty value
+- **Results structure**: Penalty now has same structure as other effects in solution Dataset
+  - Use `results.solution['Penalty']` for total penalty value (same as before, but now it's an effect variable)
+  - Access components via `results.solution['Penalty(temporal)']` and `results.solution['Penalty(periodic)']` if needed
 
 ### ♻️ Changed
 
