@@ -88,7 +88,11 @@ Until here -->
 
 ## [4.1.1] - 2025-11-23
 
-**Summary**: Fix missing releae notes of 4.1.0
+**Summary**: Finalize preparations for removal of all deprecated parameters in v5.0.0
+
+### ✨ Added
+
+- Added missing infos about removal to remaining deprecated parameters and methods
 
 ### 🐛 Fixed
 
