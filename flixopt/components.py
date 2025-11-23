@@ -659,7 +659,7 @@ class Transmission(Component):
         The transmission equation balances flows with losses:
         output_flow = input_flow × (1 - relative_losses) - absolute_losses
 
-        For bidirectional transmission, each direction has independent loss optimizations.
+        For bidirectional transmission, each direction has independent loss calculations.
 
         When using InvestParameters on in1, the capacity automatically applies to in2
         to maintain consistent bidirectional capacity without additional investment variables.
