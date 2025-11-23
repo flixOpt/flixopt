@@ -2223,6 +2223,9 @@ class SegmentedResults:
             Complete variable-to-color mapping dictionary from the first segment
             (all segments will have the same mapping)
         """
+        if not self.segment_results:
+            raise ValueError('No segment_results available; cannot setup colors on an empty SegmentedResults.')
+
         self.colors = self.segment_results[0].setup_colors(config=config, default_colorscale=default_colorscale)
 
         return self.colors
