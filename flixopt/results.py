@@ -140,7 +140,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         ```
 
     Design Patterns:
-        **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
+        **Factory Methods**: Use `from_file()` and `from_optimization()` for creation or access directly from `Optimization.results`
         **Dictionary Access**: Use `results[element_label]` for element-specific results
         **Lazy Loading**: Results objects created on-demand for memory efficiency
         **Unified Interface**: Consistent API across different result types
@@ -1996,7 +1996,7 @@ class FlowResults(_ElementResults):
 class SegmentedResults:
     """Results container for segmented optimization optimizations with temporal decomposition.
 
-    This class manages results from SegmentedCalculation runs where large optimization
+    This class manages results from SegmentedOptimization runs where large optimization
     problems are solved by dividing the time horizon into smaller, overlapping segments.
     It provides unified access to results across all segments while maintaining the
     ability to analyze individual segment behavior.
@@ -2036,20 +2036,20 @@ class SegmentedResults:
         max_discontinuity = segment_boundaries['max_storage_jump']
         ```
 
-        Create from segmented calculation:
+        Create from segmented optimization:
 
         ```python
-        # After running segmented calculation
-        segmented_calc = SegmentedCalculation(
+        # After running segmented optimization
+        segmented_opt = SegmentedOptimization(
             name='annual_system',
             flow_system=system,
             timesteps_per_segment=730,  # Monthly segments
             overlap_timesteps=48,  # 2-day overlap
         )
-        segmented_calc.do_modeling_and_solve(solver='gurobi')
+        segmented_opt.do_modeling_and_solve(solver='gurobi')
 
         # Extract unified results
-        results = SegmentedResults.from_calculation(segmented_calc)
+        results = SegmentedResults.from_optimization(segmented_opt)
 
         # Save combined results
         results.to_file(compression=5)

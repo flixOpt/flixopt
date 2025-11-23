@@ -330,7 +330,7 @@ class Optimization:
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.timesteps),
-            'Calculation Type': self.__class__.__name__,
+            'Optimization Type': self.__class__.__name__,
             'Constraints': self.model.constraints.ncons,
             'Variables': self.model.variables.nvars,
             'Main Results': self.main_results,
@@ -667,6 +667,10 @@ class SegmentedOptimization:
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
 
+        # Validate timesteps_per_segment early (before using in arithmetic)
+        if self.timesteps_per_segment <= 2:
+            raise ValueError('timesteps_per_segment must be greater than 2 due to internal side effects.')
+
         # Validate nr_of_previous_values
         if self.nr_of_previous_values < 0:
             raise ValueError('nr_of_previous_values must be non-negative.')
@@ -680,8 +684,6 @@ class SegmentedOptimization:
         ]
         self._timesteps_per_segment = self._calculate_timesteps_per_segment()
 
-        if timesteps_per_segment <= 2:
-            raise ValueError('timesteps_per_segment must be greater than 2 due to internal side effects.')
         if self.timesteps_per_segment_with_overlap > len(self.all_timesteps):
             raise ValueError(
                 f'timesteps_per_segment_with_overlap ({self.timesteps_per_segment_with_overlap}) '
@@ -933,7 +935,7 @@ class SegmentedOptimization:
         return {
             'Name': self.name,
             'Number of timesteps': len(self.flow_system.timesteps),
-            'Calculation Type': self.__class__.__name__,
+            'Optimization Type': self.__class__.__name__,
             'Number of segments': len(self.sub_optimizations),
             'Timesteps per segment': self.timesteps_per_segment,
             'Overlap timesteps': self.overlap_timesteps,
