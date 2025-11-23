@@ -154,7 +154,7 @@ import flixopt as fx
 
 # Add penalty contributions just like any other effect
 on_off = fx.OnOffParameters(
-    effects_per_switch_on={'Penalty': 1}  #Instead of costs, just add a metric to switching on operations
+    effects_per_switch_on={'Penalty': 1}  # Add bias against switching on this component, without adding costs
 )
 ```
 
