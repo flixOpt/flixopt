@@ -670,6 +670,10 @@ class SegmentedOptimization:
         self.overlap_timesteps = overlap_timesteps
         self.nr_of_previous_values = nr_of_previous_values
 
+        # Validate overlap_timesteps early
+        if self.overlap_timesteps < 0:
+            raise ValueError('overlap_timesteps must be non-negative.')
+
         # Validate timesteps_per_segment early (before using in arithmetic)
         if self.timesteps_per_segment <= 2:
             raise ValueError('timesteps_per_segment must be greater than 2 due to internal side effects.')
