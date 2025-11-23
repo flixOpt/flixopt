@@ -143,8 +143,9 @@ $$
 ## Penalty
 
 Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
+
 - Prevent infeasible problems
-- Simplify troubleshooting by allowing constraint violations with high cost
+- Allow introducing a bias without influencing effects, simplifying results analysis
 
 **Key Feature:** Penalty is implemented as a standard Effect (labeled `Penalty`), so you can **add penalty contributions anywhere effects are used**:
 
