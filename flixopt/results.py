@@ -2120,8 +2120,16 @@ class SegmentedResults:
         path = folder / name
         logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
         meta_data = fx_io.load_json(path.with_suffix('.json'))
+
+        # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
+        sub_names = meta_data.get('sub_optimizations') or meta_data.get('sub_calculations')
+        if sub_names is None:
+            raise KeyError(
+                "Missing 'sub_optimizations' (or legacy 'sub_calculations') key in segmented results metadata."
+            )
+
         return cls(
-            [Results.from_file(folder, sub_name) for sub_name in meta_data['sub_optimizations']],
+            [Results.from_file(folder, sub_name) for sub_name in sub_names],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
