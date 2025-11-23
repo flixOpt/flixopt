@@ -49,9 +49,9 @@ if __name__ == '__main__':
 
     # TimeSeriesData objects
     TS_heat_demand = fx.TimeSeriesData(heat_demand)
-    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, aggregation_weight=0.7)
-    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_price - 0.5), aggregation_group='p_el')
-    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, aggregation_group='p_el')
+    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, clustering_weight=0.7)
+    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_price - 0.5), clustering_group='p_el')
+    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, clustering_group='p_el')
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(

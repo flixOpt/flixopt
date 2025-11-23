@@ -558,11 +558,11 @@ def flow_system_long():
 
     thermal_load_ts, electrical_load_ts = (
         fx.TimeSeriesData(thermal_load),
-        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7),
+        fx.TimeSeriesData(electrical_load, clustering_weight=0.7),
     )
     p_feed_in, p_sell = (
-        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el'),
-        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el'),
+        fx.TimeSeriesData(-(p_el - 0.5), clustering_group='p_el'),
+        fx.TimeSeriesData(p_el + 0.5, clustering_group='p_el'),
     )
 
     flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))

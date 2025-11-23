@@ -406,7 +406,7 @@ class ClusteredOptimization(Optimization):
     def do_modeling(self) -> ClusteredOptimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
-        self._perform_aggregation()
+        self._perform_clustering()
 
         # Model the System
         self.model = self.flow_system.create_model(self.normalize_weights)
@@ -419,7 +419,7 @@ class ClusteredOptimization(Optimization):
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
 
-    def _perform_aggregation(self):
+    def _perform_clustering(self):
         from .clustering import Clustering
 
         t_start_agg = timeit.default_timer()
@@ -451,7 +451,7 @@ class ClusteredOptimization(Optimization):
             hours_per_time_step=float(dt_min),
             hours_per_period=self.clustering_parameters.hours_per_period,
             nr_of_periods=self.clustering_parameters.nr_of_periods,
-            weights=self.calculate_aggregation_weights(temporaly_changing_ds),
+            weights=self.calculate_clustering_weights(temporaly_changing_ds),
             time_series_for_high_peaks=self.clustering_parameters.labels_for_high_peaks,
             time_series_for_low_peaks=self.clustering_parameters.labels_for_low_peaks,
         )
@@ -475,11 +475,26 @@ class ClusteredOptimization(Optimization):
         self.flow_system.connect_and_transform()
         self.durations['clustering'] = round(timeit.default_timer() - t_start_agg, 2)
 
+    def _perform_aggregation(self):
+        """Deprecated: Use _perform_clustering instead."""
+        warnings.warn(
+            f'_perform_aggregation is deprecated, use _perform_clustering instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._perform_clustering()
+
     @classmethod
-    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
+    def calculate_clustering_weights(cls, ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
 
-        groups = [da.attrs['aggregation_group'] for da in ds.data_vars.values() if 'aggregation_group' in da.attrs]
+        # Support both old and new attr names for backward compatibility
+        groups = [
+            da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
+            for da in ds.data_vars.values()
+            if 'clustering_group' in da.attrs or 'aggregation_group' in da.attrs
+        ]
         group_counts = Counter(groups)
 
         # Calculate weight for each group (1/count)
@@ -487,16 +502,30 @@ class ClusteredOptimization(Optimization):
 
         weights = {}
         for name, da in ds.data_vars.items():
-            group_weight = group_weights.get(da.attrs.get('aggregation_group'))
+            # Try both old and new attr names
+            clustering_group = da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
+            group_weight = group_weights.get(clustering_group)
             if group_weight is not None:
                 weights[name] = group_weight
             else:
-                weights[name] = da.attrs.get('aggregation_weight', 1)
+                # Try both old and new attr names for weight
+                weights[name] = da.attrs.get('clustering_weight', da.attrs.get('aggregation_weight', 1))
 
         if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.info('All Aggregation weights were set to 1')
+            logger.info('All Clustering weights were set to 1')
 
         return weights
+
+    @classmethod
+    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
+        """Deprecated: Use calculate_clustering_weights instead."""
+        warnings.warn(
+            f'calculate_aggregation_weights is deprecated, use calculate_clustering_weights instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.calculate_clustering_weights(ds)
 
 
 class SegmentedOptimization:
