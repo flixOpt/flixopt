@@ -348,12 +348,13 @@ class AggregationModel(Submodel):
         if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
             from .effects import PENALTY_EFFECT_LABEL
 
-            for variable in self.variables_direct.values():
-                # Add penalty shares as temporal effects (time-dependent binary variables)
+            for variable_name in self.variables_direct:
+                variable = self.variables_direct[variable_name]
+                # Sum correction variables over all dimensions to get periodic penalty contribution
                 self._model.effects.add_share_to_effects(
                     name='Aggregation',
-                    expressions={PENALTY_EFFECT_LABEL: variable * penalty},
-                    target='temporal',
+                    expressions={PENALTY_EFFECT_LABEL: (variable * penalty).sum()},
+                    target='periodic',
                 )
 
     def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
@@ -373,7 +374,7 @@ class AggregationModel(Submodel):
             and self.aggregation_parameters.percentage_of_period_freedom > 0
         ):
             sel = variable.isel(time=indices[0])
-            coords = {d: sel.indexes[d] for d in sel.dims}
+            coords = sel.coords
             var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1|{variable.name}')
 
             var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0|{variable.name}')
