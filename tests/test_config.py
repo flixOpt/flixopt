@@ -72,12 +72,6 @@ class TestConfigModule:
         logger.info('should not appear')
         assert 'should not appear' not in capfd.readouterr().out
 
-    def test_custom_success_level(self, capfd):
-        """Test custom SUCCESS log level."""
-        CONFIG.Logging.enable_console('INFO')
-        logger.success('success message')
-        assert 'success message' in capfd.readouterr().out
-
     def test_multiline_formatting(self):
         """Test that multi-line messages get box borders."""
         formatter = MultilineFormatter()

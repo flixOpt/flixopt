@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ResultsContainer
 
@@ -1095,7 +1095,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
             else:
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
+        logger.log(SUCCESS_LEVEL, f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
 
 
 class _ElementResults:
