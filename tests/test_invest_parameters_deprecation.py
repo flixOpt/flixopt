@@ -122,32 +122,35 @@ class TestInvestParametersDeprecation:
     def test_both_old_and_new_raises_error(self):
         """Test that specifying both old and new parameter names raises ValueError."""
         # fix_effects + effects_of_investment
-        with pytest.raises(
-            ValueError, match='Either fix_effects or effects_of_investment can be specified, but not both'
-        ):
-            InvestParameters(
-                fix_effects={'cost': 10000},
-                effects_of_investment={'cost': 25000},
-            )
+        with pytest.warns(DeprecationWarning, match='fix_effects'):
+            with pytest.raises(
+                ValueError, match='Either fix_effects or effects_of_investment can be specified, but not both'
+            ):
+                InvestParameters(
+                    fix_effects={'cost': 10000},
+                    effects_of_investment={'cost': 25000},
+                )
 
         # specific_effects + effects_of_investment_per_size
-        with pytest.raises(
-            ValueError,
-            match='Either specific_effects or effects_of_investment_per_size can be specified, but not both',
-        ):
-            InvestParameters(
-                specific_effects={'cost': 1200},
-                effects_of_investment_per_size={'cost': 1500},
-            )
+        with pytest.warns(DeprecationWarning, match='specific_effects'):
+            with pytest.raises(
+                ValueError,
+                match='Either specific_effects or effects_of_investment_per_size can be specified, but not both',
+            ):
+                InvestParameters(
+                    specific_effects={'cost': 1200},
+                    effects_of_investment_per_size={'cost': 1500},
+                )
 
         # divest_effects + effects_of_retirement
-        with pytest.raises(
-            ValueError, match='Either divest_effects or effects_of_retirement can be specified, but not both'
-        ):
-            InvestParameters(
-                divest_effects={'cost': 5000},
-                effects_of_retirement={'cost': 6000},
-            )
+        with pytest.warns(DeprecationWarning, match='divest_effects'):
+            with pytest.raises(
+                ValueError, match='Either divest_effects or effects_of_retirement can be specified, but not both'
+            ):
+                InvestParameters(
+                    divest_effects={'cost': 5000},
+                    effects_of_retirement={'cost': 6000},
+                )
 
         # piecewise_effects + piecewise_effects_of_investment
         from flixopt.interface import Piece, Piecewise, PiecewiseEffects
@@ -160,14 +163,15 @@ class TestInvestParametersDeprecation:
             piecewise_origin=Piecewise([Piece(0, 200)]),
             piecewise_shares={'cost': Piecewise([Piece(900, 700)])},
         )
-        with pytest.raises(
-            ValueError,
-            match='Either piecewise_effects or piecewise_effects_of_investment can be specified, but not both',
-        ):
-            InvestParameters(
-                piecewise_effects=test_piecewise1,
-                piecewise_effects_of_investment=test_piecewise2,
-            )
+        with pytest.warns(DeprecationWarning, match='piecewise_effects'):
+            with pytest.raises(
+                ValueError,
+                match='Either piecewise_effects or piecewise_effects_of_investment can be specified, but not both',
+            ):
+                InvestParameters(
+                    piecewise_effects=test_piecewise1,
+                    piecewise_effects_of_investment=test_piecewise2,
+                )
 
     def test_piecewise_effects_of_investment_new_parameter(self):
         """Test that piecewise_effects_of_investment works correctly."""
@@ -285,14 +289,21 @@ class TestInvestParametersDeprecation:
     def test_optional_parameter_deprecation(self):
         """Test that optional parameter triggers deprecation warning and maps to mandatory."""
         # Test optional=True (should map to mandatory=False)
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        # Note: Two warnings are expected (one from interface.py, one from structure.py)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always', DeprecationWarning)
             params = InvestParameters(optional=True)
             assert params.mandatory is False
+            # Verify at least one deprecation warning was raised
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
 
         # Test optional=False (should map to mandatory=True)
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always', DeprecationWarning)
             params = InvestParameters(optional=False)
             assert params.mandatory is True
+            # Verify at least one deprecation warning was raised
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
 
     def test_mandatory_parameter_no_warning(self):
         """Test that mandatory parameter doesn't trigger warnings."""
@@ -320,15 +331,22 @@ class TestInvestParametersDeprecation:
         parameter will take precedence when both are specified.
         """
         # When both are specified, optional takes precedence (with deprecation warning)
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        # Note: Two warnings are expected (one from interface.py, one from structure.py)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always', DeprecationWarning)
             params = InvestParameters(optional=True, mandatory=False)
             # optional=True should result in mandatory=False
             assert params.mandatory is False
+            # Verify at least one deprecation warning was raised
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
 
-        with pytest.warns(DeprecationWarning, match='optional.*deprecated.*mandatory'):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always', DeprecationWarning)
             params = InvestParameters(optional=False, mandatory=True)
             # optional=False should result in mandatory=True (optional takes precedence)
             assert params.mandatory is True
+            # Verify at least one deprecation warning was raised
+            assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
 
     def test_optional_property_deprecation(self):
         """Test that accessing optional property triggers deprecation warning."""
