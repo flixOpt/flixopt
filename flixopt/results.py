@@ -79,7 +79,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         solution: Dataset containing all optimization variable solutions
         flow_system_data: Dataset with complete system configuration and parameters. Restore the used FlowSystem for further analysis.
         summary: Calculation metadata including solver status, timing, and statistics
-        name: Unique identifier for this calculation
+        name: Unique identifier for this optimization
         model: Original linopy optimization model (if available)
         folder: Directory path for result storage and loading
         components: Dictionary mapping component labels to ComponentResults objects
@@ -749,7 +749,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         Args:
             element: The element identifier for which to calculate total effects.
             effect: The effect identifier to calculate.
-            mode: The calculation mode. Options are:
+            mode: The optimization mode. Options are:
                 'temporal': Returns temporal effects.
                 'periodic': Returns investment-specific effects.
                 'total': Returns the sum of temporal effects and periodic effects. Defaults to 'total'.
@@ -817,7 +817,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Create a template DataArray with the correct dimensions for a given mode.
 
         Args:
-            mode: The calculation mode ('temporal', 'periodic', or 'total').
+            mode: The optimization mode ('temporal', 'periodic', or 'total').
 
         Returns:
             A DataArray filled with NaN, with dimensions appropriate for the mode.
@@ -842,7 +842,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
-            mode: The calculation mode ('temporal', 'periodic', or 'total').
+            mode: The optimization mode ('temporal', 'periodic', or 'total').
 
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
@@ -1070,8 +1070,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Save results to files.
 
         Args:
-            folder: Save folder (defaults to calculation folder).
-            name: File name (defaults to calculation name).
+            folder: Save folder (defaults to optimization folder).
+            name: File name (defaults to optimization name).
             compression: Compression level 0-9.
             document_model: Whether to document model formulations as yaml.
             save_linopy_model: Whether to save linopy model file.
@@ -1105,7 +1105,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             else:
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.log(SUCCESS_LEVEL, f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
+        logger.log(SUCCESS_LEVEL, f'Saved optimization results "{name}" to {paths.model_documentation.parent}')
 
 
 class CalculationResults(Results):
@@ -2022,7 +2022,7 @@ class SegmentedResults:
         Load and analyze segmented results:
 
         ```python
-        # Load segmented calculation results
+        # Load segmented optimization results
         results = SegmentedResults.from_file('results', 'annual_segmented')
 
         # Access unified results across all segments
@@ -2124,7 +2124,7 @@ class SegmentedResults:
         """
         folder = pathlib.Path(folder)
         path = folder / name
-        logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
+        logger.info(f'loading optimization "{name}" from file ("{path.with_suffix(".nc4")}")')
         meta_data = fx_io.load_json(path.with_suffix('.json'))
 
         # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
@@ -2378,7 +2378,7 @@ class SegmentedResults:
             segment.to_file(folder=folder, name=segment.name, compression=compression)
 
         fx_io.save_json(self.meta_data, path.with_suffix('.json'))
-        logger.info(f'Saved calculation "{name}" to {path}')
+        logger.info(f'Saved optimization "{name}" to {path}')
 
 
 class SegmentedCalculationResults(SegmentedResults):
