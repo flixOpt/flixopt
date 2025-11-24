@@ -67,7 +67,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   penalty = fx.Effect(fx.PENALTY_EFFECT_LABEL, unit='€', maximum_total=1e6)
   flow_system.add_elements(penalty)
   ```
-- Added proper deprecation tests
 
 ### 💥 Breaking Changes
 
@@ -81,8 +80,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
 
 ### 🔥 Removed
-
-- `add_share_to_penalty()` method (internal only, not user-facing)
 
 ### 🐛 Fixed
 
