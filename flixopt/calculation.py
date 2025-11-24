@@ -27,6 +27,7 @@ from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
+from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import CalculationResults, SegmentedCalculationResults
@@ -102,15 +103,19 @@ class Calculation:
 
     @property
     def main_results(self) -> dict[str, int | float | dict]:
-        from flixopt.features import InvestmentModel
+        try:
+            penalty_effect = self.flow_system.effects.penalty_effect
+            penalty_section = {
+                'temporal': penalty_effect.submodel.temporal.total.solution.values,
+                'periodic': penalty_effect.submodel.periodic.total.solution.values,
+                'total': penalty_effect.submodel.total.solution.values,
+            }
+        except KeyError:
+            penalty_section = {'temporal': 0.0, 'periodic': 0.0, 'total': 0.0}
 
         main_results = {
             'Objective': self.model.objective.value,
-            'Penalty': {
-                'temporal': self.flow_system.effects.penalty_effect.submodel.temporal.total.solution.values,
-                'periodic': self.flow_system.effects.penalty_effect.submodel.periodic.total.solution.values,
-                'total': self.flow_system.effects.penalty_effect.submodel.total.solution.values,
-            },
+            'Penalty': penalty_section,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
                     'temporal': effect.submodel.temporal.total.solution.values,
@@ -118,6 +123,7 @@ class Calculation:
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
+                if effect.label_full != PENALTY_EFFECT_LABEL
             },
             'Invest-Decisions': {
                 'Invested': {
