@@ -1142,13 +1142,13 @@ class CalculationResults(Results):
 
 
 class _ElementResults:
-    def __init__(self, calculation_results: Results, label: str, variables: list[str], constraints: list[str]):
-        self._calculation_results = calculation_results
+    def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
+        self._results = results
         self.label = label
         self._variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._calculation_results.solution[self._variable_names]
+        self.solution = self._results.solution[self._variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1157,9 +1157,9 @@ class _ElementResults:
         Raises:
             ValueError: If linopy model is unavailable.
         """
-        if self._calculation_results.model is None:
+        if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.variables[self._variable_names]
+        return self._results.model.variables[self._variable_names]
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -1168,9 +1168,9 @@ class _ElementResults:
         Raises:
             ValueError: If linopy model is unavailable.
         """
-        if self._calculation_results.model is None:
+        if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.constraints[self._constraint_names]
+        return self._results.model.constraints[self._constraint_names]
 
     def __repr__(self) -> str:
         """Return string representation with element info and dataset preview."""
@@ -1225,7 +1225,7 @@ class _ElementResults:
 class _NodeResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: Results,
+        results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1233,7 +1233,7 @@ class _NodeResults(_ElementResults):
         outputs: list[str],
         flows: list[str],
     ):
-        super().__init__(calculation_results, label, variables, constraints)
+        super().__init__(results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
         self.flows = flows
@@ -1399,7 +1399,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1410,7 +1410,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1419,7 +1419,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1507,14 +1507,14 @@ class _NodeResults(_ElementResults):
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         inputs = sanitize_dataset(
-            ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
+            ds=self.solution[self.inputs] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
             drop_suffix='|',
         )
         outputs = sanitize_dataset(
-            ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
+            ds=self.solution[self.outputs] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
@@ -1566,7 +1566,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs,
                 data_right=outputs,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1580,7 +1580,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1593,7 +1593,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1647,7 +1647,7 @@ class _NodeResults(_ElementResults):
         ds = sanitize_dataset(
             ds=ds,
             threshold=threshold,
-            timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
+            timesteps=self._results.timesteps_extra if with_last_timestep else None,
             negate=(
                 self.outputs + self.inputs
                 if negate_outputs and negate_inputs
@@ -1663,7 +1663,7 @@ class _NodeResults(_ElementResults):
         ds, _ = _apply_selection_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
-            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds * self._results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
 
         return ds
@@ -1814,7 +1814,7 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1830,7 +1830,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1870,7 +1870,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1902,7 +1902,7 @@ class ComponentResults(_NodeResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1932,7 +1932,7 @@ class ComponentResults(_NodeResults):
         return sanitize_dataset(
             ds=self.solution[variable_names],
             threshold=threshold,
-            timesteps=self._calculation_results.timesteps_extra,
+            timesteps=self._results.timesteps_extra,
             negate=(
                 self.outputs + self.inputs
                 if negate_outputs and negate_inputs
@@ -1963,7 +1963,7 @@ class EffectResults(_ElementResults):
 class FlowResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: Results,
+        results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1971,7 +1971,7 @@ class FlowResults(_ElementResults):
         end: str,
         component: str,
     ):
-        super().__init__(calculation_results, label, variables, constraints)
+        super().__init__(results, label, variables, constraints)
         self.start = start
         self.end = end
         self.component = component
@@ -1982,7 +1982,7 @@ class FlowResults(_ElementResults):
 
     @property
     def flow_hours(self) -> xr.DataArray:
-        return (self.flow_rate * self._calculation_results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+        return (self.flow_rate * self._results.hours_per_timestep).rename(f'{self.label}|flow_hours')
 
     @property
     def size(self) -> xr.DataArray:
@@ -1990,7 +1990,7 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return self._calculation_results.flow_system.flows[self.label].size.rename(name)
+            return self._results.flow_system.flows[self.label].size.rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
