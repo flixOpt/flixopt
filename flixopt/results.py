@@ -73,12 +73,12 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         - **Buses**: Network node balances and energy flows
         - **Effects**: System-wide impacts (costs, emissions, resource consumption)
         - **Solution**: Raw optimization variables and their values
-        - **Metadata**: Calculation parameters, timing, and system configuration
+        - **Metadata**: Optimization parameters, timing, and system configuration
 
     Attributes:
         solution: Dataset containing all optimization variable solutions
         flow_system_data: Dataset with complete system configuration and parameters. Restore the used FlowSystem for further analysis.
-        summary: Calculation metadata including solver status, timing, and statistics
+        summary: Optimization metadata including solver status, timing, and statistics
         name: Unique identifier for this optimization
         model: Original linopy optimization model (if available)
         folder: Directory path for result storage and loading
@@ -218,8 +218,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         Args:
             solution: Optimization solution dataset.
             flow_system_data: Flow system configuration dataset.
-            name: Calculation name.
-            summary: Calculation metadata.
+            name: Optimization name.
+            summary: Optimization metadata.
             folder: Results storage folder.
             model: Linopy optimization model.
         Deprecated:
