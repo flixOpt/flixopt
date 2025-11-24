@@ -56,21 +56,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- Exported SUCCESS log level (`SUCCESS_LEVEL`) for use with `logger.log(SUCCESS_LEVEL, ...)`
-- Added proper deprecation tests
 
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
-- logger coloring improved
 
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
 
 ### 🐛 Fixed
-
-- Fixed Deprecation warnings to specify the version of removal.
 
 ### 🔒 Security
 
@@ -84,8 +79,25 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
-
 Until here -->
+
+## [4.1.2] - 2025-11-24
+
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+- Exported SUCCESS log level (`SUCCESS_LEVEL`) for use with `logger.log(SUCCESS_LEVEL, ...)`
+- Added proper deprecation tests
+
+### ♻️ Changed
+- logger coloring improved
+
+### 👷 Development
+- Fixed Deprecation warnings in tests
+
+---
 
 ## [4.1.1] - 2025-11-23
 
