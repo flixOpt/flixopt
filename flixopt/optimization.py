@@ -260,7 +260,7 @@ class Optimization:
 
         if self.model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
-            paths = fx_io.CalculationResultsPaths(self.folder, self.name)
+            paths = fx_io.ResultsPaths(self.folder, self.name)
             from .io import document_linopy_model
 
             document_linopy_model(self.model, paths.model_documentation)

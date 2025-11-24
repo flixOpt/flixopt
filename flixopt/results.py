@@ -161,7 +161,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             Results: Loaded instance.
         """
         folder = pathlib.Path(folder)
-        paths = fx_io.CalculationResultsPaths(folder, name)
+        paths = fx_io.ResultsPaths(folder, name)
 
         model = None
         if paths.linopy_model.exists():
@@ -1086,7 +1086,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
                     f'Folder {folder} and its parent do not exist. Please create them first.'
                 ) from e
 
-        paths = fx_io.CalculationResultsPaths(folder, name)
+        paths = fx_io.ResultsPaths(folder, name)
 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
