@@ -599,7 +599,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
 
 @dataclass
 class ResultsPaths:
-    """Container for all paths related to saving CalculationResults."""
+    """Container for all paths related to saving Results."""
 
     folder: pathlib.Path
     name: str
