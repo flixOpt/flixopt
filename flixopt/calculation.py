@@ -25,7 +25,7 @@ from tqdm import tqdm
 from . import io as fx_io
 from .aggregation import Aggregation, AggregationModel, AggregationParameters
 from .components import Storage
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -246,7 +246,7 @@ class FullCalculation(Calculation):
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
-        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
         logger.info(f'Model status after solve: {self.model.status}')
 
         if self.model.status == 'warning':
@@ -677,7 +677,7 @@ class SegmentedCalculation(Calculation):
             for key, value in calc.durations.items():
                 self.durations[key] += value
 
-        logger.success(f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
+        logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
 
         self.results = SegmentedCalculationResults.from_calculation(self)
 

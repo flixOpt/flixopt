@@ -86,11 +86,47 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 🐛 Fixed
 
-- Fixed Deprecation warnings to specify the version of removal.
+### 🔒 Security
+
+### 📦 Dependencies
 
 ### 📝 Docs
 
 - Updated mathematical notation for Penalty as Effect
+
+---
+
+Until here -->
+
+## [4.1.2] - 2025-11-24
+
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+- Exported SUCCESS log level (`SUCCESS_LEVEL`) for use with `logger.log(SUCCESS_LEVEL, ...)`
+- Added proper deprecation tests
+
+### ♻️ Changed
+- logger coloring improved
+
+### 👷 Development
+- Fixed Deprecation warnings in tests
+
+---
+
+## [4.1.1] - 2025-11-23
+
+**Summary**: Finalize preparations for removal of all deprecated parameters in v5.0.0
+
+### ✨ Added
+
+- Added missing infos about removal to remaining deprecated parameters and methods
+
+### 🐛 Fixed
+
+- Missing release notes of v4.1.0
 
 ---
 
@@ -187,8 +223,6 @@ CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 - Migration guide with before/after code
 
 ---
-
-Until here -->
 
 ## [4.0.0] - 2025-11-19
 
