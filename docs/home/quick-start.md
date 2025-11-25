@@ -91,8 +91,8 @@ flow_system.add_components(solar, demand, battery)
 ### 5. Run Optimization
 
 ```python
-# Create calculation
-calc = fx.FullCalculation('solar_battery_optimization', system).solve()
+# Create and run optimization
+calc = fx.Optimization('solar_battery_optimization', system).solve()
 ```
 
 ### 6. Save Results

@@ -40,7 +40,7 @@ Common issues and their solutions when working with flixOpt.
 2. For Gurobi/CPLEX, ensure the solver is installed and licensed
 3. Specify solver explicitly:
    ```python
-   calc = fx.FullCalculation('model', system, solver='highs')
+   calc = fx.Optimization('model', system, solver='highs')
    ```
 
 ## Modeling Issues
@@ -141,12 +141,12 @@ Common issues and their solutions when working with flixOpt.
 
 3. **Use a better solver:**
    ```python
-   calc = fx.FullCalculation('model', system, solver='gurobi')
+   calc = fx.Optimization('model', system, solver='gurobi')
    ```
 
 4. **Set solver options:**
    ```python
-   calc = fx.FullCalculation(
+   calc = fx.Optimization(
        'model',
        system,
        solver='gurobi',
