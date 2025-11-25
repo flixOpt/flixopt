@@ -56,9 +56,39 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
-- `overwrite` parameter when saving results to file. If True, overwrite existing files.
 
 ### 💥 Breaking Changes
+
+### ♻️ Changed
+
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+
+Until here -->
+
+## [4.2.0] - 2025-11-25
+
+**Summary**: Renamed classes and parameters related to `Calculation`, `Aggregation` and `Results`. Fully backwards compatible
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+- `overwrite` parameter when saving results to file. If True, overwrite existing files.
 
 ### ♻️ Changed
 
@@ -80,28 +110,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Old names remain available with deprecation warnings (removed in v5.0.0).
 
-### 🔥 Removed
-
 ### 🐛 Fixed
 
 - Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
-
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
 
 ### 👷 Development
 - Fixed `active_timesteps` type annotation to include `None`
 - Fixed xarray truth-value ambiguity in `main_results` buses with excess filter
 - Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
 
-### 🚧 Known Issues
-
 ---
-
-Until here -->
 
 ## [4.1.4] - 2025-11-25
 
