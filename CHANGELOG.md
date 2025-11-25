@@ -76,6 +76,8 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 ### ♻️ Changed
 
+- Now always creates the folder for the Results (including parents)
+
 ### 🗑️ Deprecated
 
 ### 🔥 Removed
