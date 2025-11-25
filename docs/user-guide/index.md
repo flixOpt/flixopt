@@ -1,80 +1,83 @@
 # User Guide
 
-Welcome to the flixOpt User Guide! This comprehensive guide will help you master energy and material flow optimization with flixOpt.
+Welcome to the flixOpt User Guide! This guide will help you master energy and material flow optimization with flixOpt.
 
-## What You'll Learn
+## What is flixOpt?
 
-This guide covers everything from basic concepts to advanced optimization techniques:
+flixOpt is a comprehensive framework for modeling and optimizing energy and material flow systems. It supports:
 
-### :material-school: Core Design
+- **Operational Optimization** - Dispatch optimization with fixed capacities
+- **Investment Optimization** - Capacity expansion planning with binary or continuous sizing
+- **Multi-Period Planning** - Sequential investment decisions across multiple periods
+- **Scenario Analysis** - Stochastic modeling with weighted scenarios
 
-Learn the fundamental concepts and component types that make up a flixOpt model:
+## Key Features
 
-- **[Core Concepts](core-concepts.md)** - Understanding FlowSystems, Effects, Buses, and Components
-- **Component Types** - Detailed guides for Flow, Bus, Storage, and LinearConverter
-- **[What's New in v3.0](migration-guide-v3.md)** - Major improvements and breaking changes
+<div class="grid cards" markdown>
 
-### :material-math-integral: Optimization
+- :material-puzzle: **Flexible Components**
 
-Understand the mathematical formulation behind flixOpt:
+    ---
 
-- **[Mathematical Notation](mathematical-notation/index.md)** - Complete mathematical documentation
-- **Elements** - Variables and constraints for Flow, Bus, Storage, LinearConverter
-- **Features** - Investment, On/Off operation, Piecewise linearization
-- **Effects & Objective** - System-wide cost and emission tracking
-- **Modeling Patterns** - Reusable constraint patterns
+    Flow, Bus, Storage, LinearConverter - build any system topology
 
-### :material-hammer-wrench: Usage
+- :material-cog: **Advanced Modeling**
 
-Practical guides for building and running models:
+    ---
 
-- **Building Models** - Step-by-step model construction
-- **Running Optimization** - Solver configuration and execution
-- **Analyzing Results** - Extracting and interpreting outcomes
-- **Import & Export** - Data handling and result export
-- **Plotting** - Visualization techniques
+    Investment decisions, On/Off states, Piecewise linearization
 
-### :material-book-open-page-variant: Recipes
+- :material-calculator: **Multiple Solvers**
 
-Common patterns and best practices:
+    ---
 
-- **[Recipes](recipes/index.md)** - Solutions to frequent modeling challenges
-- Design patterns for typical energy system problems
-- Tips for model performance and debugging
+    HiGHS (default), Gurobi, CPLEX - choose what fits your needs
+
+- :material-chart-line: **Built-in Analysis**
+
+    ---
+
+    Plotting, export, and result exploration tools
+
+</div>
 
 ## Learning Path
 
-### Beginners
+This guide follows a sequential learning path:
 
-1. Read [Core Concepts](core-concepts.md)
-2. Follow the [Quick Start](../home/quick-start.md)
-3. Work through the [Minimal Example](../examples/00-Minimal Example.md)
-4. Explore [Basic Examples](../examples/01-Basic Example.md)
+| Step | Section | What You'll Learn |
+|------|---------|-------------------|
+| 1 | [Core Concepts](core-concepts.md) | Fundamental building blocks: FlowSystem, Bus, Flow, Components, Effects |
+| 2 | [Building Models](building-models/index.md) | How to construct models step by step |
+| 3 | [Running Optimizations](optimization/index.md) | Solver configuration and execution |
+| 4 | [Analyzing Results](results/index.md) | Extracting and visualizing outcomes |
+| 5 | [Mathematical Notation](mathematical-notation/index.md) | Deep dive into the math behind each element |
+| 6 | [Recipes](recipes/index.md) | Common patterns and solutions |
 
-### Intermediate Users
+## Quick Links
 
-1. Study [Mathematical Notation](mathematical-notation/index.md)
-2. Learn about [Investment Parameters](mathematical-notation/features/InvestParameters.md)
-3. Understand [On/Off Operation](mathematical-notation/features/OnOffParameters.md)
-4. Review [Recipes](recipes/index.md) for common patterns
+### Getting Started
 
-### Advanced Users
+- [Quick Start](../home/quick-start.md) - Build your first model in 5 minutes
+- [Minimal Example](../examples/00-Minimal Example.md) - Simplest possible model
+- [Core Concepts](core-concepts.md) - Understand the fundamentals
 
-1. Deep dive into [Modeling Patterns](mathematical-notation/modeling-patterns/index.md)
-2. Explore complex examples like [Two-Stage Optimization](../examples/05-Two-stage-optimization.md)
-3. Study [Piecewise Linearization](mathematical-notation/features/Piecewise.md)
-4. Contribute to the [Roadmap](../roadmap.md)
+### Reference
 
-## Getting Help
+- [Mathematical Notation](mathematical-notation/index.md) - Detailed specifications
+- [API Reference](../api-reference/index.md) - Complete class documentation
+- [Examples](../examples/index.md) - Working code to learn from
 
-- **[FAQ](#)** - Frequently asked questions
-- **[Troubleshooting](#)** - Common issues and solutions
-- **[Support](#)** - How to get help from the community
+### Help
 
-## Contributing
+- [FAQ](faq.md) - Frequently asked questions
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
+- [Community](support.md) - Get help from the community
 
-Found something unclear or incorrect? We welcome contributions!
+## Use Cases
 
-- **Report issues** on [GitHub](https://github.com/flixOpt/flixopt/issues)
-- **Suggest improvements** via [Discussions](https://github.com/flixOpt/flixopt/discussions)
-- **Contribute** following our [Contributing Guide](../contribute.md)
+flixOpt handles any flow-based optimization problem:
+
+**Energy Systems**: Power dispatch, CHP optimization, renewable integration, battery storage, district heating
+
+**Industrial Applications**: Process optimization, multi-commodity networks, supply chains, resource allocation

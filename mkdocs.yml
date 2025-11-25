@@ -23,9 +23,10 @@ nav:
 
   - User Guide:
     - Overview: user-guide/index.md
-    - Features: user-guide/features.md
-    - Release Notes: changelog.md
     - Core Concepts: user-guide/core-concepts.md
+    - Building Models: user-guide/building-models/index.md
+    - Running Optimizations: user-guide/optimization/index.md
+    - Analyzing Results: user-guide/results/index.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
       - Dimensions: user-guide/mathematical-notation/dimensions.md
@@ -44,14 +45,15 @@ nav:
         - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
         - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
         - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
-    - Optimization: user-guide/optimization/index.md
     - Recipes: user-guide/recipes/index.md
     - Support:
       - FAQ: user-guide/faq.md
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
-    - Migration Guide v3: user-guide/migration-guide-v3.md
-    - Roadmap: roadmap.md
+    - Migration & Updates:
+      - Migration Guide v3: user-guide/migration-guide-v3.md
+      - Release Notes: changelog.md
+      - Roadmap: roadmap.md
 
   - Examples:
     - Overview: examples/index.md
