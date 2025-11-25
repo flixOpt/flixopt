@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     # --- Load Results ---
     try:
-        results = fx.results.CalculationResults.from_file('results', 'complex example')
+        results = fx.results.Results.from_file('results', 'complex example')
     except FileNotFoundError as e:
         raise FileNotFoundError(
             f"Results file not found in the specified directory ('results'). "

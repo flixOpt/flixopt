@@ -7,6 +7,7 @@ which are then transformed into the internal data structure.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections import deque
 from typing import TYPE_CHECKING, Literal
@@ -14,8 +15,8 @@ from typing import TYPE_CHECKING, Literal
 import linopy
 import numpy as np
 import xarray as xr
-from loguru import logger
 
+from .config import DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -23,8 +24,9 @@ from .structure import Element, ElementContainer, ElementModel, FlowSystemModel,
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -42,13 +44,13 @@ class Effect(Element):
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         unit: The unit of the effect (e.g., '€', 'kg_CO2', 'kWh_primary', 'm²').
-            This is informative only and does not affect optimization calculations.
+            This is informative only and does not affect optimization.
         description: Descriptive name explaining what this effect represents.
         is_standard: If True, this is a standard effect allowing direct value input
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
-        weights: Optional custom weights for periods and scenarios (Numeric_PS).
+        period_weights: Optional custom weights for periods and scenarios (Numeric_PS).
             If provided, overrides the FlowSystem's default period weights for this effect.
             Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
             If None, uses FlowSystem's default weights.
@@ -249,7 +251,8 @@ class Effect(Element):
     def minimum_operation(self):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
         warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -259,7 +262,8 @@ class Effect(Element):
     def minimum_operation(self, value):
         """DEPRECATED: Use 'minimum_temporal' property instead."""
         warnings.warn(
-            "Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead.",
+            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -269,7 +273,8 @@ class Effect(Element):
     def maximum_operation(self):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
         warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -279,7 +284,8 @@ class Effect(Element):
     def maximum_operation(self, value):
         """DEPRECATED: Use 'maximum_temporal' property instead."""
         warnings.warn(
-            "Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead.",
+            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -289,7 +295,8 @@ class Effect(Element):
     def minimum_invest(self):
         """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
+            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -299,7 +306,8 @@ class Effect(Element):
     def minimum_invest(self, value):
         """DEPRECATED: Use 'minimum_periodic' property instead."""
         warnings.warn(
-            "Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead.",
+            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -309,7 +317,8 @@ class Effect(Element):
     def maximum_invest(self):
         """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
+            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -319,7 +328,8 @@ class Effect(Element):
     def maximum_invest(self, value):
         """DEPRECATED: Use 'maximum_periodic' property instead."""
         warnings.warn(
-            "Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead.",
+            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -329,7 +339,8 @@ class Effect(Element):
     def minimum_operation_per_hour(self):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -339,7 +350,8 @@ class Effect(Element):
     def minimum_operation_per_hour(self, value):
         """DEPRECATED: Use 'minimum_per_hour' property instead."""
         warnings.warn(
-            "Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead.",
+            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -349,7 +361,8 @@ class Effect(Element):
     def maximum_operation_per_hour(self):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -359,7 +372,8 @@ class Effect(Element):
     def maximum_operation_per_hour(self, value):
         """DEPRECATED: Use 'maximum_per_hour' property instead."""
         warnings.warn(
-            "Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead.",
+            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -369,7 +383,8 @@ class Effect(Element):
     def minimum_total_per_period(self):
         """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -379,7 +394,8 @@ class Effect(Element):
     def minimum_total_per_period(self, value):
         """DEPRECATED: Use 'minimum_total' property instead."""
         warnings.warn(
-            "Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead.",
+            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -389,7 +405,8 @@ class Effect(Element):
     def maximum_total_per_period(self):
         """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -399,7 +416,8 @@ class Effect(Element):
     def maximum_total_per_period(self, value):
         """DEPRECATED: Use 'maximum_total' property instead."""
         warnings.warn(
-            "Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead.",
+            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -624,7 +642,8 @@ class EffectCollection(ElementContainer[Effect]):
             if isinstance(eff, Effect):
                 warnings.warn(
                     f'The use of effect objects when specifying EffectValues is deprecated. '
-                    f'Use the label of the effect instead. Used effect: {eff.label_full}',
+                    f'Use the label of the effect instead. Used effect: {eff.label_full}. '
+                    f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                     UserWarning,
                     stacklevel=2,
                 )

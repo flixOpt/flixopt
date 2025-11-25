@@ -98,23 +98,23 @@ This approach allows for multi-criteria optimization using both:
  - **Weighted Sum Method**: Optimize a theoretical Effect which other Effects crosslink to
  - **ε-constraint method**: Constrain effects to specific limits
 
-### Calculation
+### Optimization
 
-A [`FlowSystem`][flixopt.flow_system.FlowSystem] can be converted to a Model and optimized by creating a [`Calculation`][flixopt.calculation.Calculation] from it.
+A [`FlowSystem`][flixopt.flow_system.FlowSystem] can be converted to a Model and optimized by creating an [`Optimization`][flixopt.optimization.Optimization] from it.
 
-FlixOpt offers different calculation modes:
+FlixOpt offers different optimization modes:
 
-- [`FullCalculation`][flixopt.calculation.FullCalculation] - Solves the entire problem at once
-- [`SegmentedCalculation`][flixopt.calculation.SegmentedCalculation] - Solves the problem in segments (with optioinal overlap), improving performance for large problems
-- [`AggregatedCalculation`][flixopt.calculation.AggregatedCalculation] - Uses typical periods to reduce computational requirements
+- [`Optimization`][flixopt.optimization.Optimization] - Solves the entire problem at once
+- [`SegmentedOptimization`][flixopt.optimization.SegmentedOptimization] - Solves the problem in segments (with optional overlap), improving performance for large problems
+- [`ClusteredOptimization`][flixopt.optimization.ClusteredOptimization] - Uses typical periods to reduce computational requirements
 
 ### Results
 
-The results of a calculation are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object.
-This object contains the solutions of the optimization as well as all information about the [`Calculation`][flixopt.calculation.Calculation] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
-The solution is stored as an `xarray.Dataset`, but can be accessed through their assotiated Component, Bus or Effect.
+The results of an optimization are stored in a [`Results`][flixopt.results.Results] object.
+This object contains the solutions of the optimization as well as all information about the [`Optimization`][flixopt.optimization.Optimization] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
+The solution is stored as an `xarray.Dataset`, but can be accessed through their associated Component, Bus or Effect.
 
-This [`CalculationResults`][flixopt.results.CalculationResults] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
+This [`Results`][flixopt.results.Results] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
 
 ## How These Concepts Work Together
 
@@ -128,12 +128,12 @@ The process of working with FlixOpt can be divided into 3 steps:
      -  Add
      - [`FlowSystems`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
 2. Translate the model to a mathematical optimization problem
-     - Create a [`Calculation`][flixopt.calculation.Calculation] from your FlowSystem and choose a Solver
-     - ...The Calculation is translated internally to a mathematical optimization problem...
+     - Create an [`Optimization`][flixopt.optimization.Optimization] from your FlowSystem and choose a Solver
+     - ...The Optimization is translated internally to a mathematical optimization problem...
      - ...and solved by the chosen solver.
 3. Analyze the results
-     - The results are stored in a [`CalculationResults`][flixopt.results.CalculationResults] object
-     - This object can be saved to file and reloaded from file, retaining all information about the calculation
+     - The results are stored in a [`Results`][flixopt.results.Results] object
+     - This object can be saved to file and reloaded from file, retaining all information about the optimization
      - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it fully documents all assumptions taken to create the results.
 
 <figure markdown>
@@ -152,4 +152,4 @@ This allows to adjust your model to very specific requirements without loosing t
 <!--- [FlowSystem](api/flow_system.md) - Time series and system organization-->
 <!--- [Components](api/components.md) - Available component types and how to use them-->
 <!--- [Effects](apieffects.md) - Costs, emissions, and other impacts-->
-<!--- [Calculation Modes](api/calculation.md) - Different approaches to solving your model-->
+<!--- [Optimization Modes](api/optimization.md) - Different approaches to solving your model-->

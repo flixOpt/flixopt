@@ -76,12 +76,12 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 
 ---
 
-### FlowSystem & Calculation
+### FlowSystem & Optimization
 
 | Change | Description |
 |--------|-------------|
-| **FlowSystem copying** | Each `Calculation` gets its own copy (independent) |
-| **do_modeling() return** | Returns `Calculation` object (access model via `.model` property) |
+| **FlowSystem copying** | Each `Optimization` gets its own copy (independent) |
+| **do_modeling() return** | Returns `Optimization` object (access model via `.model` property) |
 | **Storage arrays** | Arrays match timestep count (no extra element) |
 | **Final charge state** | Use `relative_minimum_final_charge_state` / `relative_maximum_final_charge_state` |
 
@@ -89,12 +89,12 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 
 ### Other Changes
 
-| Category | Old (v2.x) | New (v3.0.0) |
-|----------|------------|--------------|
-| System model class | `SystemModel` | `FlowSystemModel` |
-| Element submodel | `Model` | `Submodel` |
-| Logging default | Enabled | Disabled |
-| Enable logging | (default) | `fx.CONFIG.Logging.console = True; fx.CONFIG.apply()` |
+| Category               | Old (v2.x) | New (v3.0.0+) |
+|------------------------|------------|---------------|
+| System model class     | `SystemModel` | `FlowSystemModel` |
+| Element submodel       | `Model` | `Submodel` |
+| Logging default        | Enabled | Disabled (silent) |
+| Enable console logging | (default) | `fx.CONFIG.Logging.enable_console('INFO')` or `fx.CONFIG.exploring()` |
 
 ---
 
@@ -135,7 +135,7 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
     | `agg_group` | `aggregation_group` |
     | `agg_weight` | `aggregation_weight` |
 
-??? abstract "Calculation"
+??? abstract "Optimization"
 
     | Old (v2.x) | New (v3.0.0) |
     |------------|--------------|
@@ -207,7 +207,7 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 | Issue | Solution |
 |-------|----------|
 | Effect shares not working | See [Effect System Redesign](#effect-system-redesign) |
-| Storage dimensions wrong | See [FlowSystem & Calculation](#flowsystem-calculation) |
+| Storage dimensions wrong | See [FlowSystem & Optimization](#flowsystem-optimization) |
 | Bus assignment error | See [String Labels](#string-labels) |
 | KeyError in results | See [Variable Names](#variable-names) |
 | `AttributeError: model` | Rename `.model` → `.submodel` |
@@ -220,7 +220,7 @@ Terminology changed and sharing system inverted: effects now "pull" shares.
 | Category | Tasks |
 |----------|-------|
 | **Install** | • `pip install --upgrade flixopt` |
-| **Breaking changes** | • Update [effect sharing](#effect-system-redesign)<br>• Update [variable names](#variable-names)<br>• Update [string labels](#string-labels)<br>• Fix [storage arrays](#flowsystem-calculation)<br>• Update [Calculation API](#flowsystem-calculation)<br>• Update [class names](#other-changes) |
+| **Breaking changes** | • Update [effect sharing](#effect-system-redesign)<br>• Update [variable names](#variable-names)<br>• Update [string labels](#string-labels)<br>• Fix [storage arrays](#flowsystem-optimization)<br>• Update [Optimization API](#flowsystem-optimization)<br>• Update [class names](#other-changes) |
 | **Configuration** | • Enable [logging](#other-changes) if needed |
 | **Deprecated** | • Update [deprecated parameters](#deprecated-parameters) (recommended) |
 | **Testing** | • Test thoroughly<br>• Validate results match v2.x |

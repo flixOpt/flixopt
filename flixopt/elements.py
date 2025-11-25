@@ -4,21 +4,20 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import InvestmentModel, OnOffModel
 from .interface import InvestParameters, OnOffParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
-    DEPRECATION_REMOVAL_VERSION,
     Element,
     ElementModel,
     FlowSystemModel,
@@ -29,19 +28,15 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import (
-        Bool_PS,
-        Bool_S,
-        Bool_TPS,
-        Effect_PS,
-        Effect_S,
         Effect_TPS,
         Numeric_PS,
         Numeric_S,
         Numeric_TPS,
         Scalar,
     )
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -513,7 +508,8 @@ class Flow(Element):
             self.bus = bus.label_full
             warnings.warn(
                 f'Bus {bus.label} is passed as a Bus object to {self.label}. This is deprecated and will be removed '
-                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow.',
+                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 UserWarning,
                 stacklevel=1,
             )
