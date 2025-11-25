@@ -1,0 +1,845 @@
+/* ============================================================================
+   flixOpt Custom Styling with Custom Palette
+   ========================================================================= */
+
+/* Root variables for easy customization */
+:root {
+  /* Spacing */
+  --content-padding: 2rem;
+
+  /* Typography */
+  --heading-font-weight: 600;
+
+  /* Colors - enhance teal theme */
+  --flixopt-teal: #009688;
+  --flixopt-teal-light: #4DB6AC;
+  --flixopt-teal-dark: #00796B;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] {
+    --md-code-bg-color: #1e1e1e;
+}
+/* ============================================================================
+   Layout: Wider Content Area
+   ========================================================================= */
+
+/* Increase maximum content width for better space utilization */
+.md-grid {
+  max-width: 1600px;  /* Reasonable limit for very wide screens */
+  margin: 0 auto;  /* Center the grid */
+}
+
+/* Wider main content area */
+.md-main__inner {
+  margin-top: 0;
+  max-width: none;
+}
+
+.md-content {
+  max-width: none !important;  /* Remove artificial content constraints */
+}
+
+/* Override Material's default content width constraint */
+.md-content__inner {
+  max-width: 1300px !important;  /* Wider content for better space usage */
+  margin-left: auto !important;  /* Center the content */
+  margin-right: auto !important;  /* Center the content */
+  margin-bottom: 1.2rem;
+  padding: 0.6rem 1.2rem 0;
+}
+
+/* Better use of space with navigation - narrower sidebars = more content space */
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    width: 12rem;  /* Narrower left sidebar */
+    left: 0;
+  }
+
+  .md-sidebar--secondary {
+    width: 12rem;  /* Narrower right sidebar */
+    right: 0;
+  }
+
+  .md-content__inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Constrain sidebar positioning to align with content */
+  .md-sidebar {
+    max-width: calc((100vw - 1300px) / 2 + 12rem);
+  }
+
+  .md-sidebar--primary {
+    margin-left: max(0px, calc((100vw - 1700px) / 2));
+  }
+
+  .md-sidebar--secondary {
+    margin-right: max(0px, calc((100vw - 1700px) / 2));
+  }
+}
+
+/* On very wide screens, add more padding but keep max-width */
+@media screen and (min-width: 100em) {
+  .md-content__inner {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* ============================================================================
+   Typography Improvements
+   ========================================================================= */
+
+/* Better line height for readability */
+.md-typeset {
+  line-height: 1.6;
+  font-size: 0.75rem;  /* Smaller font for more screen real estate */
+  max-width: 1300px !important;  /* Wider max width */
+}
+
+/* Enhanced headings with compact spacing */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.md-typeset h2 {
+  font-weight: var(--heading-font-weight);
+  border-bottom: 2px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.2em;
+  margin-top: 1em;
+  margin-bottom: 0.4rem;
+  font-size: 1.2rem;
+}
+
+.md-typeset h3 {
+  font-weight: var(--heading-font-weight);
+  margin-top: 0.8em;
+  margin-bottom: 0.3rem;
+  font-size: 1rem;
+}
+
+.md-typeset h4 {
+  margin-top: 0.6em;
+  margin-bottom: 0.2rem;
+  font-size: 0.9rem;
+}
+
+/* Compact paragraph spacing */
+.md-typeset p {
+  margin-bottom: 0.8em;
+}
+
+/* Better code inline with subtle background */
+.md-typeset code {
+  padding: 0.2em 0.5em;
+  border-radius: 0.3em;
+  font-size: 0.88em;
+  background-color: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+/* Links with smooth transitions */
+.md-typeset a {
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.md-typeset a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* ============================================================================
+   Navigation Enhancements
+   ========================================================================= */
+
+/* Use Material for MkDocs default navigation styling - removed custom overrides */
+
+/* ============================================================================
+   Code Block Improvements
+   ========================================================================= */
+
+/* Minimalistic code block styling */
+.md-typeset .highlight {
+  border-radius: 0.4rem;
+  margin: 0.8em 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  overflow: hidden;
+  background-color: var(--md-code-bg-color);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.md-typeset .highlight:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight {
+  border-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--md-code-bg-color);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Hide the auto-generated code block title */
+.md-typeset .highlight > code::before {
+  display: none !important;
+}
+
+.md-typeset .highlight span.filename {
+  display: none !important;
+}
+
+/* Hide auto_title if present */
+.md-typeset .highlight > .language-python::before,
+.md-typeset .highlight > .language-text::before {
+  display: none !important;
+}
+
+/* Ultra compact spacing inside code blocks */
+.md-typeset .highlight pre {
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+}
+
+.md-typeset .highlight pre code {
+  border: none;
+  background: transparent;
+  font-size: 0.65rem;
+  line-height: 1.25;
+}
+
+/* Line numbers styling */
+.md-typeset .highlight .linenos {
+  user-select: none;
+  opacity: 0.35;
+  padding-right: 0.4rem;
+}
+
+/* Simple copy button */
+.md-clipboard {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.highlight:hover .md-clipboard {
+  opacity: 0.5;
+}
+
+.md-clipboard:hover {
+  opacity: 1 !important;
+}
+
+/* Terminal-style bash/shell blocks with Mac-style window dots */
+.md-typeset .highlight.language-bash,
+.md-typeset .highlight.language-sh,
+.md-typeset .highlight.language-shell,
+.md-typeset .highlight.language-console {
+  background-color: #2e3440 !important;
+  color: #d8dee9;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  position: relative;
+  padding-top: 2rem !important;
+  border-radius: 0.4rem !important;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight.language-bash,
+[data-md-color-scheme="slate"] .md-typeset .highlight.language-sh,
+[data-md-color-scheme="slate"] .md-typeset .highlight.language-shell,
+[data-md-color-scheme="slate"] .md-typeset .highlight.language-console {
+  background-color: #1e1e1e !important;
+}
+
+/* Mac-style window dots */
+.md-typeset .highlight.language-bash::before,
+.md-typeset .highlight.language-sh::before,
+.md-typeset .highlight.language-shell::before,
+.md-typeset .highlight.language-console::before {
+  content: '';
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff5f56;
+  box-shadow: 18px 0 0 #ffbd2e, 36px 0 0 #27c93f;
+}
+
+/* Terminal text color for bash */
+.md-typeset .highlight.language-bash pre,
+.md-typeset .highlight.language-sh pre,
+.md-typeset .highlight.language-shell pre,
+.md-typeset .highlight.language-console pre {
+  background-color: transparent;
+  color: #d8dee9;
+}
+
+.md-typeset .highlight.language-bash code,
+.md-typeset .highlight.language-sh code,
+.md-typeset .highlight.language-shell code,
+.md-typeset .highlight.language-console code {
+  color: #d8dee9 !important;
+}
+
+/* Terminal colors for bash syntax */
+.highlight.language-bash .gp,
+.highlight.language-console .gp {
+  color: #88c0d0;  /* Prompt */
+  user-select: none;
+}
+
+.highlight.language-bash .nb,
+.highlight.language-sh .nb {
+  color: #81a1c1;  /* Built-in commands */
+  font-weight: 600;
+}
+
+.highlight.language-bash .s,
+.highlight.language-bash .s1,
+.highlight.language-bash .s2,
+.highlight.language-sh .s,
+.highlight.language-sh .s1,
+.highlight.language-sh .s2 {
+  color: #a3be8c;  /* Strings */
+}
+
+.highlight.language-bash .nv,
+.highlight.language-sh .nv {
+  color: #d08770;  /* Variables */
+}
+
+.highlight.language-bash .c,
+.highlight.language-bash .c1,
+.highlight.language-sh .c,
+.highlight.language-sh .c1 {
+  color: #616e88;  /* Comments */
+  font-style: italic;
+}
+
+/* ============================================================================
+   Admonitions & Callouts
+   ========================================================================= */
+
+/* Enhanced admonitions with modern styling */
+.md-typeset .admonition {
+  border-radius: 0.5rem;
+  border-left-width: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin: 1.5em 0;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.md-typeset .admonition:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateX(4px);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Better title styling with smaller icons */
+.md-typeset .admonition-title {
+  font-weight: 600;
+  padding-left: 2.2rem;
+  font-size: 0.8rem;
+}
+
+.md-typeset .admonition-title::before {
+  width: 1.2rem;
+  height: 1.2rem;
+  top: 0.6rem;
+  left: 0.6rem;
+}
+
+/* ============================================================================
+   Tables
+   ========================================================================= */
+
+/* Minimalistic table styling - compact height, wide, centered */
+.md-typeset table:not([class]) {
+  border-radius: 0.3rem;
+  overflow: hidden;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  margin: 0.8em auto;
+  width: 100%;
+  max-width: 100%;
+  display: table;
+  table-layout: auto;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.4rem 1rem;
+  font-size: 0.68rem;
+  border-bottom: 2px solid var(--md-primary-fg-color);
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.md-typeset table:not([class]) td {
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.md-typeset table:not([class]) tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.md-typeset table:not([class]) tbody tr:hover {
+  background-color: var(--md-default-fg-color--lightest);
+}
+
+.md-typeset table:not([class]) tbody tr:last-child td {
+  border-bottom: none;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+}
+
+/* ============================================================================
+   API Documentation Styling
+   ========================================================================= */
+
+/* Better spacing for API docs */
+.doc-heading {
+  margin-top: 2rem !important;
+}
+
+/* Parameter tables */
+.doc-md-description table {
+  width: 100%;
+  font-size: 0.9em;
+}
+
+/* Signature styling */
+.doc-signature {
+  font-family: var(--md-code-font);
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+/* ============================================================================
+   Home Page Hero (optional enhancement)
+   ========================================================================= */
+
+.hero {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, var(--flixopt-teal-light) 0%, var(--flixopt-teal-dark) 100%);
+  color: white;
+  border-radius: 1rem;
+  margin-bottom: 2rem;
+}
+
+.hero h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: white;
+  border: none;
+}
+
+.hero p {
+  font-size: 1.25rem;
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   Responsive Design
+   ========================================================================= */
+
+@media screen and (max-width: 76.1875em) {
+  .md-typeset h1 {
+    font-size: 2rem;
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  :root {
+    --content-padding: 1rem;
+  }
+
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+  }
+}
+
+/* ============================================================================
+   Print Styles
+   ========================================================================= */
+
+@media print {
+  .md-typeset {
+    font-size: 0.9rem;
+  }
+
+  .md-header,
+  .md-sidebar,
+  .md-footer {
+    display: none;
+  }
+}
+
+/* ============================================================================
+   Home Page Inline Styles (moved from docs/index.md)
+   ========================================================================= */
+
+.hero-section {
+  text-align: center;
+  padding: 4rem 2rem 3rem 2rem;
+  background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
+  border-radius: 1rem;
+  margin-bottom: 3rem;
+}
+
+.hero-section h1 {
+  font-size: 3.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #009688 0%, #00796B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-section .tagline {
+  font-size: 1.5rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 2rem;
+  font-weight: 300;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin: 3rem 0;
+}
+
+.feature-card {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-color: var(--md-primary-fg-color);
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.feature-card p {
+  color: var(--md-default-fg-color--light);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.stats-banner {
+  display: flex;
+  justify-content: space-around;
+  padding: 2rem;
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+  margin: 3rem 0;
+  text-align: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.stat-item {
+  flex: 1;
+  min-width: 150px;
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--md-primary-fg-color);
+  display: block;
+}
+
+.stat-label {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.architecture-section {
+  margin: 4rem 0;
+  padding: 2rem;
+  background: var(--md-code-bg-color);
+  border-radius: 0.75rem;
+}
+
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin: 3rem 0;
+}
+
+.quick-link-card {
+  padding: 1.5rem;
+  border-left: 4px solid var(--md-primary-fg-color);
+  background: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: block;
+}
+
+.quick-link-card:hover {
+  background: var(--md-default-fg-color--lightest);
+  transform: translateX(4px);
+}
+
+.quick-link-card h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--md-primary-fg-color);
+}
+
+.quick-link-card p {
+  margin: 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.9rem;
+}
+
+@media screen and (max-width: 768px) {
+  .hero-section h1 {
+    font-size: 2.5rem;
+  }
+
+  .hero-section .tagline {
+    font-size: 1.2rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-banner {
+    flex-direction: column;
+  }
+}
+
+/* ============================================================================
+   Modern UI Enhancements
+   ========================================================================= */
+
+/* Smooth scrolling for the entire page */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better focus states for accessibility */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--md-primary-fg-color);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
+}
+
+/* Enhanced list styling */
+.md-typeset ul {
+  margin-left: 0;
+  padding-left: 1.5rem;
+}
+
+.md-typeset ul li {
+  margin-bottom: 0.5em;
+}
+
+.md-typeset ul li::marker {
+  color: var(--md-primary-fg-color);
+}
+
+.md-typeset ol li::marker {
+  font-weight: 600;
+  color: var(--md-primary-fg-color);
+}
+
+/* Better blockquote styling */
+.md-typeset blockquote {
+  border-left: 0.3rem solid var(--md-primary-fg-color);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background-color: var(--md-code-bg-color);
+  padding: 1rem 1.5rem;
+  margin: 1.5em 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Horizontal rules with compact spacing */
+.md-typeset hr {
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--md-default-fg-color--lightest), transparent);
+  margin: 1.2em 0;
+}
+
+/* Better button styling if using Material buttons */
+.md-button {
+  border-radius: 0.4rem;
+  padding: 0.7rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.1s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.md-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.md-button--primary {
+  background: linear-gradient(135deg, var(--md-primary-fg-color) 0%, var(--flixopt-teal-dark) 100%);
+  border: none;
+}
+
+/* Enhanced search styling */
+.md-search__input {
+  border-radius: 0.5rem;
+  transition: box-shadow 0.1s ease;
+}
+
+.md-search__input:focus {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Better header appearance */
+.md-header {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-header {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhance tabs if using them */
+.md-tabs {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Better back-to-top button - clean and subtle */
+.md-top {
+  background-color: var(--md-default-fg-color--lighter);
+  opacity: 0.6;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.md-top:hover {
+  opacity: 1;
+  background-color: var(--md-primary-fg-color);
+}
+
+/* Removed slow page load animations for faster navigation */
+
+/* Better scrollbar styling (webkit browsers) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--md-default-bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--md-default-fg-color--lighter);
+  border-radius: 5px;
+  transition: background 0.1s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--md-primary-fg-color);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-default-fg-color--lighter) var(--md-default-bg-color);
+}
+
+/* ============================================================================
+   Footer Alignment Fix
+   ========================================================================= */
+
+/* Align footer with content width */
+.md-footer-meta__inner,
+.md-footer__inner {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding-left: 1.2rem;
+  padding-right: 1.2rem;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-footer-meta__inner,
+  .md-footer__inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+@media screen and (min-width: 100em) {
+  .md-footer-meta__inner,
+  .md-footer__inner {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
