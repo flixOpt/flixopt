@@ -38,7 +38,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -78,7 +78,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -107,7 +107,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -133,7 +133,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -173,7 +173,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -212,7 +212,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -293,7 +293,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
