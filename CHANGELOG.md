@@ -81,6 +81,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [4.1.3] - 2025-11-25
+
+**Summary**: Re-add mistakenly removed method for loading a config from file
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Re-added `CONFIG.load_from_file()` method that was accidentally removed
+
+---
+
 ## [4.1.2] - 2025-11-24
 
 **Summary**:
