@@ -15,9 +15,9 @@ Every flow has two key quantities:
 - **Size** ($P$) — The capacity or maximum possible flow rate
 - **Flow Rate** ($p(t)$) — The actual flow at each timestep (optimization variable)
 
-## Capacity Bounds
+## Flow Rate Bounds
 
-=== "Standard (No On/Off)"
+=== "Fixed Size"
 
     The flow rate is bounded by the size:
 
@@ -31,7 +31,7 @@ Every flow has two key quantities:
         - $P = 100$, $p_{rel}^{min} = 0.3$, $p_{rel}^{max} = 1$
         - Constraint: $30 \leq p(t) \leq 100$
 
-=== "With On/Off"
+=== "Fixed Size + On/Off"
 
     When `on_off_parameters` is specified, the flow can also be zero:
 
@@ -45,6 +45,49 @@ Every flow has two key quantities:
     - When $s(t) = 1$: $P \cdot p_{rel}^{min} \leq p(t) \leq P \cdot p_{rel}^{max}$ (on)
 
     See [OnOffParameters](../features/OnOffParameters.md) for details.
+
+=== "Variable Size"
+
+    When `size` is `InvestParameters`, the capacity $P$ becomes a variable:
+
+    $$
+    P^{min} \leq P \leq P^{max}
+    $$
+
+    $$
+    P \cdot p_{rel}^{min}(t) \leq p(t) \leq P \cdot p_{rel}^{max}(t)
+    $$
+
+    See [InvestParameters](../features/InvestParameters.md) for details.
+
+=== "Variable Size + On/Off"
+
+    !!! warning "Work in Progress"
+        This section needs review. The linearization constraints below may not be accurate.
+
+    When both `size` is `InvestParameters` and `on_off_parameters` is set:
+
+    $$
+    P^{min} \leq P \leq P^{max}
+    $$
+
+    $$
+    s(t) \cdot P \cdot p_{rel}^{min}(t) \leq p(t) \leq s(t) \cdot P \cdot p_{rel}^{max}(t)
+    $$
+
+    This creates a bilinear term $s(t) \cdot P$. flixOpt linearizes this using big-M constraints:
+
+    $$
+    p(t) \leq P^{max} \cdot s(t)
+    $$
+
+    $$
+    p(t) \leq P - P^{min} \cdot (1 - s(t))
+    $$
+
+    $$
+    p(t) \geq P - P^{max} \cdot (1 - s(t))
+    $$
 
 === "Fixed Profile"
 
