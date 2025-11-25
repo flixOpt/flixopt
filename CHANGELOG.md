@@ -77,7 +77,7 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 ### ♻️ Changed
 
-- Now always creates the folder for the Results (including parents)
+- Now creates the Results folder even i fparents didnt exist
 
 ### 🗑️ Deprecated
 
