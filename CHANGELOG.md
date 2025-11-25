@@ -62,7 +62,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### ♻️ Changed
 
-- Now creates the Results folder even i fparents didnt exist
+- Now creates the Results folder even if parents didnt exist
 
 ### 🗑️ Deprecated
 
