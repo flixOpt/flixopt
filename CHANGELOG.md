@@ -81,6 +81,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [4.1.4] - 2025-11-25
+
+**Summary**: Added file logging encoding to prevent issues
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Issues with windows file system when logging to file due to non ASCII characters
+
+---
+
 ## [4.1.3] - 2025-11-25
 
 **Summary**: Re-add mistakenly removed method for loading a config from file
