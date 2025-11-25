@@ -11,7 +11,9 @@ hide:
 
 <p class="tagline">Progressive Flow System Optimization</p>
 
-<p><b>F</b>lexible · <b>L</b>ow-entry · <b>I</b>nvestment · <b>X</b>-sector · <b>OPT</b>imization</p>
+<p class="backronym"><span class="letter">F</span>lexible · <span class="letter">L</span>ow-entry · <span class="letter">I</span>nvestment · <span class="letter">X</span>-sector · <span class="letter">OPT</span>imization</p>
+
+<p class="backronym-desc"><em>Adaptable to different systems</em> · <em>Easy to prototype</em> · <em>Investment planning focus</em> · <em>Sector coupling</em> · <em>Mathematical optimization</em></p>
 
 <p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
