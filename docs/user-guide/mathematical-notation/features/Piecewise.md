@@ -1,234 +1,210 @@
 # Piecewise
 
-Piecewise enables modeling of non-linear relationships through piecewise linear approximations while maintaining problem linearity, consisting of a collection of Pieces that define valid ranges for variables.
+Piecewise linearization models non-linear relationships using connected linear segments — keeping the problem linear while capturing complex behavior.
 
-=== "Variables"
+!!! example "Real-world examples"
+    - **Part-load efficiency** — Boiler efficiency varies with load
+    - **Economies of scale** — Cost per kW decreases with size
+    - **Forbidden regions** — Turbine can't operate between 0-40%
 
-    | Symbol | Python Name | Description | Domain | Created When |
-    |--------|-------------|-------------|--------|--------------|
-    | $\beta_k$ | `beta` (per Piece) | Binary variable indicating if piece $k$ is active | $\{0,1\}$ | Always (for each Piece) |
-    | $\beta_\text{zero}$ | `zero_point` | Binary variable allowing all variables to be zero | $\{0,1\}$ | `zero_point=True` specified |
-    | $\lambda_{0,k}$ | `lambda0` (per Piece) | Fraction of start point $\text{v}_{\text{start},k}$ that is active | $[0,1]$ | Always (for each Piece) |
-    | $\lambda_{1,k}$ | `lambda1` (per Piece) | Fraction of end point $\text{v}_{\text{end},k}$ that is active | $[0,1]$ | Always (for each Piece) |
+## Core Concept: Linear Segments
 
-=== "Constraints"
+A piecewise function is defined by segments (pieces), each with start and end points:
 
-    **Active piece definition** (always active for each piece):
+```
+    y
+    │        ╱─── Piece 3
+    │      ╱
+    │    ╱───── Piece 2
+    │  ╱
+    │╱──────── Piece 1
+    └───────────── x
+```
 
-    $$\label{eq:active_piece}
-    \beta_k = \lambda_{0,k} + \lambda_{1,k}
+The variable can be anywhere along one of these segments.
+
+## Mathematical Formulation
+
+Each piece $k$ has:
+
+- Start point: $(x_k^{start}, y_k^{start})$
+- End point: $(x_k^{end}, y_k^{end})$
+
+The value is a weighted combination:
+
+$$
+x = \lambda_0 \cdot x^{start} + \lambda_1 \cdot x^{end}
+$$
+
+$$
+y = \lambda_0 \cdot y^{start} + \lambda_1 \cdot y^{end}
+$$
+
+Where $\lambda_0, \lambda_1 \geq 0$ and $\lambda_0 + \lambda_1 = \beta_k$ (piece is active).
+
+=== "Single Piece Active"
+
+    Exactly one piece must be active:
+
+    $$
+    \sum_k \beta_k = 1
     $$
 
-    Binary variable $\beta_k$ is 1 if piece $k$ is active (either $\lambda_{0,k}$ or $\lambda_{1,k}$ is non-zero), 0 otherwise.
+=== "With Zero Point"
 
-    ---
+    Allow all variables to be zero (equipment off):
 
-    **Variable definition through piece** (always active for each variable):
-
-    $$\label{eq:piece}
-    v_k = \lambda_{0,k} \cdot \text{v}_{\text{start},k} + \lambda_{1,k} \cdot \text{v}_{\text{end},k}
+    $$
+    \sum_k \beta_k = \beta_{zero}
     $$
 
-    The variable value is the weighted sum of the piece's start and end points.
+    - $\beta_{zero} = 0$: All off, $x = y = 0$
+    - $\beta_{zero} = 1$: One piece active
 
-    ---
+## Piece Patterns
 
-    **Single active piece** (when `zero_point=False` or not specified):
+=== "Continuous (Touching)"
 
-    $$\label{eq:piecewise_in_pieces}
-    \sum_{k=1}^K \beta_k = 1
-    $$
-
-    Exactly one piece must be active. This ensures $v \in [\text{v}_{\text{start},k}, \text{v}_{\text{end},k}]$ for some $k$.
-
-    ---
-
-    **Optional zero with single active piece** (when `zero_point=True`):
-
-    $$\label{eq:piecewise_in_pieces_zero}
-    \sum_{k=1}^K \beta_k = \beta_\text{zero}
-    $$
-
-    Either one piece is active ($\beta_\text{zero} = 1$) or all are inactive ($\beta_\text{zero} = 0$, forcing all $\lambda$ to zero). This allows $v \in \{0\} \cup [\text{v}_{\text{start},k}, \text{v}_{\text{end},k}]$.
-
-    ---
-
-    **Combined piecewise relationship** (when multiple variables share pieces):
-
-    $$\label{eq:piecewise_combined}
-    \begin{align}
-    v_1 &= \sum_{k=1}^K (\lambda_{0,k} \cdot \text{v}_{1,\text{start},k} + \lambda_{1,k} \cdot \text{v}_{1,\text{end},k}) \\
-    v_2 &= \sum_{k=1}^K (\lambda_{0,k} \cdot \text{v}_{2,\text{start},k} + \lambda_{1,k} \cdot \text{v}_{2,\text{end},k})
-    \end{align}
-    $$
-
-    Multiple variables share the same $\lambda$ and $\beta$ variables, creating coupled non-linear relationships.
-
-    **Mathematical Patterns:** [SOS Type 2 Constraints](../modeling-patterns/bounds-and-states.md), [Piecewise Linear Approximation](../modeling-patterns/bounds-and-states.md)
-
-=== "Parameters"
-
-    | Symbol | Python Parameter | Description | Default |
-    |--------|------------------|-------------|---------|
-    | $K$ | - | Number of pieces | From `pieces` list length |
-    | $\text{v}_{\text{end},k}$ | - | End point of piece $k$ | From `Piece.end` |
-    | $\text{v}_{\text{start},k}$ | - | Start point of piece $k$ | From `Piece.start` |
-    | - | `pieces` | List of Piece objects defining the linear segments | Required |
-    | - | `zero_point` | Allow all variables to be zero | False |
-
-=== "Use Cases"
-
-    ## Continuous Efficiency Curve (Touching Pieces)
+    Pieces share boundary points — smooth function:
 
     ```python
-    from flixopt import Piecewise, Piece
-
-    efficiency_curve = Piecewise([
-        Piece((0, 0), (25, 25)),    # Low load: 0-25 MW
-        Piece((25, 25), (75, 75)),  # Medium load: 25-75 MW (touches at 25)
-        Piece((75, 75), (100, 100)), # High load: 75-100 MW (touches at 75)
+    curve = fx.Piecewise([
+        fx.Piece((0, 0), (50, 45)),     # Low load
+        fx.Piece((50, 45), (100, 90)),  # High load (touches at 50)
     ])
     ```
 
-    **Variables:** $\beta_1, \beta_2, \beta_3$ (piece indicators), $\lambda_{0,1}, \lambda_{1,1}, ..., \lambda_{0,3}, \lambda_{1,3}$ (lambda variables)
+    Operation anywhere from 0-100.
 
-    **Constraints:** $\eqref{eq:active_piece}$ for each piece, $\eqref{eq:piece}$ defining $v$, $\eqref{eq:piecewise_in_pieces}$ ensuring exactly one piece active
+=== "Gap (Forbidden Region)"
 
-    **Behavior:** Creates smooth continuous function without gaps, allowing operation anywhere from 0-100 MW.
-
-    ---
-
-    ## Forbidden Operating Range (Gap Between Pieces)
+    Non-contiguous pieces — forbidden operating range:
 
     ```python
-    from flixopt import Piecewise, Piece
-
-    turbine_operation = Piecewise([
-        Piece((0, 0), (0, 0)),      # Off state (point)
-        Piece((40, 40), (100, 100)), # Operating range (gap: 0-40 forbidden)
+    curve = fx.Piecewise([
+        fx.Piece((0, 0), (0, 0)),       # Off (point)
+        fx.Piece((40, 36), (100, 90)),  # Operating (gap: 0-40 forbidden)
     ])
     ```
 
-    **Variables:** $\beta_1, \beta_2$, $\lambda_{0,1}, \lambda_{1,1}, \lambda_{0,2}, \lambda_{1,2}$
+    Must be off (0) or operating (40-100).
 
-    **Constraints:** $\eqref{eq:active_piece}$, $\eqref{eq:piece}$, $\eqref{eq:piecewise_in_pieces}$
+=== "Zero Point"
 
-    **Behavior:** Equipment must be either completely off (0) or operating between 40-100 MW. The range 0-40 MW is forbidden due to the gap.
-
-    ---
-
-    ## Variable COP Heat Pump (Two Coupled Variables)
+    Explicitly allow zero without a zero piece:
 
     ```python
-    from flixopt import LinearConverter, Flow, Piecewise, Piece, PiecewiseConversion
-
-    # COP varies: 2.5 at low load to 4.0 at high load
-    electricity_to_heat = Piecewise([
-        Piece((0, 0), (50, 125)),      # 0-50 kW elec → 0-125 kW heat (COP 2.5)
-        Piece((50, 125), (100, 350)),  # 50-100 kW elec → 125-350 kW heat (COP 3.5-4.5)
-    ])
-
-    heat_pump = LinearConverter(
-        label='heat_pump',
-        inputs=[Flow(label='electricity_in', bus='electricity', size=100)],
-        outputs=[Flow(label='heat_out', bus='heating', size=350)],
-        piecewise_conversion=PiecewiseConversion(
-            origin_flow='electricity_in',
-            piecewise_shares={'heat_out': electricity_to_heat},
-        ),
-    )
-    ```
-
-    **Variables:** Shared $\beta_1, \beta_2$, $\lambda_{0,1}, \lambda_{1,1}, \lambda_{0,2}, \lambda_{1,2}$ for both electricity and heat
-
-    **Constraints:** $\eqref{eq:piecewise_combined}$ coupling electricity input to heat output with variable COP
-
-    **Behavior:** Electricity input and heat output are coupled through shared lambda variables, modeling load-dependent COP.
-
-    ---
-
-    ## Optional Operation with Zero Point
-
-    ```python
-    from flixopt import Piecewise, Piece
-
-    optional_operation = Piecewise(
+    curve = fx.Piecewise(
         pieces=[
-            Piece((10, 10), (50, 50)),   # Low operating range
-            Piece((50, 50), (100, 100)), # High operating range
+            fx.Piece((10, 9), (50, 45)),
+            fx.Piece((50, 45), (100, 90)),
         ],
-        zero_point=True,  # Allow complete shutdown
+        zero_point=True,  # Can also be completely off
     )
     ```
 
-    **Variables:** $\beta_1, \beta_2$, $\beta_\text{zero}$, $\lambda_{0,1}, \lambda_{1,1}, \lambda_{0,2}, \lambda_{1,2}$
+    Either off (0) or operating (10-100).
 
-    **Constraints:** $\eqref{eq:active_piece}$, $\eqref{eq:piece}$, $\eqref{eq:piecewise_in_pieces_zero}$ with zero point
+## Variables
 
-    **Behavior:** Equipment can be completely off ($v=0$, $\beta_\text{zero}=0$) or operating in 10-100 range ($\beta_\text{zero}=1$, one piece active).
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
+| $\beta_k$ | `beta` | Piece $k$ active | Always |
+| $\lambda_{0,k}$ | `lambda0` | Weight on start point | Always |
+| $\lambda_{1,k}$ | `lambda1` | Weight on end point | Always |
+| $\beta_{zero}$ | `zero_point` | Allow zero | `zero_point=True` |
 
-    ---
+## Parameters
 
-    ## Economies of Scale (Investment Costs)
+| Symbol | Python Name | Description |
+|--------|-------------|-------------|
+| $(x_k^{start}, y_k^{start})$ | `Piece.start` | Start point of piece $k$ |
+| $(x_k^{end}, y_k^{end})$ | `Piece.end` | End point of piece $k$ |
+| - | `zero_point` | Allow all variables = 0 |
 
-    ```python
-    from flixopt import InvestParameters, Piecewise, Piece, PiecewiseEffects
+## Usage Examples
 
-    # Cost per kWh decreases with scale
-    battery_cost = InvestParameters(
-        minimum_size=10,
-        maximum_size=1000,
-        piecewise_effects_of_investment=PiecewiseEffects(
-            piecewise_origin=Piecewise([
-                Piece((0, 0), (100, 100)),    # Small
-                Piece((100, 100), (500, 500)),  # Medium
-                Piece((500, 500), (1000, 1000)), # Large
-            ]),
-            piecewise_shares={
-                'cost': Piecewise([
-                    Piece((0, 0), (100, 80000)),    # €800/kWh
-                    Piece((100, 80000), (500, 350000)), # €750-600/kWh
-                    Piece((500, 350000), (1000, 850000)), # €600-500/kWh (bulk discount)
-                ])
-            },
-        ),
-    )
-    ```
+### Variable COP Heat Pump
 
-    **Variables:** Shared $\beta_k$, $\lambda_{0,k}$, $\lambda_{1,k}$ for size and cost
+```python
+# COP varies: 2.5 at low load, 4.0 at high load
+elec_to_heat = fx.Piecewise([
+    fx.Piece((0, 0), (50, 125)),      # COP ~2.5
+    fx.Piece((50, 125), (100, 350)),  # COP ~3.5-4.5
+])
 
-    **Constraints:** $\eqref{eq:piecewise_combined}$ coupling size to cost with decreasing unit cost
+hp = fx.LinearConverter(
+    label='hp',
+    inputs=[fx.Flow(label='el', bus=elec_bus, size=100)],
+    outputs=[fx.Flow(label='heat', bus=heat_bus, size=350)],
+    piecewise_conversion=fx.PiecewiseConversion(
+        origin_flow='el',
+        piecewise_shares={'heat': elec_to_heat},
+    ),
+)
+```
 
-    **Behavior:** Investment size and total cost are coupled through piecewise relationship modeling economies of scale.
+### Part-Load Efficiency Boiler
 
----
+```python
+# Efficiency: 80% at low load, 92% at high load
+gas_to_heat = fx.Piecewise([
+    fx.Piece((0, 0), (30, 24)),       # 80% at 0-30%
+    fx.Piece((30, 24), (100, 92)),    # 92% at 30-100%
+])
 
-## Piece Relationship Patterns
+boiler = fx.LinearConverter(
+    label='boiler',
+    inputs=[fx.Flow(label='gas', bus=gas_bus, size=100)],
+    outputs=[fx.Flow(label='heat', bus=heat_bus, size=92)],
+    piecewise_conversion=fx.PiecewiseConversion(
+        origin_flow='gas',
+        piecewise_shares={'heat': gas_to_heat},
+    ),
+)
+```
 
-### Touching Pieces (Continuous Function)
-Pieces that share boundary points create smooth, continuous functions without gaps or overlaps.
-**Use case:** Efficiency curves, performance maps
+### Economies of Scale (Investment)
 
-### Gaps Between Pieces (Forbidden Regions)
-Non-contiguous pieces with gaps represent forbidden operating regions.
-**Use case:** Minimum load requirements, safety zones, equipment limitations
+```python
+# Cost per kWh decreases with size
+battery = fx.InvestParameters(
+    minimum_size=10,
+    maximum_size=1000,
+    piecewise_effects_of_investment=fx.PiecewiseEffects(
+        piecewise_origin=fx.Piecewise([
+            fx.Piece((0, 0), (100, 100)),
+            fx.Piece((100, 100), (500, 500)),
+            fx.Piece((500, 500), (1000, 1000)),
+        ]),
+        piecewise_shares={
+            'costs': fx.Piecewise([
+                fx.Piece((0, 0), (100, 80000)),     # €800/kWh
+                fx.Piece((100, 80000), (500, 350000)),  # €675/kWh avg
+                fx.Piece((500, 350000), (1000, 750000)), # €500/kWh
+            ])
+        },
+    ),
+)
+```
 
-### Overlapping Pieces (Flexible Operation)
-Pieces with overlapping domains provide optimization flexibility, allowing the solver to choose which segment to operate in.
-**Use case:** Multiple operating modes, flexible efficiency options
+### Forbidden Operating Region
 
----
+```python
+# Turbine: off or 40-100%, not in between
+turbine_curve = fx.Piecewise([
+    fx.Piece((0, 0), (0, 0)),        # Off
+    fx.Piece((40, 40), (100, 100)),  # Operating range
+])
+```
 
-## Implementation
+## Implementation Details
 
 - **Feature Class:** [`Piecewise`][flixopt.interface.Piecewise]
-- **Model Class:** [`PiecewiseModel`][flixopt.features.PiecewiseModel]
 - **Helper Class:** [`Piece`][flixopt.interface.Piece]
-- **Used by:** [`LinearConverter`](../elements/LinearConverter.md) (via `PiecewiseConversion`) · [`InvestParameters`](InvestParameters.md) (via `PiecewiseEffects`)
+- **Model Class:** [`PiecewiseModel`][flixopt.features.PiecewiseModel]
 
 ## See Also
 
-- **Elements:** [LinearConverter](../elements/LinearConverter.md)
-- **Features:** [InvestParameters](InvestParameters.md)
-- **Patterns:** [Modeling Patterns](../modeling-patterns/index.md)
-- **System-Level:** [Effects, Penalty & Objective](../effects-penalty-objective.md)
+- [LinearConverter](../elements/LinearConverter.md) — Using piecewise conversion
+- [InvestParameters](InvestParameters.md) — Piecewise investment costs
