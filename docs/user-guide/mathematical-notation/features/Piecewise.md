@@ -9,24 +9,41 @@ Piecewise linearization models non-linear relationships using connected linear s
 
 ## Core Concept: Linear Segments
 
-A piecewise function approximates a curve using linear segments (pieces):
+A piecewise function approximates a curve using linear segments (pieces). Each piece is defined by a start point and end point. The optimizer chooses a point along exactly one piece.
 
-```
-  output
-    │
- 90 ┤                    ●━━━━━━━● (100, 90)
-    │                 ╱
- 70 ┤              ╱
-    │           ╱  Piece 2
- 45 ┤        ●     (50, 45)
-    │      ╱
- 30 ┤    ╱
-    │  ╱  Piece 1
-  0 ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ input
-    0    25    50    75   100
+```plotly
+{
+  "data": [
+    {
+      "x": [0, 50],
+      "y": [0, 45],
+      "mode": "lines+markers",
+      "name": "Piece 1",
+      "line": {"color": "#009688", "width": 3},
+      "marker": {"size": 10}
+    },
+    {
+      "x": [50, 100],
+      "y": [45, 90],
+      "mode": "lines+markers",
+      "name": "Piece 2",
+      "line": {"color": "#00bcd4", "width": 3},
+      "marker": {"size": 10}
+    }
+  ],
+  "layout": {
+    "xaxis": {"title": "Input", "range": [0, 105]},
+    "yaxis": {"title": "Output", "range": [0, 95]},
+    "showlegend": true,
+    "legend": {"x": 0.02, "y": 0.98},
+    "margin": {"l": 60, "r": 20, "t": 20, "b": 50},
+    "height": 300
+  }
+}
 ```
 
-Each piece is defined by a start point and end point. The optimizer chooses a point along exactly one piece.
+- **Piece 1**: from (0, 0) to (50, 45) — slope = 0.9
+- **Piece 2**: from (50, 45) to (100, 90) — slope = 0.9
 
 ## Mathematical Formulation
 
