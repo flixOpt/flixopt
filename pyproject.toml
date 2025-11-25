@@ -88,7 +88,7 @@ dev = [
     "tsam==2.3.9",
     "scipy==1.15.1",
     "gurobipy==12.0.3",
-    "dash==3.2.0",
+    "dash==3.3.0",
     "dash-cytoscape==1.0.2",
     "dash-daq==0.6.0",
     "networkx==3.0.0",
