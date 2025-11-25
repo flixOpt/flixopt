@@ -9,8 +9,8 @@ from .conftest import (
     assert_conequal,
     assert_sets_equal,
     assert_var_equal,
-    create_calculation_and_solve,
     create_linopy_model,
+    create_optimization_and_solve,
 )
 
 
@@ -434,7 +434,7 @@ class TestTransmissionModel:
 
         flow_system.add_elements(transmission, boiler)
 
-        _ = create_calculation_and_solve(flow_system, highs_solver, 'test_transmission_basic')
+        _ = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_basic')
 
         # Assertions
         assert_almost_equal_numeric(
@@ -498,7 +498,7 @@ class TestTransmissionModel:
 
         flow_system.add_elements(transmission, boiler, boiler2, last2)
 
-        calculation = create_calculation_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
+        optimization = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
 
         # Assertions
         assert_almost_equal_numeric(
@@ -508,7 +508,7 @@ class TestTransmissionModel:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
+            optimization.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
             transmission.out1.submodel.flow_rate.solution.values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )
@@ -579,7 +579,7 @@ class TestTransmissionModel:
 
         flow_system.add_elements(transmission, boiler, boiler2, last2)
 
-        calculation = create_calculation_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
+        optimization = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
 
         # Assertions
         assert_almost_equal_numeric(
@@ -589,7 +589,7 @@ class TestTransmissionModel:
         )
 
         assert_almost_equal_numeric(
-            calculation.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
+            optimization.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
             transmission.out1.submodel.flow_rate.solution.values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )

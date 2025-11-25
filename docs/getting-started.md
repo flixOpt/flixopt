@@ -53,7 +53,7 @@ Working with FlixOpt follows a general pattern:
 2. **Define [`Effects`][flixopt.effects.Effect]** (costs, emissions, etc.)
 3. **Define [`Buses`][flixopt.elements.Bus]** as connection points in your system
 4. **Add [`Components`][flixopt.components]** like converters, storage, sources/sinks with their Flows
-5. **Run [`Calculations`][flixopt.calculation]** to optimize your system
+5. **Run [`Optimizations`][flixopt.optimization]** to optimize your system
 6. **Analyze [`Results`][flixopt.results]** using built-in or external visualization tools
 
 ## Next Steps

@@ -461,7 +461,12 @@ def test_calculation_active_timesteps_parameter():
         warnings.simplefilter('always', DeprecationWarning)
         _ = fx.calculation.Calculation('test', fs, active_timesteps=pd.date_range('2020-01-01', periods=5, freq='h'))
         assert len(w) > 0, 'No warning raised for Calculation active_timesteps parameter'
-        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
+        # Check that the active_timesteps deprecation warning is in the list (may not be first due to class-level warning)
+        messages = [str(warning.message) for warning in w]
+        assert any(
+            'active_timesteps' in msg and f'will be removed in v{DEPRECATION_REMOVAL_VERSION}' in msg
+            for msg in messages
+        )
 
 
 def test_calculation_active_timesteps_property():
@@ -532,7 +537,11 @@ def test_results_flow_system_parameter(simple_results):
             folder=None,
         )
         assert len(w) > 0, 'No warning raised for flow_system parameter'
-        assert f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in str(w[0].message)
+        # Check that the flow_system parameter deprecation warning is in the list (may not be first due to class-level warning)
+        messages = [str(warning.message) for warning in w]
+        assert any(
+            'flow_system' in msg and f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}' in msg for msg in messages
+        )
 
 
 def test_results_plot_node_balance_indexer(simple_results):
