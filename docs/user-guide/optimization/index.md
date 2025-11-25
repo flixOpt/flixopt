@@ -153,11 +153,28 @@ Common solver parameters:
 
 If your model has no feasible solution:
 
-1. Enable penalty variables: `flow_system.use_penalty_variables = True`
-2. Check balance constraints - can supply meet demand?
-3. Verify capacity limits are consistent
-4. Review storage state requirements
-5. Simplify model to isolate the issue
+1. **Enable excess penalties on buses** to allow balance violations:
+   ```python
+   # Allow imbalance with high penalty cost (default is 1e5)
+   heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e5)
+
+   # Or disable penalty to enforce strict balance
+   electricity_bus = fx.Bus('Electricity', excess_penalty_per_flow_hour=None)
+   ```
+   When `excess_penalty_per_flow_hour` is set, the optimization can violate bus balance constraints by paying a penalty, helping identify which constraints cause infeasibility.
+
+2. **Use Gurobi for infeasibility analysis** - When using GurobiSolver and the model is infeasible, flixOpt automatically extracts and logs the Irreducible Inconsistent Subsystem (IIS):
+   ```python
+   # Gurobi provides detailed infeasibility analysis
+   optimization.solve(fx.solvers.GurobiSolver())
+   # If infeasible, check the model documentation file for IIS details
+   ```
+   The infeasible constraints are saved to the model documentation file in the results folder.
+
+3. Check balance constraints - can supply meet demand?
+4. Verify capacity limits are consistent
+5. Review storage state requirements
+6. Simplify model to isolate the issue
 
 See [Troubleshooting](../troubleshooting.md) for more details.
 
