@@ -1066,6 +1066,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
+        overwrite: bool = False,
     ):
         """Save results to files.
 
@@ -1075,6 +1076,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             compression: Compression level 0-9.
             document_model: Whether to document model formulations as yaml.
             save_linopy_model: Whether to save linopy model file.
+            overwrite: If False, raise error if results files already exist. If True, overwrite existing files.
+
+        Raises:
+            FileExistsError: If overwrite=False and result files already exist.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -1083,6 +1088,19 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         folder.mkdir(parents=True, exist_ok=True)
 
         paths = fx_io.ResultsPaths(folder, name)
+
+        # Check if files already exist (unless overwrite is True)
+        if not overwrite:
+            existing_files = []
+            for file_path in paths.all_paths().values():
+                if file_path.exists():
+                    existing_files.append(file_path.name)
+
+            if existing_files:
+                raise FileExistsError(
+                    f'Results files already exist in {folder}: {", ".join(existing_files)}. '
+                    f'Use overwrite=True to overwrite existing files.'
+                )
 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
@@ -2352,13 +2370,23 @@ class SegmentedResults:
             **plot_kwargs,
         )
 
-    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
+    def to_file(
+        self,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
+        compression: int = 5,
+        overwrite: bool = False,
+    ):
         """Save segmented results to files.
 
         Args:
             folder: Save folder (defaults to instance folder).
             name: File name (defaults to instance name).
             compression: Compression level 0-9.
+            overwrite: If False, raise error if results files already exist. If True, overwrite existing files.
+
+        Raises:
+            FileExistsError: If overwrite=False and result files already exist.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
@@ -2367,10 +2395,19 @@ class SegmentedResults:
         # Ensure folder exists, creating parent directories as needed
         folder.mkdir(parents=True, exist_ok=True)
 
-        for segment in self.segment_results:
-            segment.to_file(folder=folder, name=segment.name, compression=compression)
+        # Check if metadata file already exists (unless overwrite is True)
+        metadata_file = path.with_suffix('.json')
+        if not overwrite and metadata_file.exists():
+            raise FileExistsError(
+                f'Segmented results file already exists: {metadata_file}. '
+                f'Use overwrite=True to overwrite existing files.'
+            )
 
-        fx_io.save_json(self.meta_data, path.with_suffix('.json'))
+        # Save segments (they will check for overwrite themselves)
+        for segment in self.segment_results:
+            segment.to_file(folder=folder, name=segment.name, compression=compression, overwrite=overwrite)
+
+        fx_io.save_json(self.meta_data, metadata_file)
         logger.info(f'Saved optimization "{name}" to {path}')
 
 
