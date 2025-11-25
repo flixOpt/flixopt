@@ -11,35 +11,35 @@ A Bus is a connection point where flows meet and must balance. Think of it as a 
 
 The fundamental rule: **what goes in must equal what goes out**.
 
-$$
-\sum_{f \in inputs} p_f(t) = \sum_{f \in outputs} p_f(t)
-$$
+=== "Without Excess (Strict)"
 
-At every timestep $t$, the sum of all incoming flow rates must equal the sum of all outgoing flow rates.
+    $$
+    \sum_{f \in \mathcal{F}_{in}} p_f(t) = \sum_{f \in \mathcal{F}_{out}} p_f(t)
+    $$
+
+    At every timestep $t$, the sum of all incoming flow rates must equal the sum of all outgoing flow rates. If this can't be satisfied, the model is infeasible.
+
+=== "With Excess (Soft)"
+
+    When `excess_penalty_per_flow_hour` is set, slack variables allow imbalance:
+
+    $$
+    \sum_{f \in \mathcal{F}_{in}} p_f(t) + \phi_{in}(t) = \sum_{f \in \mathcal{F}_{out}} p_f(t) + \phi_{out}(t)
+    $$
+
+    Where:
+
+    - $\phi_{in}(t)$ — "virtual supply" to cover shortages
+    - $\phi_{out}(t)$ — "virtual demand" to absorb surplus
+
+    Both are penalized in the objective:
+
+    $$
+    \Phi_b(t) = (\phi_{in}(t) + \phi_{out}(t)) \cdot \Delta t \cdot c_\phi
+    $$
 
 !!! note "Direction matters"
     Flows have a defined direction. An *input* to the bus means energy/material flowing **into** the bus. An *output* means flowing **out of** the bus.
-
-## When Balance Can't Be Met: Excess Variables
-
-Sometimes your model might be infeasible — the available supply simply can't meet demand. Rather than the solver failing with an unhelpful error, flixOpt can introduce **excess variables** that allow imbalance at a penalty cost.
-
-With excess enabled, the balance becomes:
-
-$$
-\sum_{f \in inputs} p_f(t) + \phi_{in}(t) = \sum_{f \in outputs} p_f(t) + \phi_{out}(t)
-$$
-
-Where:
-
-- $\phi_{in}(t)$ — "virtual supply" to cover shortages (excess input)
-- $\phi_{out}(t)$ — "virtual demand" to absorb surplus (excess output)
-
-Both variables are penalized in the objective:
-
-$$
-penalty(t) = (\phi_{in}(t) + \phi_{out}(t)) \cdot \Delta t \cdot penalty\_rate
-$$
 
 !!! tip "Debugging with excess"
     If excess variables are non-zero in your solution, it means your system couldn't meet all constraints. Check:
@@ -50,16 +50,18 @@ $$
 
 ## Variables
 
-| Variable | Python Name | Description | When Created |
-|----------|-------------|-------------|--------------|
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
 | $\phi_{in}(t)$ | `excess_input` | Virtual supply to cover shortages | `excess_penalty_per_flow_hour` is set |
 | $\phi_{out}(t)$ | `excess_output` | Virtual demand to absorb surplus | `excess_penalty_per_flow_hour` is set |
 
 ## Parameters
 
-| Parameter | Python Name | Description | Default |
-|-----------|-------------|-------------|---------|
-| $penalty\_rate$ | `excess_penalty_per_flow_hour` | Cost per unit of imbalance | `1e5` (high) |
+| Symbol | Python Name | Description | Default |
+|--------|-------------|-------------|---------|
+| $c_\phi$ | `excess_penalty_per_flow_hour` | Penalty cost per unit imbalance | `1e5` |
+| $\mathcal{F}_{in}$ | - | Set of input flows | From connected flows |
+| $\mathcal{F}_{out}$ | - | Set of output flows | From connected flows |
 
 ## Usage Examples
 

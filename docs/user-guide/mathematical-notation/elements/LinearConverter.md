@@ -1,249 +1,216 @@
 # LinearConverter
 
-A LinearConverter transforms inputs into outputs with defined conversion ratios. It's the workhorse for modeling any equipment that converts one form of energy or material into another.
+A LinearConverter transforms inputs into outputs with defined conversion ratios. It's the workhorse for modeling equipment that converts energy or material.
 
 !!! example "Real-world examples"
-    - **Gas boiler** — gas → heat (90% efficiency)
-    - **Heat pump** — electricity → heat (COP 3.5 = 350% "efficiency")
-    - **CHP** — gas → electricity + heat (35% electrical, 50% thermal)
-    - **Electrolyzer** — electricity → hydrogen (65% efficiency)
+    - **Gas boiler** — gas → heat (η = 90%)
+    - **Heat pump** — electricity → heat (COP = 3.5)
+    - **CHP** — gas → electricity + heat
+    - **Electrolyzer** — electricity → hydrogen
 
 ## Core Concept: Conversion Factors
 
 The fundamental equation links inputs and outputs:
 
 $$
-\sum_{f \in inputs} a_f \cdot p_f(t) = \sum_{f \in outputs} b_f \cdot p_f(t)
+\sum_{f \in \mathcal{F}_{in}} a_f \cdot p_f(t) = \sum_{f \in \mathcal{F}_{out}} b_f \cdot p_f(t)
 $$
 
-The conversion factors $a$ and $b$ define the relationship between flows.
+The conversion factors $a_f$ and $b_f$ define the relationship.
 
-### Simple Case: One Input, One Output
+=== "Single Input/Output"
 
-For a gas boiler with 90% efficiency:
+    For a boiler with 90% efficiency:
 
-$$
-0.9 \cdot p_{gas}(t) = 1 \cdot p_{heat}(t)
-$$
+    $$
+    0.9 \cdot p_{gas}(t) = 1 \cdot p_{heat}(t)
+    $$
 
-Or equivalently: $p_{heat}(t) = 0.9 \cdot p_{gas}(t)$
+    Or: $p_{heat}(t) = 0.9 \cdot p_{gas}(t)$
 
-!!! note "Direction of efficiency"
-    The factor is on the **input** side. If you put in 100 kW of gas, you get out 90 kW of heat.
+=== "Multiple Outputs (CHP)"
 
-### Multiple Outputs: CHP
+    CHP produces electricity and heat from fuel:
 
-A CHP unit produces both electricity and heat from fuel:
+    $$
+    0.35 \cdot p_{fuel}(t) = p_{el}(t)
+    $$
 
-$$
-0.35 \cdot p_{fuel}(t) = p_{electricity}(t)
-$$
+    $$
+    0.50 \cdot p_{fuel}(t) = p_{th}(t)
+    $$
 
-$$
-0.50 \cdot p_{fuel}(t) = p_{heat}(t)
-$$
+    Total efficiency: 85%
 
-These are two separate conversion equations from the same input.
+=== "COP > 1 (Heat Pump)"
 
-### Heat Pump: COP > 1
+    Heat pump with COP = 3.5:
 
-A heat pump has COP (Coefficient of Performance) of 3.5:
+    $$
+    3.5 \cdot p_{el}(t) = p_{th}(t)
+    $$
 
-$$
-3.5 \cdot p_{electricity}(t) = p_{heat}(t)
-$$
+    Factor > 1 because it extracts heat from environment.
 
-The factor is greater than 1 because the heat pump also extracts energy from the environment.
+=== "Time-Varying"
+
+    Efficiency can vary with time (e.g., COP depends on temperature):
+
+    $$
+    \eta(t) \cdot p_{in}(t) = p_{out}(t)
+    $$
 
 ## Variables
 
-| Variable | Python Name | Description | When Created |
-|----------|-------------|-------------|--------------|
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
 | $p_{in}(t)$ | (from input Flows) | Input flow rates | Always |
 | $p_{out}(t)$ | (from output Flows) | Output flow rates | Always |
 
-The converter itself doesn't create new variables — it creates constraints linking the flow variables.
+The converter creates **constraints** linking flow variables, not new variables.
 
 ## Parameters
 
-| Parameter | Python Name | Description |
-|-----------|-------------|-------------|
-| Input flows | `inputs` | List of input Flows |
-| Output flows | `outputs` | List of output Flows |
-| Conversion factors | `conversion_factors` | List of factor dictionaries |
+| Symbol | Python Name | Description |
+|--------|-------------|-------------|
+| $\mathcal{F}_{in}$ | `inputs` | List of input Flows |
+| $\mathcal{F}_{out}$ | `outputs` | List of output Flows |
+| $a_f$, $b_f$ | `conversion_factors` | Factor dictionaries |
 
 ## Usage Examples
 
-### Gas Boiler (Simple)
+### Gas Boiler
 
 ```python
 boiler = fx.LinearConverter(
-    label='gas_boiler',
+    label='boiler',
     inputs=[fx.Flow(label='gas', bus=gas_bus, size=111)],
     outputs=[fx.Flow(label='heat', bus=heat_bus, size=100)],
-    conversion_factors=[{
-        'gas': 0.9,   # 90% of gas input...
-        'heat': 1,    # ...becomes heat output
-    }],
+    conversion_factors=[{'gas': 0.9, 'heat': 1}],
 )
 ```
 
-**Constraint:** $0.9 \cdot p_{gas}(t) = p_{heat}(t)$
-
-### CHP Unit (One Input, Two Outputs)
+### CHP Unit
 
 ```python
 chp = fx.LinearConverter(
     label='chp',
     inputs=[fx.Flow(label='fuel', bus=gas_bus, size=100)],
     outputs=[
-        fx.Flow(label='electricity', bus=electricity_bus, size=35),
+        fx.Flow(label='el', bus=elec_bus, size=35),
         fx.Flow(label='heat', bus=heat_bus, size=50),
     ],
     conversion_factors=[
-        {'fuel': 0.35, 'electricity': 1},  # 35% electrical efficiency
-        {'fuel': 0.50, 'heat': 1},         # 50% thermal efficiency
+        {'fuel': 0.35, 'el': 1},
+        {'fuel': 0.50, 'heat': 1},
     ],
 )
 ```
-
-**Constraints:**
-
-- $0.35 \cdot p_{fuel}(t) = p_{electricity}(t)$
-- $0.50 \cdot p_{fuel}(t) = p_{heat}(t)$
-
-Total efficiency: 85%
 
 ### Heat Pump
 
 ```python
-heat_pump = fx.LinearConverter(
-    label='heat_pump',
-    inputs=[fx.Flow(label='electricity', bus=electricity_bus, size=100)],
+hp = fx.LinearConverter(
+    label='hp',
+    inputs=[fx.Flow(label='el', bus=elec_bus, size=100)],
     outputs=[fx.Flow(label='heat', bus=heat_bus, size=350)],
-    conversion_factors=[{
-        'electricity': 3.5,  # COP of 3.5
-        'heat': 1,
-    }],
+    conversion_factors=[{'el': 3.5, 'heat': 1}],
 )
 ```
 
-**Constraint:** $3.5 \cdot p_{electricity}(t) = p_{heat}(t)$
-
-### Time-Varying Efficiency
-
-Efficiency can vary with time (e.g., heat pump COP depends on outside temperature):
+### Time-Varying COP
 
 ```python
-cop_profile = [3.0, 3.2, 3.5, 4.0, 3.8, 3.5, ...]  # COP varies by timestep
+cop = [3.0, 3.2, 3.5, 4.0, 3.8, ...]  # Varies by timestep
 
-heat_pump = fx.LinearConverter(
-    label='heat_pump',
-    inputs=[fx.Flow(label='electricity', bus=electricity_bus, size=100)],
+hp = fx.LinearConverter(
+    label='hp',
+    inputs=[fx.Flow(label='el', bus=elec_bus, size=100)],
     outputs=[fx.Flow(label='heat', bus=heat_bus, size=400)],
-    conversion_factors=[{
-        'electricity': cop_profile,
-        'heat': 1,
-    }],
+    conversion_factors=[{'el': cop, 'heat': 1}],
 )
 ```
 
-## Pre-Built Specialized Components
+## Specialized Components
 
-flixOpt provides convenience classes that set up conversion factors automatically:
-
-### Boiler
+flixOpt provides convenience classes:
 
 ```python
+# Boiler
 boiler = fx.linear_converters.Boiler(
-    label='boiler',
-    eta=0.9,  # Thermal efficiency
+    label='boiler', eta=0.9,
     Q_th=fx.Flow(label='heat', bus=heat_bus, size=100),
-    Q_fu=fx.Flow(label='fuel', bus=gas_bus),  # Size calculated automatically
+    Q_fu=fx.Flow(label='fuel', bus=gas_bus),
 )
-```
 
-### HeatPump
-
-```python
-heat_pump = fx.linear_converters.HeatPump(
-    label='heat_pump',
-    COP=3.5,
-    P_el=fx.Flow(label='electricity', bus=electricity_bus, size=100),
-    Q_th=fx.Flow(label='heat', bus=heat_bus),  # Size = 350 kW
+# Heat Pump
+hp = fx.linear_converters.HeatPump(
+    label='hp', COP=3.5,
+    P_el=fx.Flow(label='el', bus=elec_bus, size=100),
+    Q_th=fx.Flow(label='heat', bus=heat_bus),
 )
-```
 
-### CHP
-
-```python
+# CHP
 chp = fx.linear_converters.CHP(
-    label='chp',
-    eta_el=0.35,
-    eta_th=0.50,
-    P_el=fx.Flow(label='electricity', bus=electricity_bus, size=35),
+    label='chp', eta_el=0.35, eta_th=0.50,
+    P_el=fx.Flow(label='el', bus=elec_bus, size=35),
     Q_th=fx.Flow(label='heat', bus=heat_bus, size=50),
     Q_fu=fx.Flow(label='fuel', bus=gas_bus, size=100),
 )
 ```
 
-## Advanced: Piecewise Linear Conversion
+## Advanced Features
 
-For non-linear relationships (e.g., part-load efficiency curves), use piecewise linearization:
+=== "Piecewise Linear"
 
-```python
-from flixopt import Piecewise, Piece, PiecewiseConversion
+    For non-linear efficiency curves:
 
-# Efficiency varies with load
-efficiency_curve = Piecewise([
-    Piece(start=(0, 0), end=(50, 40)),     # 80% efficiency at low load
-    Piece(start=(50, 40), end=(100, 90)),  # 90% efficiency at high load
-])
+    ```python
+    from flixopt import Piecewise, Piece, PiecewiseConversion
 
-boiler = fx.LinearConverter(
-    label='boiler',
-    inputs=[fx.Flow(label='gas', bus=gas_bus, size=100)],
-    outputs=[fx.Flow(label='heat', bus=heat_bus, size=90)],
-    piecewise_conversion=PiecewiseConversion(
-        origin_flow='gas',
-        piecewise_shares={'heat': efficiency_curve},
-    ),
-)
-```
+    curve = Piecewise([
+        Piece(start=(0, 0), end=(50, 40)),    # 80% at low load
+        Piece(start=(50, 40), end=(100, 90)), # 90% at high load
+    ])
 
-See [Piecewise Linearization](../features/Piecewise.md) for details.
+    boiler = fx.LinearConverter(
+        ...,
+        piecewise_conversion=PiecewiseConversion(
+            origin_flow='gas',
+            piecewise_shares={'heat': curve},
+        ),
+    )
+    ```
 
-## On/Off Operation
+    See [Piecewise](../features/Piecewise.md).
 
-Add startup costs and minimum run times:
+=== "On/Off Operation"
 
-```python
-from flixopt import OnOffParameters
+    Add startup costs and minimum run times:
 
-generator = fx.LinearConverter(
-    label='generator',
-    inputs=[fx.Flow(label='fuel', bus=fuel_bus, size=100)],
-    outputs=[fx.Flow(label='power', bus=electricity_bus, size=40, relative_minimum=0.4)],
-    conversion_factors=[{'fuel': 0.4, 'power': 1}],
-    on_off_parameters=OnOffParameters(
-        effects_per_switch_on={'costs': 1000},  # €1000 startup cost
-        consecutive_on_hours_min=4,             # Must run at least 4 hours
-    ),
-)
-```
+    ```python
+    gen = fx.LinearConverter(
+        label='gen',
+        inputs=[fx.Flow(label='fuel', bus=fuel_bus, size=100)],
+        outputs=[fx.Flow(label='el', bus=elec_bus, size=40, relative_minimum=0.4)],
+        conversion_factors=[{'fuel': 0.4, 'el': 1}],
+        on_off_parameters=fx.OnOffParameters(
+            effects_per_switch_on={'costs': 1000},
+            consecutive_on_hours_min=4,
+        ),
+    )
+    ```
 
-See [On/Off Operation](../features/OnOffParameters.md) for details.
+    See [OnOffParameters](../features/OnOffParameters.md).
 
 ## Implementation Details
 
 - **Component Class:** [`LinearConverter`][flixopt.components.LinearConverter]
 - **Model Class:** [`LinearConverterModel`][flixopt.components.LinearConverterModel]
-- **Specialized Classes:** [`Boiler`][flixopt.linear_converters.Boiler], [`HeatPump`][flixopt.linear_converters.HeatPump], [`CHP`][flixopt.linear_converters.CHP]
 
 ## See Also
 
 - [Flow](Flow.md) — Input and output flows
 - [Bus](Bus.md) — Where converters connect
-- [Piecewise Linearization](../features/Piecewise.md) — Non-linear efficiency curves
-- [On/Off Operation](../features/OnOffParameters.md) — Binary operation
-- [Core Concepts: Converters](../../core-concepts.md#converters-transform-one-thing-into-another) — High-level overview
+- [Piecewise](../features/Piecewise.md) — Non-linear efficiency
+- [OnOffParameters](../features/OnOffParameters.md) — Binary operation

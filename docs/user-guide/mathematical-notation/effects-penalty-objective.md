@@ -13,72 +13,62 @@ Effects are how you track and optimize metrics in your system. One effect is you
 Every element in your model can contribute to effects. These contributions are aggregated into totals:
 
 $$
-E_{total} = \sum_{elements} contributions
+E_e = \sum_{l \in \mathcal{L}} s_{l \rightarrow e}
 $$
 
-For example, total costs might come from:
-
-- Gas consumption × gas price
-- Electricity import × electricity price
-- Equipment startup costs
-- Investment costs (annualized)
+Where $s_{l \rightarrow e}$ is the share from element $l$ to effect $e$.
 
 ## The Objective Function
 
 flixOpt minimizes one effect (plus any penalties):
 
 $$
-\min \quad E_{objective} + penalty
+\min \quad E_\Omega + \Phi
 $$
 
-The penalty term comes from bus balance violations (see [Bus](elements/Bus.md)).
+Where $E_\Omega$ is the objective effect and $\Phi$ is the penalty from bus violations.
 
 ## Two Types of Effects
 
-### Temporal Effects (Operational)
+=== "Temporal (Operational)"
 
-Vary with time — accumulated over all timesteps:
+    Accumulated over timesteps:
 
-$$
-E_{temporal} = \sum_t contribution(t) \cdot \Delta t
-$$
+    $$
+    E_{e,temp} = \sum_t s_{l \rightarrow e}(t) \cdot \Delta t
+    $$
 
-!!! example "Fuel costs"
-    ```python
-    gas_flow = fx.Flow(
-        label='gas',
-        bus=gas_bus,
-        size=100,
-        effects_per_flow_hour={'costs': 50},  # €50/MWh
-    )
-    ```
-    Contribution: $50 \cdot p_{gas}(t) \cdot \Delta t$ at each timestep
+    !!! example "Fuel costs"
+        ```python
+        gas_flow = fx.Flow(
+            label='gas', bus=gas_bus, size=100,
+            effects_per_flow_hour={'costs': 50},  # €50/MWh
+        )
+        ```
+        Contribution: $50 \cdot p(t) \cdot \Delta t$
 
-### Periodic Effects (Investment)
+=== "Periodic (Investment)"
 
-Time-independent — incurred once per period:
+    Time-independent — incurred once:
 
-$$
-E_{periodic} = \sum_{investments} size \cdot specific\_cost
-$$
+    $$
+    E_{e,per} = \sum_{inv} P \cdot c_{inv}
+    $$
 
-!!! example "Battery investment"
-    ```python
-    battery = fx.Storage(
-        ...,
-        capacity_in_flow_hours=InvestParameters(
+    !!! example "Battery investment"
+        ```python
+        capacity=fx.InvestParameters(
             maximum_size=1000,
-            specific_effects={'costs': 200},  # €200/kWh annualized
-        ),
-    )
-    ```
-    Contribution: $200 \cdot capacity$ (once, not per timestep)
+            specific_effects={'costs': 200},  # €200/kWh
+        )
+        ```
+        Contribution: $200 \cdot C$
 
-### Total Effect
+=== "Total"
 
-$$
-E_{total} = E_{periodic} + E_{temporal}
-$$
+    $$
+    E_e = E_{e,per} + E_{e,temp}
+    $$
 
 ## Cross-Effects: Linking Metrics
 
@@ -147,25 +137,25 @@ $$
 
 ## Variables
 
-| Variable | Description | When Created |
-|----------|-------------|--------------|
-| $E_{e,temporal}(t)$ | Temporal effect at timestep $t$ | Always |
-| $E_{e,periodic}$ | Periodic (investment) effect | Always |
-| $E_{e,total}$ | Total effect | Always |
-| $penalty$ | Sum of all penalty contributions | Always |
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
+| $E_{e,temp}(t)$ | `(temporal)\|total` | Temporal effect at $t$ | Always |
+| $E_{e,per}$ | `(periodic)\|total` | Periodic effect | Always |
+| $E_e$ | `total` | Total effect | Always |
+| $\Phi$ | `penalty` | Sum of penalties | Always |
 
 ## Parameters
 
-| Parameter | Python Name | Description |
-|-----------|-------------|-------------|
-| - | `is_objective` | If True, this effect is minimized |
-| - | `is_standard` | If True, allows shorthand effect syntax |
-| - | `maximum_total` | Upper bound on total effect |
-| - | `minimum_total` | Lower bound on total effect |
-| - | `maximum_per_hour` | Upper bound per timestep |
-| - | `maximum_periodic` | Upper bound on periodic (investment) part |
-| - | `share_from_temporal` | Cross-effect contributions (temporal) |
-| - | `share_from_periodic` | Cross-effect contributions (periodic) |
+| Symbol | Python Name | Description |
+|--------|-------------|-------------|
+| - | `is_objective` | Minimize this effect |
+| - | `is_standard` | Allow shorthand syntax |
+| $E_e^{max}$ | `maximum_total` | Upper bound on total |
+| $E_e^{min}$ | `minimum_total` | Lower bound on total |
+| $E_{e,temp}^{max}(t)$ | `maximum_per_hour` | Upper bound per timestep |
+| $E_{e,per}^{max}$ | `maximum_periodic` | Upper bound on periodic |
+| $r_{x \rightarrow e}$ | `share_from_temporal` | Cross-effect factor (temporal) |
+| $r_{x \rightarrow e}$ | `share_from_periodic` | Cross-effect factor (periodic) |
 
 ## Usage Examples
 
