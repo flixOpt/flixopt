@@ -1,10 +1,10 @@
 # FlixOpt: Progressive Flow System Optimization
 
-<p>
+<p align="center">
   <b>F</b>lexible &nbsp;•&nbsp; <b>L</b>ow-entry &nbsp;•&nbsp; <b>I</b>nvestment &nbsp;•&nbsp; <b>X</b>-sector &nbsp;•&nbsp; <b>OPT</b>imization
 </p>
 
-<p>
+<p align="center">
   <i>Adaptable to different systems</i> · <i>Easy to prototype</i> · <i>Investment planning focus</i> · <i>Sector coupling</i> · <i>Mathematical optimization</i>
 </p>
 
