@@ -59,18 +59,27 @@ print(flixopt.__version__)
 
 ## Logging Configuration
 
-flixOpt uses [loguru](https://loguru.readthedocs.io/) for logging. Logging is silent by default but can be easily configured:
+flixOpt uses Python's standard logging module with optional colored output via [colorlog](https://github.com/borntyping/python-colorlog). Logging is silent by default but can be easily configured:
 
 ```python
 from flixopt import CONFIG
 
-# Enable console logging
-CONFIG.Logging.console = True
-CONFIG.Logging.level = 'INFO'
-CONFIG.apply()
+# Enable colored console logging
+CONFIG.Logging.enable_console('INFO')
 
 # Or use a preset configuration for exploring
 CONFIG.exploring()
+```
+
+Since flixOpt uses Python's standard logging, you can also configure it directly:
+
+```python
+import logging
+
+# Get the flixopt logger and configure it
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
 ```
 
 For more details on logging configuration, see the [`CONFIG.Logging`][flixopt.config.CONFIG.Logging] documentation.

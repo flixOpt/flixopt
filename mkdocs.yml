@@ -12,49 +12,45 @@ edit_uri: edit/main/docs/
 nav:
   - Home:
     - Home: index.md
-    - Overview:
-      - Features: home/features.md
-      - Release Notes: changelog.md
     - Getting Started:
       - Installation: home/installation.md
       - Quick Start: home/quick-start.md
-      - First Model: examples/00-Minimal Example.md
-    - Reference:
+    - About:
       - Users: home/users.md
       - Models: home/models.md
       - Citing: home/citing.md
       - License: home/license.md
+
+  - User Guide:
+    - Overview: user-guide/index.md
+    - Features: user-guide/features.md
+    - Release Notes: changelog.md
+    - Core Concepts: user-guide/core-concepts.md
+    - Mathematical Notation:
+      - Overview: user-guide/mathematical-notation/index.md
+      - Dimensions: user-guide/mathematical-notation/dimensions.md
+      - Elements:
+        - Flow: user-guide/mathematical-notation/elements/Flow.md
+        - Bus: user-guide/mathematical-notation/elements/Bus.md
+        - Storage: user-guide/mathematical-notation/elements/Storage.md
+        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Features:
+        - Investment: user-guide/mathematical-notation/features/InvestParameters.md
+        - On/Off Operation: user-guide/mathematical-notation/features/OnOffParameters.md
+        - Piecewise Linearization: user-guide/mathematical-notation/features/Piecewise.md
+      - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
+      - Modeling Patterns:
+        - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
+        - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
+        - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
+        - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
+    - Optimization: user-guide/optimization/index.md
+    - Recipes: user-guide/recipes/index.md
     - Support:
       - FAQ: user-guide/faq.md
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
-
-  - User Guide:
-    - Overview: user-guide/index.md
-    - What's New in v3.0: user-guide/migration-guide-v3.md
-    - Core Design:
-      - Core Concepts: user-guide/core-concepts.md
-    - Optimization:
-      - Overview: user-guide/optimization/index.md
-      - Mathematical Formulation:
-        - Overview: user-guide/mathematical-notation/index.md
-        - Dimensions: user-guide/mathematical-notation/dimensions.md
-        - Elements:
-          - Flow: user-guide/mathematical-notation/elements/Flow.md
-          - Bus: user-guide/mathematical-notation/elements/Bus.md
-          - Storage: user-guide/mathematical-notation/elements/Storage.md
-          - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
-        - Features:
-          - Investment: user-guide/mathematical-notation/features/InvestParameters.md
-          - On/Off Operation: user-guide/mathematical-notation/features/OnOffParameters.md
-          - Piecewise Linearization: user-guide/mathematical-notation/features/Piecewise.md
-        - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
-        - Modeling Patterns:
-          - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
-          - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
-          - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
-          - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
-    - Recipes: user-guide/recipes/index.md
+    - Migration Guide v3: user-guide/migration-guide-v3.md
     - Roadmap: roadmap.md
 
   - Examples:
