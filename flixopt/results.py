@@ -1080,7 +1080,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         name = self.name if name is None else name
         if not folder.exists():
             try:
-                folder.mkdir(parents=False)
+                folder.mkdir(parents=True, exist_ok=False)
             except FileNotFoundError as e:
                 raise FileNotFoundError(
                     f'Folder {folder} and its parent do not exist. Please create them first.'

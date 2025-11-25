@@ -135,7 +135,7 @@ def _initialize_optimization_common(
 
     if obj.folder.exists() and not obj.folder.is_dir():
         raise NotADirectoryError(f'Path {obj.folder} exists and is not a directory.')
-    obj.folder.mkdir(parents=True, exist_ok=True)
+    obj.folder.mkdir(parents=True, exist_ok=False)
 
 
 class Optimization:
