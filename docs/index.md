@@ -11,6 +11,8 @@ hide:
 
 <p class="tagline">Progressive Flow System Optimization</p>
 
+<p><b>F</b>lexible · <b>L</b>ow-entry · <b>I</b>nvestment · <b>X</b>-sector · <b>OPT</b>imization</p>
+
 <p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
 <p class="hero-buttons">

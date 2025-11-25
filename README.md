@@ -1,5 +1,22 @@
 # FlixOpt: Progressive Flow System Optimization
 
+<table>
+<tr>
+<td><b>F</b>lexible</td>
+<td><b>L</b>ow-entry</td>
+<td><b>I</b>nvestment</td>
+<td><b>X</b>-sector</td>
+<td><b>OPT</b>imization</td>
+</tr>
+<tr>
+<td>Adaptable to different systems and use cases</td>
+<td>Easy to prototype, add detail incrementally</td>
+<td>Focus on investment planning decisions</td>
+<td>Handles sector coupling (energy, materials, ...)</td>
+<td>What it does at its core</td>
+</tr>
+</table>
+
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
 [![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
 [![PyPI version](https://img.shields.io/pypi/v/flixopt)](https://pypi.org/project/flixopt/)
