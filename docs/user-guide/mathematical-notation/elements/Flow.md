@@ -1,195 +1,220 @@
 # Flow
 
-A Flow represents the transfer of energy or material between a Bus and a Component, with the flow rate as the primary optimization variable.
+A Flow represents the movement of energy or material between a component and a bus. It's the primary optimization variable — the solver decides how much flows at each timestep.
 
-=== "Variables"
+!!! example "Real-world examples"
+    - Heat output from a boiler to the heat bus
+    - Electricity import from the grid
+    - Gas consumption by a CHP unit
+    - Charging power into a battery
 
-    | Symbol | Python Name | Description | Domain | Created When |
-    |--------|-------------|-------------|--------|--------------|
-    | $p(\text{t}_{i})$ | `flow_rate` | Flow rate at each timestep | $\mathbb{R}$ | Always |
-    | $\text P$ | `size` | Flow capacity (decision variable) | $\mathbb{R}_+$ | `size` is `InvestParameters` |
-    | $s_\text{invest}$ | `invest_binary` | Binary investment decision | $\{0,1\}$ | `size` is `InvestParameters` |
-    | - | `total_flow_hours` | Cumulative flow-hours per period | $\mathbb{R}_+$ | `flow_hours_min/max` or `load_factor_min/max` specified |
-    | $s(\text{t}_i)$ | `on_off_state` | Binary on/off state | $\{0,1\}$ | `on_off_parameters` specified |
-    | - | `switch_on` | Startup indicator | $\{0,1\}$ | `on_off_parameters` specified |
-    | - | `switch_off` | Shutdown indicator | $\{0,1\}$ | `on_off_parameters` specified |
+## Core Concept: Size and Flow Rate
 
-=== "Constraints"
+Every flow has two key quantities:
 
-    **Flow rate bounds** (always active):
+- **Size** ($P$) — The capacity or maximum possible flow rate. Think of it as "how big is the pipe?"
+- **Flow Rate** ($p(t)$) — The actual flow at each timestep. This is what the optimizer decides.
 
-    $$\label{eq:flow_bounds}
-    \text P \cdot \text p^{\text{L}}_{\text{rel}}(\text{t}_{i}) \leq p(\text{t}_{i}) \leq \text P \cdot \text p^{\text{U}}_{\text{rel}}(\text{t}_{i})
-    $$
+The fundamental constraint:
 
-    ---
+$$
+p_{min}(t) \leq p(t) \leq p_{max}(t)
+$$
 
-    **Load factor** (when `load_factor_min` or `load_factor_max` specified):
+Usually, bounds are defined *relative* to the size:
 
-    $$\label{eq:flow_load_factor}
-    \text{LF}_\text{min} \cdot \text P \cdot N_t \leq \sum_{i} p(\text{t}_{i}) \leq \text{LF}_\text{max} \cdot \text P \cdot N_t
-    $$
+$$
+P \cdot relative\_min(t) \leq p(t) \leq P \cdot relative\_max(t)
+$$
 
-    ---
+!!! example "A 100 kW boiler that can modulate down to 30%"
+    - Size: $P = 100$ kW
+    - Relative minimum: 0.3
+    - Relative maximum: 1.0
+    - Constraint: $30 \leq p(t) \leq 100$ kW
 
-    **Flow hours limits** (when any flow hours parameter specified):
+## Flow Hours: Energy vs Power
 
-    $$\label{eq:flow_hours}
-    \text{FH}_\text{min} \leq \sum_{i} p(\text{t}_{i}) \cdot \Delta t_i \leq \text{FH}_\text{max}
-    $$
+**Flow rate** is power (kW, MW). **Flow hours** is energy (kWh, MWh) — flow rate times time:
 
-    ---
+$$
+flow\_hours(t) = p(t) \cdot \Delta t
+$$
 
-    **Fixed profile** (when `fixed_relative_profile` specified):
+| Flow Rate | Timestep | Flow Hours |
+|-----------|----------|------------|
+| 100 kW | 1 hour | 100 kWh |
+| 100 kW | 15 min | 25 kWh |
+| 50 MW | 1 hour | 50 MWh |
 
-    $$\label{eq:flow_profile}
-    p(\text{t}_{i}) = \text P \cdot \text{profile}(\text{t}_{i})
-    $$
+This matters for costs: `effects_per_flow_hour` is cost per energy (€/MWh), not per power.
 
-    ---
+## Constraints
 
-    **On/off operation** (when `on_off_parameters` specified):
+### Capacity Bounds (Always Active)
 
-    See [OnOffParameters](../features/OnOffParameters.md)
+$$
+P \cdot relative\_min(t) \leq p(t) \leq P \cdot relative\_max(t)
+$$
 
-    ---
+### Fixed Profile (Renewable Generation, Demands)
 
-    **Mathematical Patterns:** [Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds), [Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)
+When you have a known profile (solar irradiance, demand curve):
 
-=== "Parameters"
+$$
+p(t) = P \cdot profile(t)
+$$
 
-    | Symbol | Python Parameter | Description | Default |
-    |--------|------------------|-------------|---------|
-    | $\text{FH}_\text{max}$ | `flow_hours_max` | Maximum cumulative flow-hours | None |
-    | $\text{FH}_\text{min}$ | `flow_hours_min` | Minimum cumulative flow-hours | None |
-    | $\text{LF}_\text{max}$ | `load_factor_max` | Maximum average utilization (0-1) | 1 |
-    | $\text{LF}_\text{min}$ | `load_factor_min` | Minimum average utilization (0-1) | 0 |
-    | $\text P$ | `size` | Flow capacity | Required |
-    | $\text p^{\text{L}}_{\text{rel}}(\text{t}_{i})$ | `relative_minimum` | Relative lower bound (fraction of size) | 0 |
-    | $\text p^{\text{U}}_{\text{rel}}(\text{t}_{i})$ | `relative_maximum` | Relative upper bound (fraction of size) | 1 |
-    | $\text{profile}(\text{t}_{i})$ | `fixed_relative_profile` | Array of relative flow rates | None |
-    | - | `fixed_relative_profile` | Array of relative flow rates | None |
-    | - | `flow_hours_max_over_periods` | Maximum flow-hours across all periods | None |
-    | - | `flow_hours_min_over_periods` | Minimum flow-hours across all periods | None |
-    | - | `on_off_parameters` | OnOffParameters instance | None |
-    | - | `previous_flow_rate` | Flow rate before optimization horizon | None |
+The flow rate is fixed to the profile — no optimization freedom.
 
-=== "Use Cases"
+### Load Factor Limits
 
-    ## Basic Fixed Capacity Flow
+Constrain average utilization over the period:
 
-    ```python
-    from flixopt import Flow
+$$
+LF_{min} \cdot P \cdot N_t \leq \sum_t p(t) \leq LF_{max} \cdot P \cdot N_t
+$$
 
-    generator_output = Flow(
-        label='electricity_out',
-        bus='electricity_grid',
-        size=100,  # 100 MW capacity
-        relative_minimum=0.4,  # Cannot operate below 40 MW
-        effects_per_flow_hour={'fuel_cost': 45, 'co2_emissions': 0.8},
-    )
-    ```
+Where $N_t$ is the number of timesteps.
 
-    **Variables:** `flow_rate[t]`
+!!! example "Baseload plant must run at least 70% average"
+    - Size: 200 MW
+    - Load factor minimum: 0.7
+    - Over 8760 hours: must produce at least $200 \times 0.7 \times 8760 = 1{,}226{,}400$ MWh
 
-    **Constraints:** $\eqref{eq:flow_bounds}$ with $40 \leq p(t) \leq 100$ MW
+### Flow Hours Limits
 
-    ---
+Constrain total energy over the period:
 
-    ## Investment Decision
+$$
+FH_{min} \leq \sum_t p(t) \cdot \Delta t \leq FH_{max}
+$$
 
-    ```python
-    from flixopt import Flow, InvestParameters
+!!! example "Annual gas limit of 10,000 MWh"
+    Sets $FH_{max} = 10{,}000$ MWh.
 
-    battery_flow = Flow(
-        label='electricity_storage',
-        bus='electricity_grid',
-        size=InvestParameters(
-            minimum_size=10,  # Minimum 10 MWh
-            maximum_size=100,  # Maximum 100 MWh
-            specific_effects={'cost': 150_000},  # €150k/MWh annualized
-        ),
-    )
-    ```
+## Variables
 
-    **Variables:** `flow_rate[t]`, `size`, `invest_binary`
+| Variable | Python Name | Description | When Created |
+|----------|-------------|-------------|--------------|
+| $p(t)$ | `flow_rate` | Flow rate at each timestep | Always |
+| $P$ | `size` | Capacity (decision variable) | When `size` is `InvestParameters` |
+| $s(t)$ | `on_off_state` | Binary on/off state | When `on_off_parameters` set |
 
-    **Constraints:** $\eqref{eq:flow_bounds}$ with $0 \leq p(t) \leq \text{size}$, plus investment constraints
+## Parameters
 
-    ---
+| Parameter | Python Name | Description | Default |
+|-----------|-------------|-------------|---------|
+| $P$ | `size` | Flow capacity | Required |
+| $relative\_min$ | `relative_minimum` | Min as fraction of size | 0 |
+| $relative\_max$ | `relative_maximum` | Max as fraction of size | 1 |
+| $profile$ | `fixed_relative_profile` | Fixed relative profile | None |
+| $LF_{min}$ | `load_factor_min` | Minimum average utilization | None |
+| $LF_{max}$ | `load_factor_max` | Maximum average utilization | None |
+| $FH_{min}$ | `flow_hours_min` | Minimum total energy | None |
+| $FH_{max}$ | `flow_hours_max` | Maximum total energy | None |
 
-    ## On/Off Operation
+## Usage Examples
 
-    ```python
-    from flixopt import Flow, OnOffParameters
+### Basic Flow with Fixed Capacity
 
-    heat_pump_flow = Flow(
-        label='heat_output',
-        bus='heating_network',
-        size=50,  # 50 kW thermal
-        relative_minimum=0.3,  # Minimum 15 kW when on
-        on_off_parameters=OnOffParameters(
-            effects_per_switch_on={'startup_cost': 100},
-            consecutive_on_hours_min=2,  # Min run time
-            consecutive_off_hours_min=1,  # Min off time
-        ),
-    )
-    ```
+```python
+heat_output = fx.Flow(
+    label='heat_out',
+    bus=heat_bus,
+    size=100,  # 100 kW capacity
+    relative_minimum=0.3,  # Can't go below 30 kW
+)
+```
 
-    **Variables:** `flow_rate[t]`, `on_off_state[t]`, `switch_on[t]`, `switch_off[t]`
+### Flow with Costs
 
-    **Constraints:** $\eqref{eq:flow_bounds}$ plus on/off constraints from [OnOffParameters](../features/OnOffParameters.md)
+```python
+gas_input = fx.Flow(
+    label='gas_in',
+    bus=gas_bus,
+    size=150,
+    effects_per_flow_hour={'costs': 50},  # €50/MWh gas price
+)
+```
 
-    ---
+### Fixed Profile (Solar PV)
 
-    ## Fixed Profile (Renewable)
+```python
+solar_profile = [0, 0, 0.1, 0.4, 0.8, 1.0, 0.9, 0.6, 0.2, 0, 0, 0]  # Relative to peak
 
-    ```python
-    import numpy as np
-    from flixopt import Flow
+solar_output = fx.Flow(
+    label='solar_out',
+    bus=electricity_bus,
+    size=500,  # 500 kW peak
+    fixed_relative_profile=solar_profile,
+)
+```
 
-    solar_generation = Flow(
-        label='solar_power',
-        bus='electricity_grid',
-        size=25,  # 25 MW installed
-        fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
-    )
-    ```
+### Investment Decision (Optimized Size)
 
-    **Variables:** `flow_rate[t]` (fixed by profile)
+```python
+from flixopt import InvestParameters
 
-    **Constraints:** $\eqref{eq:flow_profile}$
+battery_flow = fx.Flow(
+    label='battery_power',
+    bus=electricity_bus,
+    size=InvestParameters(
+        minimum_size=0,
+        maximum_size=1000,  # Up to 1 MW
+        specific_effects={'costs': 100_000},  # €100k/MW/year
+    ),
+)
+```
 
-    ---
+See [InvestParameters](../features/InvestParameters.md) for details.
 
-    ## Load Factor Constraint
+### On/Off Operation
 
-    ```python
-    from flixopt import Flow
+```python
+from flixopt import OnOffParameters
 
-    baseload_plant = Flow(
-        label='baseload_output',
-        bus='electricity',
-        size=200,  # 200 MW
-        load_factor_min=0.7,  # Must run at least 70% average
-        effects_per_flow_hour={'cost': 30},
-    )
-    ```
+generator_output = fx.Flow(
+    label='power_out',
+    bus=electricity_bus,
+    size=50,
+    relative_minimum=0.4,  # 40% minimum when ON
+    on_off_parameters=OnOffParameters(
+        effects_per_switch_on={'costs': 500},  # €500 startup cost
+        consecutive_on_hours_min=2,  # Must run at least 2 hours
+    ),
+)
+```
 
-    **Variables:** `flow_rate[t]`, `total_flow_hours`
+See [OnOffParameters](../features/OnOffParameters.md) for details.
 
-    **Constraints:** $\eqref{eq:flow_bounds}$, $\eqref{eq:flow_load_factor}$
+## How Flows Connect to Components
 
----
+Flows are always part of a component:
 
-## Implementation
+```python
+boiler = fx.linear_converters.Boiler(
+    label='boiler',
+    eta=0.9,
+    # These flows are created automatically:
+    # - inputs: gas flow from gas_bus
+    # - outputs: heat flow to heat_bus
+    Q_th=fx.Flow(label='heat', bus=heat_bus, size=100),
+    Q_fu=fx.Flow(label='fuel', bus=gas_bus, size=111),  # 100/0.9
+)
+```
+
+The component defines how input and output flows relate (conversion equations).
+
+## Implementation Details
 
 - **Element Class:** [`Flow`][flixopt.elements.Flow]
 - **Model Class:** [`FlowModel`][flixopt.elements.FlowModel]
 
 ## See Also
 
-- **Features:** [OnOffParameters](../features/OnOffParameters.md) · [InvestParameters](../features/InvestParameters.md)
-- **Elements:** [Bus](Bus.md) · [Storage](Storage.md) · [LinearConverter](LinearConverter.md)
-- **Patterns:** [Modeling Patterns](../modeling-patterns/index.md) · [Bounds and States](../modeling-patterns/bounds-and-states.md)
-- **Effects:** [Effects, Penalty & Objective](../effects-penalty-objective.md)
+- [Bus](Bus.md) — Where flows connect
+- [LinearConverter](LinearConverter.md) — Components that use flows
+- [InvestParameters](../features/InvestParameters.md) — Optimizing flow capacity
+- [OnOffParameters](../features/OnOffParameters.md) — Binary on/off operation
+- [Core Concepts: Flows](../../core-concepts.md#flows-what-moves-between-elements) — High-level overview

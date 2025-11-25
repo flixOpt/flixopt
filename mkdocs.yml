@@ -29,17 +29,16 @@ nav:
     - Analyzing Results: user-guide/results/index.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
-      - Dimensions: user-guide/mathematical-notation/dimensions.md
-      - Elements:
-        - Flow: user-guide/mathematical-notation/elements/Flow.md
-        - Bus: user-guide/mathematical-notation/elements/Bus.md
-        - Storage: user-guide/mathematical-notation/elements/Storage.md
-        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Bus: user-guide/mathematical-notation/elements/Bus.md
+      - Flow: user-guide/mathematical-notation/elements/Flow.md
+      - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Storage: user-guide/mathematical-notation/elements/Storage.md
+      - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
       - Features:
         - Investment: user-guide/mathematical-notation/features/InvestParameters.md
         - On/Off Operation: user-guide/mathematical-notation/features/OnOffParameters.md
         - Piecewise Linearization: user-guide/mathematical-notation/features/Piecewise.md
-      - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
+      - Dimensions: user-guide/mathematical-notation/dimensions.md
       - Modeling Patterns:
         - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
         - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
