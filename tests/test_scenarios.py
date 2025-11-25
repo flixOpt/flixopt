@@ -1,3 +1,5 @@
+import tempfile
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -297,10 +299,10 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
 
     res = fx.results.Results.from_file('results', 'test_full_scenario')
     fx.FlowSystem.from_dataset(res.flow_system_data)
-    calc = create_optimization_and_solve(
+    _ = create_optimization_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
-        name='test_full_scenario',
+        name='test_full_scenario_2',
     )
 
 
@@ -313,16 +315,16 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios):
     calc = create_optimization_and_solve(
         flow_system_piecewise_conversion_scenarios,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
-        name='test_full_scenario',
+        name='test_io_persistence',
     )
     calc.results.to_file()
 
-    res = fx.results.Results.from_file('results', 'test_full_scenario')
+    res = fx.results.Results.from_file('results', 'test_io_persistence')
     flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system_data)
     calc_2 = create_optimization_and_solve(
         flow_system_2,
         solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
-        name='test_full_scenario_2',
+        name='test_io_persistence_2',
     )
 
     np.testing.assert_allclose(calc.results.objective, calc_2.results.objective, rtol=0.001)
@@ -339,7 +341,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
 
-    calc = fx.Optimization(flow_system=flow_system, name='test_full_scenario', normalize_weights=False)
+    calc = fx.Optimization(flow_system=flow_system, name='test_scenarios_selection', normalize_weights=False)
     calc.do_modeling()
     calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
 
@@ -637,7 +639,6 @@ def test_scenario_parameters_io_persistence():
 def test_scenario_parameters_io_with_calculation():
     """Test that scenario parameters persist through full calculation IO."""
     import shutil
-    import tempfile
 
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
