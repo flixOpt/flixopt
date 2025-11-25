@@ -51,6 +51,38 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
+**Summary**:
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+### 💥 Breaking Changes
+
+### ♻️ Changed
+
+### 🗑️ Deprecated
+
+### 🔥 Removed
+
+### 🐛 Fixed
+
+### 🔒 Security
+
+### 📦 Dependencies
+
+### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+
+Until here -->
+
+## [4.3.0] - 2025-11-25
+
 **Summary**: Penalty is now a first-class Effect - add penalty contributions anywhere (e.g., `effects_per_flow_hour={'Penalty': 2.5}`) and optionally define bounds as with any other effect.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
@@ -68,31 +100,22 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   flow_system.add_elements(penalty)
   ```
 
-### 💥 Breaking Changes
-
 ### ♻️ Changed
 
-- Penalty is now a standard Effect with temporal/periodic dimensions
-- Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
+- Penalty is now a standard Effect with temporal/periodic dimensions, and periodic weights in the objective
 - **Results structure**: Penalty now has same structure as other effects in solution Dataset
   - Use `results.solution['Penalty']` for total penalty value (same as before, but now it's an effect variable)
   - Access components via `results.solution['Penalty(temporal)']` and `results.solution['Penalty(periodic)']` if needed
-
-### 🔥 Removed
-
-### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
 
 ### 📝 Docs
 
 - Updated mathematical notation for Penalty as Effect
 
----
+### 👷 Development
 
-Until here -->
+- Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
+
+---
 
 ## [4.2.0] - 2025-11-25
 
