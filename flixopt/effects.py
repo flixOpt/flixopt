@@ -48,13 +48,13 @@ class Effect(Element):
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         unit: The unit of the effect (e.g., '€', 'kg_CO2', 'kWh_primary', 'm²').
-            This is informative only and does not affect optimization calculations.
+            This is informative only and does not affect optimization.
         description: Descriptive name explaining what this effect represents.
         is_standard: If True, this is a standard effect allowing direct value input
             without effect dictionaries. Used for simplified effect specification (and less boilerplate code).
         is_objective: If True, this effect serves as the optimization objective function.
             Only one effect can be marked as objective per optimization.
-        weights: Optional custom weights for periods and scenarios (Numeric_PS).
+        period_weights: Optional custom weights for periods and scenarios (Numeric_PS).
             If provided, overrides the FlowSystem's default period weights for this effect.
             Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
             If None, uses FlowSystem's default weights.

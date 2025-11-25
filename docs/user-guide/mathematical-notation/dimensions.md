@@ -293,7 +293,7 @@ flow_system = fx.FlowSystem(
 #  [6.0, 4.0]]   # 2040: 10 × [0.6, 0.4]
 ```
 
-**Normalization:** Set `normalize_weights=False` in `Calculation` to turn of the normalization.
+**Normalization:** Set `normalize_weights=False` in `Optimization` to turn off the normalization.
 
 ---
 

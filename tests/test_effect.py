@@ -7,8 +7,8 @@ from .conftest import (
     assert_conequal,
     assert_sets_equal,
     assert_var_equal,
-    create_calculation_and_solve,
     create_linopy_model,
+    create_optimization_and_solve,
 )
 
 
@@ -257,7 +257,7 @@ class TestEffectResults:
             ),
         )
 
-        results = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
+        results = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
 
         effect_share_factors = {
             'temporal': {

@@ -38,7 +38,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -78,7 +78,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -107,7 +107,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -133,7 +133,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -173,7 +173,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -197,98 +197,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  publish-testpypi:
-    name: Publish to TestPyPI
-    runs-on: ubuntu-24.04
-    needs: [test, test-examples, create-release]  # Run after tests and release creation
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/flixopt
-    env:
-      SKIP_TESTPYPI_UPLOAD: "false"
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.9.8"
-          enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          uv pip install --system twine
-
-      - name: Build the distribution
-        run: |
-          uv build
-
-      - name: Upload to TestPyPI
-        run: |
-          twine upload --repository-url https://test.pypi.org/legacy/ dist/* --verbose --skip-existing
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          TWINE_NON_INTERACTIVE: "1"
-
-      - name: Test install from TestPyPI
-        if: env.SKIP_TESTPYPI_UPLOAD != 'true'
-        run: |
-          set -Eeuo pipefail
-          # Create a temporary environment to test installation
-          uv venv test_env
-          source test_env/bin/activate
-
-          # Get project name from pyproject.toml (PEP 621)
-          PACKAGE_NAME=$(python - <<'PY'
-          import sys, tomllib, pathlib
-          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
-          print(data["project"]["name"])
-          PY
-          )
-
-          # Extract version from git tag
-          VERSION=${GITHUB_REF#refs/tags/v}
-
-          # Wait and retry while TestPyPI indexes the package
-          INSTALL_SUCCESS=false
-          for d in 10 20 40 80 120; do
-            sleep "$d"
-            echo "Attempting to install $PACKAGE_NAME==$VERSION from TestPyPI (retry after ${d}s)..."
-
-            # Install specific version and verify it matches
-            if uv pip install --index-strategy unsafe-best-match --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "$PACKAGE_NAME==$VERSION" && \
-               python -c "from importlib.metadata import version; installed = version('$PACKAGE_NAME'); print(f'Installed: {installed}'); assert '$VERSION' == installed"; then
-              INSTALL_SUCCESS=true
-              break
-            fi
-          done
-
-          # Check if installation succeeded
-          if [ "$INSTALL_SUCCESS" = "false" ]; then
-            echo "ERROR: Failed to install $PACKAGE_NAME==$VERSION from TestPyPI after all retries"
-            echo "This could indicate:"
-            echo "  - TestPyPI indexing issues"
-            echo "  - Package upload problems"
-            echo "  - Version mismatch between tag and package"
-            exit 1
-          fi
-
-          # Final success confirmation
-          python -c "import flixopt; print('TestPyPI installation successful!')"
-
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-24.04
-    needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
+    needs: [test, test-examples, create-release]  # Run after
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
       name: pypi
@@ -301,7 +213,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python
@@ -382,7 +294,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.8"
+          version: "0.9.10"
           enable-cache: true
 
       - name: Set up Python

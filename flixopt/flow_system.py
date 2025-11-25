@@ -150,7 +150,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         - The `.flows` container is automatically populated from all component inputs and outputs.
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
         - The instance starts disconnected (self._connected_and_transformed == False) and will be
-          connected_and_transformed automatically when trying to solve a calculation.
+          connected_and_transformed automatically when trying to optimize.
     """
 
     model: FlowSystemModel | None
@@ -212,7 +212,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
-        self._used_in_calculation = False
+        self._used_in_optimization = False
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
@@ -1129,7 +1129,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def used_in_calculation(self) -> bool:
-        return self._used_in_calculation
+        return self._used_in_optimization
 
     @property
     def scenario_weights(self) -> xr.DataArray | None:

@@ -94,6 +94,68 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [4.2.0] - 2025-11-25
+
+**Summary**: Renamed classes and parameters related to `Calculation`, `Aggregation` and `Results`. Fully backwards compatible
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+- `overwrite` parameter when saving results to file. If True, overwrite existing files.
+
+### ♻️ Changed
+
+- Now creates the Results folder even if parents didnt exist
+
+### 🗑️ Deprecated
+
+**Class and module renaming:**
+- `FullCalculation` → `Optimization`
+- `AggregatedCalculation` → `ClusteredOptimization`
+- `SegmentedCalculation` → `SegmentedOptimization`
+- `CalculationResults` → `Results`
+- `SegmentedCalculationResults` → `SegmentedResults`
+- `Aggregation` → `Clustering`
+- `AggregationParameters` → `ClusteringParameters`
+- `AggregationModel` → `ClusteringModel`
+- Module: `calculation.py` → `optimization.py`
+- Module: `aggregation.py` → `clustering.py`
+
+Old names remain available with deprecation warnings (removed in v5.0.0).
+
+### 🐛 Fixed
+
+- Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
+
+### 👷 Development
+- Fixed `active_timesteps` type annotation to include `None`
+- Fixed xarray truth-value ambiguity in `main_results` buses with excess filter
+- Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
+
+---
+
+## [4.1.4] - 2025-11-25
+
+**Summary**: Added file logging encoding to prevent issues
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Issues with windows file system when logging to file due to non ASCII characters
+
+---
+
+## [4.1.3] - 2025-11-25
+
+**Summary**: Re-add mistakenly removed method for loading a config from file
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 🐛 Fixed
+- Re-added `CONFIG.load_from_file()` method that was accidentally removed
+
+---
+
 ## [4.1.2] - 2025-11-24
 
 **Summary**:
