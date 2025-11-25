@@ -526,8 +526,28 @@
 .hero-section .tagline {
   font-size: 1.5rem;
   color: var(--md-default-fg-color--light);
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   font-weight: 300;
+}
+
+/* Backronym styling */
+.hero-section .backronym {
+  font-size: 1.3rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.hero-section .backronym .letter {
+  color: var(--md-primary-fg-color);
+  font-weight: 700;
+}
+
+.hero-section .backronym-desc {
+  font-size: 0.95rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 2rem;
+  opacity: 0.85;
 }
 
 .hero-buttons {
