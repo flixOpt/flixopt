@@ -200,6 +200,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-24.04
+    needs: [test, test-examples, create-release]  # Run after
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
     environment:
       name: pypi
