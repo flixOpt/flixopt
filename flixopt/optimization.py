@@ -135,7 +135,8 @@ def _initialize_optimization_common(
 
     if obj.folder.exists() and not obj.folder.is_dir():
         raise NotADirectoryError(f'Path {obj.folder} exists and is not a directory.')
-    obj.folder.mkdir(parents=True, exist_ok=False)
+    # Create folder and any necessary parent directories
+    obj.folder.mkdir(parents=True, exist_ok=True)
 
 
 class Optimization:
@@ -260,6 +261,7 @@ class Optimization:
 
         if self.model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
+            self.folder.mkdir(parents=True, exist_ok=True)
             paths = fx_io.ResultsPaths(self.folder, self.name)
             from .io import document_linopy_model
 

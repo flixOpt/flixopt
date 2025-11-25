@@ -1078,13 +1078,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
-        if not folder.exists():
-            try:
-                folder.mkdir(parents=True, exist_ok=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {folder} and its parent do not exist. Please create them first.'
-                ) from e
+
+        # Ensure folder exists, creating parent directories as needed
+        folder.mkdir(parents=True, exist_ok=True)
 
         paths = fx_io.ResultsPaths(folder, name)
 
@@ -2367,13 +2363,10 @@ class SegmentedResults:
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
         path = folder / name
-        if not folder.exists():
-            try:
-                folder.mkdir(parents=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {folder} and its parent do not exist. Please create them first.'
-                ) from e
+
+        # Ensure folder exists, creating parent directories as needed
+        folder.mkdir(parents=True, exist_ok=True)
+
         for segment in self.segment_results:
             segment.to_file(folder=folder, name=segment.name, compression=compression)
 

@@ -628,18 +628,24 @@ class ResultsPaths:
             'model_documentation': self.model_documentation,
         }
 
-    def create_folders(self, parents: bool = False) -> None:
+    def create_folders(self, parents: bool = False, exist_ok: bool = True) -> None:
         """Ensure the folder exists.
+
         Args:
-            parents: Whether to create the parent folders if they do not exist.
+            parents: If True, create parent directories as needed. If False, parent must exist.
+            exist_ok: If True, do not raise error if folder already exists. If False, raise FileExistsError.
+
+        Raises:
+            FileNotFoundError: If parents=False and parent directory doesn't exist.
+            FileExistsError: If exist_ok=False and folder already exists.
         """
-        if not self.folder.exists():
-            try:
-                self.folder.mkdir(parents=parents)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {self.folder} and its parent do not exist. Please create them first.'
-                ) from e
+        try:
+            self.folder.mkdir(parents=parents, exist_ok=exist_ok)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Cannot create folder {self.folder}: parent directory does not exist. '
+                f'Use parents=True to create parent directories.'
+            ) from e
 
     def update(self, new_name: str | None = None, new_folder: pathlib.Path | None = None) -> None:
         """Update name and/or folder and refresh all paths."""
