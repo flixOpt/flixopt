@@ -316,13 +316,14 @@ class Optimization:
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() >= CONFIG.Modeling.epsilon
+                    if isinstance(model, InvestmentModel)
+                    and model.size.solution.max().item() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max() < CONFIG.Modeling.epsilon
+                    if isinstance(model, InvestmentModel) and model.size.solution.max().item() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
@@ -335,7 +336,8 @@ class Optimization:
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    bus.submodel.excess_input.solution.sum() > 1e-3 or bus.submodel.excess_output.solution.sum() > 1e-3
+                    bus.submodel.excess_input.solution.sum().item() > 1e-3
+                    or bus.submodel.excess_output.solution.sum().item() > 1e-3
                 )
             ],
         }

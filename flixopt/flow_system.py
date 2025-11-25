@@ -208,7 +208,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
         self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses', truncate_repr=10)
         self.effects: EffectCollection = EffectCollection(truncate_repr=10)
-
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
@@ -608,7 +607,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             effect = cls._resolve_reference_structure(effect_data, arrays_dict)
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')
-
             flow_system._add_effects(effect)
 
         return flow_system
