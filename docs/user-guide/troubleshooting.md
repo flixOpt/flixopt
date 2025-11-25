@@ -40,7 +40,7 @@ Common issues and their solutions when working with flixOpt.
 2. For Gurobi/CPLEX, ensure the solver is installed and licensed
 3. Specify solver explicitly:
    ```python
-   calc = fx.Optimization('model', system, solver='highs')
+   calc = fx.Optimization('model', flow_system, solver=fx.solvers.HighsSolver())
    ```
 
 ## Modeling Issues
@@ -141,20 +141,19 @@ Common issues and their solutions when working with flixOpt.
 
 3. **Use a better solver:**
    ```python
-   calc = fx.Optimization('model', system, solver='gurobi')
+   calc = fx.Optimization('model', flow_system, solver=fx.solvers.GurobiSolver())
    ```
 
 4. **Set solver options:**
    ```python
    calc = fx.Optimization(
        'model',
-       system,
-       solver='gurobi',
-       solver_options={
-           'TimeLimit': 3600,
-           'MIPGap': 0.01,  # 1% optimality gap
-           'Threads': 4
-       }
+       flow_system,
+       solver=fx.solvers.GurobiSolver(
+           time_limit_seconds=3600,
+           mip_gap=0.01,  # 1% optimality gap
+           extra_options={'Threads': 4}
+       )
    )
    ```
 

@@ -92,7 +92,8 @@ flow_system.add_components(solar, demand, battery)
 
 ```python
 # Create and run optimization
-calc = fx.Optimization('solar_battery_optimization', system).solve()
+calc = fx.Optimization('solar_battery_optimization', flow_system)
+calc.solve(fx.solvers.HighsSolver())
 ```
 
 ### 6. Save Results

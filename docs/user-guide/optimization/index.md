@@ -126,17 +126,20 @@ flixOpt supports multiple solvers:
 
 ### Solver Configuration
 
-Specify solver when creating calculation:
+Specify solver when solving:
 
 ```python
-calc = fx.Optimization(
-    'my_model',
-    flow_system,
-    solver=fx.solvers.Gurobi(time_limit_seconds=3600, mip_gap=0.01),  # Choose solver with our simple, unified interface
-    solver_options={  # Add solver-specific options we didnt map
-        'Threads': 4,           # Parallel threads
-        'Presolve': 2           # Aggressive presolve
-    }
+calc = fx.Optimization('my_model', flow_system)
+
+calc.solve(
+    solver=fx.solvers.GurobiSolver(
+        time_limit_seconds=3600,
+        mip_gap=0.01,
+        extra_options={  # Add solver-specific options we didn't map
+            'Threads': 4,           # Parallel threads
+            'Presolve': 2           # Aggressive presolve
+        }
+    )
 )
 ```
 
