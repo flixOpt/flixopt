@@ -34,7 +34,11 @@ DEPRECATION_REMOVAL_VERSION = '5.0.0'
 
 
 class MultilineFormatter(logging.Formatter):
-    """Custom formatter that handles multi-line messages with box-style borders."""
+    """Custom formatter that handles multi-line messages with box-style borders.
+
+    Uses Unicode box-drawing characters for prettier output, with a fallback
+    to simple formatting if any encoding issues occur.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -45,45 +49,7 @@ class MultilineFormatter(logging.Formatter):
 
     def format(self, record):
         """Format multi-line messages with box-style borders for better readability."""
-        # Split into lines
-        lines = record.getMessage().split('\n')
-
-        # Add exception info if present (critical for logger.exception())
-        if record.exc_info:
-            lines.extend(self.formatException(record.exc_info).split('\n'))
-        if record.stack_info:
-            lines.extend(record.stack_info.rstrip().split('\n'))
-
-        # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
-        # formatTime doesn't support %f, so use datetime directly
-        import datetime
-
-        dt = datetime.datetime.fromtimestamp(record.created)
-        time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-        # Single line - return standard format
-        if len(lines) == 1:
-            level_str = f'{record.levelname: <8}'
-            return f'{time_str} {level_str} │ {lines[0]}'
-
-        # Multi-line - use box format
-        level_str = f'{record.levelname: <8}'
-        result = f'{time_str} {level_str} │ ┌─ {lines[0]}'
-        indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
-        for line in lines[1:-1]:
-            result += f'\n{indent} {" " * 8} │ │  {line}'
-        result += f'\n{indent} {" " * 8} │ └─ {lines[-1]}'
-
-        return result
-
-
-if COLORLOG_AVAILABLE:
-
-    class ColoredMultilineFormatter(colorlog.ColoredFormatter):
-        """Colored formatter with multi-line message support."""
-
-        def format(self, record):
-            """Format multi-line messages with colors and box-style borders."""
+        try:
             # Split into lines
             lines = record.getMessage().split('\n')
 
@@ -94,36 +60,88 @@ if COLORLOG_AVAILABLE:
                 lines.extend(record.stack_info.rstrip().split('\n'))
 
             # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
+            # formatTime doesn't support %f, so use datetime directly
             import datetime
 
-            # Use thin attribute for timestamp
-            dim = escape_codes['thin']
-            reset = escape_codes['reset']
-            # formatTime doesn't support %f, so use datetime directly
             dt = datetime.datetime.fromtimestamp(record.created)
             time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            time_formatted = f'{dim}{time_str}{reset}'
 
-            # Get the color for this level
-            log_colors = self.log_colors
-            level_name = record.levelname
-            color_name = log_colors.get(level_name, '')
-            color = escape_codes.get(color_name, '')
-
-            level_str = f'{level_name: <8}'
-
-            # Single line - return standard colored format
+            # Single line - return standard format
             if len(lines) == 1:
-                return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
+                level_str = f'{record.levelname: <8}'
+                return f'{time_str} {level_str} │ {lines[0]}'
 
-            # Multi-line - use box format with colors
-            result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─{reset} {lines[0]}'
+            # Multi-line - use box format
+            level_str = f'{record.levelname: <8}'
+            result = f'{time_str} {level_str} │ ┌─ {lines[0]}'
             indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
             for line in lines[1:-1]:
-                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│{reset}  {line}'
-            result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─{reset} {lines[-1]}'
+                result += f'\n{indent} {" " * 8} │ │  {line}'
+            result += f'\n{indent} {" " * 8} │ └─ {lines[-1]}'
 
             return result
+
+        except Exception as e:
+            # Fallback to simple formatting if anything goes wrong (e.g., encoding issues)
+            return f'{record.created} {record.levelname} - {record.getMessage()} [Formatting Error: {e}]'
+
+
+if COLORLOG_AVAILABLE:
+
+    class ColoredMultilineFormatter(colorlog.ColoredFormatter):
+        """Colored formatter with multi-line message support.
+
+        Uses Unicode box-drawing characters for prettier output, with a fallback
+        to simple formatting if any encoding issues occur.
+        """
+
+        def format(self, record):
+            """Format multi-line messages with colors and box-style borders."""
+            try:
+                # Split into lines
+                lines = record.getMessage().split('\n')
+
+                # Add exception info if present (critical for logger.exception())
+                if record.exc_info:
+                    lines.extend(self.formatException(record.exc_info).split('\n'))
+                if record.stack_info:
+                    lines.extend(record.stack_info.rstrip().split('\n'))
+
+                # Format time with date and milliseconds (YYYY-MM-DD HH:MM:SS.mmm)
+                import datetime
+
+                # Use thin attribute for timestamp
+                dim = escape_codes['thin']
+                reset = escape_codes['reset']
+                # formatTime doesn't support %f, so use datetime directly
+                dt = datetime.datetime.fromtimestamp(record.created)
+                time_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                time_formatted = f'{dim}{time_str}{reset}'
+
+                # Get the color for this level
+                log_colors = self.log_colors
+                level_name = record.levelname
+                color_name = log_colors.get(level_name, '')
+                color = escape_codes.get(color_name, '')
+
+                level_str = f'{level_name: <8}'
+
+                # Single line - return standard colored format
+                if len(lines) == 1:
+                    return f'{time_formatted} {color}{level_str}{reset} │ {lines[0]}'
+
+                # Multi-line - use box format with colors
+                result = f'{time_formatted} {color}{level_str}{reset} │ {color}┌─{reset} {lines[0]}'
+                indent = ' ' * 23  # 23 spaces for time with date (YYYY-MM-DD HH:MM:SS.mmm)
+                for line in lines[1:-1]:
+                    result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}│{reset}  {line}'
+                result += f'\n{dim}{indent}{reset} {" " * 8} │ {color}└─{reset} {lines[-1]}'
+
+                return result
+
+            except Exception as e:
+                # Fallback to simple formatting if anything goes wrong (e.g., encoding issues)
+                return f'{record.created} {record.levelname} - {record.getMessage()} [Formatting Error: {e}]'
 
 
 # SINGLE SOURCE OF TRUTH - immutable to prevent accidental modification
@@ -363,6 +381,7 @@ class CONFIG:
             path: str | Path = 'flixopt.log',
             max_bytes: int = 10 * 1024 * 1024,
             backup_count: int = 5,
+            encoding: str = 'utf-8',
         ) -> None:
             """Enable file logging with rotation. Removes all existing file handlers!
 
@@ -371,6 +390,7 @@ class CONFIG:
                 path: Path to log file (default: 'flixopt.log')
                 max_bytes: Maximum file size before rotation in bytes (default: 10MB)
                 backup_count: Number of backup files to keep (default: 5)
+                encoding: File encoding (default: 'utf-8'). Use 'utf-8' for maximum compatibility.
 
             Note:
                 For full control over formatting and handlers, use logging module directly.
@@ -382,6 +402,9 @@ class CONFIG:
 
                 # With custom rotation
                 CONFIG.Logging.enable_file('DEBUG', 'debug.log', max_bytes=50 * 1024 * 1024, backup_count=10)
+
+                # With explicit encoding
+                CONFIG.Logging.enable_file('INFO', 'app.log', encoding='utf-8')
                 ```
             """
             logger = logging.getLogger('flixopt')
@@ -404,7 +427,7 @@ class CONFIG:
             log_path = Path(path)
             log_path.parent.mkdir(parents=True, exist_ok=True)
 
-            handler = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count)
+            handler = RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count, encoding=encoding)
             handler.setFormatter(MultilineFormatter())
 
             logger.addHandler(handler)
