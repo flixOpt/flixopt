@@ -60,6 +60,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 💥 Breaking Changes
 
+### ♻️ Changed
+
+- Now creates the Results folder even i fparents didnt exist
+
+### 🗑️ Deprecated
+
 **Class and module renaming:**
 - `FullCalculation` → `Optimization`
 - `AggregatedCalculation` → `ClusteredOptimization`
@@ -73,13 +79,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Module: `aggregation.py` → `clustering.py`
 
 Old names remain available with deprecation warnings (removed in v5.0.0).
-
-
-### ♻️ Changed
-
-- Now creates the Results folder even i fparents didnt exist
-
-### 🗑️ Deprecated
 
 ### 🔥 Removed
 
