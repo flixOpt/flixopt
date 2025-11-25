@@ -27,6 +27,7 @@ from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
 from .config import CONFIG, SUCCESS_LEVEL
 from .core import DEPRECATION_REMOVAL_VERSION, DataConverter, TimeSeriesData, drop_constant_arrays
+from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
 from .flow_system import FlowSystem
 from .results import Results, SegmentedResults
@@ -288,9 +289,19 @@ class Optimization:
         if self.model is None:
             raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing main_results.')
 
+        try:
+            penalty_effect = self.flow_system.effects.penalty_effect
+            penalty_section = {
+                'temporal': penalty_effect.submodel.temporal.total.solution.values,
+                'periodic': penalty_effect.submodel.periodic.total.solution.values,
+                'total': penalty_effect.submodel.total.solution.values,
+            }
+        except KeyError:
+            penalty_section = {'temporal': 0.0, 'periodic': 0.0, 'total': 0.0}
+
         main_results = {
             'Objective': self.model.objective.value,
-            'Penalty': self.model.effects.penalty.total.solution.values,
+            'Penalty': penalty_section,
             'Effects': {
                 f'{effect.label} [{effect.unit}]': {
                     'temporal': effect.submodel.temporal.total.solution.values,
@@ -298,6 +309,7 @@ class Optimization:
                     'total': effect.submodel.total.solution.values,
                 }
                 for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
+                if effect.label_full != PENALTY_EFFECT_LABEL
             },
             'Invest-Decisions': {
                 'Invested': {

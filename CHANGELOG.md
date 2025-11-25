@@ -51,17 +51,32 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ## [Unreleased] - ????-??-??
 
-**Summary**:
+**Summary**: Penalty is now a first-class Effect - add penalty contributions anywhere (e.g., `effects_per_flow_hour={'Penalty': 2.5}`) and optionally define bounds as with any other effect.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ### ✨ Added
 
+- **Penalty as first-class Effect**: Users can now add Penalty contributions anywhere effects are used:
+  ```python
+  fx.Flow('Q', 'Bus', effects_per_flow_hour={'Penalty': 2.5})
+  fx.InvestParameters(..., effects_of_investment={'Penalty': 100})
+  ```
+- **User-definable Penalty**: Optionally define custom Penalty with constraints (auto-created if not defined):
+  ```python
+  penalty = fx.Effect(fx.PENALTY_EFFECT_LABEL, unit='€', maximum_total=1e6)
+  flow_system.add_elements(penalty)
+  ```
+
 ### 💥 Breaking Changes
 
 ### ♻️ Changed
 
-### 🗑️ Deprecated
+- Penalty is now a standard Effect with temporal/periodic dimensions
+- Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
+- **Results structure**: Penalty now has same structure as other effects in solution Dataset
+  - Use `results.solution['Penalty']` for total penalty value (same as before, but now it's an effect variable)
+  - Access components via `results.solution['Penalty(temporal)']` and `results.solution['Penalty(periodic)']` if needed
 
 ### 🔥 Removed
 
@@ -73,9 +88,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 📝 Docs
 
-### 👷 Development
-
-### 🚧 Known Issues
+- Updated mathematical notation for Penalty as Effect
 
 ---
 
