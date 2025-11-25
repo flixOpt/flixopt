@@ -9,19 +9,24 @@ Piecewise linearization models non-linear relationships using connected linear s
 
 ## Core Concept: Linear Segments
 
-A piecewise function is defined by segments (pieces), each with start and end points:
+A piecewise function approximates a curve using linear segments (pieces):
 
 ```
-    y
-    │        ╱─── Piece 3
+  output
+    │
+ 90 ┤                    ●━━━━━━━● (100, 90)
+    │                 ╱
+ 70 ┤              ╱
+    │           ╱  Piece 2
+ 45 ┤        ●     (50, 45)
     │      ╱
-    │    ╱───── Piece 2
-    │  ╱
-    │╱──────── Piece 1
-    └───────────── x
+ 30 ┤    ╱
+    │  ╱  Piece 1
+  0 ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ input
+    0    25    50    75   100
 ```
 
-The variable can be anywhere along one of these segments.
+Each piece is defined by a start point and end point. The optimizer chooses a point along exactly one piece.
 
 ## Mathematical Formulation
 
