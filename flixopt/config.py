@@ -718,6 +718,74 @@ class CONFIG:
 
         return cls
 
+    @classmethod
+    def load_from_file(cls, config_file: str | Path) -> type[CONFIG]:
+        """Load configuration from YAML file and apply it.
+
+        Args:
+            config_file: Path to the YAML configuration file.
+
+        Returns:
+            The CONFIG class for method chaining.
+
+        Raises:
+            FileNotFoundError: If the config file does not exist.
+
+        Examples:
+            ```python
+            CONFIG.load_from_file('my_config.yaml')
+            ```
+
+            Example YAML file:
+            ```yaml
+            config_name: my_project
+            modeling:
+                big: 10000000
+                epsilon: 0.00001
+            solving:
+                mip_gap: 0.001
+                time_limit_seconds: 600
+            plotting:
+                default_engine: matplotlib
+                default_dpi: 600
+            ```
+        """
+        # Import here to avoid circular import
+        from . import io as fx_io
+
+        config_path = Path(config_file)
+        if not config_path.exists():
+            raise FileNotFoundError(f'Config file not found: {config_file}')
+
+        config_dict = fx_io.load_yaml(config_path)
+        cls._apply_config_dict(config_dict)
+
+        return cls
+
+    @classmethod
+    def _apply_config_dict(cls, config_dict: dict) -> None:
+        """Apply configuration dictionary to class attributes.
+
+        Args:
+            config_dict: Dictionary containing configuration values.
+        """
+        for key, value in config_dict.items():
+            if key == 'modeling' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    if hasattr(cls.Modeling, nested_key):
+                        setattr(cls.Modeling, nested_key, nested_value)
+            elif key == 'solving' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    if hasattr(cls.Solving, nested_key):
+                        setattr(cls.Solving, nested_key, nested_value)
+            elif key == 'plotting' and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    if hasattr(cls.Plotting, nested_key):
+                        setattr(cls.Plotting, nested_key, nested_value)
+            elif hasattr(cls, key) and key != 'logging':
+                # Skip 'logging' as it requires special handling via CONFIG.Logging methods
+                setattr(cls, key, value)
+
 
 def change_logging_level(level_name: str | int) -> None:
     """Change the logging level for the flixopt logger.
