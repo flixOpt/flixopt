@@ -1,30 +1,27 @@
 # OnOffParameters
 
-OnOffParameters add binary on/off behavior — equipment that can be completely off or operating within its capacity range.
+OnOffParameters define a binary on/off state variable with associated constraints and effects.
 
 !!! example "Real-world examples"
     - **Power plant** — Startup costs, minimum run time
     - **Batch reactor** — Must run complete cycles
     - **Chiller** — Maximum operating hours per year
 
-## Core Concept: Binary State
+## Core Concept: Binary State Variable
 
-The on/off state $s(t) \in \{0, 1\}$ determines whether equipment operates:
+OnOffParameters create a binary state variable $s(t) \in \{0, 1\}$:
 
-- $s(t) = 0$: Off — flow rate must be zero
-- $s(t) = 1$: On — flow rate within capacity bounds
+- $s(t) = 0$: Off
+- $s(t) = 1$: On
 
-This modifies the flow bounds (see [Flow](../elements/Flow.md)):
-
-$$
-s(t) \cdot P \cdot p_{rel}^{min} \leq p(t) \leq s(t) \cdot P \cdot p_{rel}^{max}
-$$
+!!! note "Connection to continuous variables"
+    How this binary state connects to continuous variables (like flow rate) is defined where `on_off_parameters` is used. See [Flow](../elements/Flow.md) for how flows use the on/off state to modify their bounds.
 
 ## State Transitions
 
 === "Switch Detection"
 
-    Track when equipment turns on/off:
+    Track when state changes:
 
     $$
     s^{on}(t) - s^{off}(t) = s(t) - s(t-1)
@@ -32,20 +29,20 @@ $$
 
     Where:
 
-    - $s^{on}(t) = 1$ when switching on (was off, now on)
-    - $s^{off}(t) = 1$ when switching off (was on, now off)
+    - $s^{on}(t) = 1$ when switching on (0 → 1)
+    - $s^{off}(t) = 1$ when switching off (1 → 0)
 
-=== "Startup Costs"
+=== "Startup Effects"
 
-    Effects incurred each time equipment starts:
+    Effects incurred each time state switches on:
 
     $$
     E_{e,switch} = \sum_t s^{on}(t) \cdot c_{switch}
     $$
 
-=== "Running Costs"
+=== "Running Effects"
 
-    Effects while equipment operates:
+    Effects while state is on:
 
     $$
     E_{e,run} = \sum_t s(t) \cdot \Delta t \cdot c_{run}
@@ -53,41 +50,41 @@ $$
 
 ## Duration Constraints
 
-=== "Min Run Time"
+=== "Min On Time"
 
-    Once started, must run for minimum duration:
+    Once on, must stay on for minimum duration:
 
     $$
-    \text{If } s^{on}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} s(j) \cdot \Delta t \geq T_{on}^{min}
+    s^{on}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} s(j) \cdot \Delta t \geq T_{on}^{min}
     $$
 
 === "Min Off Time"
 
-    Once stopped, must stay off for minimum duration:
+    Once off, must stay off for minimum duration:
 
     $$
-    \text{If } s^{off}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} (1-s(j)) \cdot \Delta t \geq T_{off}^{min}
+    s^{off}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} (1-s(j)) \cdot \Delta t \geq T_{off}^{min}
     $$
 
-=== "Max Run Time"
+=== "Max On Time"
 
-    Cannot run continuously beyond limit:
+    Cannot stay on continuously beyond limit:
 
     $$
     \sum_{j=t}^{t+k} s(j) \cdot \Delta t \leq T_{on}^{max}
     $$
 
-=== "Total Hours"
+=== "Total On Hours"
 
-    Constrain total operating hours per period:
+    Constrain total on-time per period:
 
     $$
     H^{min} \leq \sum_t s(t) \cdot \Delta t \leq H^{max}
     $$
 
-=== "Max Startups"
+=== "Max Switches"
 
-    Limit number of startups per period:
+    Limit number of switch-ons per period:
 
     $$
     \sum_t s^{on}(t) \leq N_{switch}^{max}
@@ -97,23 +94,23 @@ $$
 
 | Symbol | Python Name | Description | When Created |
 |--------|-------------|-------------|--------------|
-| $s(t)$ | `on` | Binary on/off state | Always |
-| $s^{on}(t)$ | `switch_on` | Startup indicator | Switch effects or constraints |
-| $s^{off}(t)$ | `switch_off` | Shutdown indicator | Switch effects or constraints |
+| $s(t)$ | `on` | Binary state | Always |
+| $s^{on}(t)$ | `switch_on` | Switch-on indicator | Switch effects or constraints |
+| $s^{off}(t)$ | `switch_off` | Switch-off indicator | Switch effects or constraints |
 
 ## Parameters
 
 | Symbol | Python Name | Description | Default |
 |--------|-------------|-------------|---------|
-| $c_{switch}$ | `effects_per_switch_on` | Startup effects | None |
-| $c_{run}$ | `effects_per_running_hour` | Running effects | None |
-| $T_{on}^{min}$ | `consecutive_on_hours_min` | Min run time | None |
-| $T_{on}^{max}$ | `consecutive_on_hours_max` | Max run time | None |
-| $T_{off}^{min}$ | `consecutive_off_hours_min` | Min off time | None |
-| $T_{off}^{max}$ | `consecutive_off_hours_max` | Max off time | None |
-| $H^{min}$ | `on_hours_min` | Min total hours | None |
-| $H^{max}$ | `on_hours_max` | Max total hours | None |
-| $N_{switch}^{max}$ | `switch_on_max` | Max startups | None |
+| $c_{switch}$ | `effects_per_switch_on` | Effects per switch-on | None |
+| $c_{run}$ | `effects_per_running_hour` | Effects while on | None |
+| $T_{on}^{min}$ | `consecutive_on_hours_min` | Min consecutive on | None |
+| $T_{on}^{max}$ | `consecutive_on_hours_max` | Max consecutive on | None |
+| $T_{off}^{min}$ | `consecutive_off_hours_min` | Min consecutive off | None |
+| $T_{off}^{max}$ | `consecutive_off_hours_max` | Max consecutive off | None |
+| $H^{min}$ | `on_hours_min` | Min total on hours | None |
+| $H^{max}$ | `on_hours_max` | Max total on hours | None |
+| $N_{switch}^{max}$ | `switch_on_max` | Max switch-ons | None |
 
 ## Usage Examples
 
@@ -171,6 +168,6 @@ chiller = fx.Flow(
 
 ## See Also
 
-- [Flow](../elements/Flow.md) — How on/off affects flow bounds
+- [Flow](../elements/Flow.md) — How flows use on/off state
 - [InvestParameters](InvestParameters.md) — Combining with investment
-- [Effects & Objective](../effects-penalty-objective.md) — How costs are tracked
+- [Effects & Objective](../effects-penalty-objective.md) — How effects are tracked
