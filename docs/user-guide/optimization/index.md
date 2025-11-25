@@ -1,119 +1,95 @@
-# Optimization Overview
+# Running Optimizations
 
-flixOpt formulates energy and material flow problems as Mixed-Integer Linear Programming (MILP) models that can be solved with various optimization solvers.
+This section covers how to run optimizations in flixOpt, including different optimization modes and solver configuration.
 
-## What Gets Optimized?
+## Optimization Modes
 
-### Decision Variables
+flixOpt provides three optimization modes to handle different problem sizes and requirements:
 
-flixOpt creates decision variables for:
+### Optimization (Full)
 
-- **Flow rates** - Energy or material transfer at each timestep
-- **Storage states** - Charge levels over time
-- **Investment sizes** - Capacity decisions (when using `InvestParameters`)
-- **On/off states** - Binary operational decisions (when using `OnOffParameters`)
-- **Effect totals** - Aggregated costs, emissions, etc.
-
-### Objective Function
-
-The optimization minimizes or maximizes one `Effect`:
+[`Optimization`][flixopt.optimization.Optimization] solves the entire problem at once.
 
 ```python
-costs = fx.Effect('costs', 'EUR', 'Minimize total system costs', is_objective=True)
+import flixopt as fx
+
+optimization = fx.Optimization('my_model', flow_system)
+optimization.solve(fx.solvers.HighsSolver())
 ```
 
-Effects aggregate contributions from:
+**Best for:**
 
-- Flow-based costs (€/kWh)
-- Capacity-based costs (€/kW)
-- Investment costs (€)
-- Fixed costs (€)
-- Cross-effect relationships (e.g., carbon pricing)
+- Small to medium problems
+- When you need the globally optimal solution
+- Problems without time-coupling simplifications
 
-## Constraint Types
+### SegmentedOptimization
 
-### Balance Constraints
+[`SegmentedOptimization`][flixopt.optimization.SegmentedOptimization] splits the time horizon into segments and solves them sequentially.
 
-**Nodal balance** at each bus ensures supply equals demand:
+```python
+optimization = fx.SegmentedOptimization(
+    'segmented_model',
+    flow_system,
+    segment_length=24,  # Hours per segment
+    overlap_length=4    # Hours of overlap between segments
+)
+optimization.solve(fx.solvers.HighsSolver())
+```
 
-$$\sum \text{inputs} = \sum \text{outputs}$$
+**Best for:**
 
-See [Bus](../mathematical-notation/elements/Bus.md) for details.
+- Large problems that don't fit in memory
+- Long time horizons (weeks, months)
+- Problems where decisions are mostly local in time
 
-### Capacity Constraints
+**Trade-offs:**
 
-**Flow bounds** limit transfer rates:
+- Faster solve times
+- May miss globally optimal solutions
+- Overlap helps maintain solution quality at segment boundaries
 
-$$\text{flow}_\text{min} \leq \text{flow}(t) \leq \text{flow}_\text{max}$$
+### ClusteredOptimization
 
-See [Flow](../mathematical-notation/elements/Flow.md) for details.
+[`ClusteredOptimization`][flixopt.optimization.ClusteredOptimization] uses time series aggregation to reduce problem size by identifying representative periods.
 
-### Storage Dynamics
+```python
+clustering_params = fx.ClusteringParameters(
+    n_periods=8,           # Number of typical periods
+    hours_per_period=24    # Hours per typical period
+)
 
-**Charge state evolution** tracks energy levels:
+optimization = fx.ClusteredOptimization(
+    'clustered_model',
+    flow_system,
+    clustering_params
+)
+optimization.solve(fx.solvers.HighsSolver())
+```
 
-$$\text{charge}(t+1) = \text{charge}(t) + \eta_\text{charge} \cdot \text{charge\_flow}(t) - \frac{\text{discharge\_flow}(t)}{\eta_\text{discharge}}$$
+**Best for:**
 
-See [Storage](../mathematical-notation/elements/Storage.md) for details.
+- Investment planning problems
+- Year-long optimizations
+- When computational speed is critical
 
-### Conversion Relationships
+**Trade-offs:**
 
-**Linear conversions** between flows:
+- Much faster solve times
+- Approximates the full problem
+- Best when patterns repeat (e.g., typical days)
 
-$$\text{output}(t) = \eta \cdot \text{input}(t)$$
+## Choosing an Optimization Mode
 
-See [LinearConverter](../mathematical-notation/elements/LinearConverter.md) for details.
+| Mode | Problem Size | Solve Time | Solution Quality |
+|------|-------------|------------|------------------|
+| `Optimization` | Small-Medium | Slow | Optimal |
+| `SegmentedOptimization` | Large | Medium | Near-optimal |
+| `ClusteredOptimization` | Very Large | Fast | Approximate |
 
-## Optimization Types
+## Solver Configuration
 
-### Operational Optimization (Dispatch)
-
-Optimize operation with **fixed capacities**:
-
-- All component sizes are parameters
-- Only operational decisions (flow rates, storage states)
-- Typically shorter time horizons (days to weeks)
-- Fast solve times
-
-**Example:** Day-ahead power plant dispatch
-
-### Investment Optimization (Capacity Expansion)
-
-Optimize **capacity and operation together**:
-
-- Component sizes are decision variables
-- Uses `InvestParameters` for sizing
-- Longer time horizons (months to years)
-- Slower solve times due to binary/integer variables
-
-**Example:** Renewable energy system planning
-
-### Multi-Period Planning
-
-Sequential investment decisions across **multiple time periods**:
-
-- Two-stage optimization (investment + operation)
-- Evolving conditions and technology costs
-- Path-dependent decisions
-- Most complex formulation
-
-**Example:** Long-term energy transition pathways
-
-## Mathematical Formulation
-
-For complete mathematical details, see:
-
-- **[Mathematical Notation Overview](../mathematical-notation/index.md)**
-- **[Elements](../mathematical-notation/elements/Flow.md)** - Flow, Bus, Storage, LinearConverter
-- **[Features](../mathematical-notation/features/InvestParameters.md)** - Investment, On/Off, Piecewise
-- **[Effects & Objective](../mathematical-notation/effects-penalty-objective.md)**
-- **[Modeling Patterns](../mathematical-notation/modeling-patterns/index.md)**
-
-## Solver Options
-
-### Choosing a Solver
-
-flixOpt supports multiple solvers:
+### Available Solvers
 
 | Solver | Type | Speed | License |
 |--------|------|-------|---------|
@@ -122,87 +98,81 @@ flixOpt supports multiple solvers:
 | **CPLEX** | Commercial | Fastest | Academic/Commercial |
 | **GLPK** | Open-source | Slower | Free |
 
-**Recommendation:** Start with HiGHS (default). Use Gurobi/CPLEX for large models or when speed matters.
+**Recommendation:** Start with HiGHS (included by default). Use Gurobi/CPLEX for large models or when speed matters.
 
-### Solver Configuration
-
-Specify solver when solving:
+### Solver Options
 
 ```python
-calc = fx.Optimization('my_model', flow_system)
+# Basic usage with defaults
+optimization.solve(fx.solvers.HighsSolver())
 
-calc.solve(
-    solver=fx.solvers.GurobiSolver(
+# With custom options
+optimization.solve(
+    fx.solvers.GurobiSolver(
         time_limit_seconds=3600,
         mip_gap=0.01,
-        extra_options={  # Add solver-specific options we didn't map
-            'Threads': 4,           # Parallel threads
-            'Presolve': 2           # Aggressive presolve
+        extra_options={
+            'Threads': 4,
+            'Presolve': 2
         }
     )
 )
 ```
 
-## Performance Optimization
+Common solver parameters:
+
+- `time_limit_seconds` - Maximum solve time
+- `mip_gap` - Acceptable optimality gap (0.01 = 1%)
+- `log_to_console` - Show solver output
+
+## Performance Tips
 
 ### Model Size Reduction
 
 - Use longer timesteps where acceptable
-- Aggregate time periods (representative days/weeks)
+- Use `ClusteredOptimization` for long horizons
 - Remove unnecessary components
 - Simplify constraint formulations
 
 ### Solver Tuning
 
 - Enable presolve and cuts
-- Adjust optimality tolerances
-- Use heuristics for quick feasible solutions
-- Enable warm starting from previous solutions
+- Adjust optimality tolerances for faster (approximate) solutions
+- Use parallel threads when available
 
 ### Problem Formulation
 
 - Avoid unnecessary binary variables
-- Use continuous relaxations where possible
+- Use continuous investment sizes when possible
 - Tighten variable bounds
 - Remove redundant constraints
 
-## Debugging Optimization
+## Debugging
 
 ### Infeasibility
 
-Model has no feasible solution:
+If your model has no feasible solution:
 
-1. Enable penalty variables to identify conflicts
-2. Check balance constraints
-3. Verify capacity limits
+1. Enable penalty variables: `flow_system.use_penalty_variables = True`
+2. Check balance constraints - can supply meet demand?
+3. Verify capacity limits are consistent
 4. Review storage state requirements
-5. Simplify to isolate issue
+5. Simplify model to isolate the issue
 
-See [Troubleshooting](../troubleshooting.md) for details.
-
-### Poor Performance
-
-Optimization takes too long:
-
-1. Reduce problem size
-2. Try different solver
-3. Adjust solver options
-4. Simplify model formulation
-5. Use longer timesteps
+See [Troubleshooting](../troubleshooting.md) for more details.
 
 ### Unexpected Results
 
-Solution doesn't match expectations:
+If solutions don't match expectations:
 
-1. Verify input data
-2. Check units and scales
+1. Verify input data (units, scales)
+2. Enable logging: `fx.CONFIG.exploring()`
 3. Visualize intermediate results
-4. Start with simpler model
-5. Review constraint formulations
+4. Start with a simpler model
+5. Check constraint formulations
 
 ## Next Steps
 
-- Study the [Mathematical Notation](../mathematical-notation/index.md)
-- Learn about [Investment Parameters](../mathematical-notation/features/InvestParameters.md)
-- Explore [Modeling Patterns](../mathematical-notation/modeling-patterns/index.md)
-- Review [Examples](../../examples/index.md)
+- See [Examples](../../examples/03-Optimization Modes.md) for working code
+- Learn about [Mathematical Notation](../mathematical-notation/index.md)
+- Explore [Recipes](../recipes/index.md) for common patterns
