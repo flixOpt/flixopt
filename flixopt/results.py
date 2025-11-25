@@ -2138,8 +2138,9 @@ class SegmentedResults:
         """
         folder = pathlib.Path(folder)
         path = folder / name
-        logger.info(f'loading optimization "{name}" from file ("{path.with_suffix(".nc4")}")')
-        meta_data = fx_io.load_json(path.with_suffix('.json'))
+        meta_data_path = path.with_suffix('.json')
+        logger.info(f'loading segemented optimization meta data from file ("{meta_data_path}")')
+        meta_data = fx_io.load_json(meta_data_path)
 
         # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
         sub_names = meta_data.get('sub_optimizations') or meta_data.get('sub_calculations')
