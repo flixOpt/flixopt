@@ -72,6 +72,22 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ### 📦 Dependencies
 
 ### 📝 Docs
+
+### 👷 Development
+
+### 🚧 Known Issues
+
+---
+
+Until here -->
+
+## [4.3.1] - 2025-11-26
+
+**Summary**: Add zenodo for better citations and archiving.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 📝 Docs
 - Added Zenodo DOI badge to README.md (placeholder, to be updated after first Zenodo release)
 
 ### 👷 Development
@@ -80,11 +96,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   - Created `.zenodo.json` file for Zenodo metadata configuration
   - Repository now ready for DOI assignment upon next release
 
-### 🚧 Known Issues
-
 ---
-
-Until here -->
 
 ## [4.3.0] - 2025-11-25
 
