@@ -92,7 +92,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ### 👷 Development
 - Added Zenodo integration for automatic archival and citation
-  - Created `CITATION.cff` file for software citation following CFF 1.2.0 specification
   - Created `.zenodo.json` file for Zenodo metadata configuration
   - Repository now ready for DOI assignment upon next release
 
