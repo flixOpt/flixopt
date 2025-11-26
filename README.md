@@ -28,7 +28,7 @@
 
 **FlixOpt is a Python framework for progressive flow system optimization** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
 
-**Start simple, scale complex:** Build a working optimization model in minutes, then progressively add detail - multi-period investments, stochastic scenarios, custom constraints - without rewriting your code.
+Build simple models quickly, then incrementally add investment decision, multi-period planning, stochastic scenarios, and custom constraints without refactoring.
 
 ---
 
