@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <i>Adaptable to different systems</i> · <i>Easy to prototype</i> · <i>Investment planning focus</i> · <i>Sector coupling</i> · <i>Mathematical optimization</i>
+  <i>Adaptable to different systems</i> · <i>Easy to prototype</i> · <i>Investment decisions based on dispatch</i> · <i>Sector coupling</i> · <i>Mathematical optimization</i>
 </p>
 
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
