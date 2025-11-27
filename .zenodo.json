@@ -51,7 +51,7 @@
   ],
   "language": "eng",
   "grants": [
-     {"id": "03KB159B"}
+     {"id": "10.13039/501100006360::03KB159B"}
   ],
   "related_identifiers": [
     {
@@ -74,5 +74,5 @@
       "relation": "isIdenticalTo",
       "scheme": "url"
     }
-  ],
+  ]
 }
