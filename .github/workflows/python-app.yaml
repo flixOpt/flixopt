@@ -165,10 +165,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
+      - name: Generate token for Release Bot
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          token: ${{ steps.generate-token.outputs.token }}  # ← Pass token HERE!
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -187,13 +195,15 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           sed -i "s/^version: .*/version: $VERSION/" CITATION.cff
           sed -i "s/^date-released: .*/date-released: $DATE/" CITATION.cff
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add CITATION.cff
-          git commit -m "Update CITATION.cff to $VERSION" || true
-          git push origin HEAD:main
-        continue-on-error: true
 
+      - name: Commit CITATION.cff changes
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "Update CITATION.cff to ${{ github.ref_name }}"  # Will be "v1.2.3"
+          file_pattern: 'CITATION.cff'
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
       - name: Extract release notes
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
