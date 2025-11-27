@@ -126,7 +126,7 @@ Built on [linopy](https://github.com/PyPSA/linopy/) and [xarray](https://github.
 
 ### Our Position
 
-We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) and low-level dispatch tools - similar to [PyPSA](https://docs.pypsa.org/latest/). FlixOpt is the sweet spot for detailed operational planning and long-term investment analysis in the **same framework**.
+We bridge the gap between high-level strategic models (like [FINE](https://github.com/FZJ-IEK3-VSA/FINE)) and more granular operational modelling tools like [PyPSA](https://docs.pypsa.org/latest/). FlixOpt is the sweet spot for detailed operational planning and long-term investment analysis in the **same framework**.
 
 ### Academic Roots
 
