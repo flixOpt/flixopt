@@ -50,9 +50,6 @@
     "xarray"
   ],
   "language": "eng",
-  "grants": [
-     {"id": "10.13039/501100006360::03KB159B"}
-  ],
   "related_identifiers": [
     {
       "identifier": "https://github.com/flixOpt/flixopt",
