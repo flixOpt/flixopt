@@ -66,13 +66,20 @@ During modeling, Flixopt constructs the optimization problem in a fully vectoriz
 
 ![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture.svg)
 
-Each user-defined element is associated with an internal model that generates constraints and variables in a vectorized form using Linopy. Optional features add investment decisions, on/off states, minimum up- or downtimes, mutual exclusivity of flows, piecewise-linear relations etc. These capabilities remain inactive unless explicitly required, keeping models compact and computationally efficient.
+For example, following features can be used:
+* investment decisions with continuous sizes and binary selection,
+* on/off states and switching behavior,
+* minimum/maximum consecutive operation or downtime,
+* prevention of simultaneous flow operation,
+* piecewise linear relations via linear segments.
+
+These capabilities remain inactive unless explicitly required, keeping models compact and computationally efficient.
 
 Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods, following principles discussed in the literature on time-series aggregation ([@TSAM2020]), reducing computational burden for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
 
 ## Effects
 
-Flixopt introduces a freely definable system of evaluation metrics called *Effects* such as costs, emissions, primary energy demand, or any user-defined indicators. Any structural entity can contribute shares to any *Effect* and *Effects* can contribute to each other. This abstraction through *Effects* has the following advantages over a traditional rigid objective, as it generically integrates the following features:
+Flixopt introduces a freely definable system of evaluation metrics called *Effects* such as costs, emissions, primary energy demand, or any user-defined indicators. One *Effect* is chosen as objective. Any structural entity can contribute shares to any *Effect* and *Effects* can contribute to each other. This abstraction through *Effects* has the following advantages over a traditional rigid objective, as it generically integrates the following features:
 
 * Switch the objective to another *Effect* easily, once *Effects* and a flow-system are defined.
 * Include as many evaluation metrics as needed to simplify the evaluation of the solution.
@@ -92,61 +99,7 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 
 todo! Idealerweise kurz und kleines Bild dazu.
 
-## References
-
-siehe unten!
-
-<div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px;">
-
-# ++ Textschnipsel näher am smart energy paper (und zu lang)! ++
-## Introduction
-
-Flixopt is a Python framework for mixed‑integer linear programming and optimization of complex systems with energy and material flows. It builds on a MATLAB® framework that has been migrated to Python and incorporates principles from earlier work as well as ideas from the Python package oemof/solph. Flixopt is published under the MIT license. Its generic and extensible approach allows application in a wide variety of scenarios. It enables non‑equidistant timesteps, allocation of impacts to freely definable evaluation metrics, switching between objectives, and broad flexibility in configuring the optimization. A short overview was previously published, but this paper provides a comprehensive description of the framework and introduces its novel concepts (e.g., *Effects*).
-
-Although development has focused mainly on optimizing energy systems — especially district heating systems — Flixopt is designed to be usable across disciplines and research questions.
-
-## Architecture and workflow of Flixopt
-
-The architecture and workflow of the Flixopt package consist of three main steps: initialization, modeling and solving, and postprocessing of results. Users begin by implementing a flow‑system, defining the network topology and all element parameters. Based on the flow-system or an arbitrary subset of it, one or more calculation setups can then be configured, including the choice of solver.
-
-During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving/restoring complete solution states.
-
-The architecture and workflow of the Flixopt package consist of three main steps: initialization, modeling and solving, and postprocessing of results. Users begin by implementing a flow‑system consisting of *Element* objects, defining the network topology and all element parameters. One or more calculation setups can then be configured, including the choice of solver, calculation mode, and selected time horizon or segment.
-
-During modeling, Flixopt creates for each calculation a sub‑flow‑system derived from the base model. It then constructs the optimization problem in a fully vectorized manner using Linopy, which handles array‑based modeling and solver communication. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving/restoring complete solution states.
-
-## Structure and Mathematical Modeling
-
-Flixopt models systems as flow‑systems consisting of *Flows*, *Components*, *Buses*, and *Effects*, all of which are subclasses of *Element*. While *Flows*, *Components*, and *Buses* represent structural aspects of energy or material systems — similar to many existing frameworks — the concept of *Effects* is a novel contribution. *Effects* capture evaluation metrics such as costs, CO₂ emissions, primary energy demand, floor area, number of units, or any other metric defined by the user.
-
-Each *Element* is linked to an internal *Elementmodel* created during modeling. *Elementmodels* manage variables and constraints, while *Elements* store user parameters and serve as the user‑facing interface. Optional *Features* extend *Elementmodels* with additional functionality, such as investment decisions, on/off states, or linear segments.
-
-Time handling in Flixopt is fully flexible: users may define equidistant or non‑equidistant timesteps, and the framework automatically derives timestep durations and total time spans.
-
-## Effects and Objective
-
-Effects are central to Flixopt’s abstraction of evaluation metrics. This enables: (1) multi‑criteria evaluation, (2) ε‑constraint formulations, (3) weighted‑sum multiobjective optimization, (4) distinguishing operational and investment impacts, and (5) external incentives without altering existing effect definitions. One effect is chosen as the objective, and a general penalty term is added to ensure solvability and improve debugging.
-
-## Components, Flows, and Buses
-
-## Features
-
-Flixopt’s feature system extends elements with optional advanced modeling capabilities:
-
-* Investment decisions with continuous sizes and binary selection.
-* On/off states and switching behavior.
-* Minimum/maximum consecutive operation or downtime.
-* Prevention of simultaneous flow operation.
-* Piecewise linear relations via linear segments.
-
-## Calculation Modes
-
-Flixopt supports several calculation modes: exact time‑resolved modeling, segmented optimization for long horizons, and aggregated/typical‑period approaches based on time‑series clustering. These modes reduce computational effort while preserving system characteristics.
-
-# Acknowledgements
-</div>
-
-# todo
+## todo
 * Prüfen, dass möglichst alle Literaturquellen verwendet 
 
 # References
