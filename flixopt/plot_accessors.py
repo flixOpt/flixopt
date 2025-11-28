@@ -982,10 +982,9 @@ class PlotAccessor:
             logger.warning(f'No variables remaining after filtering for pattern: {pattern}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Build Dataset with element names as variable names
-        ds = xr.Dataset(
-            {element_name: self._results.solution[var_name] for var_name, element_name in filtered_vars.items()}
-        )
+        # Build Dataset with variable names as keys to avoid collisions
+        # (e.g., 'Boiler|flow_rate' and 'Boiler|flow_rate_max' would both map to 'Boiler')
+        ds = xr.Dataset({var_name: self._results.solution[var_name] for var_name in filtered_vars})
 
         # Apply selection
         ds = _apply_selection(ds, select)

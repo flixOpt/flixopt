@@ -126,5 +126,5 @@ if __name__ == '__main__':
     # Save results to file for later usage
     optimization.results.to_file()
 
-    optimization.results.plot.balance()
-    optimization.results.plot.duration_curve()
+    optimization.results.plot.balance('Fernwärme')
+    optimization.results.plot.duration_curve('Boiler(Q_th)|flow_rate')
