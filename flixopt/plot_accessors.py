@@ -17,6 +17,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import xarray as xr
@@ -900,6 +901,239 @@ class PlotAccessor:
 
         # Convert DataArray to Dataset for consistent return type
         return PlotResult(data=da.to_dataset(name=effect), figure=fig)
+
+    def variable(
+        self,
+        pattern: str,
+        *,
+        # Data selection
+        select: SelectType | None = None,
+        # Filtering
+        include: FilterType | None = None,
+        exclude: FilterType | None = None,
+        # Transformation
+        aggregate: Literal['sum', 'mean', 'max', 'min'] | None = None,
+        # Visual style
+        mode: Literal['line', 'bar', 'area'] = 'line',
+        colors: dict[str, str] | None = None,
+        # Faceting
+        facet_col: str | None = None,
+        animate_by: str | None = None,
+        # Display
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot the same variable type across multiple elements.
+
+        Searches all elements for variables matching the pattern and plots them
+        together for easy comparison.
+
+        Args:
+            pattern: Variable suffix to match (e.g., 'on', 'flow_rate', 'charge_state').
+                     Matches variables ending with this pattern.
+            select: xarray-style selection.
+            include: Only include elements containing these substrings.
+            exclude: Exclude elements containing these substrings.
+            aggregate: Aggregate over time dimension.
+            mode: Plot style - 'line', 'bar', or 'area'.
+            colors: Override colors.
+            facet_col: Facet dimension (ignored if not in data).
+            animate_by: Animation dimension (ignored if not in data).
+            show: Whether to display.
+
+        Returns:
+            PlotResult with matched variables as Dataset.
+
+        Examples:
+            >>> results.plot.variable('on')  # All binary operation states
+            >>> results.plot.variable('flow_rate', include='Boiler')
+            >>> results.plot.variable('charge_state')  # All storage charge states
+        """
+        # Find all matching variables across all elements
+        matching_vars = {}
+
+        for var_name in self._results.solution.data_vars:
+            # Check if variable matches the pattern (ends with pattern or contains |pattern)
+            if var_name.endswith(pattern) or f'|{pattern}' in var_name:
+                # Extract element name (part before the |)
+                element_name = var_name.split('|')[0] if '|' in var_name else var_name
+                matching_vars[var_name] = element_name
+
+        if not matching_vars:
+            logger.warning(f'No variables found matching pattern: {pattern}')
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+
+        # Apply include/exclude filtering on element names
+        filtered_vars = {}
+        for var_name, element_name in matching_vars.items():
+            # Check include filter
+            if include is not None:
+                patterns = [include] if isinstance(include, str) else include
+                if not any(p in element_name for p in patterns):
+                    continue
+            # Check exclude filter
+            if exclude is not None:
+                patterns = [exclude] if isinstance(exclude, str) else exclude
+                if any(p in element_name for p in patterns):
+                    continue
+            filtered_vars[var_name] = element_name
+
+        if not filtered_vars:
+            logger.warning(f'No variables remaining after filtering for pattern: {pattern}')
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+
+        # Build Dataset with element names as variable names
+        ds = xr.Dataset(
+            {element_name: self._results.solution[var_name] for var_name, element_name in filtered_vars.items()}
+        )
+
+        # Apply selection
+        ds = _apply_selection(ds, select)
+
+        # Apply aggregation
+        if aggregate is not None and 'time' in ds.dims:
+            ds = getattr(ds, aggregate)(dim='time')
+
+        # Resolve facet/animate
+        actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
+
+        # Merge colors
+        merged_colors = _merge_colors(self.colors, colors)
+
+        # Map mode
+        plotly_mode = 'stacked_bar' if mode == 'bar' else mode
+
+        # Create figure
+        fig = plotting.with_plotly(
+            ds,
+            mode=plotly_mode,
+            colors=merged_colors,
+            title=f'{pattern} across elements',
+            facet_by=actual_facet_col,
+            animate_by=actual_animate,
+            **plotly_kwargs,
+        )
+
+        # Handle show
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
+    def duration_curve(
+        self,
+        variables: str | list[str],
+        *,
+        # Data selection
+        select: SelectType | None = None,
+        # Transformation
+        normalize: bool = False,
+        # Visual style
+        mode: Literal['line', 'area'] = 'line',
+        colors: dict[str, str] | None = None,
+        # Faceting
+        facet_col: str | None = None,
+        # Display
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot load duration curves (sorted time series).
+
+        Duration curves show values sorted from highest to lowest, useful for
+        understanding utilization patterns and peak demands.
+
+        Args:
+            variables: Variable name(s) to plot.
+            select: xarray-style selection.
+            normalize: If True, normalize x-axis to 0-100% of time.
+            mode: Plot style - 'line' or 'area'.
+            colors: Override colors.
+            facet_col: Facet dimension (ignored if not in data).
+            show: Whether to display.
+
+        Returns:
+            PlotResult with sorted duration curve data.
+
+        Examples:
+            >>> results.plot.duration_curve('Boiler(Q_th)|flow_rate')
+            >>> results.plot.duration_curve(['CHP|on', 'Boiler|on'])
+            >>> results.plot.duration_curve('demand', normalize=True)
+        """
+
+        # Normalize to list
+        if isinstance(variables, str):
+            variables = [variables]
+
+        # Get the data
+        ds = self._results.solution[variables]
+
+        # Apply selection
+        ds = _apply_selection(ds, select)
+
+        # Check for time dimension
+        if 'time' not in ds.dims:
+            raise ValueError('Duration curve requires time dimension in data')
+
+        # Sort each variable by descending value and create duration curve data
+        duration_data = {}
+
+        for var in ds.data_vars:
+            da = ds[var]
+            # Flatten any extra dimensions by taking mean
+            extra_dims = [d for d in da.dims if d != 'time']
+            if extra_dims:
+                da = da.mean(dim=extra_dims)
+
+            # Sort descending
+            sorted_values = np.sort(da.values.flatten())[::-1]
+
+            # Create duration coordinate
+            if normalize:
+                duration_coord = np.linspace(0, 100, len(sorted_values))
+                duration_name = 'duration_pct'
+            else:
+                duration_coord = np.arange(len(sorted_values))
+                duration_name = 'duration_hours'
+
+            duration_data[var] = xr.DataArray(
+                sorted_values,
+                dims=[duration_name],
+                coords={duration_name: duration_coord},
+            )
+
+        # Create Dataset
+        result_ds = xr.Dataset(duration_data)
+
+        # Merge colors
+        merged_colors = _merge_colors(self.colors, colors)
+
+        # Resolve facet
+        actual_facet_col, _, _ = _resolve_facet_animate(result_ds, facet_col, None, None)
+
+        # Create figure
+        fig = plotting.with_plotly(
+            result_ds,
+            mode=mode,
+            colors=merged_colors,
+            title='Duration Curve',
+            facet_by=actual_facet_col,
+            **plotly_kwargs,
+        )
+
+        # Update axis labels
+        x_label = 'Duration [%]' if normalize else 'Duration [hours]'
+        fig.update_xaxes(title_text=x_label)
+        fig.update_yaxes(title_text='Value')
+
+        # Handle show
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=result_ds, figure=fig)
 
 
 class ElementPlotAccessor:

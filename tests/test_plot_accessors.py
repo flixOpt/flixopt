@@ -285,6 +285,81 @@ class TestElementPlotAccessor:
             results['Boiler'].plot.storage(show=False)
 
 
+class TestPlotAccessorVariable:
+    """Tests for PlotAccessor.variable()."""
+
+    def test_variable_returns_plot_result(self, results):
+        """Test that variable() returns a PlotResult."""
+        result = results.plot.variable('flow_rate', show=False)
+        assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.Dataset)
+
+    def test_variable_with_include_filter(self, results):
+        """Test variable with include filter."""
+        result = results.plot.variable('flow_rate', include='Boiler', show=False)
+        assert isinstance(result, PlotResult)
+        # All variables should be from Boiler
+        for var in result.data.data_vars:
+            assert 'Boiler' in var
+
+    def test_variable_with_exclude_filter(self, results):
+        """Test variable with exclude filter."""
+        result = results.plot.variable('flow_rate', exclude='Boiler', show=False)
+        assert isinstance(result, PlotResult)
+        # No variables should be from Boiler
+        for var in result.data.data_vars:
+            assert 'Boiler' not in var
+
+    def test_variable_with_aggregation(self, results):
+        """Test variable with time aggregation."""
+        result = results.plot.variable('flow_rate', aggregate='sum', show=False)
+        assert isinstance(result, PlotResult)
+        # After aggregation, time dimension should not be present
+        assert 'time' not in result.data.dims
+
+
+class TestPlotAccessorDurationCurve:
+    """Tests for PlotAccessor.duration_curve()."""
+
+    def test_duration_curve_returns_plot_result(self, results):
+        """Test that duration_curve() returns a PlotResult."""
+        # Find a time-series variable
+        var_names = list(results.solution.data_vars)
+        time_vars = [v for v in var_names if 'time' in results.solution[v].dims]
+        if time_vars:
+            result = results.plot.duration_curve(time_vars[0], show=False)
+            assert isinstance(result, PlotResult)
+            assert isinstance(result.data, xr.Dataset)
+
+    def test_duration_curve_has_duration_dimension(self, results):
+        """Test that duration curve data has duration dimension."""
+        var_names = list(results.solution.data_vars)
+        time_vars = [v for v in var_names if 'time' in results.solution[v].dims]
+        if time_vars:
+            result = results.plot.duration_curve(time_vars[0], show=False)
+            # Should have duration_hours dimension (not time)
+            assert 'time' not in result.data.dims
+            assert 'duration_hours' in result.data.dims or 'duration_pct' in result.data.dims
+
+    def test_duration_curve_normalized(self, results):
+        """Test duration curve with normalized x-axis."""
+        var_names = list(results.solution.data_vars)
+        time_vars = [v for v in var_names if 'time' in results.solution[v].dims]
+        if time_vars:
+            result = results.plot.duration_curve(time_vars[0], normalize=True, show=False)
+            assert isinstance(result, PlotResult)
+            assert 'duration_pct' in result.data.dims
+
+    def test_duration_curve_multiple_variables(self, results):
+        """Test duration curve with multiple variables."""
+        var_names = list(results.solution.data_vars)
+        time_vars = [v for v in var_names if 'time' in results.solution[v].dims][:2]
+        if len(time_vars) >= 2:
+            result = results.plot.duration_curve(time_vars, show=False)
+            assert isinstance(result, PlotResult)
+            assert len(result.data.data_vars) == 2
+
+
 class TestChaining:
     """Tests for method chaining."""
 

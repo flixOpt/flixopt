@@ -127,3 +127,4 @@ if __name__ == '__main__':
     optimization.results.to_file()
 
     optimization.results.plot.balance()
+    optimization.results.plot.duration_curve()

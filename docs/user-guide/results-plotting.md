@@ -200,6 +200,44 @@ results.plot.effects('temporal', by='time')
 | `by` | `'component'`, `'time'` | Grouping dimension |
 | `mode` | `'bar'`, `'pie'`, `'treemap'` | Chart type |
 
+### Variable Plot
+
+Plot the same variable type across multiple elements for comparison:
+
+```python
+results.plot.variable('on')  # All binary operation states
+results.plot.variable('flow_rate', include='Boiler')
+results.plot.variable('charge_state')  # All storage charge states
+```
+
+**Key parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pattern` | str | Variable suffix to match (e.g., `'on'`, `'flow_rate'`) |
+| `include` | str or list | Only include elements containing these substrings |
+| `exclude` | str or list | Exclude elements containing these substrings |
+| `aggregate` | str | Time aggregation method |
+| `mode` | `'line'`, `'bar'`, `'area'` | Visual style |
+
+### Duration Curve
+
+Plot load duration curves (sorted time series) to understand utilization patterns:
+
+```python
+results.plot.duration_curve('Boiler(Q_th)|flow_rate')
+results.plot.duration_curve(['CHP|on', 'Boiler|on'])
+results.plot.duration_curve('demand', normalize=True)
+```
+
+**Key parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `variables` | str or list | Variable name(s) to plot |
+| `normalize` | bool | Normalize x-axis to 0-100% (default: False) |
+| `mode` | `'line'`, `'area'` | Visual style |
+
 ## Common Parameters
 
 Most plot methods share these parameters:
