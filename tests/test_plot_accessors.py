@@ -359,6 +359,22 @@ class TestPlotAccessorDurationCurve:
             assert isinstance(result, PlotResult)
             assert len(result.data.data_vars) == 2
 
+    def test_duration_curve_sort_by(self, results):
+        """Test duration curve with sort_by parameter."""
+        import numpy as np
+
+        var_names = list(results.solution.data_vars)
+        time_vars = [v for v in var_names if 'time' in results.solution[v].dims][:2]
+        if len(time_vars) >= 2:
+            # Sort all variables by the first one
+            result = results.plot.duration_curve(time_vars, sort_by=time_vars[0], show=False)
+            assert isinstance(result, PlotResult)
+            # The first variable should still be sorted descending (ignoring nan values)
+            first_var_data = result.data[time_vars[0]].values
+            # Filter out nan values for the comparison
+            non_nan_data = first_var_data[~np.isnan(first_var_data)]
+            assert all(non_nan_data[i] >= non_nan_data[i + 1] for i in range(len(non_nan_data) - 1))
+
 
 class TestChaining:
     """Tests for method chaining."""

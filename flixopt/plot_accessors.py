@@ -1028,13 +1028,16 @@ class PlotAccessor:
         *,
         # Data selection
         select: SelectType | None = None,
+        # Sorting
+        sort_by: str | None = None,
         # Transformation
         normalize: bool = False,
         # Visual style
         mode: Literal['line', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
-        facet_col: str | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -1047,10 +1050,14 @@ class PlotAccessor:
         Args:
             variables: Variable name(s) to plot.
             select: xarray-style selection.
+            sort_by: Variable to use for sorting order. If None, each variable
+                     is sorted independently. If specified, all variables use
+                     the sort order of this variable (useful for seeing correlations).
             normalize: If True, normalize x-axis to 0-100% of time.
             mode: Plot style - 'line' or 'area'.
             colors: Override colors.
-            facet_col: Facet dimension (ignored if not in data).
+            facet_col: Dimension for column facets (default: 'scenario').
+            facet_row: Dimension for row facets (default: 'period').
             show: Whether to display.
 
         Returns:
@@ -1060,8 +1067,9 @@ class PlotAccessor:
             >>> results.plot.duration_curve('Boiler(Q_th)|flow_rate')
             >>> results.plot.duration_curve(['CHP|on', 'Boiler|on'])
             >>> results.plot.duration_curve('demand', normalize=True)
+            >>> # Sort all by demand to see correlations
+            >>> results.plot.duration_curve(['demand', 'price', 'Boiler|on'], sort_by='demand')
         """
-
         # Normalize to list
         if isinstance(variables, str):
             variables = [variables]
@@ -1076,42 +1084,122 @@ class PlotAccessor:
         if 'time' not in ds.dims:
             raise ValueError('Duration curve requires time dimension in data')
 
-        # Sort each variable by descending value and create duration curve data
-        duration_data = {}
+        # Identify extra dimensions (scenario, period, etc.)
+        extra_dims = [d for d in ds.dims if d != 'time']
 
-        for var in ds.data_vars:
-            da = ds[var]
-            # Flatten any extra dimensions by taking mean
-            extra_dims = [d for d in da.dims if d != 'time']
-            if extra_dims:
-                da = da.mean(dim=extra_dims)
+        # Resolve facet dimensions (only keep those that exist in data)
+        actual_facet_col = facet_col if facet_col and facet_col in extra_dims else None
+        actual_facet_row = facet_row if facet_row and facet_row in extra_dims else None
 
-            # Sort descending
-            sorted_values = np.sort(da.values.flatten())[::-1]
-            n_values = len(sorted_values)
+        # Dimensions to iterate over for separate duration curves
+        facet_dims = [d for d in [actual_facet_col, actual_facet_row] if d is not None]
+        # Dimensions to average over (not time, not faceted)
+        avg_dims = [d for d in extra_dims if d not in facet_dims]
 
-            # Create duration coordinate (unitless index or percentage)
-            if normalize:
-                duration_coord = np.linspace(0, 100, n_values)
-                duration_name = 'duration_pct'
-            else:
-                duration_coord = np.arange(n_values)
-                duration_name = 'duration'
+        # Average over non-faceted dimensions
+        if avg_dims:
+            ds = ds.mean(dim=avg_dims)
 
-            duration_data[var] = xr.DataArray(
-                sorted_values,
-                dims=[duration_name],
-                coords={duration_name: duration_coord},
-            )
+        if sort_by is not None:
+            if sort_by not in ds.data_vars:
+                raise ValueError(f"sort_by variable '{sort_by}' not in variables. Available: {list(ds.data_vars)}")
 
-        # Create Dataset
-        result_ds = xr.Dataset(duration_data)
+        # Build duration curves
+        duration_name = 'duration_pct' if normalize else 'duration'
+
+        if facet_dims:
+            # Stack facet dimensions to iterate over combinations
+            result_arrays = {}
+
+            for var in ds.data_vars:
+                da = ds[var]
+
+                # Create list to collect arrays for each facet combination
+                facet_arrays = []
+                facet_coords = {dim: [] for dim in facet_dims}
+
+                # Iterate over all combinations of facet dimensions
+                for combo in da.stack(__facet__=facet_dims).__facet__.values:
+                    # Select this combination
+                    sel_dict = dict(zip(facet_dims, combo if len(facet_dims) > 1 else [combo], strict=False))
+                    da_slice = da.sel(sel_dict)
+
+                    # Get sort order
+                    if sort_by is not None:
+                        sort_da = ds[sort_by].sel(sel_dict)
+                        sort_order = np.argsort(sort_da.values.flatten())[::-1]
+                        sorted_values = da_slice.values.flatten()[sort_order]
+                    else:
+                        sorted_values = np.sort(da_slice.values.flatten())[::-1]
+
+                    facet_arrays.append(sorted_values)
+                    for i, dim in enumerate(facet_dims):
+                        coord_val = combo[i] if len(facet_dims) > 1 else combo
+                        facet_coords[dim].append(coord_val)
+
+                # Stack into array with facet dimensions
+                n_values = len(facet_arrays[0])
+                if normalize:
+                    duration_coord = np.linspace(0, 100, n_values)
+                else:
+                    duration_coord = np.arange(n_values)
+
+                # Create DataArray with proper dimensions
+                stacked = np.stack(facet_arrays, axis=0)
+                dims = ['__facet__', duration_name]
+                result_da = xr.DataArray(
+                    stacked,
+                    dims=dims,
+                    coords={duration_name: duration_coord},
+                )
+                # Unstack facet dimensions
+                facet_index = pd.MultiIndex.from_arrays(
+                    [facet_coords[d] for d in facet_dims],
+                    names=facet_dims,
+                )
+                result_da = result_da.assign_coords(__facet__=facet_index).unstack('__facet__')
+
+                result_arrays[var] = result_da
+
+            result_ds = xr.Dataset(result_arrays)
+        else:
+            # No faceting - simple case
+            duration_data = {}
+
+            # Get sort order from reference variable if specified
+            if sort_by is not None:
+                sort_order = np.argsort(ds[sort_by].values.flatten())[::-1]
+
+            for var in ds.data_vars:
+                da = ds[var]
+
+                # Sort
+                if sort_by is not None:
+                    sorted_values = da.values.flatten()[sort_order]
+                else:
+                    sorted_values = np.sort(da.values.flatten())[::-1]
+
+                n_values = len(sorted_values)
+
+                # Create duration coordinate
+                if normalize:
+                    duration_coord = np.linspace(0, 100, n_values)
+                else:
+                    duration_coord = np.arange(n_values)
+
+                duration_data[var] = xr.DataArray(
+                    sorted_values,
+                    dims=[duration_name],
+                    coords={duration_name: duration_coord},
+                )
+
+            result_ds = xr.Dataset(duration_data)
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Resolve facet
-        actual_facet_col, _, _ = _resolve_facet_animate(result_ds, facet_col, None, None)
+        # Build facet_by list for plotting
+        facet_by = facet_dims if facet_dims else None
 
         # Create figure
         fig = plotting.with_plotly(
@@ -1119,7 +1207,7 @@ class PlotAccessor:
             mode=mode,
             colors=merged_colors,
             title='Duration Curve',
-            facet_by=actual_facet_col,
+            facet_by=facet_by,
             **plotly_kwargs,
         )
 
