@@ -44,7 +44,6 @@ Existing energy system modeling frameworks as reviewed in [@HOFFMANN2024100190] 
 In addition to the need for more flexible and adaptable settings, the efficient handling of equations in a vector-based form has emerged as an important requirement, as it supports improved mathematical modeling, enhances computational performance, and facilitates better transparency and manageability of the model’s equation set.
  [@PyPSA]
 
-
 Flixopt fills this gap by enabling:
 
 * full flexibility of system construction 
