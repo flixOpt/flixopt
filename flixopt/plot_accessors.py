@@ -1076,6 +1076,10 @@ class PlotAccessor:
         if 'time' not in ds.dims:
             raise ValueError('Duration curve requires time dimension in data')
 
+        # Get hours per timestep for proper duration calculation
+        # Use mean if variable (for irregular timesteps)
+        hours_per_timestep = float(self._results.hours_per_timestep.mean().values)
+
         # Sort each variable by descending value and create duration curve data
         duration_data = {}
 
@@ -1088,13 +1092,15 @@ class PlotAccessor:
 
             # Sort descending
             sorted_values = np.sort(da.values.flatten())[::-1]
+            n_values = len(sorted_values)
 
-            # Create duration coordinate
+            # Create duration coordinate in actual hours
             if normalize:
-                duration_coord = np.linspace(0, 100, len(sorted_values))
+                duration_coord = np.linspace(0, 100, n_values)
                 duration_name = 'duration_pct'
             else:
-                duration_coord = np.arange(len(sorted_values))
+                # Cumulative hours: each point represents hours_per_timestep
+                duration_coord = np.arange(n_values) * hours_per_timestep
                 duration_name = 'duration_hours'
 
             duration_data[var] = xr.DataArray(
