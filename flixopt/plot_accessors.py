@@ -178,9 +178,21 @@ def _dataset_to_dataframe(
     Returns:
         Long-form DataFrame with columns: [dim1, dim2, ..., var_name, value_name]
     """
+    # Use a unique internal name to avoid conflicts with existing dimensions
+    internal_dim = '__stacked_var__'
+
     # Stack all variables into a single DataArray
-    stacked = ds.to_stacked_array(new_dim=var_name, sample_dims=list(ds.dims))
+    stacked = ds.to_stacked_array(new_dim=internal_dim, sample_dims=list(ds.dims))
     df = stacked.to_dataframe(name=value_name).reset_index()
+
+    # to_stacked_array creates a 'variable' coordinate - rename to desired var_name
+    if 'variable' in df.columns:
+        df = df.rename(columns={'variable': var_name})
+
+    # Drop the internal stacked dimension column if it exists
+    if internal_dim in df.columns:
+        df = df.drop(columns=[internal_dim])
+
     return df
 
 
@@ -385,31 +397,40 @@ class PlotAccessor:
         if isinstance(variables, str):
             variables = [variables]
 
-        # Get the data
+        # Get the data as Dataset
         ds = self._results.solution[variables]
 
         # Apply selection
         ds = _apply_selection(ds, select)
 
+        # Convert Dataset to DataArray with 'variable' dimension
+        variable_names = list(ds.data_vars)
+        dataarrays = [ds[var] for var in variable_names]
+        da = xr.concat(dataarrays, dim='variable')
+        da = da.assign_coords(variable=variable_names)
+
         # Resolve facet/animate
-        actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
+        actual_facet_col, _, actual_animate = _resolve_facet_animate(
+            da.to_dataset(name='value'), facet_col, None, animate_by
+        )
 
         # For multiple variables, auto-facet by variable if no facet specified
         if len(variables) > 1 and actual_facet_col is None:
             actual_facet_col = 'variable'
 
         # Reshape data for heatmap
-        reshaped_data = plotting.reshape_data_for_heatmap(ds, reshape)
+        reshaped_data = plotting.reshape_data_for_heatmap(da, reshape)
 
         # Convert to DataFrame
-        df = reshaped_data.to_dataframe().reset_index()
+        df = reshaped_data.to_dataframe(name='value').reset_index()
 
         # Create heatmap figure
         fig = plotting.heatmap_with_plotly(
             reshaped_data,
-            colorscale=colorscale,
+            colors=colorscale,
             facet_by=actual_facet_col,
             animate_by=actual_animate,
+            reshape_time=None,  # Already reshaped above
             **plotly_kwargs,
         )
 
@@ -557,16 +578,21 @@ class PlotAccessor:
         else:
             da = self._results.flow_hours(start=start, end=end, component=component)
 
-        # Convert to dataset for consistency
-        ds = da.to_dataset(dim='flow')
-
         # Apply selection
-        ds = _apply_selection(ds, select)
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
+            if valid_select:
+                da = da.sel(valid_select)
 
         # Apply aggregation
         if aggregate is not None:
-            if 'time' in ds.dims:
-                ds = getattr(ds, aggregate)(dim='time')
+            if 'time' in da.dims:
+                da = getattr(da, aggregate)(dim='time')
+
+        # Convert DataArray to Dataset for plotting (each flow as a variable)
+        # First, unstack the flow dimension into separate variables
+        flow_labels = da.coords['flow'].values.tolist()
+        ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
 
         # Resolve facet/animate
         actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
@@ -588,8 +614,8 @@ class PlotAccessor:
             **plotly_kwargs,
         )
 
-        # Convert to DataFrame with flow metadata
-        df = _dataset_to_dataframe(ds, value_name='value', var_name='flow')
+        # Convert to DataFrame
+        df = da.to_dataframe(name='value').reset_index()
 
         # Handle show
         if show is None:
