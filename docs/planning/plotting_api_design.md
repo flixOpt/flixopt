@@ -652,28 +652,53 @@ These are ignored if the dimension doesn't exist in the data.
 
 ### Include/Exclude Semantics
 
-Uses substring matching:
+Uses simple substring matching (case-sensitive):
 - `include='Boiler'` matches any flow containing 'Boiler'
 - `include=['Boiler', 'CHP']` matches flows containing 'Boiler' OR 'CHP'
 - `exclude='Grid'` removes flows containing 'Grid'
 
-Applied after `include`, so you can do:
+Applied in order: include first (if specified), then exclude:
 ```python
-include=['*Solar*', '*Wind*'], exclude=['*Curtailment*']
+include=['Solar', 'Wind'], exclude=['Curtailment']
 ```
 
 ---
 
-## Open Questions
+## Design Decisions
 
-1. **Accessor attachment**: Should `plot` be a property (lazy) or set in `__init__`?
-   - **Recommendation**: Lazy property (cached)
+1. **Accessor attachment**: Set in `__init__` (not lazy property)
+   ```python
+   class Results:
+       def __init__(self, ...):
+           ...
+           self.plot = PlotAccessor(self)
+   ```
 
-2. **Default facet/animate**: Should `facet_col='scenario'`, `animate_by='period'` be the defaults, or `None` (explicit opt-in)?
-   - **Recommendation**: Keep current defaults, they're ignored if dimension doesn't exist
+2. **Default facet/animate**: Keep defaults (`facet_col='scenario'`, `animate_by='period'`), but silently ignore if dimension doesn't exist in the data. No errors raised for missing dimensions.
 
-3. **Include/exclude semantics**: Substring match, glob, or regex?
-   - **Recommendation**: Start with substring, consider glob later
+3. **Include/exclude semantics**: Use simple substring matching (case-sensitive)
+   - `include='Boiler'` matches 'Boiler', 'Boiler_01', 'BoilerGas', 'MyBoiler'
+   - `include='Solar'` matches anything containing 'Solar'
+   - `include=['Boiler', 'CHP']` matches flows containing 'Boiler' OR 'CHP'
+   - `exclude='Grid'` removes flows containing 'Grid'
+
+   ```python
+   def _filter_flows(
+       flows: list[str],
+       include: str | list[str] | None,
+       exclude: str | list[str] | None,
+   ) -> list[str]:
+       """Filter flow names using substring matching."""
+       if include is not None:
+           patterns = [include] if isinstance(include, str) else include
+           flows = [f for f in flows if any(p in f for p in patterns)]
+
+       if exclude is not None:
+           patterns = [exclude] if isinstance(exclude, str) else exclude
+           flows = [f for f in flows if not any(p in f for p in patterns)]
+
+       return flows
+   ```
 
 ---
 
