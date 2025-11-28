@@ -98,6 +98,10 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 
 todo! Idealerweise kurz und kleines Bild dazu.
 
+## Acknowledgements
+
+Flixopt was originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the SMARTBIOGRID project (funded by the German Federal Ministry for Economic Affairs and Energy, FKZ: 03KB159B).
+
 ## todo
 * Prüfen, dass möglichst alle Literaturquellen verwendet 
 
