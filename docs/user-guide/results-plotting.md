@@ -22,7 +22,7 @@ results['Battery'].plot.storage()
 
 Every plot method returns a [`PlotResult`][flixopt.plot_accessors.PlotResult] object containing both:
 
-- **`data`**: A pandas DataFrame with the prepared data
+- **`data`**: An xarray Dataset or DataArray with the prepared data
 - **`figure`**: A Plotly Figure object
 
 This gives you full access to export data, customize the figure, or use the data for your own visualizations:
@@ -30,9 +30,10 @@ This gives you full access to export data, customize the figure, or use the data
 ```python
 result = results.plot.balance('Bus')
 
-# Access the data
+# Access the xarray data
 print(result.data)
-result.data.to_csv('balance_data.csv')
+result.data.to_dataframe()  # Convert to pandas DataFrame
+result.data.to_netcdf('balance_data.nc')  # Export as netCDF
 
 # Access and modify the figure
 result.figure.update_layout(title='Custom Title')
@@ -61,7 +62,8 @@ Available methods:
 | `.update_traces(**kwargs)` | Update traces (passes to `fig.update_traces()`) |
 | `.to_html(path)` | Save as interactive HTML |
 | `.to_image(path)` | Save as static image (png, svg, pdf) |
-| `.to_csv(path)` | Export data to CSV |
+| `.to_csv(path)` | Export data to CSV (converts xarray to DataFrame) |
+| `.to_netcdf(path)` | Export data to netCDF (native xarray format) |
 
 ## Available Plot Methods
 
@@ -320,8 +322,13 @@ result = results.plot.balance(
     show=False
 )
 
-# Export data for further analysis
-result.to_csv('electricity_balance.csv')
+# Access xarray data for further analysis
+print(result.data)  # xarray Dataset
+df = result.data.to_dataframe()  # Convert to pandas
+
+# Export data
+result.to_netcdf('electricity_balance.nc')  # Native xarray format
+result.to_csv('electricity_balance.csv')  # As CSV
 
 # Customize and display
 result.update(
@@ -355,5 +362,25 @@ plots = {
 # Export all
 for name, plot in plots.items():
     plot.to_html(f'report_{name}.html')
-    plot.to_csv(f'report_{name}.csv')
+    plot.to_netcdf(f'report_{name}.nc')  # xarray native format
+```
+
+### Working with xarray Data
+
+The `.data` attribute returns xarray objects, giving you full access to xarray's powerful data manipulation capabilities:
+
+```python
+result = results.plot.balance('Bus', show=False)
+
+# Access the xarray Dataset
+ds = result.data
+
+# Use xarray operations
+ds.mean(dim='time')  # Average over time
+ds.sel(time='2024-06')  # Select specific time
+ds.to_dataframe()  # Convert to pandas
+
+# Export options
+ds.to_netcdf('data.nc')  # Native xarray format
+ds.to_zarr('data.zarr')  # Zarr format for large datasets
 ```

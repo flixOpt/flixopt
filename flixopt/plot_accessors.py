@@ -2,12 +2,12 @@
 
 This module provides a user-friendly plotting API for optimization results.
 All plot methods return a PlotResult object containing both the prepared
-data (as a DataFrame) and the Plotly figure.
+data (as an xarray Dataset/DataArray) and the Plotly figure.
 
 Example:
     >>> results = Results.from_file('results', 'optimization')
     >>> results.plot.balance('ElectricityBus')  # Quick plot
-    >>> df = results.plot.balance('Bus').data  # Get data for export
+    >>> ds = results.plot.balance('Bus').data  # Get xarray data for export
     >>> results.plot.balance('Bus').update(title='Custom').show()  # Chain modifications
 """
 
@@ -44,17 +44,19 @@ class PlotResult:
     """Container returned by all plot methods. Holds both data and figure.
 
     Attributes:
-        data: Prepared data used for the plot. Ready for export or custom plotting.
+        data: Prepared xarray data used for the plot (Dataset or DataArray).
+              Ready for export or custom plotting.
         figure: Plotly figure object. Can be modified with update_layout(), update_traces(), etc.
 
     Example:
         >>> result = results.plot.balance('Bus')
-        >>> result.data.to_csv('balance.csv')  # Export data
+        >>> result.data.to_dataframe()  # Convert to DataFrame
+        >>> result.data.to_netcdf('balance.nc')  # Export as netCDF
         >>> result.figure.update_layout(title='Custom')  # Modify figure
         >>> result.show()  # Display
     """
 
-    data: pd.DataFrame
+    data: xr.Dataset | xr.DataArray
     figure: go.Figure
 
     def show(self) -> PlotResult:
@@ -94,8 +96,20 @@ class PlotResult:
         return self
 
     def to_csv(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Export the underlying data to CSV. Returns self for chaining."""
-        self.data.to_csv(path, **kwargs)
+        """Export the underlying data to CSV. Returns self for chaining.
+
+        Converts the xarray data to a DataFrame before exporting.
+        """
+        if isinstance(self.data, xr.DataArray):
+            df = self.data.to_dataframe()
+        else:
+            df = self.data.to_dataframe()
+        df.to_csv(path, **kwargs)
+        return self
+
+    def to_netcdf(self, path: str | Path, **kwargs: Any) -> PlotResult:
+        """Export the underlying data to netCDF. Returns self for chaining."""
+        self.data.to_netcdf(path, **kwargs)
         return self
 
 
@@ -161,39 +175,6 @@ def _merge_colors(
     if override:
         colors.update(override)
     return colors
-
-
-def _dataset_to_dataframe(
-    ds: xr.Dataset,
-    value_name: str = 'value',
-    var_name: str = 'variable',
-) -> pd.DataFrame:
-    """Convert xarray Dataset to long-form DataFrame for plotting.
-
-    Args:
-        ds: Dataset with variables to convert.
-        value_name: Name for the value column.
-        var_name: Name for the variable column.
-
-    Returns:
-        Long-form DataFrame with columns: [dim1, dim2, ..., var_name, value_name]
-    """
-    # Use a unique internal name to avoid conflicts with existing dimensions
-    internal_dim = '__stacked_var__'
-
-    # Stack all variables into a single DataArray
-    stacked = ds.to_stacked_array(new_dim=internal_dim, sample_dims=list(ds.dims))
-    df = stacked.to_dataframe(name=value_name).reset_index()
-
-    # to_stacked_array creates a 'variable' coordinate - rename to desired var_name
-    if 'variable' in df.columns:
-        df = df.rename(columns={'variable': var_name})
-
-    # Drop the internal stacked dimension column if it exists
-    if internal_dim in df.columns:
-        df = df.drop(columns=[internal_dim])
-
-    return df
 
 
 class PlotAccessor:
@@ -280,7 +261,7 @@ class PlotAccessor:
 
         if not filtered_flows:
             logger.warning(f'No flows remaining after filtering for node {node}')
-            return PlotResult(data=pd.DataFrame(), figure=go.Figure())
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         # Determine which are inputs/outputs after filtering
         inputs = [f for f in filtered_flows if f in node_results.inputs]
@@ -315,12 +296,6 @@ class PlotAccessor:
             ds, facet_col, facet_row, animate_by
         )
 
-        # Convert to DataFrame
-        df = _dataset_to_dataframe(ds, value_name='value', var_name='flow')
-
-        # Add direction column
-        df['direction'] = df['flow'].apply(lambda f: 'input' if f in inputs else 'output')
-
         # Resolve colors
         merged_colors = _merge_colors(self.colors, colors)
 
@@ -352,7 +327,7 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def heatmap(
         self,
@@ -421,9 +396,6 @@ class PlotAccessor:
         # Reshape data for heatmap
         reshaped_data = plotting.reshape_data_for_heatmap(da, reshape)
 
-        # Convert to DataFrame
-        df = reshaped_data.to_dataframe(name='value').reset_index()
-
         # Create heatmap figure
         fig = plotting.heatmap_with_plotly(
             reshaped_data,
@@ -440,7 +412,7 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=reshaped_data, figure=fig)
 
     def storage(
         self,
@@ -516,16 +488,13 @@ class PlotAccessor:
             **plotly_kwargs,
         )
 
-        # Convert to DataFrame
-        df = _dataset_to_dataframe(ds, value_name='value', var_name='variable')
-
         # Handle show
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def flows(
         self,
@@ -614,16 +583,14 @@ class PlotAccessor:
             **plotly_kwargs,
         )
 
-        # Convert to DataFrame
-        df = da.to_dataframe(name='value').reset_index()
-
         # Handle show
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        # Return the original DataArray (keeps 'flow' dimension)
+        return PlotResult(data=da, figure=fig)
 
     def compare(
         self,
@@ -668,7 +635,7 @@ class PlotAccessor:
 
         if not datasets:
             logger.warning(f'No matching variables found for {variable} in elements {elements}')
-            return PlotResult(data=pd.DataFrame(), figure=go.Figure())
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         # Merge into single dataset
         ds = xr.merge([da.to_dataset(name=name) for name, da in datasets.items()])
@@ -691,16 +658,13 @@ class PlotAccessor:
             **plotly_kwargs,
         )
 
-        # Convert to DataFrame
-        df = _dataset_to_dataframe(ds, value_name='value', var_name='element')
-
         # Handle show
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def sankey(
         self,
@@ -801,14 +765,16 @@ class PlotAccessor:
 
         fig.update_layout(title='Energy Flow Sankey', **plotly_kwargs)
 
-        # Create DataFrame
-        df = pd.DataFrame(
+        # Create Dataset with sankey link data
+        sankey_ds = xr.Dataset(
             {
-                'source': links['source'],
-                'target': links['target'],
-                'value': links['value'],
-                'flow': links['label'],
-            }
+                'value': ('link', links['value']),
+            },
+            coords={
+                'link': links['label'],
+                'source': ('link', links['source']),
+                'target': ('link', links['target']),
+            },
         )
 
         # Handle show
@@ -817,7 +783,7 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=sankey_ds, figure=fig)
 
     def effects(
         self,
@@ -873,22 +839,22 @@ class PlotAccessor:
             # Sum over time if present
             if 'time' in da.dims:
                 da = da.sum(dim='time')
-            df = da.to_dataframe().reset_index()
             x_col = 'component'
         elif by == 'flow':
             # Not directly available, use component as proxy
             if 'time' in da.dims:
                 da = da.sum(dim='time')
-            df = da.to_dataframe().reset_index()
             x_col = 'component'
         elif by == 'time':
             # Sum over components
             if 'component' in da.dims:
                 da = da.sum(dim='component')
-            df = da.to_dataframe().reset_index()
             x_col = 'time'
         else:
             raise ValueError(f"'by' must be one of 'component', 'flow', 'time', got {by!r}")
+
+        # Convert to DataFrame for plotly express (required for pie/treemap)
+        df = da.to_dataframe().reset_index()
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
@@ -938,7 +904,7 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=df, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
 
 class ElementPlotAccessor:
@@ -990,7 +956,7 @@ class ElementPlotAccessor:
 
         if not variables:
             logger.warning(f'No matching variables found for {variable} in {self._element.label}')
-            return PlotResult(data=pd.DataFrame(), figure=go.Figure())
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         return self._results.plot.heatmap(variables, **kwargs)
 

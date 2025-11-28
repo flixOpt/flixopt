@@ -125,3 +125,5 @@ if __name__ == '__main__':
 
     # Save results to file for later usage
     optimization.results.to_file()
+
+    optimization.results.plot.balance()

@@ -1,8 +1,8 @@
 """Tests for the new plot accessor API."""
 
-import pandas as pd
 import plotly.graph_objects as go
 import pytest
+import xarray as xr
 
 import flixopt as fx
 from flixopt.plot_accessors import PlotResult
@@ -24,43 +24,54 @@ class TestPlotResult:
 
     def test_plot_result_attributes(self):
         """Test that PlotResult has data and figure attributes."""
-        df = pd.DataFrame({'a': [1, 2, 3]})
+        ds = xr.Dataset({'a': ('x', [1, 2, 3])})
         fig = go.Figure()
-        result = PlotResult(data=df, figure=fig)
+        result = PlotResult(data=ds, figure=fig)
 
-        assert isinstance(result.data, pd.DataFrame)
+        assert isinstance(result.data, xr.Dataset)
         assert isinstance(result.figure, go.Figure)
 
     def test_update_returns_self(self):
         """Test that update() returns self for chaining."""
-        result = PlotResult(data=pd.DataFrame(), figure=go.Figure())
+        result = PlotResult(data=xr.Dataset(), figure=go.Figure())
         returned = result.update(title='Test')
         assert returned is result
 
     def test_update_traces_returns_self(self):
         """Test that update_traces() returns self for chaining."""
-        result = PlotResult(data=pd.DataFrame(), figure=go.Figure())
+        result = PlotResult(data=xr.Dataset(), figure=go.Figure())
         returned = result.update_traces()
         assert returned is result
 
     def test_to_csv(self, tmp_path):
         """Test that to_csv() exports data correctly."""
-        df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
-        result = PlotResult(data=df, figure=go.Figure())
+        ds = xr.Dataset({'a': ('x', [1, 2, 3]), 'b': ('x', [4, 5, 6])})
+        result = PlotResult(data=ds, figure=go.Figure())
 
         csv_path = tmp_path / 'test.csv'
-        returned = result.to_csv(csv_path, index=False)
+        returned = result.to_csv(csv_path)
 
         assert returned is result
         assert csv_path.exists()
 
+    def test_to_netcdf(self, tmp_path):
+        """Test that to_netcdf() exports data correctly."""
+        ds = xr.Dataset({'a': ('x', [1, 2, 3])})
+        result = PlotResult(data=ds, figure=go.Figure())
+
+        nc_path = tmp_path / 'test.nc'
+        returned = result.to_netcdf(nc_path)
+
+        assert returned is result
+        assert nc_path.exists()
+
         # Verify contents
-        loaded = pd.read_csv(csv_path)
-        pd.testing.assert_frame_equal(loaded, df)
+        loaded = xr.open_dataset(nc_path)
+        xr.testing.assert_equal(loaded, ds)
 
     def test_to_html(self, tmp_path):
         """Test that to_html() exports figure correctly."""
-        result = PlotResult(data=pd.DataFrame(), figure=go.Figure())
+        result = PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         html_path = tmp_path / 'test.html'
         returned = result.to_html(html_path)
@@ -76,46 +87,45 @@ class TestPlotAccessorBalance:
         """Test that balance() returns a PlotResult."""
         result = results.plot.balance('Boiler', show=False)
         assert isinstance(result, PlotResult)
-        assert isinstance(result.data, pd.DataFrame)
+        assert isinstance(result.data, xr.Dataset)
         assert isinstance(result.figure, go.Figure)
 
-    def test_balance_data_has_expected_columns(self, results):
-        """Test that balance data has expected columns."""
+    def test_balance_data_has_expected_variables(self, results):
+        """Test that balance data has expected structure."""
         result = results.plot.balance('Boiler', show=False)
-        assert 'flow' in result.data.columns
-        assert 'value' in result.data.columns
+        # Data should be an xarray Dataset with flow variables
+        assert len(result.data.data_vars) > 0
 
     def test_balance_with_include_filter(self, results):
         """Test balance with include filter."""
         result = results.plot.balance('Boiler', include='Q_th', show=False)
         assert isinstance(result, PlotResult)
-        # All flows should contain 'Q_th'
-        for flow in result.data['flow'].unique():
-            assert 'Q_th' in flow
+        # All variables should contain 'Q_th'
+        for var in result.data.data_vars:
+            assert 'Q_th' in var
 
     def test_balance_with_exclude_filter(self, results):
         """Test balance with exclude filter."""
         result = results.plot.balance('Boiler', exclude='Gas', show=False)
         assert isinstance(result, PlotResult)
-        # No flows should contain 'Gas'
-        for flow in result.data['flow'].unique():
-            assert 'Gas' not in flow
+        # No variables should contain 'Gas'
+        for var in result.data.data_vars:
+            assert 'Gas' not in var
 
     def test_balance_with_flow_hours(self, results):
         """Test balance with flow_hours unit."""
         result = results.plot.balance('Boiler', unit='flow_hours', show=False)
         assert isinstance(result, PlotResult)
-        # Flow names should contain 'flow_hours' instead of 'flow_rate'
-        flows = result.data['flow'].unique()
-        for flow in flows:
-            assert 'flow_hours' in flow or 'flow_rate' not in flow
+        # Variable names should contain 'flow_hours' instead of 'flow_rate'
+        for var in result.data.data_vars:
+            assert 'flow_hours' in var or 'flow_rate' not in var
 
     def test_balance_with_aggregation(self, results):
         """Test balance with time aggregation."""
         result = results.plot.balance('Boiler', aggregate='sum', show=False)
         assert isinstance(result, PlotResult)
         # After aggregation, time dimension should not be present
-        # (or data should be much smaller)
+        assert 'time' not in result.data.dims
 
     def test_balance_mode_options(self, results):
         """Test balance with different modes."""
@@ -137,6 +147,7 @@ class TestPlotAccessorHeatmap:
             # to skip the time reshaping for short time series
             result = results.plot.heatmap(time_vars[0], reshape=None, show=False)
             assert isinstance(result, PlotResult)
+            assert isinstance(result.data, (xr.Dataset, xr.DataArray))
 
     def test_heatmap_multiple_variables(self, results):
         """Test heatmap with multiple variables."""
@@ -162,6 +173,7 @@ class TestPlotAccessorStorage:
             storage_label = storage_comps[0].label
             result = results.plot.storage(storage_label, show=False)
             assert isinstance(result, PlotResult)
+            assert isinstance(result.data, xr.Dataset)
 
     def test_storage_raises_for_non_storage(self, results):
         """Test that storage() raises ValueError for non-storage components."""
@@ -176,6 +188,7 @@ class TestPlotAccessorFlows:
         """Test that flows() returns a PlotResult."""
         result = results.plot.flows(show=False)
         assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.DataArray)
 
     def test_flows_with_component_filter(self, results):
         """Test flows with component filter."""
@@ -198,6 +211,7 @@ class TestPlotAccessorCompare:
         if len(component_names) >= 2:
             result = results.plot.compare(component_names, variable='flow_rate', show=False)
             assert isinstance(result, PlotResult)
+            assert isinstance(result.data, xr.Dataset)
 
 
 class TestPlotAccessorSankey:
@@ -207,13 +221,14 @@ class TestPlotAccessorSankey:
         """Test that sankey() returns a PlotResult."""
         result = results.plot.sankey(show=False)
         assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.Dataset)
 
-    def test_sankey_data_has_expected_columns(self, results):
-        """Test that sankey data has expected columns."""
+    def test_sankey_data_has_expected_coords(self, results):
+        """Test that sankey data has expected coordinates."""
         result = results.plot.sankey(show=False)
-        assert 'source' in result.data.columns
-        assert 'target' in result.data.columns
-        assert 'value' in result.data.columns
+        assert 'source' in result.data.coords
+        assert 'target' in result.data.coords
+        assert 'value' in result.data.data_vars
 
 
 class TestPlotAccessorEffects:
@@ -224,6 +239,7 @@ class TestPlotAccessorEffects:
         # effects_per_component has 'temporal', 'periodic', 'total' as data vars
         result = results.plot.effects('total', show=False)
         assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.DataArray)
 
     def test_effects_by_component(self, results):
         """Test effects grouped by component."""
@@ -244,6 +260,7 @@ class TestElementPlotAccessor:
         """Test element-level balance plot."""
         result = results['Boiler'].plot.balance(show=False)
         assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.Dataset)
 
     def test_element_heatmap(self, results):
         """Test element-level heatmap plot."""
@@ -282,7 +299,7 @@ class TestChaining:
         csv_path = tmp_path / 'data.csv'
         html_path = tmp_path / 'plot.html'
 
-        result = results.plot.balance('Boiler', show=False).to_csv(csv_path, index=False).to_html(html_path)
+        result = results.plot.balance('Boiler', show=False).to_csv(csv_path).to_html(html_path)
 
         assert isinstance(result, PlotResult)
         assert csv_path.exists()
