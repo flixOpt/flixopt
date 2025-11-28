@@ -1,13 +1,13 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite it as below and consider citing the related publication."
 type: software
 title: "flixopt"
-version: 3.1.1
+version: 4.3.3
 date-released: 2025-10-20
 url: "https://github.com/flixOpt/flixopt"
 repository-code: "https://github.com/flixOpt/flixopt"
 license: MIT
-abstract: "Progressive flow system optimization in Python. Build simple models quickly, then incrementally add multi-period planning, stochastic scenarios, and custom constraints without refactoring."
+abstract: "FlixOpt (Flexible, Low-entry, Investment, X-sector OPTimization) is a comprehensive framework for modeling and optimizing energy and material flow systems in Python. It enables optimization of diverse applications including district heating networks, industrial production lines, renewable energy portfolios, and supply chain logistics. Built on modern scientific Python stack (linopy and xarray), it provides a progressive enhancement approach allowing users to start with simple models and incrementally add complexity such as multi-period investments, stochastic scenarios, and custom constraints. The framework simplifies the creation of global constraints and switching objectives through its 'effect' concept. The framework is designed for researchers and engineers in energy systems, industrial process optimization, and operations research."
 keywords:
   - optimization
   - energy systems
@@ -45,3 +45,27 @@ authors:
     email: peter.stange@tu-dresden.de
     affiliation: "Chair of Building Energy Systems and Heat Supply, TU Dresden"
     orcid: "https://orcid.org/0009-0001-6407-1495"
+identifiers:
+  - type: doi
+    value: "10.18086/eurosun.2022.04.07"
+    description: "Software-supported Investment Optimization for District Heating Supply Systems"
+  - type: url
+    value: "https://flixopt.github.io/flixopt/latest/"
+    description: "Documentation"
+  - type: url
+    value: "https://pypi.org/project/flixopt/"
+    description: "PyPI package"
+references:
+  - type: conference-paper
+    authors:
+      - family-names: Panitz
+        given-names: Felix
+      - family-names: Behrends
+        given-names: Tim
+      - family-names: Stange
+        given-names: Peter
+    title: "Software-supported Investment Optimization for District Heating Supply Systems"
+    year: 2022
+    conference:
+      name: "EuroSun 2022"
+    doi: "10.18086/eurosun.2022.04.07"
