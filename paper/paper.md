@@ -53,6 +53,7 @@ Flixopt fills this gap by enabling:
 * todo: dimensions scenario and period!
 
 ODER
+
 * allocating impacts to freely definable evaluation metrics, through *Effects*, supporting multiobjective and constrained formulations.
 * easy switch of objectives and wide flexibility of configuration of the calculation
 
@@ -73,7 +74,7 @@ Flixopt supports several calculation modes. The default mode performs full time-
 
 Flixopt introduces a freely definable system of evaluation metrics called *Effects* such as costs, emissions, primary energy demand, or any user-defined indicators. Any structural entity can contribute shares to any *Effect* and *Effects* can contribute to each other. This abstraction through *Effects* has the following advantages over a traditional rigid objective, as it generically integrates the following features:
 * Switch the objective to another *Effect* easily, once *Effects* and a flow-system are defined.
-* Include as many evaluation metrics as needed to simplify the evaluation of the solution. 
+* Include as many evaluation metrics as needed to simplify the evaluation of the solution.
   * Example: Instead of a global objective ’costs’, you could divide it into ’energy costs’, ’labor costs’, ’funding’, ’revenues’ and more, which all have a share to the ’net total’. This way it is possible to access these metrics individually after the optimization.
 * Constrain the solution space for the programming problem via additional criteria, that are not included in the objective (ϵ-constraint method [@HOFFMANN2024100190]). 
   * Example 1: Available floor space as a constraint on investment options.
