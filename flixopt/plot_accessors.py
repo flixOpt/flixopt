@@ -406,8 +406,8 @@ class PlotAccessor:
         # Convert Dataset to DataArray with 'variable' dimension
         variable_names = list(ds.data_vars)
         dataarrays = [ds[var] for var in variable_names]
-        da = xr.concat(dataarrays, dim='variable')
-        da = da.assign_coords(variable=variable_names)
+        # Use pd.Index to create a proper coordinate for the new dimension
+        da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
 
         # Resolve facet/animate
         actual_facet_col, _, actual_animate = _resolve_facet_animate(
