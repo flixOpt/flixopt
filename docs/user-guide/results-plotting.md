@@ -103,8 +103,6 @@ results['ThermalStorage'].plot.storage(mode='line')
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `component` | str | Storage component label |
-| `show_balance` | bool | Show charge/discharge flows |
-| `show_charge_state` | bool | Show state of charge |
 | `mode` | `'bar'`, `'line'`, `'area'` | Visual style |
 
 ### Heatmap
@@ -199,7 +197,7 @@ results.plot.effects('temporal', by='time')
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `effect` | str | Effect name (e.g., `'total'`, `'temporal'`, `'periodic'`) |
-| `by` | `'component'`, `'flow'`, `'time'` | Grouping dimension |
+| `by` | `'component'`, `'time'` | Grouping dimension |
 | `mode` | `'bar'`, `'pie'`, `'treemap'` | Chart type |
 
 ## Common Parameters

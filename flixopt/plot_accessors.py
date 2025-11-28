@@ -2,7 +2,7 @@
 
 This module provides a user-friendly plotting API for optimization results.
 All plot methods return a PlotResult object containing both the prepared
-data (as an xarray Dataset/DataArray) and the Plotly figure.
+data (as an xarray Dataset) and the Plotly figure.
 
 Example:
     >>> results = Results.from_file('results', 'optimization')
@@ -44,8 +44,7 @@ class PlotResult:
     """Container returned by all plot methods. Holds both data and figure.
 
     Attributes:
-        data: Prepared xarray data used for the plot (Dataset or DataArray).
-              Ready for export or custom plotting.
+        data: Prepared xarray Dataset used for the plot. Ready for export or custom plotting.
         figure: Plotly figure object. Can be modified with update_layout(), update_traces(), etc.
 
     Example:
@@ -238,13 +237,13 @@ class PlotAccessor:
             **plotly_kwargs: Passed to plotly express.
 
         Returns:
-            PlotResult with .data (DataFrame) and .figure (go.Figure).
+            PlotResult with .data (Dataset) and .figure (go.Figure).
 
         Examples:
             >>> results.plot.balance('ElectricityBus')
             >>> results.plot.balance('Bus', select={'time': slice('2024-01', '2024-03')})
             >>> results.plot.balance('Bus', include=['Boiler', 'CHP'], exclude=['Grid'])
-            >>> df = results.plot.balance('Bus').data  # Get data for export
+            >>> ds = results.plot.balance('Bus').data  # Get data for export
         """
         # Get node results
         node_results = self._results[node]
@@ -422,9 +421,6 @@ class PlotAccessor:
         *,
         # Data selection
         select: SelectType | None = None,
-        # What to show
-        show_balance: bool = True,
-        show_charge_state: bool = True,
         # Visual style
         mode: Literal['bar', 'line', 'area'] = 'area',
         colors: dict[str, str] | None = None,
@@ -437,15 +433,9 @@ class PlotAccessor:
     ) -> PlotResult:
         """Plot storage component with charge state and flow balance.
 
-        Creates a dual-axis plot showing:
-        - Charge/discharge flows (left axis, as area/bar)
-        - State of charge (right axis, as line)
-
         Args:
             component: Storage component label.
             select: xarray-style selection.
-            show_balance: Show charge/discharge flows.
-            show_charge_state: Show state of charge line.
             mode: Style for balance plot.
             colors: Override colors.
             facet_col: Facet dimension (ignored if not in data).
@@ -649,10 +639,19 @@ class PlotAccessor:
         merged_colors = _merge_colors(self.colors, colors)
 
         # Create figure
-        facet_by = 'variable' if mode == 'facet' else None
+        # For facet mode, convert Dataset to DataArray with 'element' dimension
+        if mode == 'facet':
+            # Stack variables into a single DataArray with 'element' dimension
+            da_list = [ds[var].expand_dims(element=[var]) for var in ds.data_vars]
+            stacked = xr.concat(da_list, dim='element')
+            plot_data = stacked.to_dataset(name='value')
+            facet_by = 'element'
+        else:
+            plot_data = ds
+            facet_by = None
 
         fig = plotting.with_plotly(
-            ds,
+            plot_data,
             mode='line',
             colors=merged_colors,
             title=f'Comparison: {variable}',
@@ -696,8 +695,6 @@ class PlotAccessor:
             >>> results.plot.sankey(timestep=100)
             >>> results.plot.sankey(aggregate='mean')
         """
-        import plotly.graph_objects as go
-
         # Get all flow rates
         da = self._results.flow_rates()
 
@@ -791,7 +788,7 @@ class PlotAccessor:
         self,
         effect: str = 'cost',
         *,
-        by: Literal['component', 'flow', 'time'] = 'component',
+        by: Literal['component', 'time'] = 'component',
         # Data selection
         select: SelectType | None = None,
         # Visual style
@@ -805,7 +802,7 @@ class PlotAccessor:
 
         Args:
             effect: Effect name ('cost', 'emissions', etc.).
-            by: Group by 'component', 'flow', or 'time'.
+            by: Group by 'component' or 'time'.
             select: xarray-style selection.
             mode: Chart type - 'bar', 'pie', or 'treemap'.
             colors: Override colors.
@@ -816,7 +813,7 @@ class PlotAccessor:
 
         Examples:
             >>> results.plot.effects('cost', by='component', mode='pie')
-            >>> results.plot.effects('emissions', by='time', mode='area')
+            >>> results.plot.effects('emissions', by='time')
         """
         import plotly.express as px
 
@@ -842,18 +839,13 @@ class PlotAccessor:
             if 'time' in da.dims:
                 da = da.sum(dim='time')
             x_col = 'component'
-        elif by == 'flow':
-            # Not directly available, use component as proxy
-            if 'time' in da.dims:
-                da = da.sum(dim='time')
-            x_col = 'component'
         elif by == 'time':
             # Sum over components
             if 'component' in da.dims:
                 da = da.sum(dim='component')
             x_col = 'time'
         else:
-            raise ValueError(f"'by' must be one of 'component', 'flow', 'time', got {by!r}")
+            raise ValueError(f"'by' must be one of 'component', 'time', got {by!r}")
 
         # Convert to DataFrame for plotly express (required for pie/treemap)
         df = da.to_dataframe().reset_index()
