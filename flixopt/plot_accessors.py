@@ -1129,9 +1129,8 @@ class PlotAccessor:
         )
 
         # Update axis labels
-        x_label = 'Duration [%]' if normalize else 'Duration [hours]'
+        x_label = 'Duration [%]' if normalize else 'Cumulative hours'
         fig.update_xaxes(title_text=x_label)
-        fig.update_yaxes(title_text='Value')
 
         # Handle show
         if show is None:
