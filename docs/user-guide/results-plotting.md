@@ -22,7 +22,7 @@ results['Battery'].plot.storage()
 
 Every plot method returns a [`PlotResult`][flixopt.plot_accessors.PlotResult] object containing both:
 
-- **`data`**: An xarray Dataset or DataArray with the prepared data
+- **`data`**: An xarray Dataset with the prepared data
 - **`figure`**: A Plotly Figure object
 
 This gives you full access to export data, customize the figure, or use the data for your own visualizations:

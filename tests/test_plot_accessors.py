@@ -147,7 +147,7 @@ class TestPlotAccessorHeatmap:
             # to skip the time reshaping for short time series
             result = results.plot.heatmap(time_vars[0], reshape=None, show=False)
             assert isinstance(result, PlotResult)
-            assert isinstance(result.data, (xr.Dataset, xr.DataArray))
+            assert isinstance(result.data, xr.Dataset)
 
     def test_heatmap_multiple_variables(self, results):
         """Test heatmap with multiple variables."""
@@ -188,7 +188,7 @@ class TestPlotAccessorFlows:
         """Test that flows() returns a PlotResult."""
         result = results.plot.flows(show=False)
         assert isinstance(result, PlotResult)
-        assert isinstance(result.data, xr.DataArray)
+        assert isinstance(result.data, xr.Dataset)
 
     def test_flows_with_component_filter(self, results):
         """Test flows with component filter."""
@@ -239,7 +239,7 @@ class TestPlotAccessorEffects:
         # effects_per_component has 'temporal', 'periodic', 'total' as data vars
         result = results.plot.effects('total', show=False)
         assert isinstance(result, PlotResult)
-        assert isinstance(result.data, xr.DataArray)
+        assert isinstance(result.data, xr.Dataset)
 
     def test_effects_by_component(self, results):
         """Test effects grouped by component."""

@@ -56,7 +56,7 @@ class PlotResult:
         >>> result.show()  # Display
     """
 
-    data: xr.Dataset | xr.DataArray
+    data: xr.Dataset
     figure: go.Figure
 
     def show(self) -> PlotResult:
@@ -98,13 +98,9 @@ class PlotResult:
     def to_csv(self, path: str | Path, **kwargs: Any) -> PlotResult:
         """Export the underlying data to CSV. Returns self for chaining.
 
-        Converts the xarray data to a DataFrame before exporting.
+        Converts the xarray Dataset to a DataFrame before exporting.
         """
-        if isinstance(self.data, xr.DataArray):
-            df = self.data.to_dataframe()
-        else:
-            df = self.data.to_dataframe()
-        df.to_csv(path, **kwargs)
+        self.data.to_dataframe().to_csv(path, **kwargs)
         return self
 
     def to_netcdf(self, path: str | Path, **kwargs: Any) -> PlotResult:
@@ -412,7 +408,13 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=reshaped_data, figure=fig)
+        # Convert DataArray to Dataset for consistent return type
+        if isinstance(reshaped_data, xr.DataArray):
+            reshaped_ds = reshaped_data.to_dataset(name='value')
+        else:
+            reshaped_ds = reshaped_data
+
+        return PlotResult(data=reshaped_ds, figure=fig)
 
     def storage(
         self,
@@ -589,8 +591,8 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        # Return the original DataArray (keeps 'flow' dimension)
-        return PlotResult(data=da, figure=fig)
+        # Return Dataset (ds has each flow as a variable)
+        return PlotResult(data=ds, figure=fig)
 
     def compare(
         self,
@@ -904,7 +906,8 @@ class PlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=da, figure=fig)
+        # Convert DataArray to Dataset for consistent return type
+        return PlotResult(data=da.to_dataset(name=effect), figure=fig)
 
 
 class ElementPlotAccessor:
