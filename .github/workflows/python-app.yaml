@@ -175,8 +175,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
-          token: ${{ steps.generate-token.outputs.token }}  # ← Pass token HERE!
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -196,14 +197,17 @@ jobs:
           sed -i "s/^version: .*/version: $VERSION/" CITATION.cff
           sed -i "s/^date-released: .*/date-released: $DATE/" CITATION.cff
 
-      - name: Commit CITATION.cff changes
+      - name: Commit and re-tag
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          commit_message: "Update CITATION.cff to ${{ github.ref_name }}"  # Will be "v1.2.3"
+          commit_message: "Update CITATION.cff to ${GITHUB_REF#refs/tags/v}"
           file_pattern: 'CITATION.cff'
           commit_user_name: github-actions[bot]
           commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
           commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          tagging_message: ${{ github.ref_name }}  # ← Re-create tag on new commit!
+          push_options: '--force'  # ← Force push the tag
+
       - name: Extract release notes
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
