@@ -13,6 +13,7 @@ nav:
   - User Guide:
     - Getting Started: getting-started.md
     - Core Concepts: user-guide/core-concepts.md
+    - Plotting Results: user-guide/results-plotting.md
     - Migration to v3.0.0: user-guide/migration-guide-v3.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
