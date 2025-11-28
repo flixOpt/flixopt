@@ -1104,96 +1104,55 @@ class PlotAccessor:
             if sort_by not in ds.data_vars:
                 raise ValueError(f"sort_by variable '{sort_by}' not in variables. Available: {list(ds.data_vars)}")
 
-        # Build duration curves
+        # Build duration curves using xr.apply_ufunc for clean sorting along time axis
         duration_name = 'duration_pct' if normalize else 'duration'
 
-        if facet_dims:
-            # Stack facet dimensions to iterate over combinations
-            result_arrays = {}
+        def sort_descending(arr: np.ndarray) -> np.ndarray:
+            """Sort array in descending order."""
+            return np.sort(arr)[::-1]
 
-            for var in ds.data_vars:
-                da = ds[var]
+        def apply_sort_order(arr: np.ndarray, sort_indices: np.ndarray) -> np.ndarray:
+            """Apply pre-computed sort indices to array."""
+            return arr[sort_indices]
 
-                # Create list to collect arrays for each facet combination
-                facet_arrays = []
-                facet_coords = {dim: [] for dim in facet_dims}
-
-                # Iterate over all combinations of facet dimensions
-                for combo in da.stack(__facet__=facet_dims).__facet__.values:
-                    # Select this combination
-                    sel_dict = dict(zip(facet_dims, combo if len(facet_dims) > 1 else [combo], strict=False))
-                    da_slice = da.sel(sel_dict)
-
-                    # Get sort order
-                    if sort_by is not None:
-                        sort_da = ds[sort_by].sel(sel_dict)
-                        sort_order = np.argsort(sort_da.values.flatten())[::-1]
-                        sorted_values = da_slice.values.flatten()[sort_order]
-                    else:
-                        sorted_values = np.sort(da_slice.values.flatten())[::-1]
-
-                    facet_arrays.append(sorted_values)
-                    for i, dim in enumerate(facet_dims):
-                        coord_val = combo[i] if len(facet_dims) > 1 else combo
-                        facet_coords[dim].append(coord_val)
-
-                # Stack into array with facet dimensions
-                n_values = len(facet_arrays[0])
-                if normalize:
-                    duration_coord = np.linspace(0, 100, n_values)
-                else:
-                    duration_coord = np.arange(n_values)
-
-                # Create DataArray with proper dimensions
-                stacked = np.stack(facet_arrays, axis=0)
-                dims = ['__facet__', duration_name]
-                result_da = xr.DataArray(
-                    stacked,
-                    dims=dims,
-                    coords={duration_name: duration_coord},
-                )
-                # Unstack facet dimensions
-                facet_index = pd.MultiIndex.from_arrays(
-                    [facet_coords[d] for d in facet_dims],
-                    names=facet_dims,
-                )
-                result_da = result_da.assign_coords(__facet__=facet_index).unstack('__facet__')
-
-                result_arrays[var] = result_da
-
-            result_ds = xr.Dataset(result_arrays)
+        if sort_by is not None:
+            # Compute sort indices from reference variable (descending order)
+            sort_indices = xr.apply_ufunc(
+                lambda x: np.argsort(x)[::-1],
+                ds[sort_by],
+                input_core_dims=[['time']],
+                output_core_dims=[['time']],
+                vectorize=True,
+            )
+            # Apply same sort order to all variables
+            result_ds = xr.apply_ufunc(
+                apply_sort_order,
+                ds,
+                sort_indices,
+                input_core_dims=[['time'], ['time']],
+                output_core_dims=[['time']],
+                vectorize=True,
+            )
         else:
-            # No faceting - simple case
-            duration_data = {}
+            # Sort each variable independently (descending)
+            result_ds = xr.apply_ufunc(
+                sort_descending,
+                ds,
+                input_core_dims=[['time']],
+                output_core_dims=[['time']],
+                vectorize=True,
+            )
 
-            # Get sort order from reference variable if specified
-            if sort_by is not None:
-                sort_order = np.argsort(ds[sort_by].values.flatten())[::-1]
+        # Rename time dimension to duration
+        result_ds = result_ds.rename({'time': duration_name})
 
-            for var in ds.data_vars:
-                da = ds[var]
-
-                # Sort
-                if sort_by is not None:
-                    sorted_values = da.values.flatten()[sort_order]
-                else:
-                    sorted_values = np.sort(da.values.flatten())[::-1]
-
-                n_values = len(sorted_values)
-
-                # Create duration coordinate
-                if normalize:
-                    duration_coord = np.linspace(0, 100, n_values)
-                else:
-                    duration_coord = np.arange(n_values)
-
-                duration_data[var] = xr.DataArray(
-                    sorted_values,
-                    dims=[duration_name],
-                    coords={duration_name: duration_coord},
-                )
-
-            result_ds = xr.Dataset(duration_data)
+        # Update duration coordinate
+        n_timesteps = result_ds.sizes[duration_name]
+        if normalize:
+            duration_coord = np.linspace(0, 100, n_timesteps)
+        else:
+            duration_coord = np.arange(n_timesteps)
+        result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
