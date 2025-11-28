@@ -337,9 +337,9 @@ class TestPlotAccessorDurationCurve:
         time_vars = [v for v in var_names if 'time' in results.solution[v].dims]
         if time_vars:
             result = results.plot.duration_curve(time_vars[0], show=False)
-            # Should have duration_hours dimension (not time)
+            # Should have duration dimension (not time)
             assert 'time' not in result.data.dims
-            assert 'duration_hours' in result.data.dims or 'duration_pct' in result.data.dims
+            assert 'duration' in result.data.dims or 'duration_pct' in result.data.dims
 
     def test_duration_curve_normalized(self, results):
         """Test duration curve with normalized x-axis."""
