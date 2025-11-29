@@ -784,6 +784,8 @@ class PlotAccessor:
         aggregate: Literal['sum', 'mean'] = 'sum',
         # Data selection
         select: SelectType | None = None,
+        # Visual style
+        colors: dict[str, str] | None = None,
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -799,6 +801,7 @@ class PlotAccessor:
             aggregate: How to aggregate if timestep is None ('sum' or 'mean').
             select: xarray-style selection to filter specific scenarios/periods
                 before aggregation.
+            colors: Override colors for flows/nodes.
             show: Whether to display.
 
         Returns:
@@ -875,6 +878,17 @@ class PlotAccessor:
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
+        # Merge colors from Results with any overrides
+        merged_colors = _merge_colors(self.colors, colors)
+
+        # Build node colors (try to match node name in colors)
+        node_colors = [merged_colors.get(node) for node in node_list]
+        # Only use colors if at least one node has a color, fill None with default
+        if any(node_colors):
+            node_colors = [c if c else 'lightgray' for c in node_colors]
+        else:
+            node_colors = None
+
         # Create Sankey figure
         fig = go.Figure(
             data=[
@@ -884,6 +898,7 @@ class PlotAccessor:
                         thickness=20,
                         line=dict(color='black', width=0.5),
                         label=node_list,
+                        color=node_colors,
                     ),
                     link=dict(
                         source=[node_indices[s] for s in links['source']],
