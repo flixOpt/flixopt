@@ -230,6 +230,24 @@ class TestPlotAccessorSankey:
         assert 'value' in result.data.data_vars
 
 
+class TestPlotAccessorSize:
+    """Tests for PlotAccessor.size()."""
+
+    def test_size_returns_plot_result(self, results):
+        """Test that size() returns a PlotResult."""
+        result = results.plot.size(show=False)
+        assert isinstance(result, PlotResult)
+        assert isinstance(result.data, xr.Dataset)
+
+    def test_size_with_component_filter(self, results):
+        """Test size with component filter."""
+        result = results.plot.size(component='Boiler', show=False)
+        assert isinstance(result, PlotResult)
+        # All variables should be from Boiler
+        for var in result.data.data_vars:
+            assert 'Boiler' in var
+
+
 class TestPlotAccessorEffects:
     """Tests for PlotAccessor.effects()."""
 

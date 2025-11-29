@@ -932,6 +932,97 @@ class PlotAccessor:
 
         return PlotResult(data=sankey_ds, figure=fig)
 
+    def sizes(
+        self,
+        *,
+        # Flow filtering
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
+        # Data selection
+        select: SelectType | None = None,
+        # Visual style
+        colors: dict[str, str] | None = None,
+        # Faceting
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
+        # Display
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot investment sizes (capacities) of flows.
+
+        Shows the optimized sizes as a bar chart, useful for understanding
+        investment decisions.
+
+        Args:
+            start: Filter by source node(s).
+            end: Filter by destination node(s).
+            component: Filter by parent component(s).
+            select: xarray-style selection (e.g., for scenarios).
+            colors: Override colors.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
+            show: Whether to display.
+
+        Returns:
+            PlotResult with size data.
+
+        Examples:
+            >>> results.plot.size()  # All flow sizes
+            >>> results.plot.size(component='Boiler')  # Specific component
+            >>> results.plot.size(start='ElectricityBus')  # Flows from a bus
+        """
+        import plotly.express as px
+
+        # Get sizes using existing method
+        da = self._results.sizes(start=start, end=end, component=component)
+
+        # Apply selection
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
+            if valid_select:
+                da = da.sel(valid_select)
+
+        # Convert to Dataset for consistent handling
+        flow_labels = da.coords['flow'].values.tolist()
+        ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
+
+        # Resolve facets
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
+
+        # Convert to long-form DataFrame
+        df = _dataset_to_long_df(ds)
+        if df.empty:
+            fig = go.Figure()
+        else:
+            # Merge colors
+            merged_colors = _merge_colors(self.colors, colors)
+            variables = df['variable'].unique().tolist()
+            color_map = {var: merged_colors.get(var) for var in variables}
+            color_map = {k: v for k, v in color_map.items() if v is not None} or None
+
+            fig = px.bar(
+                df,
+                x='variable',
+                y='value',
+                color='variable',
+                facet_col=actual_facet_col,
+                facet_row=actual_facet_row,
+                color_discrete_map=color_map,
+                title='Investment Sizes',
+                labels={'variable': 'Flow', 'value': 'Size'},
+                **plotly_kwargs,
+            )
+
+        # Handle show
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
     def effects(
         self,
         aspect: Literal['total', 'temporal', 'periodic'] = 'total',
