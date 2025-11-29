@@ -81,6 +81,15 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+
+## [4.3.5] - 2025-11-29
+
+**Summary**: Fix zenodo again
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
+
 ## [4.3.4] - 2025-11-27
 
 **Summary**: Fix zenodo again
