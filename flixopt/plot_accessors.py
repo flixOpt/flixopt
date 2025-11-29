@@ -207,7 +207,6 @@ class PlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         aggregate: Literal['sum', 'mean', 'max', 'min'] | None = None,
         # Visual style
-        mode: Literal['bar', 'line', 'area'] = 'bar',
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
@@ -228,7 +227,6 @@ class PlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power, kW) or 'flow_hours' (energy, kWh).
             aggregate: Aggregate over time dimension before plotting.
-            mode: Plot style - 'bar', 'line', or 'area'.
             colors: Override colors (merged with global colors).
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
@@ -299,13 +297,10 @@ class PlotAccessor:
             facet_by.append(actual_facet_row)
         facet_by = facet_by if facet_by else None
 
-        # Map mode names
-        plotly_mode = 'stacked_bar' if mode == 'bar' else mode
-
         # Create figure using existing plotting infrastructure
         fig = plotting.with_plotly(
             ds,
-            mode=plotly_mode,
+            mode='stacked_bar',
             colors=merged_colors,
             title=f'{node} ({unit})',
             facet_by=facet_by,
@@ -425,7 +420,6 @@ class PlotAccessor:
         # Data selection
         select: SelectType | None = None,
         # Visual style
-        mode: Literal['bar', 'line', 'area'] = 'bar',
         colors: dict[str, str] | None = None,
         charge_state_color: str = 'black',
         # Faceting
@@ -437,13 +431,12 @@ class PlotAccessor:
     ) -> PlotResult:
         """Plot storage component with charge state overlaid on flow balance.
 
-        Shows charging/discharging flows as bars/area and the charge state
+        Shows charging/discharging flows as stacked bars and the charge state
         as an overlaid line.
 
         Args:
             component: Storage component label.
             select: xarray-style selection.
-            mode: Style for flow balance ('bar', 'line', or 'area').
             colors: Override colors for flows.
             charge_state_color: Color for the charge state line.
             facet_col: Dimension for column facets (ignored if not in data).
@@ -481,13 +474,10 @@ class PlotAccessor:
             facet_by.append(actual_facet_row)
         facet_by = facet_by if facet_by else None
 
-        # Map mode
-        plotly_mode = 'stacked_bar' if mode == 'bar' else mode
-
-        # Create figure for flows (bars/area)
+        # Create figure for flows (stacked bars)
         fig = plotting.with_plotly(
             flows_ds,
-            mode=plotly_mode,
+            mode='stacked_bar',
             colors=merged_colors,
             title=f'{component} Storage',
             facet_by=facet_by,
@@ -536,7 +526,6 @@ class PlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         aggregate: Literal['sum', 'mean', 'max', 'min'] | None = None,
         # Visual style
-        mode: Literal['bar', 'line', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
@@ -554,7 +543,6 @@ class PlotAccessor:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             aggregate: Aggregate over time.
-            mode: Plot style.
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
@@ -604,13 +592,10 @@ class PlotAccessor:
             facet_by.append(actual_facet_row)
         facet_by = facet_by if facet_by else None
 
-        # Map mode
-        plotly_mode = 'stacked_bar' if mode == 'bar' else mode
-
         # Create figure
         fig = plotting.with_plotly(
             ds,
-            mode=plotly_mode,
+            mode='line',
             colors=merged_colors,
             title=f'Flows ({unit})',
             facet_by=facet_by,
@@ -835,7 +820,6 @@ class PlotAccessor:
         # Data selection
         select: SelectType | None = None,
         # Visual style
-        mode: Literal['bar', 'pie', 'treemap'] = 'bar',
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
@@ -852,7 +836,6 @@ class PlotAccessor:
                     If None, plots all effects.
             by: Group by 'component' or 'time'.
             select: xarray-style selection.
-            mode: Chart type - 'bar', 'pie', or 'treemap'.
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
@@ -863,7 +846,7 @@ class PlotAccessor:
 
         Examples:
             >>> results.plot.effects()  # Total of all effects by component
-            >>> results.plot.effects(effect='costs', mode='pie')  # Just costs
+            >>> results.plot.effects(effect='costs')  # Just costs
             >>> results.plot.effects(aspect='temporal', by='time')  # Over time
         """
         import plotly.express as px
@@ -965,7 +948,6 @@ class PlotAccessor:
         # Transformation
         aggregate: Literal['sum', 'mean', 'max', 'min'] | None = None,
         # Visual style
-        mode: Literal['line', 'bar', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
@@ -986,7 +968,6 @@ class PlotAccessor:
             include: Only include elements containing these substrings.
             exclude: Exclude elements containing these substrings.
             aggregate: Aggregate over time dimension.
-            mode: Plot style - 'line', 'bar', or 'area'.
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
@@ -1058,13 +1039,10 @@ class PlotAccessor:
             facet_by.append(actual_facet_row)
         facet_by = facet_by if facet_by else None
 
-        # Map mode
-        plotly_mode = 'stacked_bar' if mode == 'bar' else mode
-
         # Create figure
         fig = plotting.with_plotly(
             ds,
-            mode=plotly_mode,
+            mode='line',
             colors=merged_colors,
             title=f'{pattern} across elements',
             facet_by=facet_by,
@@ -1090,7 +1068,6 @@ class PlotAccessor:
         # Transformation
         normalize: bool = False,
         # Visual style
-        mode: Literal['line', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
@@ -1111,7 +1088,6 @@ class PlotAccessor:
                      is sorted independently. If specified, all variables use
                      the sort order of this variable (useful for seeing correlations).
             normalize: If True, normalize x-axis to 0-100% of time.
-            mode: Plot style - 'line' or 'area'.
             colors: Override colors.
             facet_col: Dimension for column facets (default: 'scenario').
             facet_row: Dimension for row facets (default: 'period').
@@ -1220,7 +1196,7 @@ class PlotAccessor:
         # Create figure
         fig = plotting.with_plotly(
             result_ds,
-            mode=mode,
+            mode='line',
             colors=merged_colors,
             title='Duration Curve',
             facet_by=facet_by,

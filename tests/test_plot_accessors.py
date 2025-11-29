@@ -127,11 +127,10 @@ class TestPlotAccessorBalance:
         # After aggregation, time dimension should not be present
         assert 'time' not in result.data.dims
 
-    def test_balance_mode_options(self, results):
-        """Test balance with different modes."""
-        for mode in ['bar', 'line', 'area']:
-            result = results.plot.balance('Boiler', mode=mode, show=False)
-            assert isinstance(result, PlotResult)
+    def test_balance_with_unit_flow_hours(self, results):
+        """Test balance with flow_hours unit."""
+        result = results.plot.balance('Boiler', unit='flow_hours', show=False)
+        assert isinstance(result, PlotResult)
 
 
 class TestPlotAccessorHeatmap:
@@ -261,11 +260,10 @@ class TestPlotAccessorEffects:
         result = results.plot.effects(by='component', show=False)
         assert isinstance(result, PlotResult)
 
-    def test_effects_mode_options(self, results):
-        """Test effects with different modes."""
-        for mode in ['bar', 'pie']:
-            result = results.plot.effects(mode=mode, show=False)
-            assert isinstance(result, PlotResult)
+    def test_effects_by_time(self, results):
+        """Test effects grouped by time."""
+        result = results.plot.effects(aspect='temporal', by='time', show=False)
+        assert isinstance(result, PlotResult)
 
 
 class TestElementPlotAccessor:
