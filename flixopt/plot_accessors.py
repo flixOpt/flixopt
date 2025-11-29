@@ -209,10 +209,9 @@ class PlotAccessor:
         # Visual style
         mode: Literal['bar', 'line', 'area'] = 'bar',
         colors: dict[str, str] | None = None,
-        # Faceting & animation
+        # Faceting
         facet_col: str | None = 'scenario',
-        facet_row: str | None = None,
-        animate_by: str | None = 'period',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -233,7 +232,6 @@ class PlotAccessor:
             colors: Override colors (merged with global colors).
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
-            animate_by: Dimension to animate over (ignored if not in data).
             show: Whether to display the plot. None uses CONFIG.Plotting.default_show.
             **plotly_kwargs: Passed to plotly express.
 
@@ -287,10 +285,8 @@ class PlotAccessor:
             if 'time' in ds.dims:
                 ds = getattr(ds, aggregate)(dim='time')
 
-        # Resolve facet/animate (ignore if dimension not present)
-        actual_facet_col, actual_facet_row, actual_animate = _resolve_facet_animate(
-            ds, facet_col, facet_row, animate_by
-        )
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
 
         # Resolve colors
         merged_colors = _merge_colors(self.colors, colors)
@@ -313,7 +309,6 @@ class PlotAccessor:
             colors=merged_colors,
             title=f'{node} ({unit})',
             facet_by=facet_by,
-            animate_by=actual_animate,
             **plotly_kwargs,
         )
 
@@ -335,9 +330,9 @@ class PlotAccessor:
         reshape: tuple[str, str] = ('D', 'h'),
         # Visual style
         colorscale: str = 'viridis',
-        # Faceting & animation
-        facet_col: str | None = None,
-        animate_by: str | None = None,
+        # Faceting
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -353,8 +348,8 @@ class PlotAccessor:
                 - ('W', 'D'): Weeks x Days
                 - ('MS', 'D'): Months x Days
             colorscale: Plotly colorscale name.
-            facet_col: Facet dimension. Use 'variable' for multi-var plots.
-            animate_by: Animation dimension.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -380,14 +375,22 @@ class PlotAccessor:
         # Use pd.Index to create a proper coordinate for the new dimension
         da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
 
-        # Resolve facet/animate
-        actual_facet_col, _, actual_animate = _resolve_facet_animate(
-            da.to_dataset(name='value'), facet_col, None, animate_by
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(
+            da.to_dataset(name='value'), facet_col, facet_row, None
         )
 
         # For multiple variables, auto-facet by variable if no facet specified
         if len(variables) > 1 and actual_facet_col is None:
             actual_facet_col = 'variable'
+
+        # Build facet_by list
+        facet_by = []
+        if actual_facet_col:
+            facet_by.append(actual_facet_col)
+        if actual_facet_row:
+            facet_by.append(actual_facet_row)
+        facet_by = facet_by if facet_by else None
 
         # Reshape data for heatmap
         reshaped_data = plotting.reshape_data_for_heatmap(da, reshape)
@@ -396,8 +399,7 @@ class PlotAccessor:
         fig = plotting.heatmap_with_plotly(
             reshaped_data,
             colors=colorscale,
-            facet_by=actual_facet_col,
-            animate_by=actual_animate,
+            facet_by=facet_by,
             reshape_time=None,  # Already reshaped above
             **plotly_kwargs,
         )
@@ -427,7 +429,7 @@ class PlotAccessor:
         colors: dict[str, str] | None = None,
         # Faceting
         facet_col: str | None = 'scenario',
-        animate_by: str | None = 'period',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -439,8 +441,8 @@ class PlotAccessor:
             select: xarray-style selection.
             mode: Style for balance plot.
             colors: Override colors.
-            facet_col: Facet dimension (ignored if not in data).
-            animate_by: Animation dimension (ignored if not in data).
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -457,27 +459,30 @@ class PlotAccessor:
         # Apply selection
         ds = _apply_selection(ds, select)
 
-        # Resolve facet/animate
-        actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by
-        facet_by = actual_facet_col if actual_facet_col else None
+        # Build facet_by list
+        facet_by = []
+        if actual_facet_col:
+            facet_by.append(actual_facet_col)
+        if actual_facet_row:
+            facet_by.append(actual_facet_row)
+        facet_by = facet_by if facet_by else None
 
         # Map mode
         plotly_mode = 'stacked_bar' if mode == 'bar' else mode
 
-        # Create figure - use plot_charge_state infrastructure if available
-        # For now, use with_plotly
+        # Create figure
         fig = plotting.with_plotly(
             ds,
             mode=plotly_mode,
             colors=merged_colors,
             title=f'{component} Storage',
             facet_by=facet_by,
-            animate_by=actual_animate,
             **plotly_kwargs,
         )
 
@@ -505,8 +510,8 @@ class PlotAccessor:
         mode: Literal['bar', 'line', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
-        facet_col: str | None = None,
-        animate_by: str | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -522,8 +527,8 @@ class PlotAccessor:
             aggregate: Aggregate over time.
             mode: Plot style.
             colors: Override colors.
-            facet_col: Facet dimension.
-            animate_by: Animation dimension.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -556,11 +561,19 @@ class PlotAccessor:
         flow_labels = da.coords['flow'].values.tolist()
         ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
 
-        # Resolve facet/animate
-        actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
+
+        # Build facet_by list
+        facet_by = []
+        if actual_facet_col:
+            facet_by.append(actual_facet_col)
+        if actual_facet_row:
+            facet_by.append(actual_facet_row)
+        facet_by = facet_by if facet_by else None
 
         # Map mode
         plotly_mode = 'stacked_bar' if mode == 'bar' else mode
@@ -571,8 +584,7 @@ class PlotAccessor:
             mode=plotly_mode,
             colors=merged_colors,
             title=f'Flows ({unit})',
-            facet_by=actual_facet_col,
-            animate_by=actual_animate,
+            facet_by=facet_by,
             **plotly_kwargs,
         )
 
@@ -796,10 +808,9 @@ class PlotAccessor:
         # Visual style
         mode: Literal['bar', 'pie', 'treemap'] = 'bar',
         colors: dict[str, str] | None = None,
-        # Faceting & animation
+        # Faceting
         facet_col: str | None = 'scenario',
-        facet_row: str | None = None,
-        animate_by: str | None = 'period',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -816,7 +827,6 @@ class PlotAccessor:
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
-            animate_by: Dimension to animate over (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -870,10 +880,8 @@ class PlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'time', got {by!r}")
 
-        # Resolve facet/animate (ignore if dimension not present)
-        actual_facet_col, actual_facet_row, actual_animate = _resolve_facet_animate(
-            da, facet_col, facet_row, animate_by
-        )
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(da, facet_col, facet_row, None)
 
         # Convert to DataFrame for plotly express (required for pie/treemap)
         df = da.to_dataframe(name='value').reset_index()
@@ -900,7 +908,6 @@ class PlotAccessor:
                 color_discrete_map=color_map if color_col else None,
                 facet_col=actual_facet_col,
                 facet_row=actual_facet_row,
-                animation_frame=actual_animate,
                 title=title,
                 **plotly_kwargs,
             )
@@ -932,8 +939,8 @@ class PlotAccessor:
         mode: Literal['line', 'bar', 'area'] = 'line',
         colors: dict[str, str] | None = None,
         # Faceting
-        facet_col: str | None = None,
-        animate_by: str | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -952,8 +959,8 @@ class PlotAccessor:
             aggregate: Aggregate over time dimension.
             mode: Plot style - 'line', 'bar', or 'area'.
             colors: Override colors.
-            facet_col: Facet dimension (ignored if not in data).
-            animate_by: Animation dimension (ignored if not in data).
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -1008,11 +1015,19 @@ class PlotAccessor:
         if aggregate is not None and 'time' in ds.dims:
             ds = getattr(ds, aggregate)(dim='time')
 
-        # Resolve facet/animate
-        actual_facet_col, _, actual_animate = _resolve_facet_animate(ds, facet_col, None, animate_by)
+        # Resolve facets (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
+
+        # Build facet_by list
+        facet_by = []
+        if actual_facet_col:
+            facet_by.append(actual_facet_col)
+        if actual_facet_row:
+            facet_by.append(actual_facet_row)
+        facet_by = facet_by if facet_by else None
 
         # Map mode
         plotly_mode = 'stacked_bar' if mode == 'bar' else mode
@@ -1023,8 +1038,7 @@ class PlotAccessor:
             mode=plotly_mode,
             colors=merged_colors,
             title=f'{pattern} across elements',
-            facet_by=actual_facet_col,
-            animate_by=actual_animate,
+            facet_by=facet_by,
             **plotly_kwargs,
         )
 
@@ -1185,7 +1199,7 @@ class PlotAccessor:
         )
 
         # Update axis labels
-        x_label = 'Duration [%]' if normalize else 'Sorted index'
+        x_label = 'Duration [%]' if normalize else 'Timesteps'
         fig.update_xaxes(title_text=x_label)
 
         # Handle show
