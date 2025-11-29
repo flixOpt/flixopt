@@ -236,20 +236,35 @@ class TestPlotAccessorEffects:
 
     def test_effects_returns_plot_result(self, results):
         """Test that effects() returns a PlotResult."""
-        # effects_per_component has 'temporal', 'periodic', 'total' as data vars
-        result = results.plot.effects('total', show=False)
+        # Default: aspect='total', all effects
+        result = results.plot.effects(show=False)
         assert isinstance(result, PlotResult)
         assert isinstance(result.data, xr.Dataset)
 
+    def test_effects_with_aspect(self, results):
+        """Test effects with different aspects."""
+        for aspect in ['total', 'temporal', 'periodic']:
+            result = results.plot.effects(aspect=aspect, show=False)
+            assert isinstance(result, PlotResult)
+
+    def test_effects_with_specific_effect(self, results):
+        """Test effects filtering to a specific effect."""
+        # Get available effects
+        effects_ds = results.effects_per_component
+        available_effects = effects_ds['total'].coords['effect'].values.tolist()
+        if available_effects:
+            result = results.plot.effects(effect=available_effects[0], show=False)
+            assert isinstance(result, PlotResult)
+
     def test_effects_by_component(self, results):
         """Test effects grouped by component."""
-        result = results.plot.effects('total', by='component', show=False)
+        result = results.plot.effects(by='component', show=False)
         assert isinstance(result, PlotResult)
 
     def test_effects_mode_options(self, results):
         """Test effects with different modes."""
         for mode in ['bar', 'pie']:
-            result = results.plot.effects('total', mode=mode, show=False)
+            result = results.plot.effects(mode=mode, show=False)
             assert isinstance(result, PlotResult)
 
 

@@ -187,16 +187,17 @@ results.plot.sankey(aggregate='mean')
 Plot cost, emissions, or other effect breakdowns:
 
 ```python
-results.plot.effects('total', by='component')
-results.plot.effects('total', mode='pie')
-results.plot.effects('temporal', by='time')
+results.plot.effects()  # Total of all effects by component
+results.plot.effects(effect='costs', mode='pie')  # Just costs as pie
+results.plot.effects(aspect='temporal', by='time')  # Temporal effects over time
 ```
 
 **Key parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `effect` | str | Effect name (e.g., `'total'`, `'temporal'`, `'periodic'`) |
+| `aspect` | `'total'`, `'temporal'`, `'periodic'` | Which aspect to plot (default: `'total'`) |
+| `effect` | str or None | Specific effect to plot (e.g., `'costs'`, `'CO2'`). If None, plots all. |
 | `by` | `'component'`, `'time'` | Grouping dimension |
 | `mode` | `'bar'`, `'pie'`, `'treemap'` | Chart type |
 

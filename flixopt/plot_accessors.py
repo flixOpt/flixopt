@@ -787,8 +787,9 @@ class PlotAccessor:
 
     def effects(
         self,
-        effect: str,
+        aspect: Literal['total', 'temporal', 'periodic'] = 'total',
         *,
+        effect: str | None = None,
         by: Literal['component', 'time'] = 'component',
         # Data selection
         select: SelectType | None = None,
@@ -802,7 +803,9 @@ class PlotAccessor:
         """Plot effect (cost, emissions, etc.) breakdown.
 
         Args:
-            effect: Effect name ('cost', 'emissions', etc.).
+            aspect: Which aspect to plot - 'total', 'temporal', or 'periodic'.
+            effect: Specific effect name to plot (e.g., 'costs', 'CO2').
+                    If None, plots all effects.
             by: Group by 'component' or 'time'.
             select: xarray-style selection.
             mode: Chart type - 'bar', 'pie', or 'treemap'.
@@ -813,20 +816,30 @@ class PlotAccessor:
             PlotResult with effect breakdown data.
 
         Examples:
-            >>> results.plot.effects('cost', by='component', mode='pie')
-            >>> results.plot.effects('emissions', by='time')
+            >>> results.plot.effects()  # Total of all effects by component
+            >>> results.plot.effects(effect='costs', mode='pie')  # Just costs
+            >>> results.plot.effects(aspect='temporal', by='time')  # Over time
         """
         import plotly.express as px
 
         # Get effects per component
         effects_ds = self._results.effects_per_component
 
-        # Select the effect
-        if effect not in effects_ds:
+        # Select the aspect (total, temporal, periodic)
+        if aspect not in effects_ds:
             available = list(effects_ds.data_vars)
-            raise ValueError(f"Effect '{effect}' not found. Available: {available}")
+            raise ValueError(f"Aspect '{aspect}' not found. Available: {available}")
 
-        da = effects_ds[effect]
+        da = effects_ds[aspect]
+
+        # Filter to specific effect if requested
+        if effect is not None:
+            if 'effect' not in da.dims:
+                raise ValueError(f"No 'effect' dimension in data for aspect '{aspect}'")
+            available_effects = da.coords['effect'].values.tolist()
+            if effect not in available_effects:
+                raise ValueError(f"Effect '{effect}' not found. Available: {available_effects}")
+            da = da.sel(effect=effect)
 
         # Apply selection
         if select:
@@ -840,54 +853,62 @@ class PlotAccessor:
             if 'time' in da.dims:
                 da = da.sum(dim='time')
             x_col = 'component'
+            color_col = 'effect' if 'effect' in da.dims else 'component'
         elif by == 'time':
             # Sum over components
             if 'component' in da.dims:
                 da = da.sum(dim='component')
             x_col = 'time'
+            color_col = 'effect' if 'effect' in da.dims else None
         else:
             raise ValueError(f"'by' must be one of 'component', 'time', got {by!r}")
 
         # Convert to DataFrame for plotly express (required for pie/treemap)
-        df = da.to_dataframe().reset_index()
+        df = da.to_dataframe(name='value').reset_index()
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
+        color_items = df[color_col].unique().tolist() if color_col and color_col in df.columns else []
         color_map = plotting.process_colors(
             merged_colors,
-            df[x_col].unique().tolist() if x_col in df.columns else [],
+            color_items,
             default_colorscale=CONFIG.Plotting.default_qualitative_colorscale,
         )
+
+        # Build title
+        effect_label = effect if effect else 'Effects'
+        title = f'{effect_label} ({aspect}) by {by}'
 
         # Create figure based on mode
         if mode == 'bar':
             fig = px.bar(
                 df,
                 x=x_col,
-                y=effect,
-                color=x_col,
-                color_discrete_map=color_map,
-                title=f'{effect.title()} by {by}',
+                y='value',
+                color=color_col,
+                color_discrete_map=color_map if color_col else None,
+                title=title,
                 **plotly_kwargs,
             )
         elif mode == 'pie':
             fig = px.pie(
                 df,
-                names=x_col,
-                values=effect,
-                color=x_col,
-                color_discrete_map=color_map,
-                title=f'{effect.title()} by {by}',
+                names=x_col if color_col is None else color_col,
+                values='value',
+                color=x_col if color_col is None else color_col,
+                color_discrete_map=color_map if color_col else None,
+                title=title,
                 **plotly_kwargs,
             )
         elif mode == 'treemap':
+            path_cols = [x_col] if color_col is None else [x_col, color_col]
             fig = px.treemap(
                 df,
-                path=[x_col],
-                values=effect,
-                color=x_col,
-                color_discrete_map=color_map,
-                title=f'{effect.title()} by {by}',
+                path=path_cols,
+                values='value',
+                color=color_col if color_col else x_col,
+                color_discrete_map=color_map if color_col else None,
+                title=title,
                 **plotly_kwargs,
             )
         else:
@@ -900,7 +921,7 @@ class PlotAccessor:
             fig.show()
 
         # Convert DataArray to Dataset for consistent return type
-        return PlotResult(data=da.to_dataset(name=effect), figure=fig)
+        return PlotResult(data=da.to_dataset(name=aspect), figure=fig)
 
     def variable(
         self,
