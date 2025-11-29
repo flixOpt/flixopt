@@ -173,6 +173,100 @@ def _merge_colors(
     return colors
 
 
+def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
+    """Convert xarray Dataset to long-form DataFrame for plotly express.
+
+    Each data variable becomes a row with its name in the 'variable' column.
+    """
+    dfs = []
+    for var in ds.data_vars:
+        df = ds[var].to_dataframe(name=value_name).reset_index()
+        df[var_name] = var
+        dfs.append(df)
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+
+def _create_stacked_bar(
+    ds: xr.Dataset,
+    colors: dict[str, str],
+    title: str,
+    facet_col: str | None,
+    facet_row: str | None,
+    **plotly_kwargs: Any,
+) -> go.Figure:
+    """Create a stacked bar chart from xarray Dataset using plotly express."""
+    import plotly.express as px
+
+    df = _dataset_to_long_df(ds)
+    if df.empty:
+        return go.Figure()
+
+    # Determine x-axis (time or first non-facet dimension)
+    x_col = 'time' if 'time' in df.columns else df.columns[0]
+
+    # Build color map from colors dict
+    variables = df['variable'].unique().tolist()
+    color_map = {var: colors.get(var, None) for var in variables}
+    # Remove None values - let plotly use defaults
+    color_map = {k: v for k, v in color_map.items() if v is not None} or None
+
+    fig = px.bar(
+        df,
+        x=x_col,
+        y='value',
+        color='variable',
+        facet_col=facet_col,
+        facet_row=facet_row,
+        color_discrete_map=color_map,
+        title=title,
+        **plotly_kwargs,
+    )
+
+    # Style as stacked bar
+    fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+    fig.update_traces(marker_line_width=0)
+
+    return fig
+
+
+def _create_line(
+    ds: xr.Dataset,
+    colors: dict[str, str],
+    title: str,
+    facet_col: str | None,
+    facet_row: str | None,
+    **plotly_kwargs: Any,
+) -> go.Figure:
+    """Create a line chart from xarray Dataset using plotly express."""
+    import plotly.express as px
+
+    df = _dataset_to_long_df(ds)
+    if df.empty:
+        return go.Figure()
+
+    # Determine x-axis (time or first dimension)
+    x_col = 'time' if 'time' in df.columns else df.columns[0]
+
+    # Build color map
+    variables = df['variable'].unique().tolist()
+    color_map = {var: colors.get(var, None) for var in variables}
+    color_map = {k: v for k, v in color_map.items() if v is not None} or None
+
+    fig = px.line(
+        df,
+        x=x_col,
+        y='value',
+        color='variable',
+        facet_col=facet_col,
+        facet_row=facet_row,
+        color_discrete_map=color_map,
+        title=title,
+        **plotly_kwargs,
+    )
+
+    return fig
+
+
 class PlotAccessor:
     """Plot accessor for Results. Access via results.plot.<method>()
 
@@ -289,21 +383,13 @@ class PlotAccessor:
         # Resolve colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by for with_plotly
-        facet_by = []
-        if actual_facet_col:
-            facet_by.append(actual_facet_col)
-        if actual_facet_row:
-            facet_by.append(actual_facet_row)
-        facet_by = facet_by if facet_by else None
-
-        # Create figure using existing plotting infrastructure
-        fig = plotting.with_plotly(
+        # Create figure
+        fig = _create_stacked_bar(
             ds,
-            mode='stacked_bar',
             colors=merged_colors,
             title=f'{node} ({unit})',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
@@ -466,31 +552,24 @@ class PlotAccessor:
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by list
-        facet_by = []
-        if actual_facet_col:
-            facet_by.append(actual_facet_col)
-        if actual_facet_row:
-            facet_by.append(actual_facet_row)
-        facet_by = facet_by if facet_by else None
-
         # Create figure for flows (stacked bars)
-        fig = plotting.with_plotly(
+        fig = _create_stacked_bar(
             flows_ds,
-            mode='stacked_bar',
             colors=merged_colors,
             title=f'{component} Storage',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
         # Create figure for charge state (line overlay)
         charge_state_ds = xr.Dataset({charge_state_var: charge_state_da})
-        charge_state_fig = plotting.with_plotly(
+        charge_state_fig = _create_line(
             charge_state_ds,
-            mode='line',
+            colors={},
             title='',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
@@ -584,21 +663,13 @@ class PlotAccessor:
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by list
-        facet_by = []
-        if actual_facet_col:
-            facet_by.append(actual_facet_col)
-        if actual_facet_row:
-            facet_by.append(actual_facet_row)
-        facet_by = facet_by if facet_by else None
-
         # Create figure
-        fig = plotting.with_plotly(
+        fig = _create_line(
             ds,
-            mode='line',
             colors=merged_colors,
             title=f'Flows ({unit})',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
@@ -1031,21 +1102,13 @@ class PlotAccessor:
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by list
-        facet_by = []
-        if actual_facet_col:
-            facet_by.append(actual_facet_col)
-        if actual_facet_row:
-            facet_by.append(actual_facet_row)
-        facet_by = facet_by if facet_by else None
-
         # Create figure
-        fig = plotting.with_plotly(
+        fig = _create_line(
             ds,
-            mode='line',
             colors=merged_colors,
             title=f'{pattern} across elements',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
@@ -1190,16 +1253,17 @@ class PlotAccessor:
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
 
-        # Build facet_by list for plotting
-        facet_by = facet_dims if facet_dims else None
+        # Extract facet dimensions
+        actual_facet_col = facet_dims[0] if len(facet_dims) > 0 else None
+        actual_facet_row = facet_dims[1] if len(facet_dims) > 1 else None
 
         # Create figure
-        fig = plotting.with_plotly(
+        fig = _create_line(
             result_ds,
-            mode='line',
             colors=merged_colors,
             title='Duration Curve',
-            facet_by=facet_by,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
             **plotly_kwargs,
         )
 
