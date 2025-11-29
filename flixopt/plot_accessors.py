@@ -178,12 +178,14 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
 
     Each data variable becomes a row with its name in the 'variable' column.
     """
-    dfs = []
-    for var in ds.data_vars:
-        df = ds[var].to_dataframe(name=value_name).reset_index()
-        df[var_name] = var
-        dfs.append(df)
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    if not ds.data_vars:
+        return pd.DataFrame()
+
+    # Convert to wide DataFrame, then melt to long form
+    df = ds.to_dataframe().reset_index()
+    coord_cols = list(ds.coords.keys())
+
+    return df.melt(id_vars=coord_cols, var_name=var_name, value_name=value_name)
 
 
 def _create_stacked_bar(
