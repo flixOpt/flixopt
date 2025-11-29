@@ -891,18 +891,22 @@ class PlotAccessor:
         effect_label = effect if effect else 'Effects'
         title = f'{effect_label} ({aspect}) by {by}'
 
-        fig = px.bar(
-            df,
-            x=x_col,
-            y='value',
-            color=color_col,
-            color_discrete_map=color_map if color_col else None,
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_animate,
-            title=title,
-            **plotly_kwargs,
-        ).update_layout(bargap=0, bargroupgap=0)
+        fig = (
+            px.bar(
+                df,
+                x=x_col,
+                y='value',
+                color=color_col,
+                color_discrete_map=color_map if color_col else None,
+                facet_col=actual_facet_col,
+                facet_row=actual_facet_row,
+                animation_frame=actual_animate,
+                title=title,
+                **plotly_kwargs,
+            )
+            .update_layout(bargap=0, bargroupgap=0)
+            .update_traces(marker_line_width=0)
+        )
 
         # Handle show
         if show is None:
