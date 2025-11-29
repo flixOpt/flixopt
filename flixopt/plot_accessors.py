@@ -425,8 +425,9 @@ class PlotAccessor:
         # Data selection
         select: SelectType | None = None,
         # Visual style
-        mode: Literal['bar', 'line', 'area'] = 'area',
+        mode: Literal['bar', 'line', 'area'] = 'bar',
         colors: dict[str, str] | None = None,
+        charge_state_color: str = 'black',
         # Faceting
         facet_col: str | None = 'scenario',
         facet_row: str | None = 'period',
@@ -434,33 +435,40 @@ class PlotAccessor:
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot storage component with charge state and flow balance.
+        """Plot storage component with charge state overlaid on flow balance.
+
+        Shows charging/discharging flows as bars/area and the charge state
+        as an overlaid line.
 
         Args:
             component: Storage component label.
             select: xarray-style selection.
-            mode: Style for balance plot.
-            colors: Override colors.
+            mode: Style for flow balance ('bar', 'line', or 'area').
+            colors: Override colors for flows.
+            charge_state_color: Color for the charge state line.
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
 
         Returns:
-            PlotResult with combined storage data.
+            PlotResult with combined storage data (flows + charge state).
         """
         comp_results = self._results[component]
 
         if not hasattr(comp_results, 'is_storage') or not comp_results.is_storage:
             raise ValueError(f'{component} is not a storage component')
 
-        # Get node balance with charge state
-        ds = comp_results.node_balance_with_charge_state()
+        # Get node balance (flows) with last timestep for proper alignment
+        flows_ds = comp_results.node_balance(with_last_timestep=True).fillna(0)
+        charge_state_var = f'{component}|charge_state'
+        charge_state_da = comp_results.charge_state
 
         # Apply selection
-        ds = _apply_selection(ds, select)
+        flows_ds = _apply_selection(flows_ds, select)
+        charge_state_da = _apply_selection(charge_state_da, select)
 
         # Resolve facets (ignore if dimension not present)
-        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(flows_ds, facet_col, facet_row, None)
 
         # Merge colors
         merged_colors = _merge_colors(self.colors, colors)
@@ -476,9 +484,9 @@ class PlotAccessor:
         # Map mode
         plotly_mode = 'stacked_bar' if mode == 'bar' else mode
 
-        # Create figure
+        # Create figure for flows (bars/area)
         fig = plotting.with_plotly(
-            ds,
+            flows_ds,
             mode=plotly_mode,
             colors=merged_colors,
             title=f'{component} Storage',
@@ -486,13 +494,34 @@ class PlotAccessor:
             **plotly_kwargs,
         )
 
+        # Create figure for charge state (line overlay)
+        charge_state_ds = xr.Dataset({charge_state_var: charge_state_da})
+        charge_state_fig = plotting.with_plotly(
+            charge_state_ds,
+            mode='line',
+            title='',
+            facet_by=facet_by,
+            **plotly_kwargs,
+        )
+
+        # Add charge state traces to the main figure
+        for trace in charge_state_fig.data:
+            trace.line.width = 2
+            trace.line.shape = 'linear'
+            trace.line.color = charge_state_color
+            fig.add_trace(trace)
+
+        # Combine data for return
+        combined_ds = flows_ds.copy()
+        combined_ds[charge_state_var] = charge_state_da
+
         # Handle show
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=combined_ds, figure=fig)
 
     def flows(
         self,
