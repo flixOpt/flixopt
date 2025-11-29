@@ -680,7 +680,7 @@ class PlotAccessor:
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot Sankey diagram of energy/material flows.
+        """Plot Sankey diagram of energy/material flow hours.
 
         Args:
             timestep: Specific timestep to show, or None for aggregation.
@@ -696,8 +696,8 @@ class PlotAccessor:
             >>> results.plot.sankey(timestep=100)
             >>> results.plot.sankey(aggregate='mean')
         """
-        # Get all flow rates
-        da = self._results.flow_rates()
+        # Get all flow hours (energy, not power - appropriate for Sankey)
+        da = self._results.flow_hours()
 
         # Apply selection
         if select:
@@ -787,7 +787,7 @@ class PlotAccessor:
 
     def effects(
         self,
-        effect: str = 'cost',
+        effect: str,
         *,
         by: Literal['component', 'time'] = 'component',
         # Data selection
