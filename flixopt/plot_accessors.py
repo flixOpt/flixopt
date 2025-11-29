@@ -177,9 +177,18 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
     """Convert xarray Dataset to long-form DataFrame for plotly express.
 
     Each data variable becomes a row with its name in the 'variable' column.
+    Handles scalar values (0-dimensional data) by creating single-row DataFrames.
     """
     if not ds.data_vars:
         return pd.DataFrame()
+
+    # Check if all data variables are scalar (0-dimensional)
+    if all(ds[var].ndim == 0 for var in ds.data_vars):
+        # Build DataFrame manually for scalar values
+        rows = []
+        for var in ds.data_vars:
+            rows.append({var_name: var, value_name: float(ds[var].values)})
+        return pd.DataFrame(rows)
 
     # Convert to wide DataFrame, then melt to long form
     df = ds.to_dataframe().reset_index()
