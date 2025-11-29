@@ -68,6 +68,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: lint
+    # Only run on main branch or when called by release workflow (not on PRs)
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v5
 
