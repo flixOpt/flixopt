@@ -796,6 +796,10 @@ class PlotAccessor:
         # Visual style
         mode: Literal['bar', 'pie', 'treemap'] = 'bar',
         colors: dict[str, str] | None = None,
+        # Faceting & animation
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = None,
+        animate_by: str | None = 'period',
         # Display
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -810,6 +814,9 @@ class PlotAccessor:
             select: xarray-style selection.
             mode: Chart type - 'bar', 'pie', or 'treemap'.
             colors: Override colors.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
+            animate_by: Dimension to animate over (ignored if not in data).
             show: Whether to display.
 
         Returns:
@@ -863,6 +870,11 @@ class PlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'time', got {by!r}")
 
+        # Resolve facet/animate (ignore if dimension not present)
+        actual_facet_col, actual_facet_row, actual_animate = _resolve_facet_animate(
+            da, facet_col, facet_row, animate_by
+        )
+
         # Convert to DataFrame for plotly express (required for pie/treemap)
         df = da.to_dataframe(name='value').reset_index()
 
@@ -879,40 +891,18 @@ class PlotAccessor:
         effect_label = effect if effect else 'Effects'
         title = f'{effect_label} ({aspect}) by {by}'
 
-        # Create figure based on mode
-        if mode == 'bar':
-            fig = px.bar(
-                df,
-                x=x_col,
-                y='value',
-                color=color_col,
-                color_discrete_map=color_map if color_col else None,
-                title=title,
-                **plotly_kwargs,
-            )
-        elif mode == 'pie':
-            fig = px.pie(
-                df,
-                names=x_col if color_col is None else color_col,
-                values='value',
-                color=x_col if color_col is None else color_col,
-                color_discrete_map=color_map if color_col else None,
-                title=title,
-                **plotly_kwargs,
-            )
-        elif mode == 'treemap':
-            path_cols = [x_col] if color_col is None else [x_col, color_col]
-            fig = px.treemap(
-                df,
-                path=path_cols,
-                values='value',
-                color=color_col if color_col else x_col,
-                color_discrete_map=color_map if color_col else None,
-                title=title,
-                **plotly_kwargs,
-            )
-        else:
-            raise ValueError(f"'mode' must be one of 'bar', 'pie', 'treemap', got {mode!r}")
+        fig = px.bar(
+            df,
+            x=x_col,
+            y='value',
+            color=color_col,
+            color_discrete_map=color_map if color_col else None,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            animation_frame=actual_animate,
+            title=title,
+            **plotly_kwargs,
+        ).update_layout(bargap=0, bargroupgap=0)
 
         # Handle show
         if show is None:
