@@ -17,6 +17,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
+from .plot_accessors import ElementPlotAccessor, PlotAccessor
 from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
@@ -296,6 +297,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self.colors: dict[str, str] = {}
 
+        # Plot accessor for new plotting API
+        self.plot = PlotAccessor(self)
+
     def _get_container_groups(self) -> dict[str, ResultsContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
@@ -409,7 +413,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         def get_all_variable_names(comp: str) -> list[str]:
             """Collect all variables from the component, including flows and flow_hours."""
             comp_object = self.components[comp]
-            var_names = [comp] + list(comp_object._variable_names)
+            var_names = [comp] + list(comp_object.variable_names)
             for flow in comp_object.flows:
                 var_names.extend([flow, f'{flow}|flow_hours'])
             return var_names
@@ -1159,10 +1163,10 @@ class _ElementResults:
     def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
         self._results = results
         self.label = label
-        self._variable_names = variables
+        self.variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._results.solution[self._variable_names]
+        self.solution = self._results.solution[self.variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1173,7 +1177,7 @@ class _ElementResults:
         """
         if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._results.model.variables[self._variable_names]
+        return self._results.model.variables[self.variable_names]
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -1251,6 +1255,9 @@ class _NodeResults(_ElementResults):
         self.inputs = inputs
         self.outputs = outputs
         self.flows = flows
+
+        # Plot accessor for new plotting API
+        self.plot = ElementPlotAccessor(self)
 
     def plot_node_balance(
         self,
@@ -1692,7 +1699,7 @@ class ComponentResults(_NodeResults):
 
     @property
     def is_storage(self) -> bool:
-        return self._charge_state in self._variable_names
+        return self._charge_state in self.variable_names
 
     @property
     def _charge_state(self) -> str:
@@ -1971,7 +1978,7 @@ class EffectResults(_ElementResults):
         Returns:
             xr.Dataset: Element shares to this effect.
         """
-        return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+        return self.solution[[name for name in self.variable_names if name.startswith(f'{element}->')]]
 
 
 class FlowResults(_ElementResults):
