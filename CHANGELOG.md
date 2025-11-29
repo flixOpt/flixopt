@@ -81,7 +81,6 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-
 ## [4.3.5] - 2025-11-29
 
 **Summary**: Fix zenodo again
