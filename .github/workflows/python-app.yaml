@@ -197,6 +197,11 @@ jobs:
           sed -i "s/^version: .*/version: $VERSION/" CITATION.cff
           sed -i "s/^date-released: .*/date-released: $DATE/" CITATION.cff
 
+      - name: Remove previous tag
+        run: |
+          git tag -d ${{ github.ref_name }}
+          git push origin --delete ${{ github.ref_name }}
+
       - name: Commit and re-tag
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
@@ -205,8 +210,7 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
           commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          tagging_message: ${{ github.ref_name }}  # ← Re-create tag on new commit!
-          push_options: '--force'  # ← Force push the tag
+          tagging_message: ${{ github.ref_name }}
 
       - name: Extract release notes
         run: |
