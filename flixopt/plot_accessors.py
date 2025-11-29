@@ -790,22 +790,40 @@ class PlotAccessor:
     ) -> PlotResult:
         """Plot Sankey diagram of energy/material flow hours.
 
+        Sankey diagrams show energy flows as a single diagram. When multiple
+        scenarios or periods are present, they are aggregated using their
+        respective weights (scenario probabilities and period durations).
+
         Args:
             timestep: Specific timestep to show, or None for aggregation.
-            aggregate: How to aggregate if timestep is None.
-            select: xarray-style selection.
+            aggregate: How to aggregate if timestep is None ('sum' or 'mean').
+            select: xarray-style selection to filter specific scenarios/periods
+                before aggregation.
             show: Whether to display.
 
         Returns:
             PlotResult with Sankey flow data.
 
         Examples:
-            >>> results.plot.sankey()
+            >>> results.plot.sankey()  # Weighted sum over all scenarios/periods
             >>> results.plot.sankey(timestep=100)
-            >>> results.plot.sankey(aggregate='mean')
+            >>> results.plot.sankey(select={'scenario': 'base'})  # Single scenario
         """
         # Get all flow hours (energy, not power - appropriate for Sankey)
         da = self._results.flow_hours()
+
+        # Apply weights before selection - this way selection automatically gets correct weighted values
+        flow_system = self._results.flow_system
+
+        # Apply period weights (duration of each period)
+        if 'period' in da.dims and flow_system.period_weights is not None:
+            da = da * flow_system.period_weights
+
+        # Apply scenario weights (normalized probabilities)
+        if 'scenario' in da.dims and flow_system.scenario_weights is not None:
+            scenario_weights = flow_system.scenario_weights
+            scenario_weights = scenario_weights / scenario_weights.sum()  # Normalize
+            da = da * scenario_weights
 
         # Apply selection
         if select:
@@ -813,7 +831,7 @@ class PlotAccessor:
             if valid_select:
                 da = da.sel(valid_select)
 
-        # Handle timestep or aggregation
+        # Handle timestep or aggregation over time
         if timestep is not None:
             if isinstance(timestep, int):
                 da = da.isel(time=timestep)
@@ -821,6 +839,12 @@ class PlotAccessor:
                 da = da.sel(time=timestep)
         elif 'time' in da.dims:
             da = getattr(da, aggregate)(dim='time')
+
+        # Sum remaining dimensions (already weighted)
+        if 'period' in da.dims:
+            da = da.sum(dim='period')
+        if 'scenario' in da.dims:
+            da = da.sum(dim='scenario')
 
         # Get flow metadata from solution attrs
         flow_attrs = self._results.solution.attrs.get('Flows', {})
