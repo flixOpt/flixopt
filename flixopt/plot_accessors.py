@@ -941,7 +941,6 @@ class PlotAccessor:
         component: str | list[str] | None = None,
         # Size filtering
         max_size: float | None = 1e6,
-        include_storages: bool = True,
         # Data selection
         select: SelectType | None = None,
         # Visual style
@@ -953,19 +952,18 @@ class PlotAccessor:
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot investment sizes (capacities) of flows and storages.
+        """Plot investment sizes (capacities) of flows.
 
         Shows the optimized sizes as a bar chart, useful for understanding
         investment decisions. By default, filters out very large sizes
         (> 1e6) which typically represent unbounded/default values.
 
         Args:
-            start: Filter flows by source node(s).
-            end: Filter flows by destination node(s).
-            component: Filter flows by parent component(s).
+            start: Filter by source node(s).
+            end: Filter by destination node(s).
+            component: Filter by parent component(s).
             max_size: Maximum size to include. Sizes above this
                 are excluded (default: 1e6). Set to None to include all.
-            include_storages: Include storage capacities (default: True).
             select: xarray-style selection (e.g., for scenarios).
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
@@ -977,7 +975,6 @@ class PlotAccessor:
 
         Examples:
             >>> results.plot.sizes()  # All sizes (excluding defaults)
-            >>> results.plot.sizes(include_storages=False)  # Only flow sizes
             >>> results.plot.sizes(max_size=None)  # Include all sizes
             >>> results.plot.sizes(component='Boiler')  # Specific component
         """
@@ -986,38 +983,21 @@ class PlotAccessor:
         # Get flow sizes using existing method
         da = self._results.sizes(start=start, end=end, component=component)
 
-        # Apply selection to flows
+        # Apply selection
         if select:
             valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
             if valid_select:
                 da = da.sel(valid_select)
 
-        # Filter out large default sizes for flows
+        # Filter out large default sizes
         if max_size is not None and da.size > 0:
-            # Keep only flows where max size across all dims is below threshold
             max_per_flow = da.max(dim=[d for d in da.dims if d != 'flow'])
             valid_flows = max_per_flow.coords['flow'].values[max_per_flow.values < max_size]
             da = da.sel(flow=valid_flows)
 
-        # Convert flow sizes to Dataset
+        # Convert to Dataset
         flow_labels = da.coords['flow'].values.tolist()
         ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
-
-        # Add storage capacities if requested
-        if include_storages:
-            for storage in self._results.storages:
-                cap_var = f'{storage.label}|capacity_in_flow_hours'
-                if cap_var in storage.solution:
-                    cap_da = storage.solution[cap_var]
-                    # Apply selection
-                    if select:
-                        valid_select = {k: v for k, v in select.items() if k in cap_da.dims or k in cap_da.coords}
-                        if valid_select:
-                            cap_da = cap_da.sel(valid_select)
-                    # Filter by max_size
-                    if max_size is not None and float(cap_da.max()) >= max_size:
-                        continue
-                    ds[cap_var] = cap_da
 
         # Resolve facets
         actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
