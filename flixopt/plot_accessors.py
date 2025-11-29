@@ -939,6 +939,8 @@ class PlotAccessor:
         start: str | list[str] | None = None,
         end: str | list[str] | None = None,
         component: str | list[str] | None = None,
+        # Size filtering
+        max_size: float | None = 1e6,
         # Data selection
         select: SelectType | None = None,
         # Visual style
@@ -953,12 +955,15 @@ class PlotAccessor:
         """Plot investment sizes (capacities) of flows.
 
         Shows the optimized sizes as a bar chart, useful for understanding
-        investment decisions.
+        investment decisions. By default, filters out very large sizes
+        (> 1e6) which typically represent unbounded/default values.
 
         Args:
             start: Filter by source node(s).
             end: Filter by destination node(s).
             component: Filter by parent component(s).
+            max_size: Maximum size to include. Flows with sizes above this
+                are excluded (default: 1e6). Set to None to include all.
             select: xarray-style selection (e.g., for scenarios).
             colors: Override colors.
             facet_col: Dimension for column facets (ignored if not in data).
@@ -969,9 +974,9 @@ class PlotAccessor:
             PlotResult with size data.
 
         Examples:
-            >>> results.plot.size()  # All flow sizes
-            >>> results.plot.size(component='Boiler')  # Specific component
-            >>> results.plot.size(start='ElectricityBus')  # Flows from a bus
+            >>> results.plot.sizes()  # All flow sizes (excluding defaults)
+            >>> results.plot.sizes(max_size=None)  # Include all sizes
+            >>> results.plot.sizes(component='Boiler')  # Specific component
         """
         import plotly.express as px
 
@@ -983,6 +988,13 @@ class PlotAccessor:
             valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
             if valid_select:
                 da = da.sel(valid_select)
+
+        # Filter out large default sizes
+        if max_size is not None:
+            # Keep only flows where max size across all dims is below threshold
+            max_per_flow = da.max(dim=[d for d in da.dims if d != 'flow'])
+            valid_flows = max_per_flow.coords['flow'].values[max_per_flow.values < max_size]
+            da = da.sel(flow=valid_flows)
 
         # Convert to Dataset for consistent handling
         flow_labels = da.coords['flow'].values.tolist()

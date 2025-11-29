@@ -230,22 +230,29 @@ class TestPlotAccessorSankey:
         assert 'value' in result.data.data_vars
 
 
-class TestPlotAccessorSize:
-    """Tests for PlotAccessor.size()."""
+class TestPlotAccessorSizes:
+    """Tests for PlotAccessor.sizes()."""
 
-    def test_size_returns_plot_result(self, results):
-        """Test that size() returns a PlotResult."""
-        result = results.plot.size(show=False)
+    def test_sizes_returns_plot_result(self, results):
+        """Test that sizes() returns a PlotResult."""
+        result = results.plot.sizes(show=False)
         assert isinstance(result, PlotResult)
         assert isinstance(result.data, xr.Dataset)
 
-    def test_size_with_component_filter(self, results):
-        """Test size with component filter."""
-        result = results.plot.size(component='Boiler', show=False)
+    def test_sizes_with_component_filter(self, results):
+        """Test sizes with component filter."""
+        result = results.plot.sizes(component='Boiler', show=False)
         assert isinstance(result, PlotResult)
         # All variables should be from Boiler
         for var in result.data.data_vars:
             assert 'Boiler' in var
+
+    def test_sizes_filters_large_values(self, results):
+        """Test that sizes filters out large default values by default."""
+        # With default max_size=1e6, large values should be filtered
+        result = results.plot.sizes(show=False)
+        for var in result.data.data_vars:
+            assert result.data[var].max() < 1e6
 
 
 class TestPlotAccessorEffects:
