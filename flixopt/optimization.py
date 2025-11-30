@@ -329,15 +329,15 @@ class Optimization:
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': bus.submodel.excess_input.solution.sum('time'),
-                        'output': bus.submodel.excess_output.solution.sum('time'),
+                        'virtual_supply': bus.submodel.virtual_supply.solution.sum('time'),
+                        'virtual_demand': bus.submodel.virtual_demand.solution.sum('time'),
                     }
                 }
                 for bus in self.flow_system.buses.values()
                 if bus.with_excess
                 and (
-                    bus.submodel.excess_input.solution.sum().item() > 1e-3
-                    or bus.submodel.excess_output.solution.sum().item() > 1e-3
+                    bus.submodel.virtual_supply.solution.sum().item() > 1e-3
+                    or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
                 )
             ],
         }

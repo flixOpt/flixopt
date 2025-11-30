@@ -37,26 +37,26 @@ class TestBusModel:
         model = create_linopy_model(flow_system)
 
         assert set(bus.submodel.variables) == {
-            'TestBus|excess_input',
-            'TestBus|excess_output',
+            'TestBus|virtual_supply',
+            'TestBus|virtual_demand',
             'WärmelastTest(Q_th_Last)|flow_rate',
             'GastarifTest(Q_Gas)|flow_rate',
         }
         assert set(bus.submodel.constraints) == {'TestBus|balance'}
 
         assert_var_equal(
-            model.variables['TestBus|excess_input'], model.add_variables(lower=0, coords=model.get_coords())
+            model.variables['TestBus|virtual_supply'], model.add_variables(lower=0, coords=model.get_coords())
         )
         assert_var_equal(
-            model.variables['TestBus|excess_output'], model.add_variables(lower=0, coords=model.get_coords())
+            model.variables['TestBus|virtual_demand'], model.add_variables(lower=0, coords=model.get_coords())
         )
 
         assert_conequal(
             model.constraints['TestBus|balance'],
             model.variables['GastarifTest(Q_Gas)|flow_rate']
             - model.variables['WärmelastTest(Q_th_Last)|flow_rate']
-            + model.variables['TestBus|excess_input']
-            - model.variables['TestBus|excess_output']
+            + model.variables['TestBus|virtual_supply']
+            - model.variables['TestBus|virtual_demand']
             == 0,
         )
 
@@ -75,8 +75,8 @@ class TestBusModel:
         assert_conequal(
             model.constraints['TestBus->Penalty(temporal)'],
             model.variables['TestBus->Penalty(temporal)']
-            == model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step
-            + model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step,
+            == model.variables['TestBus|virtual_supply'] * 1e5 * model.hours_per_step
+            + model.variables['TestBus|virtual_demand'] * 1e5 * model.hours_per_step,
         )
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
