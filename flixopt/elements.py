@@ -290,8 +290,8 @@ class Bus(Element):
             )
 
     @property
-    def with_excess(self) -> bool:
-        return False if self.imbalance_penalty_per_flow_hour is None else True
+    def allows_imbalance(self) -> bool:
+        return self.imbalance_penalty_per_flow_hour is not None
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -949,8 +949,8 @@ class BusModel(ElementModel):
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
-        # Add excess to balance and penalty if needed
-        if self.element.with_excess:
+        # Add virtual supply/demand to balance and penalty if needed
+        if self.element.allows_imbalance:
             imbalance_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
 
             self.virtual_supply = self.add_variables(

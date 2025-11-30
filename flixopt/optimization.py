@@ -334,7 +334,7 @@ class Optimization:
                     }
                 }
                 for bus in self.flow_system.buses.values()
-                if bus.with_excess
+                if bus.allows_imbalance
                 and (
                     bus.submodel.virtual_supply.solution.sum().item() > 1e-3
                     or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
