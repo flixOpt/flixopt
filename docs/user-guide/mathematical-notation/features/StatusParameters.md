@@ -54,7 +54,9 @@ Detect transitions: $s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)$
 
 === "Min Uptime"
 
-    Once on, must stay on:
+    Once on, must stay on for minimum duration:
+
+    $s^{start}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} s(j) \geq T_{up}^{min}$
 
     ```python
     fx.StatusParameters(min_uptime=8)  # 8 hours minimum
@@ -62,7 +64,9 @@ Detect transitions: $s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)$
 
 === "Min Downtime"
 
-    Once off, must stay off:
+    Once off, must stay off for minimum duration:
+
+    $s^{stop}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} (1 - s(j)) \geq T_{down}^{min}$
 
     ```python
     fx.StatusParameters(min_downtime=4)  # 4 hours cooling
@@ -72,13 +76,17 @@ Detect transitions: $s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)$
 
     Force shutdown after limit:
 
+    $\sum_{j=t-k}^{t} s(j) \leq T_{up}^{max}$
+
     ```python
     fx.StatusParameters(max_uptime=18)  # Max 18h continuous
     ```
 
 === "Total Hours"
 
-    Limit total operating hours:
+    Limit total operating hours per period:
+
+    $H^{min} \leq \sum_t s(t) \cdot \Delta t \leq H^{max}$
 
     ```python
     fx.StatusParameters(
