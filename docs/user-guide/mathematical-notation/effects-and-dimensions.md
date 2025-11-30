@@ -52,7 +52,9 @@ The model operates across three dimensions:
     The basic time resolution — always required:
 
     ```python
-    timesteps = pd.date_range('2024-01-01', periods=8760, freq='h')
+    flow_system = fx.FlowSystem(
+        timesteps=pd.date_range('2024-01-01', periods=8760, freq='h'),
+    )
     ```
 
     All variables and constraints are indexed by time. Temporal effects sum over timesteps.
@@ -62,13 +64,10 @@ The model operates across three dimensions:
     Represent uncertainty (weather, prices). Operations vary per scenario, investments are shared:
 
     ```python
-    fx.Optimization(
-        flow_system,
-        time_series_data={
-            'sunny_year': sunny_data,
-            'cloudy_year': cloudy_data,
-        },
-        scenario_weights={'sunny_year': 0.7, 'cloudy_year': 0.3},
+    flow_system = fx.FlowSystem(
+        timesteps=pd.date_range('2024-01-01', periods=8760, freq='h'),
+        scenarios=pd.Index(['sunny_year', 'cloudy_year']),
+        scenario_weights=[0.7, 0.3],
     )
     ```
 
@@ -79,8 +78,9 @@ The model operates across three dimensions:
     Sequential time blocks (years) for multi-period planning:
 
     ```python
-    fx.SegmentedTimeSeriesCollection(
-        time_series_data={'2025': data_2025, '2030': data_2030},
+    flow_system = fx.FlowSystem(
+        timesteps=pd.date_range('2024-01-01', periods=8760, freq='h'),
+        periods=pd.Index([2025, 2030]),
     )
     ```
 
