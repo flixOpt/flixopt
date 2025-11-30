@@ -215,6 +215,24 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return scenario_weights / norm
 
     @property
+    def vintage_weights(self) -> xr.DataArray:
+        """
+        Vintage weights for one-time investment costs. Default is 1 (no scaling).
+        Can be used for discounting investment costs.
+        """
+        if self.flow_system.vintages is None:
+            return xr.DataArray(1)
+
+        if self.flow_system.vintage_weights is None:
+            return xr.DataArray(
+                np.ones(self.flow_system.vintages.size, dtype=float),
+                coords={'vintage': self.flow_system.vintages},
+                dims=['vintage'],
+                name='vintage_weights',
+            )
+        return self.flow_system.vintage_weights
+
+    @property
     def objective_weights(self) -> xr.DataArray:
         """
         Objective weights of model. With optional normalization of scenario weights.
@@ -233,7 +251,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         Returns the coordinates of the model
 
         Args:
-            dims: The dimensions to include in the coordinates. If None, includes all dimensions
+            dims: The dimensions to include in the coordinates. If None, includes default dimensions
+                (time, period, scenario). To include vintage, explicitly pass it in dims.
             extra_timestep: If True, uses extra timesteps instead of regular timesteps
 
         Returns:
@@ -246,9 +265,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             raise ValueError('extra_timestep=True requires "time" to be included in dims')
 
         if dims is None:
+            # Default: use coords without vintage
             coords = dict(self.flow_system.coords)
         else:
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
+            # When dims specified, use all_coords to allow vintage selection
+            coords = {k: v for k, v in self.flow_system.all_coords.items() if k in dims}
 
         if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra

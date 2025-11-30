@@ -22,31 +22,39 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
+        # Expected variables: temporal, periodic, total (temporal + periodic)
+        # vintage only created if periods are defined
+        expected_vars = {
+            'Effect1(periodic)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',  # total = temporal + periodic
+        }
+        if flow_system.vintages is not None:
+            expected_vars.add('Effect1(vintage)')
+
         assert_sets_equal(
             set(effect.submodel.variables),
-            {
-                'Effect1(periodic)',
-                'Effect1(temporal)',
-                'Effect1(temporal)|per_timestep',
-                'Effect1',
-            },
+            expected_vars,
             msg='Incorrect variables',
         )
 
+        # Expected constraints: temporal, periodic, total
+        expected_cons = {
+            'Effect1(periodic)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',  # total = temporal + periodic
+        }
+        if flow_system.vintages is not None:
+            expected_cons.add('Effect1(vintage)')
+
         assert_sets_equal(
             set(effect.submodel.constraints),
-            {
-                'Effect1(periodic)',
-                'Effect1(temporal)',
-                'Effect1(temporal)|per_timestep',
-                'Effect1',
-            },
+            expected_cons,
             msg='Incorrect constraints',
         )
 
-        assert_var_equal(
-            model.variables['Effect1'], model.add_variables(coords=model.get_coords(['period', 'scenario']))
-        )
         assert_var_equal(
             model.variables['Effect1(periodic)'], model.add_variables(coords=model.get_coords(['period', 'scenario']))
         )
@@ -55,13 +63,15 @@ class TestEffectModel:
             model.add_variables(coords=model.get_coords(['period', 'scenario'])),
         )
         assert_var_equal(
-            model.variables['Effect1(temporal)|per_timestep'], model.add_variables(coords=model.get_coords())
+            model.variables['Effect1(temporal)|per_timestep'],
+            model.add_variables(coords=model.get_coords(['time', 'period', 'scenario'])),
         )
 
-        assert_conequal(
-            model.constraints['Effect1'],
-            model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
+        # Check total variable (temporal + periodic)
+        assert_var_equal(
+            model.variables['Effect1'], model.add_variables(coords=model.get_coords(['period', 'scenario']))
         )
+
         # In minimal/bounds tests with no contributing components, periodic totals should be zero
         assert_conequal(model.constraints['Effect1(periodic)'], model.variables['Effect1(periodic)'] == 0)
         assert_conequal(
@@ -71,6 +81,11 @@ class TestEffectModel:
         assert_conequal(
             model.constraints['Effect1(temporal)|per_timestep'],
             model.variables['Effect1(temporal)|per_timestep'] == 0,
+        )
+        # Check total constraint: total = temporal + periodic
+        assert_conequal(
+            model.constraints['Effect1'],
+            model.variables['Effect1'] == model.variables['Effect1(temporal)'] + model.variables['Effect1(periodic)'],
         )
 
     def test_bounds(self, basic_flow_system_linopy_coords, coords_config):
@@ -92,25 +107,33 @@ class TestEffectModel:
         flow_system.add_elements(effect)
         model = create_linopy_model(flow_system)
 
+        expected_vars = {
+            'Effect1(periodic)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
+        }
+        if flow_system.vintages is not None:
+            expected_vars.add('Effect1(vintage)')
+
         assert_sets_equal(
             set(effect.submodel.variables),
-            {
-                'Effect1(periodic)',
-                'Effect1(temporal)',
-                'Effect1(temporal)|per_timestep',
-                'Effect1',
-            },
+            expected_vars,
             msg='Incorrect variables',
         )
 
+        expected_cons = {
+            'Effect1(periodic)',
+            'Effect1(temporal)',
+            'Effect1(temporal)|per_timestep',
+            'Effect1',
+        }
+        if flow_system.vintages is not None:
+            expected_cons.add('Effect1(vintage)')
+
         assert_sets_equal(
             set(effect.submodel.constraints),
-            {
-                'Effect1(periodic)',
-                'Effect1(temporal)',
-                'Effect1(temporal)|per_timestep',
-                'Effect1',
-            },
+            expected_cons,
             msg='Incorrect constraints',
         )
 
@@ -174,29 +197,37 @@ class TestEffectModel:
         flow_system.add_elements(effect1, effect2, effect3)
         model = create_linopy_model(flow_system)
 
+        expected_vars = {
+            'Effect2(periodic)',
+            'Effect2(temporal)',
+            'Effect2(temporal)|per_timestep',
+            'Effect2',
+            'Effect1(periodic)->Effect2(periodic)',
+            'Effect1(temporal)->Effect2(temporal)',
+        }
+        if flow_system.vintages is not None:
+            expected_vars.add('Effect2(vintage)')
+
         assert_sets_equal(
             set(effect2.submodel.variables),
-            {
-                'Effect2(periodic)',
-                'Effect2(temporal)',
-                'Effect2(temporal)|per_timestep',
-                'Effect2',
-                'Effect1(periodic)->Effect2(periodic)',
-                'Effect1(temporal)->Effect2(temporal)',
-            },
+            expected_vars,
             msg='Incorrect variables for effect2',
         )
 
+        expected_cons = {
+            'Effect2(periodic)',
+            'Effect2(temporal)',
+            'Effect2(temporal)|per_timestep',
+            'Effect2',
+            'Effect1(periodic)->Effect2(periodic)',
+            'Effect1(temporal)->Effect2(temporal)',
+        }
+        if flow_system.vintages is not None:
+            expected_cons.add('Effect2(vintage)')
+
         assert_sets_equal(
             set(effect2.submodel.constraints),
-            {
-                'Effect2(periodic)',
-                'Effect2(temporal)',
-                'Effect2(temporal)|per_timestep',
-                'Effect2',
-                'Effect1(periodic)->Effect2(periodic)',
-                'Effect1(temporal)->Effect2(temporal)',
-            },
+            expected_cons,
             msg='Incorrect constraints for effect2',
         )
 

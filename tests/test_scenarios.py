@@ -251,12 +251,16 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     normalized_weights = scenario_weights / sum(scenario_weights)
     np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
-    # Penalty is now an effect with temporal and periodic components
-    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
-    assert_linequal(
-        model.objective.expression,
-        (model.variables['costs'] * normalized_weights).sum() + (penalty_total * normalized_weights).sum(),
+    # Objective uses temporal.total + periodic.total separately weighted
+    costs_submodel = flow_system_piecewise_conversion_scenarios.effects.objective_effect.submodel
+    penalty_submodel = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel
+    expected_obj = (
+        (costs_submodel.temporal.total * normalized_weights).sum()
+        + (costs_submodel.periodic.total * normalized_weights).sum()
+        + (penalty_submodel.temporal.total * normalized_weights).sum()
+        + (penalty_submodel.periodic.total * normalized_weights).sum()
     )
+    assert_linequal(model.objective.expression, expected_obj)
     assert np.isclose(model.objective_weights.sum().item(), 1)
 
 
@@ -274,13 +278,16 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
 
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.objective_weights.values, normalized_scenario_weights_da)
-    # Penalty is now an effect with temporal and periodic components
-    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
-    assert_linequal(
-        model.objective.expression,
-        (model.variables['costs'] * normalized_scenario_weights_da).sum()
-        + (penalty_total * normalized_scenario_weights_da).sum(),
+    # Objective uses temporal.total + periodic.total separately weighted
+    costs_submodel = flow_system_piecewise_conversion_scenarios.effects.objective_effect.submodel
+    penalty_submodel = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel
+    expected_obj = (
+        (costs_submodel.temporal.total * normalized_scenario_weights_da).sum()
+        + (costs_submodel.periodic.total * normalized_scenario_weights_da).sum()
+        + (penalty_submodel.temporal.total * normalized_scenario_weights_da).sum()
+        + (penalty_submodel.periodic.total * normalized_scenario_weights_da).sum()
     )
+    assert_linequal(model.objective.expression, expected_obj)
     assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
 
