@@ -28,7 +28,7 @@ class TestBusModel:
     def test_bus_penalty(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        bus = fx.Bus('TestBus')
+        bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=1e5)
         flow_system.add_elements(
             bus,
             fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
