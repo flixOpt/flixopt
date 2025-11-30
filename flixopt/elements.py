@@ -13,8 +13,8 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, StatusModel
-from .interface import InvestParameters, StatusParameters
+from .features import InvestmentModel, SizingModel, StatusModel
+from .interface import InvestmentParameters, InvestParameters, StatusParameters, _SizeParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
     Element,
@@ -534,7 +534,7 @@ class Flow(Element):
 
         if self.status_parameters is not None:
             self.status_parameters.transform_data(prefix)
-        if isinstance(self.size, InvestParameters):
+        if isinstance(self.size, _SizeParameters):
             self.size.transform_data(prefix)
         else:
             self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
@@ -544,7 +544,7 @@ class Flow(Element):
         if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, InvestParameters) and (
+        if not isinstance(self.size, _SizeParameters) and (
             np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
         ):  # Default Size --> Most likely by accident
             logger.warning(
@@ -685,8 +685,14 @@ class FlowModel(ElementModel):
         )
 
     def _create_investment_model(self):
+        # Use InvestmentModel only for InvestmentParameters (with lifetime/timing)
+        # Use SizingModel for SizingParameters or deprecated InvestParameters
+        if isinstance(self.element.size, InvestmentParameters):
+            model_class = InvestmentModel
+        else:
+            model_class = SizingModel
         self.add_submodels(
-            InvestmentModel(
+            model_class(
                 model=self._model,
                 label_of_element=self.label_of_element,
                 parameters=self.element.size,
@@ -744,7 +750,7 @@ class FlowModel(ElementModel):
 
     @property
     def with_investment(self) -> bool:
-        return isinstance(self.element.size, InvestParameters)
+        return isinstance(self.element.size, _SizeParameters)
 
     # Properties for clean access to variables
     @property
@@ -817,7 +823,7 @@ class FlowModel(ElementModel):
             if not self.with_investment:
                 # Basic case without investment and without Status
                 lb = lb_relative * self.element.size
-            elif self.with_investment and self.element.size.mandatory:
+            elif self.with_investment and self.element.size.mandatory.all():
                 # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 

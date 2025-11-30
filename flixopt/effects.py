@@ -22,7 +22,7 @@ from .structure import Element, ElementContainer, ElementModel, FlowSystemModel,
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
+    from .types import Effect_PS, Effect_TPS, Effect_VS, Numeric_PS, Numeric_S, Numeric_TPS, Numeric_VS, Scalar
 
 logger = logging.getLogger('flixopt')
 
@@ -55,24 +55,40 @@ class Effect(Element):
             If provided, overrides the FlowSystem's default period weights for this effect.
             Useful for effect-specific weighting (e.g., discounting for costs vs equal weights for CO2).
             If None, uses FlowSystem's default weights.
+        vintage_weights: Optional custom weights for vintages and scenarios (Numeric_VS).
+            If provided, overrides the FlowSystem's default vintage weights for this effect.
+            Useful for discounting one-time investment costs.
+            If None, uses FlowSystem's default weights (typically 1).
         share_from_temporal: Temporal cross-effect contributions.
             Maps temporal contributions from other effects to this effect.
         share_from_periodic: Periodic cross-effect contributions.
             Maps periodic contributions from other effects to this effect.
+        share_from_vintage: Vintage cross-effect contributions.
+            Maps vintage contributions from other effects to this effect.
         minimum_temporal: Minimum allowed total contribution across all timesteps (per period).
         maximum_temporal: Maximum allowed total contribution across all timesteps (per period).
         minimum_per_hour: Minimum allowed contribution per hour.
         maximum_per_hour: Maximum allowed contribution per hour.
         minimum_periodic: Minimum allowed total periodic contribution (per period).
         maximum_periodic: Maximum allowed total periodic contribution (per period).
-        minimum_total: Minimum allowed total effect (temporal + periodic combined) per period.
-        maximum_total: Maximum allowed total effect (temporal + periodic combined) per period.
-        minimum_over_periods: Minimum allowed weighted sum of total effect across ALL periods.
+        minimum_vintage: Minimum allowed total vintage contribution (per vintage).
+        maximum_vintage: Maximum allowed total vintage contribution (per vintage).
+        minimum_over_periods: Minimum allowed weighted sum of (temporal + periodic) across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
             Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
-        maximum_over_periods: Maximum allowed weighted sum of total effect across ALL periods.
+        maximum_over_periods: Maximum allowed weighted sum of (temporal + periodic) across ALL periods.
             Weighted by effect-specific weights if defined, otherwise by FlowSystem period weights.
             Requires FlowSystem to have a 'period' dimension (i.e., periods must be defined).
+        minimum_over_vintages: Minimum allowed weighted sum of vintage across ALL vintages.
+            Weighted by vintage_weights if defined, otherwise by FlowSystem vintage weights.
+            Requires FlowSystem to have a 'vintage' dimension.
+        maximum_over_vintages: Maximum allowed weighted sum of vintage across ALL vintages.
+            Weighted by vintage_weights if defined, otherwise by FlowSystem vintage weights.
+            Requires FlowSystem to have a 'vintage' dimension.
+        minimum_overall: Minimum allowed sum of over_periods + over_vintages.
+            This is the grand total across all effect categories.
+        maximum_overall: Maximum allowed sum of over_periods + over_vintages.
+            This is the grand total across all effect categories.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -192,18 +208,26 @@ class Effect(Element):
         is_standard: bool = False,
         is_objective: bool = False,
         period_weights: Numeric_PS | None = None,
+        vintage_weights: Numeric_VS | None = None,
         share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
         share_from_periodic: Effect_PS | Numeric_PS | None = None,
+        share_from_vintage: Effect_VS | Numeric_VS | None = None,
         minimum_temporal: Numeric_PS | None = None,
         maximum_temporal: Numeric_PS | None = None,
         minimum_periodic: Numeric_PS | None = None,
         maximum_periodic: Numeric_PS | None = None,
+        minimum_vintage: Numeric_VS | None = None,
+        maximum_vintage: Numeric_VS | None = None,
         minimum_per_hour: Numeric_TPS | None = None,
         maximum_per_hour: Numeric_TPS | None = None,
         minimum_total: Numeric_PS | None = None,
         maximum_total: Numeric_PS | None = None,
         minimum_over_periods: Numeric_S | None = None,
         maximum_over_periods: Numeric_S | None = None,
+        minimum_over_vintages: Numeric_S | None = None,
+        maximum_over_vintages: Numeric_S | None = None,
+        minimum_overall: Numeric_S | None = None,
+        maximum_overall: Numeric_S | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
         self.unit = unit
@@ -219,29 +243,38 @@ class Effect(Element):
 
         self.is_objective = is_objective
         self.period_weights = period_weights
+        self.vintage_weights = vintage_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
         # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
         # Default to {} when None (no shares defined).
         self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
         self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
+        self.share_from_vintage = share_from_vintage if share_from_vintage is not None else {}
 
         # Set attributes directly
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
         self.minimum_periodic = minimum_periodic
         self.maximum_periodic = maximum_periodic
+        self.minimum_vintage = minimum_vintage
+        self.maximum_vintage = maximum_vintage
         self.minimum_per_hour = minimum_per_hour
         self.maximum_per_hour = maximum_per_hour
-        self.minimum_total = minimum_total
-        self.maximum_total = maximum_total
         self.minimum_over_periods = minimum_over_periods
         self.maximum_over_periods = maximum_over_periods
+        self.minimum_over_vintages = minimum_over_vintages
+        self.maximum_over_vintages = maximum_over_vintages
+        self.minimum_overall = minimum_overall
+        self.maximum_overall = maximum_overall
+        self.minimum_total = minimum_total
+        self.maximum_total = maximum_total
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
         self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
         self.maximum_per_hour = self._fit_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
 
+        # Cross-effect shares
         self.share_from_temporal = self._fit_effect_coords(
             prefix=None,
             effect_values=self.share_from_temporal,
@@ -254,33 +287,67 @@ class Effect(Element):
             suffix=f'(periodic)->{prefix}(periodic)',
             dims=['period', 'scenario'],
         )
+        self.share_from_vintage = self._fit_effect_coords(
+            prefix=None,
+            effect_values=self.share_from_vintage,
+            suffix=f'(vintage)->{prefix}(vintage)',
+            dims=['vintage', 'scenario'],
+        )
 
+        # Temporal bounds
         self.minimum_temporal = self._fit_coords(
             f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
         self.maximum_temporal = self._fit_coords(
             f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
+
+        # Periodic bounds
         self.minimum_periodic = self._fit_coords(
             f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
         self.maximum_periodic = self._fit_coords(
             f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
+
+        # Total bounds (temporal + periodic per period)
         self.minimum_total = self._fit_coords(
             f'{prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
         )
         self.maximum_total = self._fit_coords(
             f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
+
+        # Vintage bounds
+        self.minimum_vintage = self._fit_coords(
+            f'{prefix}|minimum_vintage', self.minimum_vintage, dims=['vintage', 'scenario']
+        )
+        self.maximum_vintage = self._fit_coords(
+            f'{prefix}|maximum_vintage', self.maximum_vintage, dims=['vintage', 'scenario']
+        )
+
+        # Aggregated bounds
         self.minimum_over_periods = self._fit_coords(
             f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
         )
         self.maximum_over_periods = self._fit_coords(
             f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
+        self.minimum_over_vintages = self._fit_coords(
+            f'{prefix}|minimum_over_vintages', self.minimum_over_vintages, dims=['scenario']
+        )
+        self.maximum_over_vintages = self._fit_coords(
+            f'{prefix}|maximum_over_vintages', self.maximum_over_vintages, dims=['scenario']
+        )
+        self.minimum_overall = self._fit_coords(f'{prefix}|minimum_overall', self.minimum_overall, dims=['scenario'])
+        self.maximum_overall = self._fit_coords(f'{prefix}|maximum_overall', self.maximum_overall, dims=['scenario'])
+
+        # Weights
         self.period_weights = self._fit_coords(
             f'{prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
+        )
+        self.vintage_weights = self._fit_coords(
+            f'{prefix}|vintage_weights', self.vintage_weights, dims=['vintage', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -299,13 +366,37 @@ class Effect(Element):
                 f'the FlowSystem, or remove these constraints.'
             )
 
+        # Check that minimum_over_vintages and maximum_over_vintages require a vintage dimension
+        if (
+            self.minimum_over_vintages is not None or self.maximum_over_vintages is not None
+        ) and self.flow_system.vintages is None:
+            raise PlausibilityError(
+                f"Effect '{self.label}': minimum_over_vintages and maximum_over_vintages require "
+                f"the FlowSystem to have a 'vintage' dimension. Please define periods when creating "
+                f'the FlowSystem (vintages are derived from periods), or remove these constraints.'
+            )
+
+        # Check that minimum_overall and maximum_overall require both dimensions
+        if (self.minimum_overall is not None or self.maximum_overall is not None) and self.flow_system.periods is None:
+            raise PlausibilityError(
+                f"Effect '{self.label}': minimum_overall and maximum_overall require "
+                f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
+                f'the FlowSystem, or remove these constraints.'
+            )
+
 
 class EffectModel(ElementModel):
     """Mathematical model implementation for Effects.
 
     Creates optimization variables and constraints for effect aggregation,
-    including periodic and temporal tracking, cross-effect contributions,
+    including temporal, periodic, and vintage tracking, cross-effect contributions,
     and effect bounds.
+
+    The three effect categories have different dimensions and are only combined
+    in the objective function after proper weighting:
+    - temporal: (time, period, scenario) - operational costs over time
+    - periodic: (period, scenario) - recurring costs per period
+    - vintage: (vintage, scenario) - one-time investment costs
 
     Mathematical Formulation:
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
@@ -336,23 +427,30 @@ class EffectModel(ElementModel):
             return default_weights
         return self.element._fit_coords(name='period_weights', data=1, dims=['period'])
 
+    @property
+    def vintage_weights(self) -> xr.DataArray:
+        """
+        Get vintage weights for this effect.
+
+        Returns effect-specific weights if defined, otherwise falls back to FlowSystem vintage weights.
+        Default vintage weights are 1 (one-time costs not scaled by period duration).
+
+        Returns:
+            Weights with vintage dimensions (if applicable)
+        """
+        effect_weights = self.element.vintage_weights
+        default_weights = self.element._flow_system.vintage_weights
+        if effect_weights is not None:  # Use effect-specific weights
+            return effect_weights
+        elif default_weights is not None:  # Fall back to FlowSystem weights
+            return default_weights
+        return self.element._fit_coords(name='vintage_weights', data=1, dims=['vintage'])
+
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        self.total: linopy.Variable | None = None
-        self.periodic: ShareAllocationModel = self.add_submodels(
-            ShareAllocationModel(
-                model=self._model,
-                dims=('period', 'scenario'),
-                label_of_element=self.label_of_element,
-                label_of_model=f'{self.label_of_model}(periodic)',
-                total_max=self.element.maximum_periodic,
-                total_min=self.element.minimum_periodic,
-            ),
-            short_name='periodic',
-        )
-
+        # Temporal effects: operational costs over time
         self.temporal: ShareAllocationModel = self.add_submodels(
             ShareAllocationModel(
                 model=self._model,
@@ -367,21 +465,79 @@ class EffectModel(ElementModel):
             short_name='temporal',
         )
 
+        # Periodic effects: recurring costs per period
+        self.periodic: ShareAllocationModel = self.add_submodels(
+            ShareAllocationModel(
+                model=self._model,
+                dims=('period', 'scenario'),
+                label_of_element=self.label_of_element,
+                label_of_model=f'{self.label_of_model}(periodic)',
+                total_max=self.element.maximum_periodic,
+                total_min=self.element.minimum_periodic,
+            ),
+            short_name='periodic',
+        )
+
+        # Vintage effects: one-time investment costs
+        # Only create if FlowSystem has vintages defined
+        self.vintage: ShareAllocationModel | None = None
+        if self._model.flow_system.vintages is not None:
+            self.vintage = self.add_submodels(
+                ShareAllocationModel(
+                    model=self._model,
+                    dims=('vintage', 'scenario'),
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_model}(vintage)',
+                    total_max=self.element.maximum_vintage,
+                    total_min=self.element.minimum_vintage,
+                ),
+                short_name='vintage',
+            )
+
+        # NOTE: Vintage has a different dimension than temporal/periodic, so we cannot have a
+        # unified 'total' that includes all three. However, we keep total = temporal + periodic
+        # for backwards compatibility and per-period constraints.
+
+        # Add total variable and constraint for temporal + periodic (same period dimension)
+        self._add_total_constraint()
+
+        # Add weighted sum over all periods constraint for temporal + periodic
+        self._add_over_periods_constraints()
+
+        # Add weighted sum over all vintages constraint
+        self._add_over_vintages_constraints()
+
+        # Add overall constraint (over_periods + over_vintages)
+        self._add_overall_constraints()
+
+    def _add_total_constraint(self):
+        """Add total = temporal + periodic constraint (per period, does not include vintage)."""
+        # Only create if bounds are specified or for backwards compatibility tracking
+        # For now, always create to maintain backwards compatibility
+        lower = self.element.minimum_total if self.element.minimum_total is not None else -np.inf
+        upper = self.element.maximum_total if self.element.maximum_total is not None else np.inf
+
         self.total = self.add_variables(
-            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
+            lower=lower,
+            upper=upper,
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
         )
 
         self.add_constraints(
-            self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
+            self.total == self.temporal.total + self.periodic.total,
+            name=self.label_full,
+            short_name='total',
         )
 
-        # Add weighted sum over all periods constraint if minimum_over_periods or maximum_over_periods is defined
+    def _add_over_periods_constraints(self):
+        """Add constraints for weighted sum of temporal + periodic over all periods."""
         if self.element.minimum_over_periods is not None or self.element.maximum_over_periods is not None:
+            # Sum temporal and periodic (they share the same period dimension)
+            period_total = self.temporal.total + self.periodic.total
+
             # Calculate weighted sum over all periods
-            weighted_total = (self.total * self.period_weights).sum('period')
+            weighted_total = (period_total * self.period_weights).sum('period')
 
             # Create tracking variable for the weighted sum
             self.total_over_periods = self.add_variables(
@@ -392,6 +548,51 @@ class EffectModel(ElementModel):
             )
 
             self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')
+
+    def _add_over_vintages_constraints(self):
+        """Add constraints for weighted sum of vintage over all vintages."""
+        if self.vintage is None:
+            return
+
+        if self.element.minimum_over_vintages is not None or self.element.maximum_over_vintages is not None:
+            # Calculate weighted sum over all vintages
+            weighted_total = (self.vintage.total * self.vintage_weights).sum('vintage')
+
+            # Create tracking variable for the weighted sum
+            self.total_over_vintages = self.add_variables(
+                lower=self.element.minimum_over_vintages if self.element.minimum_over_vintages is not None else -np.inf,
+                upper=self.element.maximum_over_vintages if self.element.maximum_over_vintages is not None else np.inf,
+                coords=self._model.get_coords(['scenario']),
+                short_name='total_over_vintages',
+            )
+
+            self.add_constraints(self.total_over_vintages == weighted_total, short_name='total_over_vintages')
+
+    def _add_overall_constraints(self):
+        """Add constraints for overall sum (over_periods + over_vintages)."""
+        if self.element.minimum_overall is None and self.element.maximum_overall is None:
+            return
+
+        # Calculate period contribution (temporal + periodic weighted sum)
+        period_total = self.temporal.total + self.periodic.total
+        weighted_periods = (period_total * self.period_weights).sum('period')
+
+        # Calculate vintage contribution (if exists)
+        if self.vintage is not None:
+            weighted_vintages = (self.vintage.total * self.vintage_weights).sum('vintage')
+            overall_total = weighted_periods + weighted_vintages
+        else:
+            overall_total = weighted_periods
+
+        # Create tracking variable for overall
+        self.total_overall = self.add_variables(
+            lower=self.element.minimum_overall if self.element.minimum_overall is not None else -np.inf,
+            upper=self.element.maximum_overall if self.element.maximum_overall is not None else np.inf,
+            coords=self._model.get_coords(['scenario']),
+            short_name='total_overall',
+        )
+
+        self.add_constraints(self.total_overall == overall_total, short_name='total_overall')
 
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
@@ -643,7 +844,7 @@ class EffectCollectionModel(Submodel):
         self,
         name: str,
         expressions: EffectExpr,
-        target: Literal['temporal', 'periodic'],
+        target: Literal['temporal', 'periodic', 'vintage'],
     ) -> None:
         for effect, expression in expressions.items():
             if target == 'temporal':
@@ -658,8 +859,19 @@ class EffectCollectionModel(Submodel):
                     expression,
                     dims=('period', 'scenario'),
                 )
+            elif target == 'vintage':
+                if self.effects[effect].submodel.vintage is None:
+                    raise ValueError(
+                        f"Cannot add vintage share to effect '{effect}': "
+                        f'FlowSystem has no vintage dimension (periods not defined).'
+                    )
+                self.effects[effect].submodel.vintage.add_share(
+                    name,
+                    expression,
+                    dims=('vintage', 'scenario'),
+                )
             else:
-                raise ValueError(f'Target {target} not supported!')
+                raise ValueError(f'Target {target} not supported! Use "temporal", "periodic", or "vintage".')
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
@@ -679,11 +891,35 @@ class EffectCollectionModel(Submodel):
         # Add cross-effect shares
         self._add_share_between_effects()
 
-        # Use objective weights with objective effect and penalty effect
-        self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
-            + (self.effects.penalty_effect.submodel.total * self._model.objective_weights).sum()
-        )
+        # Build objective function with separate weighting for each effect category
+        self._add_objective()
+
+    def _add_objective(self):
+        """Build objective function combining temporal, periodic, and vintage effects."""
+        obj_effect = self.effects.objective_effect.submodel
+        pen_effect = self.effects.penalty_effect.submodel
+
+        # Period-weighted components: (temporal + periodic) × period_weights × scenario_weights
+        period_weights = obj_effect.period_weights
+        scenario_weights = self._model.scenario_weights
+
+        obj_temporal_weighted = (obj_effect.temporal.total * period_weights * scenario_weights).sum()
+        obj_periodic_weighted = (obj_effect.periodic.total * period_weights * scenario_weights).sum()
+
+        pen_temporal_weighted = (pen_effect.temporal.total * period_weights * scenario_weights).sum()
+        pen_periodic_weighted = (pen_effect.periodic.total * period_weights * scenario_weights).sum()
+
+        objective = obj_temporal_weighted + obj_periodic_weighted + pen_temporal_weighted + pen_periodic_weighted
+
+        # Vintage-weighted component: vintage × vintage_weights × scenario_weights
+        # Only if vintage dimension exists
+        if obj_effect.vintage is not None:
+            vintage_weights = obj_effect.vintage_weights
+            obj_vintage_weighted = (obj_effect.vintage.total * vintage_weights * scenario_weights).sum()
+            pen_vintage_weighted = (pen_effect.vintage.total * vintage_weights * scenario_weights).sum()
+            objective = objective + obj_vintage_weighted + pen_vintage_weighted
+
+        self._model.add_objective(objective)
 
     def _add_share_between_effects(self):
         for target_effect in self.effects.values():
@@ -700,6 +936,20 @@ class EffectCollectionModel(Submodel):
                     self.effects[source_effect].submodel.periodic.label_full,
                     self.effects[source_effect].submodel.periodic.total * factor,
                     dims=('period', 'scenario'),
+                )
+            # 3. vintage: <- receiving vintage shares from other effects
+            for source_effect, factor in target_effect.share_from_vintage.items():
+                source_vintage = self.effects[source_effect].submodel.vintage
+                target_vintage = target_effect.submodel.vintage
+                if source_vintage is None or target_vintage is None:
+                    raise ValueError(
+                        f"Cannot add vintage cross-effect share from '{source_effect}' to '{target_effect.label}': "
+                        f'FlowSystem has no vintage dimension (periods not defined).'
+                    )
+                target_vintage.add_share(
+                    source_vintage.label_full,
+                    source_vintage.total * factor,
+                    dims=('vintage', 'scenario'),
                 )
 
 

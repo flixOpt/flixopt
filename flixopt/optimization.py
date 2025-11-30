@@ -27,7 +27,7 @@ from .components import Storage
 from .config import CONFIG, SUCCESS_LEVEL
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
-from .features import InvestmentModel
+from .features import InvestmentModel, SizingModel
 from .flow_system import FlowSystem
 from .results import Results, SegmentedResults
 
@@ -296,14 +296,15 @@ class Optimization:
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel)
+                    if isinstance(model, (SizingModel, InvestmentModel))
                     and model.size.solution.max().item() >= CONFIG.Modeling.epsilon
                 },
                 'Not invested': {
                     model.label_of_element: model.size.solution
                     for component in self.flow_system.components.values()
                     for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max().item() < CONFIG.Modeling.epsilon
+                    if isinstance(model, (SizingModel, InvestmentModel))
+                    and model.size.solution.max().item() < CONFIG.Modeling.epsilon
                 },
             },
             'Buses with excess': [
@@ -701,12 +702,12 @@ class SegmentedOptimization:
                 model.label_full
                 for component in optimization.flow_system.components.values()
                 for model in component.submodel.all_submodels
-                if isinstance(model, InvestmentModel)
+                if isinstance(model, (SizingModel, InvestmentModel))
             ]
             if invest_elements:
                 raise ValueError(
                     f'Investments are not supported in SegmentedOptimization. '
-                    f'Found InvestmentModels: {invest_elements}. '
+                    f'Found sizing/investment models: {invest_elements}. '
                     f'Please use Optimization instead for problems with investments.'
                 )
 

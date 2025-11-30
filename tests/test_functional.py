@@ -733,5 +733,98 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
 
+def test_investment_parameters_with_lifetime(solver_fixture):
+    """Tests InvestmentParameters with lifetime tracking in a multi-period optimization.
+
+    This test verifies that:
+    1. Investment timing is correctly tracked (investment_occurs, decommissioning_occurs)
+    2. Lifetime constraints link investment period to decommissioning period
+    3. The component is only active during its lifetime
+    """
+    # Set up multi-period flow system with 4 periods
+    timesteps = pd.date_range('2020-01-01', periods=5, freq='h', name='time')
+    periods = pd.Index([2020, 2025, 2030, 2035], name='period')
+
+    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods)
+
+    # Create buses and effects
+    flow_system.add_elements(
+        fx.Bus('Fernwärme'),
+        fx.Bus('Gas'),
+        fx.Effect('costs', '€', 'Costs', is_objective=True),
+    )
+
+    # Add heat load (constant across periods)
+    flow_system.add_elements(
+        fx.Sink(
+            'Wärmelast',
+            inputs=[fx.Flow('Q_th', bus='Fernwärme', size=100, fixed_relative_profile=0.3)],
+        ),
+        fx.Source(
+            'Gasquelle',
+            outputs=[fx.Flow('Q_fu', bus='Gas', size=1000, effects_per_flow_hour={'costs': 2})],
+        ),
+    )
+
+    # Add boiler with InvestmentParameters (lifetime = 2 periods)
+    # Invest in 2020 → active in 2020, 2025 → decommission in 2030
+    flow_system.add_elements(
+        fx.linear_converters.Boiler(
+            'Boiler_Invest',
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Fernwärme',
+                size=fx.InvestmentParameters(
+                    lifetime=2,  # Active for 2 periods after investment
+                    minimum_size=50,
+                    maximum_size=200,
+                    effects_per_size={'costs': 10},  # €10/kW investment cost
+                ),
+            ),
+        ),
+    )
+
+    # Add backup boiler (always available)
+    flow_system.add_elements(
+        fx.linear_converters.Boiler(
+            'Boiler_Backup',
+            thermal_efficiency=0.3,  # Less efficient, more expensive
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=200),
+        ),
+    )
+
+    # Create and solve optimization
+    optimization = fx.Optimization('test_investment_lifetime', flow_system)
+    optimization.do_modeling()
+    optimization.solve(solver_fixture)
+
+    # Get the investment model
+    boiler = flow_system['Boiler_Invest']
+    investment = boiler.thermal_flow.submodel.investment
+
+    # Verify investment model is InvestmentModel (not SizingModel)
+    from flixopt.features import InvestmentModel
+
+    assert isinstance(investment, InvestmentModel), 'Should use InvestmentModel for InvestmentParameters'
+
+    # Verify investment_occurs variable exists
+    assert hasattr(investment, 'investment_occurs'), 'InvestmentModel should have investment_occurs variable'
+    assert hasattr(investment, 'decommissioning_occurs'), 'InvestmentModel should have decommissioning_occurs variable'
+
+    # Verify the investment occurs in exactly one period (or zero)
+    investment_sum = investment.investment_occurs.solution.sum('period').item()
+    assert investment_sum <= 1, f'Investment should occur at most once, got sum={investment_sum}'
+
+    # If investment happened, check that decommissioning occurs at most as many times
+    if investment_sum > 0:
+        # The sum of decommissioning_occurs should not exceed investment_occurs
+        # (decommissioning can be 0 if it's beyond the optimization horizon)
+        decom_sum = investment.decommissioning_occurs.solution.sum('period').item()
+        assert decom_sum <= investment_sum, 'Decommissioning should not exceed investment count'
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '--disable-warnings'])

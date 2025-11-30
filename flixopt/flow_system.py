@@ -177,6 +177,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
+        # Vintage dimension: same coordinate values as period, but different semantics
+        # Used for tracking one-time investment costs at decision points
+        self.vintages: pd.Index | None = None
+        if self.periods is not None:
+            self.vintages = self.periods.rename('vintage')
+
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
 
         self.scenario_weights = scenario_weights  # Use setter
@@ -187,6 +193,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
 
         self.period_weights: xr.DataArray | None = weight_per_period
+
+        # Vintage weights: default to 1 (one-time costs not scaled by period duration)
+        # Can be used for discounting investment costs
+        self.vintage_weights: xr.DataArray | None = None
+        if self.vintages is not None:
+            self.vintage_weights = xr.DataArray(
+                np.ones(len(self.vintages)),
+                coords={'vintage': self.vintages},
+                dims='vintage',
+                name='vintage_weights',
+            )
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(
@@ -1069,9 +1086,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
+        """Default coordinates for variables (time, period, scenario).
+
+        Note: vintage is NOT included by default as it's a separate dimension
+        for one-time investment costs. Use `all_coords` to include vintage.
+        """
         active_coords = {'time': self.timesteps}
         if self.periods is not None:
             active_coords['period'] = self.periods
+        if self.scenarios is not None:
+            active_coords['scenario'] = self.scenarios
+        return active_coords
+
+    @property
+    def all_coords(self) -> dict[FlowSystemDimensions, pd.Index]:
+        """All coordinates including vintage dimension."""
+        active_coords = {'time': self.timesteps}
+        if self.periods is not None:
+            active_coords['period'] = self.periods
+        if self.vintages is not None:
+            active_coords['vintage'] = self.vintages
         if self.scenarios is not None:
             active_coords['scenario'] = self.scenarios
         return active_coords

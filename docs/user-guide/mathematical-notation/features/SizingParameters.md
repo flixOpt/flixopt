@@ -1,6 +1,10 @@
-# InvestParameters
+# SizingParameters
 
-InvestParameters make capacity a decision variable — should we build this? How big?
+SizingParameters make capacity a decision variable — should we build this? How big?
+
+!!! note "Naming Change"
+    `SizingParameters` replaces the deprecated `InvestParameters`.
+    For investment timing with fixed lifetime (when to invest), see [InvestmentParameters](InvestmentParameters.md).
 
 ## Basic: Size as Variable
 
@@ -11,26 +15,26 @@ $$
 ```python
 battery = fx.Storage(
     ...,
-    capacity_in_flow_hours=fx.InvestParameters(
+    capacity_in_flow_hours=fx.SizingParameters(
         minimum_size=10,
         maximum_size=1000,
-        specific_effects={'costs': 600},  # €600/kWh
+        effects_per_size={'costs': 600},  # €600/kWh
     ),
 )
 ```
 
 ---
 
-## Investment Modes
+## Sizing Modes
 
-By default, investment is **optional** — the optimizer can choose $P = 0$ (don't invest).
+By default, sizing is **optional** — the optimizer can choose $P = 0$ (don't build).
 
 === "Continuous"
 
     Choose size within range (or zero):
 
     ```python
-    fx.InvestParameters(
+    fx.SizingParameters(
         minimum_size=10,
         maximum_size=1000,
     )
@@ -42,7 +46,7 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
     Fixed size or nothing:
 
     ```python
-    fx.InvestParameters(
+    fx.SizingParameters(
         fixed_size=100,  # 100 kW or 0
     )
     # → P ∈ {0, 100}
@@ -50,10 +54,10 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
 
 === "Mandatory"
 
-    Force investment with `mandatory=True` — zero not allowed:
+    Force sizing with `mandatory=True` — zero not allowed:
 
     ```python
-    fx.InvestParameters(
+    fx.SizingParameters(
         minimum_size=50,
         maximum_size=200,
         mandatory=True,
@@ -63,7 +67,7 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
 
 ---
 
-## Investment Effects
+## Sizing Effects
 
 === "Per-Size Cost"
 
@@ -72,31 +76,31 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
     $E = P \cdot c_{spec}$
 
     ```python
-    fx.InvestParameters(
-        specific_effects={'costs': 1200},  # €1200/kW
+    fx.SizingParameters(
+        effects_per_size={'costs': 1200},  # €1200/kW
     )
     ```
 
 === "Fixed Cost"
 
-    One-time cost if investing:
+    One-time cost if sizing:
 
-    $E = s_{inv} \cdot c_{fix}$
+    $E = s_{sized} \cdot c_{fix}$
 
     ```python
-    fx.InvestParameters(
-        effects_of_investment={'costs': 25000},  # €25k
+    fx.SizingParameters(
+        effects_of_size={'costs': 25000},  # €25k
     )
     ```
 
 === "Retirement Cost"
 
-    Cost if NOT investing:
+    Cost if NOT sizing (demolition, opportunity cost):
 
-    $E = (1 - s_{inv}) \cdot c_{ret}$
+    $E = (1 - s_{sized}) \cdot c_{ret}$
 
     ```python
-    fx.InvestParameters(
+    fx.SizingParameters(
         effects_of_retirement={'costs': 8000},  # Demolition
     )
     ```
@@ -108,8 +112,8 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
     $E = f_{piecewise}(P)$
 
     ```python
-    fx.InvestParameters(
-        piecewise_effects_of_investment=fx.PiecewiseEffects(
+    fx.SizingParameters(
+        piecewise_effects_per_size=fx.PiecewiseEffects(
             piecewise_origin=fx.Piecewise([
                 fx.Piece(0, 100),
                 fx.Piece(100, 500),
@@ -132,12 +136,12 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| $P$ | $\mathbb{R}_{\geq 0}$ | Investment size (capacity) |
-| $s_{inv}$ | $\{0, 1\}$ | Binary investment decision (0=no, 1=yes) |
+| $P$ | $\mathbb{R}_{\geq 0}$ | Size (capacity) |
+| $s_{sized}$ | $\{0, 1\}$ | Binary sizing decision (0=no, 1=yes) |
 | $P^{min}$ | $\mathbb{R}_{\geq 0}$ | Minimum size (`minimum_size`) |
 | $P^{max}$ | $\mathbb{R}_{\geq 0}$ | Maximum size (`maximum_size`) |
-| $c_{spec}$ | $\mathbb{R}$ | Per-size effect (`effects_of_investment_per_size`) |
-| $c_{fix}$ | $\mathbb{R}$ | Fixed effect (`effects_of_investment`) |
+| $c_{spec}$ | $\mathbb{R}$ | Per-size effect (`effects_per_size`) |
+| $c_{fix}$ | $\mathbb{R}$ | Fixed effect (`effects_of_size`) |
 | $c_{ret}$ | $\mathbb{R}$ | Retirement effect (`effects_of_retirement`) |
 
-**Classes:** [`InvestParameters`][flixopt.interface.InvestParameters], [`InvestmentModel`][flixopt.features.InvestmentModel]
+**Classes:** [`SizingParameters`][flixopt.interface.SizingParameters], [`SizingModel`][flixopt.features.SizingModel]

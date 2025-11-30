@@ -5,6 +5,7 @@ Features extend the functionality of Elements.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import linopy
@@ -13,42 +14,193 @@ import numpy as np
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
+logger = logging.getLogger('flixopt')
+
 if TYPE_CHECKING:
     from collections.abc import Collection
 
     import xarray as xr
 
     from .core import FlowSystemDimensions
-    from .interface import InvestParameters, Piecewise, StatusParameters
-    from .types import Numeric_PS, Numeric_TPS
+    from .interface import InvestmentParameters, Piecewise, SizingParameters, StatusParameters
+    from .types import Numeric_PS, Numeric_TPS, PeriodicData, PeriodicEffects
 
 
-class InvestmentModel(Submodel):
-    """Mathematical model implementation for investment decisions.
+class _SizeModel(Submodel):
+    """A model that creates the size variable together with an optional binary availability variable."""
 
-    Creates optimization variables and constraints for investment sizing decisions,
-    supporting both binary and continuous sizing with comprehensive effect modeling.
+    def _create_sizing_variables_and_constraints(
+        self,
+        size_min: PeriodicData,
+        size_max: PeriodicData,
+        mandatory: PeriodicData,
+        dims: list[FlowSystemDimensions],
+        force_available: bool = False,
+    ):
+        """Create sizing variables and constraints.
 
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
+        Args:
+            size_min: Minimum size bound
+            size_max: Maximum size bound
+            mandatory: Whether sizing is mandatory (forces available=1)
+            dims: Dimensions for the variables
+            force_available: If True, always create the available binary variable
+        """
+        if not np.issubdtype(mandatory.dtype, np.bool_):
+            raise TypeError(f'Expected all bool values, got {mandatory.dtype=}: {mandatory}')
+
+        size = self.add_variables(
+            short_name='size',
+            lower=size_min.where(mandatory, 0),
+            upper=size_max,
+            coords=self._model.get_coords(dims),
+        )
+
+        # Create invested binary variable only when sizing is optional (not all mandatory)
+        # When mandatory=True everywhere, no binary variable is needed since size is forced anyway
+        sizing_is_optional = not mandatory.all()
+        if force_available or sizing_is_optional:
+            self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(dims),
+                short_name='invested',
+            )
+            # Constrain invested=1 where mandatory
+            if mandatory.any():
+                self.add_constraints(
+                    self.invested.where(mandatory) == 1,
+                    short_name='mandatory',
+                )
+            BoundingPatterns.bounds_with_state(
+                self,
+                variable=size,
+                state=self._variables['invested'],
+                bounds=(size_min, size_max),
+            )
+
+    def _add_sizing_effects(
+        self,
+        effects_per_size: PeriodicEffects,
+        effects_of_size: PeriodicEffects,
+        effects_of_retirement: PeriodicEffects | None = None,
+        mandatory: PeriodicData | None = None,
+    ):
+        """Add sizing-related effects to the model."""
+        # Add fixed effects (effects_of_size) - must come before effects_per_size to match test expectations
+        if effects_of_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.invested * factor if self.invested is not None else factor
+                    for effect, factor in effects_of_size.items()
+                },
+                target='periodic',
+            )
+
+        # Add retirement effects (only when not mandatory and invested variable exists)
+        # Formula: -invested * factor + factor = factor * (1 - invested)
+        # This means: when invested=0, cost is factor; when invested=1, cost is 0
+        if effects_of_retirement and self.invested is not None:
+            # Only apply retirement effects where not all mandatory
+            is_all_mandatory = mandatory.all() if mandatory is not None else False
+            if not is_all_mandatory:
+                self._model.effects.add_share_to_effects(
+                    name=self.label_of_element,
+                    expressions={
+                        effect: -self.invested * factor + factor for effect, factor in effects_of_retirement.items()
+                    },
+                    target='periodic',
+                )
+
+        # Add per-size effects
+        if effects_per_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in effects_per_size.items()},
+                target='periodic',
+            )
+
+    @property
+    def size(self) -> linopy.Variable:
+        """Capacity size variable"""
+        return self._variables['size']
+
+    @property
+    def invested(self) -> linopy.Variable | None:
+        """Binary investment decision variable (None if not created)"""
+        return self._variables.get('invested')
+
+
+class SizingModel(_SizeModel):
+    """Model for capacity sizing decisions.
+
+    This feature model handles capacity sizing with optional binary availability.
+    It applies bounds to the size variable and creates effects based on size.
 
     Args:
         model: The optimization model instance
-        label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-        parameters: The parameters of the feature model.
-        label_of_model: The label of the model. This is needed to construct the full label of the model.
+        label_of_element: The label of the parent element
+        parameters: The sizing parameters
+        label_of_model: Optional custom label for the model
     """
 
-    parameters: InvestParameters
+    parameters: SizingParameters
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: InvestParameters,
+        parameters: SizingParameters,
         label_of_model: str | None = None,
     ):
-        self.piecewise_effects: PiecewiseEffectsModel | None = None
+        self.parameters = parameters
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+    def _do_modeling(self):
+        super()._do_modeling()
+        self._create_sizing_variables_and_constraints(
+            size_min=self.parameters.minimum_or_fixed_size,
+            size_max=self.parameters.maximum_or_fixed_size,
+            mandatory=self.parameters.mandatory,
+            dims=['period', 'scenario'],
+        )
+        self._add_sizing_effects(
+            effects_per_size=self.parameters.effects_per_size,
+            effects_of_size=self.parameters.effects_of_size,
+            effects_of_retirement=self.parameters.effects_of_retirement,
+            mandatory=self.parameters.mandatory,
+        )
+
+
+class InvestmentModel(_SizeModel):
+    """Model investment timing with fixed lifetime.
+
+    This feature works in conjunction with SizingModel to provide full investment modeling:
+    - SizingModel: Determines HOW MUCH capacity to install
+    - InvestmentModel: Determines WHEN to invest
+
+    The model creates binary variables to track:
+    - When the investment occurs (one period)
+    - Which periods the investment is active (based on fixed lifetime)
+
+    The investment capacity (from SizingModel) is only active during the investment's lifetime.
+
+    Args:
+        model: The optimization model instance
+        label_of_element: The label of the parent element
+        parameters: InvestmentParameters defining timing constraints
+        label_of_model: Optional custom label for the model
+    """
+
+    parameters: InvestmentParameters
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        label_of_element: str,
+        parameters: InvestmentParameters,
+        label_of_model: str | None = None,
+    ):
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
@@ -58,95 +210,201 @@ class InvestmentModel(Submodel):
         self._add_effects()
 
     def _create_variables_and_constraints(self):
-        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
-        if self.parameters.linked_periods is not None:
-            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
-            size_min = size_min * self.parameters.linked_periods
-            size_max = size_max * self.parameters.linked_periods
-
-        self.add_variables(
-            short_name='size',
-            lower=size_min if self.parameters.mandatory else 0,
-            upper=size_max,
-            coords=self._model.get_coords(['period', 'scenario']),
+        """Create timing variables and constraints."""
+        # Regular sizing
+        self._create_sizing_variables_and_constraints(
+            size_min=self.parameters.minimum_or_fixed_size,
+            size_max=self.parameters.maximum_or_fixed_size,
+            mandatory=self.parameters.mandatory,
+            dims=['period', 'scenario'],
+            force_available=True,
         )
 
-        if not self.parameters.mandatory:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['period', 'scenario']),
-                short_name='invested',
-            )
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self.size,
-                state=self._variables['invested'],
-                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
+        self._track_investment_and_decommissioning_period()
+        self._track_investment_and_decommissioning_size()
+        self._track_lifetime()
+        self._apply_investment_period_constraints()
+
+    def _track_investment_and_decommissioning_period(self):
+        """Track investment and decommissioning period based on binary state variable."""
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['period', 'scenario']),
+            short_name='size|investment_occurs',
+        )
+        self.add_constraints(
+            self.investment_occurs.sum('period') <= 1,
+            short_name='invest_once',
+        )
+
+        self.add_variables(
+            binary=True,
+            coords=self._model.get_coords(['period', 'scenario']),
+            short_name='size|decommissioning_occurs',
+        )
+        self.add_constraints(
+            self.decommissioning_occurs.sum('period') <= 1,
+            short_name='decommission_once',
+        )
+
+        BoundingPatterns.state_transition_bounds(
+            self,
+            state=self.invested,
+            activate=self.investment_occurs,
+            deactivate=self.decommissioning_occurs,
+            name=self.invested.name,
+            previous_state=0,
+            coord='period',
+        )
+
+    def _track_investment_and_decommissioning_size(self):
+        """Track size changes when investment/decommissioning occurs."""
+        self.add_variables(
+            coords=self._model.get_coords(['period', 'scenario']),
+            short_name='size|increase',
+            lower=0,
+            upper=self.parameters.maximum_or_fixed_size,
+        )
+        self.add_variables(
+            coords=self._model.get_coords(['period', 'scenario']),
+            short_name='size|decrease',
+            lower=0,
+            upper=self.parameters.maximum_or_fixed_size,
+        )
+        BoundingPatterns.link_changes_to_level_with_binaries(
+            self,
+            level_variable=self.size,
+            increase_variable=self.size_increase,
+            decrease_variable=self.size_decrease,
+            increase_binary=self.investment_occurs,
+            decrease_binary=self.decommissioning_occurs,
+            name=f'{self.label_of_element}|size|changes',
+            max_change=self.parameters.maximum_or_fixed_size,
+            initial_level=0 if self.parameters.previous_lifetime == 0 else self.size.isel(period=0),
+            coord='period',
+        )
+
+    def _track_lifetime(self):
+        """
+        Create constraints linking investment periods to decommissioning periods based on lifetime.
+
+        The constraint enforces: if investment occurs in period p, decommissioning must occur
+        in period p + lifetime. For the first period, previous_lifetime is subtracted
+        (modeling existing capacity with remaining lifetime).
+
+        Example with periods [2020, 2025, 2030, 2035, 2040] and lifetime=2:
+        - Invest in 2020 → decommission in 2030 (2020 + 2*5 years)
+        - Invest in 2025 → decommission in 2035 (2025 + 2*5 years)
+        - Invest in 2030 → decommission in 2040 (2030 + 2*5 years)
+        - Invest in 2035/2040 → decommission beyond horizon (no constraint needed)
+
+        If previous_lifetime=1 (existing capacity with 1 period left):
+        - First period 2020: decommission in 2025 (2020 + 2 - 1 = 2021 → mapped to 2025)
+        """
+        period_values = self._model.flow_system.periods.values
+
+        # Build investment-to-decommissioning mapping for each period
+        invest_to_decom = {}
+        for i, invest_period in enumerate(period_values):
+            # Calculate lifetime offset: full lifetime for new investment,
+            # reduced by previous_lifetime for first period (existing capacity)
+            effective_lifetime = self.parameters.lifetime
+            if i == 0 and self.parameters.previous_lifetime > 0:
+                effective_lifetime -= self.parameters.previous_lifetime
+
+            # Decommissioning period = invest period + lifetime (in period units)
+            decom_period_idx = i + effective_lifetime
+            if decom_period_idx < len(period_values):
+                invest_to_decom[invest_period] = period_values[decom_period_idx]
+            # Else: decommissioning is beyond optimization horizon, no constraint needed
+
+        # Group investments by their decommissioning period
+        decom_to_invest_periods: dict = {}
+        for invest_p, decom_p in invest_to_decom.items():
+            decom_to_invest_periods.setdefault(decom_p, []).append(invest_p)
+
+        # Create constraint for each decommissioning period:
+        # sum of investments leading to this decom period == decom occurs in this period
+        for decom_period, invest_periods in decom_to_invest_periods.items():
+            invest_sum = self.investment_occurs.sel(period=invest_periods).sum('period')
+            self.add_constraints(
+                invest_sum == self.decommissioning_occurs.sel(period=decom_period),
+                short_name=f'size|lifetime{int(decom_period)}',
             )
 
-        if self.parameters.linked_periods is not None:
-            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+    def _apply_investment_period_constraints(self):
+        """Apply constraints on when investment can/must occur."""
+        # Constraint: Apply allow_investment restrictions
+        if (self.parameters.allow_investment == 0).any():
+            if (self.parameters.allow_investment == 0).all('period'):
+                logger.error(f'In "{self.label_full}": Need to allow Investment in at least one period.')
             self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                short_name='linked_periods',
+                self.investment_occurs <= self.parameters.allow_investment,
+                short_name='allow_investment',
+            )
+
+        # If a specific period is forced, investment must occur there
+        if (self.parameters.force_investment == 1).any():
+            if (self.parameters.force_investment.sum('period') > 1).any():
+                raise ValueError('Can not force Investment in more than one period')
+            self.add_constraints(
+                self.investment_occurs == self.parameters.force_investment,
+                short_name='force_investment',
             )
 
     def _add_effects(self):
-        """Add investment effects"""
+        """Add investment effects to the model."""
+        self._add_sizing_effects(
+            self.parameters.effects_per_size,
+            self.parameters.effects_of_size,
+        )
+
+        # Investment-timing dependent effects
         if self.parameters.effects_of_investment:
+            # Effects depending on when the investment is made
+            remapped_variable = self.investment_occurs.rename({'period': 'period_of_investment'})
+
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.invested * factor if self.invested is not None else factor
+                    effect: (remapped_variable * factor).sum('period_of_investment')
                     for effect, factor in self.parameters.effects_of_investment.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: -self.invested * factor + factor
-                    for effect, factor in self.parameters.effects_of_retirement.items()
-                },
-                target='periodic',
-            )
-
         if self.parameters.effects_of_investment_per_size:
+            # Effects depending on when the investment is made proportional to investment size
+            remapped_variable = self.size_increase.rename({'period': 'period_of_investment'})
+
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.size * factor
+                    effect: (remapped_variable * factor).sum('period_of_investment')
                     for effect, factor in self.parameters.effects_of_investment_per_size.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.piecewise_effects_of_investment:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
-                    zero_point=self.invested,
-                ),
-                short_name='segments',
-            )
+    @property
+    def investment_occurs(self) -> linopy.Variable:
+        """Binary variable indicating when investment occurs (at most one period)"""
+        return self._variables['size|investment_occurs']
 
     @property
-    def size(self) -> linopy.Variable:
-        """Investment size variable"""
-        return self._variables['size']
+    def decommissioning_occurs(self) -> linopy.Variable:
+        """Binary variable indicating when decommissioning occurs"""
+        return self._variables['size|decommissioning_occurs']
 
     @property
-    def invested(self) -> linopy.Variable | None:
-        """Binary investment decision variable"""
-        if 'invested' not in self._variables:
-            return None
-        return self._variables['invested']
+    def size_decrease(self) -> linopy.Variable:
+        """Size decrease variable"""
+        return self._variables['size|decrease']
+
+    @property
+    def size_increase(self) -> linopy.Variable:
+        """Size increase variable"""
+        return self._variables['size|increase']
 
 
 class StatusModel(Submodel):

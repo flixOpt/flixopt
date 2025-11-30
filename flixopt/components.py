@@ -13,8 +13,8 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, PiecewiseModel
-from .interface import InvestParameters, PiecewiseConversion, StatusParameters
+from .features import InvestmentModel, PiecewiseModel, SizingModel
+from .interface import InvestmentParameters, InvestParameters, PiecewiseConversion, StatusParameters, _SizeParameters
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
@@ -209,9 +209,9 @@ class LinearConverter(Component):
                         )
         if self.piecewise_conversion:
             for flow in self.flows.values():
-                if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
+                if isinstance(flow.size, _SizeParameters) and flow.size.fixed_size is None:
                     logger.warning(
-                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                        f'Using a Flow with variable size (SizingParameters without fixed_size) '
                         f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
                         f'({flow.label_full}).'
                     )
@@ -428,9 +428,9 @@ class Storage(Component):
         return self.submodel
 
     def _set_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
+        """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's a SizeParameters."""
         super()._set_flow_system(flow_system)
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+        if isinstance(self.capacity_in_flow_hours, _SizeParameters):
             self.capacity_in_flow_hours._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
@@ -465,8 +465,8 @@ class Storage(Component):
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(f'{prefix}|InvestParameters')
+        if isinstance(self.capacity_in_flow_hours, _SizeParameters):
+            self.capacity_in_flow_hours.transform_data(f'{prefix}|SizeParameters')
         else:
             self.capacity_in_flow_hours = self._fit_coords(
                 f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
@@ -485,8 +485,8 @@ class Storage(Component):
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
             initial_equals_final = True
 
-        # Use new InvestParameters methods to get capacity bounds
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+        # Use SizeParameters methods to get capacity bounds
+        if isinstance(self.capacity_in_flow_hours, _SizeParameters):
             minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
             maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
         else:
@@ -511,11 +511,11 @@ class Storage(Component):
                 )
 
         if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                self.discharging.size, InvestParameters
+            if not isinstance(self.charging.size, _SizeParameters) or not isinstance(
+                self.discharging.size, _SizeParameters
             ):
                 raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with SizingParameters.'
                 )
 
             if (self.charging.size.minimum_size > self.discharging.size.maximum_size).any() or (
@@ -697,9 +697,9 @@ class Transmission(Component):
 
         if self.balanced:
             if self.in2 is None:
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+                raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
+            if not isinstance(self.in1.size, _SizeParameters) or not isinstance(self.in2.size, _SizeParameters):
+                raise ValueError('Balanced Transmission needs SizingParameters in both in-Flows')
             if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
                 self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
             ).any():
@@ -879,10 +879,16 @@ class StorageModel(ComponentModel):
             short_name='charge_state',
         )
 
-        # Create InvestmentModel and bounding constraints for investment
-        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+        # Create investment/sizing model and bounding constraints for investment
+        if isinstance(self.element.capacity_in_flow_hours, _SizeParameters):
+            # Use InvestmentModel only for InvestmentParameters (with lifetime/timing)
+            # Use SizingModel for SizingParameters or deprecated InvestParameters
+            if isinstance(self.element.capacity_in_flow_hours, InvestmentParameters):
+                model_class = InvestmentModel
+            else:
+                model_class = SizingModel
             self.add_submodels(
-                InvestmentModel(
+                model_class(
                     model=self._model,
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
@@ -936,7 +942,7 @@ class StorageModel(ComponentModel):
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
-        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+        if not isinstance(self.element.capacity_in_flow_hours, _SizeParameters):
             return (
                 relative_lower_bound * self.element.capacity_in_flow_hours,
                 relative_upper_bound * self.element.capacity_in_flow_hours,
