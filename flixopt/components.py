@@ -4,12 +4,11 @@ This module contains the basic components of the flixopt framework.
 
 from __future__ import annotations
 
-import warnings
+import logging
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
 from .core import PlausibilityError
@@ -22,8 +21,9 @@ from .structure import FlowSystemModel, register_class_for_io
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import Numeric_PS, Numeric_TPS
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io

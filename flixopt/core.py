@@ -3,22 +3,22 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
+import logging
 import warnings
 from itertools import permutations
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
+from .config import DEPRECATION_REMOVAL_VERSION
 from .types import NumericOrBool
+
+logger = logging.getLogger('flixopt')
 
 FlowSystemDimensions = Literal['time', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
-
-# Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '6.0.0'
 
 
 class PlausibilityError(Exception):
@@ -34,36 +34,38 @@ class ConversionError(Exception):
 
 
 class TimeSeriesData(xr.DataArray):
-    """Minimal TimeSeriesData that inherits from xr.DataArray with aggregation metadata."""
+    """Minimal TimeSeriesData that inherits from xr.DataArray with clustering metadata."""
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
     def __init__(
         self,
         *args: Any,
-        aggregation_group: str | None = None,
-        aggregation_weight: float | None = None,
+        clustering_group: str | None = None,
+        clustering_weight: float | None = None,
         **kwargs: Any,
     ):
         """
         Args:
             *args: Arguments passed to DataArray
-            aggregation_group: Aggregation group name
-            aggregation_weight: Aggregation weight (0-1)
+            clustering_group: Clustering group name. Use this when multiple time series should share the same
+                clustering weight (1/n where n is the number of series in the group). Mutually exclusive with clustering_weight.
+            clustering_weight: Clustering weight (0-1). Use this to assign a specific weight to a single time series.
+                Mutually exclusive with clustering_group.
             **kwargs: Additional arguments passed to DataArray
         """
 
-        if (aggregation_group is not None) and (aggregation_weight is not None):
-            raise ValueError('Use either aggregation_group or aggregation_weight, not both')
+        if (clustering_group is not None) and (clustering_weight is not None):
+            raise ValueError('Use either clustering_group or clustering_weight, not both')
 
         # Let xarray handle all the initialization complexity
         super().__init__(*args, **kwargs)
 
         # Add our metadata to attrs after initialization
-        if aggregation_group is not None:
-            self.attrs['aggregation_group'] = aggregation_group
-        if aggregation_weight is not None:
-            self.attrs['aggregation_weight'] = aggregation_weight
+        if clustering_group is not None:
+            self.attrs['clustering_group'] = clustering_group
+        if clustering_weight is not None:
+            self.attrs['clustering_weight'] = clustering_weight
 
         # Always mark as TimeSeriesData
         self.attrs['__timeseries_data__'] = True
@@ -80,33 +82,62 @@ class TimeSeriesData(xr.DataArray):
         da = DataConverter.to_dataarray(self.data, coords=coords)
         return self.__class__(
             da,
-            aggregation_group=self.aggregation_group,
-            aggregation_weight=self.aggregation_weight,
+            clustering_group=self.clustering_group,
+            clustering_weight=self.clustering_weight,
             name=name if name is not None else self.name,
         )
 
     @property
-    def aggregation_group(self) -> str | None:
-        return self.attrs.get('aggregation_group')
+    def clustering_group(self) -> str | None:
+        return self.attrs.get('clustering_group')
 
     @property
-    def aggregation_weight(self) -> float | None:
-        return self.attrs.get('aggregation_weight')
+    def clustering_weight(self) -> float | None:
+        return self.attrs.get('clustering_weight')
 
     @classmethod
     def from_dataarray(
-        cls, da: xr.DataArray, aggregation_group: str | None = None, aggregation_weight: float | None = None
+        cls,
+        da: xr.DataArray,
+        clustering_group: str | None = None,
+        clustering_weight: float | None = None,
+        aggregation_group: str | None = None,
+        aggregation_weight: float | None = None,
     ):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
-        # Get aggregation metadata from attrs or parameters
-        final_aggregation_group = (
-            aggregation_group if aggregation_group is not None else da.attrs.get('aggregation_group')
+        # Handle deprecated parameters
+        if aggregation_group is not None:
+            warnings.warn(
+                f'aggregation_group is deprecated, use clustering_group instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if clustering_group is None:
+                clustering_group = aggregation_group
+        if aggregation_weight is not None:
+            warnings.warn(
+                f'aggregation_weight is deprecated, use clustering_weight instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if clustering_weight is None:
+                clustering_weight = aggregation_weight
+
+        # Get clustering metadata from attrs or parameters (try both old and new attrs keys for backward compat)
+        final_clustering_group = (
+            clustering_group
+            if clustering_group is not None
+            else da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
         )
-        final_aggregation_weight = (
-            aggregation_weight if aggregation_weight is not None else da.attrs.get('aggregation_weight')
+        final_clustering_weight = (
+            clustering_weight
+            if clustering_weight is not None
+            else da.attrs.get('clustering_weight', da.attrs.get('aggregation_weight'))
         )
 
-        return cls(da, aggregation_group=final_aggregation_group, aggregation_weight=final_aggregation_weight)
+        return cls(da, clustering_group=final_clustering_group, clustering_weight=final_clustering_weight)
 
     @classmethod
     def is_timeseries_data(cls, obj) -> bool:
@@ -114,13 +145,13 @@ class TimeSeriesData(xr.DataArray):
         return isinstance(obj, xr.DataArray) and obj.attrs.get('__timeseries_data__', False)
 
     def __repr__(self):
-        agg_info = []
-        if self.aggregation_group:
-            agg_info.append(f"aggregation_group='{self.aggregation_group}'")
-        if self.aggregation_weight is not None:
-            agg_info.append(f'aggregation_weight={self.aggregation_weight}')
+        clustering_info = []
+        if self.clustering_group:
+            clustering_info.append(f"clustering_group='{self.clustering_group}'")
+        if self.clustering_weight is not None:
+            clustering_info.append(f'clustering_weight={self.clustering_weight}')
 
-        info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
+        info_str = f'TimeSeriesData({", ".join(clustering_info)})' if clustering_info else 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
 
 

@@ -4,20 +4,20 @@ This Module contains high-level classes to easily model a FlowSystem.
 
 from __future__ import annotations
 
-import warnings
+import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-from loguru import logger
 
 from .components import LinearConverter
-from .core import TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
     from .interface import StatusParameters
     from .types import Numeric_TPS
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -662,21 +662,11 @@ def check_bounds(
 
     if not np.all(value_arr > lower_bound):
         logger.warning(
-            "'{}.{}' <= lower bound {}. {}.min={}, shape={}",
-            element_label,
-            parameter_label,
-            lower_bound,
-            parameter_label,
-            float(np.min(value_arr)),
-            np.shape(value_arr),
+            f"'{element_label}.{parameter_label}' <= lower bound {lower_bound}. "
+            f'{parameter_label}.min={float(np.min(value_arr))}, shape={np.shape(value_arr)}'
         )
     if not np.all(value_arr < upper_bound):
         logger.warning(
-            "'{}.{}' >= upper bound {}. {}.max={}, shape={}",
-            element_label,
-            parameter_label,
-            upper_bound,
-            parameter_label,
-            float(np.max(value_arr)),
-            np.shape(value_arr),
+            f"'{element_label}.{parameter_label}' >= upper bound {upper_bound}. "
+            f'{parameter_label}.max={float(np.max(value_arr))}, shape={np.shape(value_arr)}'
         )

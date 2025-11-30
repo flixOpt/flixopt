@@ -2,6 +2,7 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
+import logging
 import warnings
 from importlib.metadata import PackageNotFoundError, version
 
@@ -13,8 +14,10 @@ except (PackageNotFoundError, TypeError):
 
 # Import commonly used classes and functions
 from . import linear_converters, plotting, results, solvers
-from .aggregation import AggregationParameters
+
+# Import old Calculation classes for backwards compatibility (deprecated)
 from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalculation
+from .clustering import AggregationParameters, ClusteringParameters  # AggregationParameters is deprecated
 from .components import (
     LinearConverter,
     Sink,
@@ -25,10 +28,13 @@ from .components import (
 )
 from .config import CONFIG, change_logging_level
 from .core import TimeSeriesData
-from .effects import Effect
+from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
+
+# Import new Optimization classes
+from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
 
 __all__ = [
     'TimeSeriesData',
@@ -37,6 +43,7 @@ __all__ = [
     'Flow',
     'Bus',
     'Effect',
+    'PENALTY_EFFECT_LABEL',
     'Source',
     'Sink',
     'SourceAndSink',
@@ -44,21 +51,32 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
+    # New Optimization classes (preferred)
+    'Optimization',
+    'ClusteredOptimization',
+    'SegmentedOptimization',
+    # Old Calculation classes (deprecated, for backwards compatibility)
     'FullCalculation',
-    'SegmentedCalculation',
     'AggregatedCalculation',
+    'SegmentedCalculation',
     'InvestParameters',
     'StatusParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
-    'AggregationParameters',
+    'ClusteringParameters',
+    'AggregationParameters',  # Deprecated, use ClusteringParameters
     'plotting',
     'results',
     'linear_converters',
     'solvers',
 ]
+
+# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.WARNING)
+logger.addHandler(logging.NullHandler())
 
 # === Runtime warning suppression for third-party libraries ===
 # These warnings are from dependencies and cannot be fixed by end users.
@@ -67,7 +85,12 @@ __all__ = [
 
 # tsam: Time series aggregation library
 # - UserWarning: Informational message about minimal value constraints during clustering.
-warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*', module='tsam')
+warnings.filterwarnings(
+    'ignore',
+    category=UserWarning,
+    message='.*minimal value.*exceeds.*',
+    module='tsam.timeseriesaggregation',  # More specific if possible
+)
 # TODO: Might be able to fix it in flixopt?
 
 # linopy: Linear optimization library

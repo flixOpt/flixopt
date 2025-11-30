@@ -7,14 +7,16 @@ A common use case is to optimize the investments of a model with a downsampled v
 While the final optimum might differ from the global optimum, the solving will be much faster.
 """
 
+import logging
 import pathlib
 import timeit
 
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 import flixopt as fx
+
+logger = logging.getLogger('flixopt')
 
 if __name__ == '__main__':
     fx.CONFIG.exploring()
@@ -121,13 +123,13 @@ if __name__ == '__main__':
 
     # Separate optimization of flow sizes and dispatch
     start = timeit.default_timer()
-    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('2h'))
+    calculation_sizing = fx.Optimization('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
     start = timeit.default_timer()
-    calculation_dispatch = fx.FullCalculation('Dispatch', flow_system)
+    calculation_dispatch = fx.Optimization('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
@@ -140,7 +142,7 @@ if __name__ == '__main__':
 
     # Optimization of both flow sizes and dispatch together
     start = timeit.default_timer()
-    calculation_combined = fx.FullCalculation('Combined', flow_system)
+    calculation_combined = fx.Optimization('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start

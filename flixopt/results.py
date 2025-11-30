@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import logging
 import pathlib
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
@@ -10,22 +11,23 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
-from .structure import CompositeContainerMixin, ElementContainer, ResultsContainer
+from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
     import plotly
     import pyvis
 
-    from .calculation import Calculation, SegmentedCalculation
     from .core import FlowSystemDimensions
+    from .optimization import Optimization, SegmentedOptimization
+
+logger = logging.getLogger('flixopt')
 
 
 def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
@@ -51,8 +53,8 @@ class _FlowSystemRestorationError(Exception):
     pass
 
 
-class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
-    """Comprehensive container for optimization calculation results and analysis tools.
+class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectResults | FlowResults']):
+    """Comprehensive container for optimization results and analysis tools.
 
     This class provides unified access to all optimization results including flow rates,
     component states, bus balances, and system effects. It offers powerful analysis
@@ -71,27 +73,27 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         - **Buses**: Network node balances and energy flows
         - **Effects**: System-wide impacts (costs, emissions, resource consumption)
         - **Solution**: Raw optimization variables and their values
-        - **Metadata**: Calculation parameters, timing, and system configuration
+        - **Metadata**: Optimization parameters, timing, and system configuration
 
     Attributes:
         solution: Dataset containing all optimization variable solutions
         flow_system_data: Dataset with complete system configuration and parameters. Restore the used FlowSystem for further analysis.
-        summary: Calculation metadata including solver status, timing, and statistics
-        name: Unique identifier for this calculation
+        summary: Optimization metadata including solver status, timing, and statistics
+        name: Unique identifier for this optimization
         model: Original linopy optimization model (if available)
         folder: Directory path for result storage and loading
         components: Dictionary mapping component labels to ComponentResults objects
         buses: Dictionary mapping bus labels to BusResults objects
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
-        hours_per_timestep: Duration of each timestep for proper energy calculations
+        hours_per_timestep: Duration of each timestep for proper energy optimizations
 
     Examples:
         Load and analyze saved results:
 
         ```python
         # Load results from file
-        results = CalculationResults.from_file('results', 'annual_optimization')
+        results = Results.from_file('results', 'annual_optimization')
 
         # Access specific component results
         boiler_results = results['Boiler_01']
@@ -138,7 +140,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         ```
 
     Design Patterns:
-        **Factory Methods**: Use `from_file()` and `from_calculation()` for creation or access directly from `Calculation.results`
+        **Factory Methods**: Use `from_file()` and `from_optimization()` for creation or access directly from `Optimization.results`
         **Dictionary Access**: Use `results[element_label]` for element-specific results
         **Lazy Loading**: Results objects created on-demand for memory efficiency
         **Unified Interface**: Consistent API across different result types
@@ -148,18 +150,18 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
     model: linopy.Model | None
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str) -> CalculationResults:
-        """Load CalculationResults from saved files.
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> Results:
+        """Load Results from saved files.
 
         Args:
             folder: Directory containing saved files.
             name: Base name of saved files (without extensions).
 
         Returns:
-            CalculationResults: Loaded instance.
+            Results: Loaded instance.
         """
         folder = pathlib.Path(folder)
-        paths = fx_io.CalculationResultsPaths(folder, name)
+        paths = fx_io.ResultsPaths(folder, name)
 
         model = None
         if paths.linopy_model.exists():
@@ -181,22 +183,22 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         )
 
     @classmethod
-    def from_calculation(cls, calculation: Calculation) -> CalculationResults:
-        """Create CalculationResults from a Calculation object.
+    def from_optimization(cls, optimization: Optimization) -> Results:
+        """Create Results from an Optimization instance.
 
         Args:
-            calculation: Calculation object with solved model.
+            optimization: The Optimization instance to extract results from.
 
         Returns:
-            CalculationResults: New instance with extracted results.
+            Results: New instance containing the optimization results.
         """
         return cls(
-            solution=calculation.model.solution,
-            flow_system_data=calculation.flow_system.to_dataset(),
-            summary=calculation.summary,
-            model=calculation.model,
-            name=calculation.name,
-            folder=calculation.folder,
+            solution=optimization.model.solution,
+            flow_system_data=optimization.flow_system.to_dataset(),
+            summary=optimization.summary,
+            model=optimization.model,
+            name=optimization.name,
+            folder=optimization.folder,
         )
 
     def __init__(
@@ -209,27 +211,38 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         model: linopy.Model | None = None,
         **kwargs,  # To accept old "flow_system" parameter
     ):
-        """Initialize CalculationResults with optimization data.
-        Usually, this class is instantiated by the Calculation class, or by loading from file.
+        """Initialize Results with optimization data.
+        Usually, this class is instantiated by an Optimization object via `Results.from_optimization()`
+        or by loading from file using `Results.from_file()`.
 
         Args:
             solution: Optimization solution dataset.
             flow_system_data: Flow system configuration dataset.
-            name: Calculation name.
-            summary: Calculation metadata.
+            name: Optimization name.
+            summary: Optimization metadata.
             folder: Results storage folder.
             model: Linopy optimization model.
         Deprecated:
             flow_system: Use flow_system_data instead.
+
+        Note:
+            The legacy alias `CalculationResults` is deprecated. Use `Results` instead.
         """
         # Handle potential old "flow_system" parameter for backward compatibility
         if 'flow_system' in kwargs and flow_system_data is None:
             flow_system_data = kwargs.pop('flow_system')
             warnings.warn(
                 "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
-                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem.",
+                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
+            )
+
+        # Validate that flow_system_data is provided
+        if flow_system_data is None:
+            raise TypeError(
+                "flow_system_data is required (or use deprecated 'flow_system' for backward compatibility)."
             )
 
         self.solution = solution
@@ -338,22 +351,24 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
     @property
     def flow_system(self) -> FlowSystem:
-        """The restored flow_system that was used to create the calculation.
+        """The restored flow_system that was used to create the optimization.
         Contains all input parameters."""
         if self._flow_system is None:
             # Temporarily disable all logging to suppress messages during restoration
-            logger.disable('flixopt')
+            flixopt_logger = logging.getLogger('flixopt')
+            original_level = flixopt_logger.level
+            flixopt_logger.setLevel(logging.CRITICAL + 1)  # Disable all logging
             try:
                 self._flow_system = FlowSystem.from_dataset(self.flow_system_data)
                 self._flow_system._connect_network()
             except Exception as e:
-                logger.enable('flixopt')  # Re-enable before logging critical message
+                flixopt_logger.setLevel(original_level)  # Re-enable before logging
                 logger.critical(
                     f'Not able to restore FlowSystem from dataset. Some functionality is not availlable. {e}'
                 )
                 raise _FlowSystemRestorationError(f'Not able to restore FlowSystem from dataset. {e}') from e
             finally:
-                logger.enable('flixopt')
+                flixopt_logger.setLevel(original_level)  # Restore original level
         return self._flow_system
 
     def setup_colors(
@@ -734,7 +749,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         Args:
             element: The element identifier for which to calculate total effects.
             effect: The effect identifier to calculate.
-            mode: The calculation mode. Options are:
+            mode: The optimization mode. Options are:
                 'temporal': Returns temporal effects.
                 'periodic': Returns investment-specific effects.
                 'total': Returns the sum of temporal effects and periodic effects. Defaults to 'total'.
@@ -802,7 +817,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         """Create a template DataArray with the correct dimensions for a given mode.
 
         Args:
-            mode: The calculation mode ('temporal', 'periodic', or 'total').
+            mode: The optimization mode ('temporal', 'periodic', or 'total').
 
         Returns:
             A DataArray filled with NaN, with dimensions appropriate for the mode.
@@ -827,7 +842,7 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         The dataset does contain the direct as well as the indirect effects of each component.
 
         Args:
-            mode: The calculation mode ('temporal', 'periodic', or 'total').
+            mode: The optimization mode ('temporal', 'periodic', or 'total').
 
         Returns:
             An xarray Dataset with components as dimension and effects as variables.
@@ -1051,27 +1066,41 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
         compression: int = 5,
         document_model: bool = True,
         save_linopy_model: bool = False,
+        overwrite: bool = False,
     ):
         """Save results to files.
 
         Args:
-            folder: Save folder (defaults to calculation folder).
-            name: File name (defaults to calculation name).
+            folder: Save folder (defaults to optimization folder).
+            name: File name (defaults to optimization name).
             compression: Compression level 0-9.
             document_model: Whether to document model formulations as yaml.
             save_linopy_model: Whether to save linopy model file.
+            overwrite: If False, raise error if results files already exist. If True, overwrite existing files.
+
+        Raises:
+            FileExistsError: If overwrite=False and result files already exist.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
-        if not folder.exists():
-            try:
-                folder.mkdir(parents=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {folder} and its parent do not exist. Please create them first.'
-                ) from e
 
-        paths = fx_io.CalculationResultsPaths(folder, name)
+        # Ensure folder exists, creating parent directories as needed
+        folder.mkdir(parents=True, exist_ok=True)
+
+        paths = fx_io.ResultsPaths(folder, name)
+
+        # Check if files already exist (unless overwrite is True)
+        if not overwrite:
+            existing_files = []
+            for file_path in paths.all_paths().values():
+                if file_path.exists():
+                    existing_files.append(file_path.name)
+
+            if existing_files:
+                raise FileExistsError(
+                    f'Results files already exist in {folder}: {", ".join(existing_files)}. '
+                    f'Use overwrite=True to overwrite existing files.'
+                )
 
         fx_io.save_dataset_to_netcdf(self.solution, paths.solution, compression=compression)
         fx_io.save_dataset_to_netcdf(self.flow_system_data, paths.flow_system, compression=compression)
@@ -1080,29 +1109,60 @@ class CalculationResults(CompositeContainerMixin['ComponentResults | BusResults 
 
         if save_linopy_model:
             if self.model is None:
-                logger.critical('No model in the CalculationResults. Saving the model is not possible.')
+                logger.critical('No model in the Results. Saving the model is not possible.')
             else:
                 self.model.to_netcdf(paths.linopy_model, engine='netcdf4')
 
         if document_model:
             if self.model is None:
-                logger.critical('No model in the CalculationResults. Documenting the model is not possible.')
+                logger.critical('No model in the Results. Documenting the model is not possible.')
             else:
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
-        logger.success(f'Saved calculation results "{name}" to {paths.model_documentation.parent}')
+        logger.log(SUCCESS_LEVEL, f'Saved optimization results "{name}" to {paths.model_documentation.parent}')
+
+
+class CalculationResults(Results):
+    """DEPRECATED: Use Results instead.
+
+    Backwards-compatible alias for Results class.
+    All functionality is inherited from Results.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Only warn if directly instantiating CalculationResults (not subclasses)
+        if self.__class__.__name__ == 'CalculationResults':
+            warnings.warn(
+                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def from_calculation(cls, calculation: Optimization) -> CalculationResults:
+        """Create CalculationResults from a Calculation object.
+
+        DEPRECATED: Use Results.from_optimization() instead.
+        Backwards-compatible method that redirects to from_optimization().
+
+        Args:
+            calculation: Calculation object with solved model.
+
+        Returns:
+            CalculationResults: New instance with extracted results.
+        """
+        return cls.from_optimization(calculation)
 
 
 class _ElementResults:
-    def __init__(
-        self, calculation_results: CalculationResults, label: str, variables: list[str], constraints: list[str]
-    ):
-        self._calculation_results = calculation_results
+    def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
+        self._results = results
         self.label = label
         self._variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._calculation_results.solution[self._variable_names]
+        self.solution = self._results.solution[self._variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1111,9 +1171,9 @@ class _ElementResults:
         Raises:
             ValueError: If linopy model is unavailable.
         """
-        if self._calculation_results.model is None:
+        if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.variables[self._variable_names]
+        return self._results.model.variables[self._variable_names]
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -1122,9 +1182,9 @@ class _ElementResults:
         Raises:
             ValueError: If linopy model is unavailable.
         """
-        if self._calculation_results.model is None:
+        if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._calculation_results.model.constraints[self._constraint_names]
+        return self._results.model.constraints[self._constraint_names]
 
     def __repr__(self) -> str:
         """Return string representation with element info and dataset preview."""
@@ -1179,7 +1239,7 @@ class _ElementResults:
 class _NodeResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: CalculationResults,
+        results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1187,7 +1247,7 @@ class _NodeResults(_ElementResults):
         outputs: list[str],
         flows: list[str],
     ):
-        super().__init__(calculation_results, label, variables, constraints)
+        super().__init__(results, label, variables, constraints)
         self.inputs = inputs
         self.outputs = outputs
         self.flows = flows
@@ -1315,10 +1375,9 @@ class _NodeResults(_ElementResults):
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
 
-            import warnings
-
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1354,7 +1413,7 @@ class _NodeResults(_ElementResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1365,7 +1424,7 @@ class _NodeResults(_ElementResults):
         else:
             figure_like = plotting.with_matplotlib(
                 ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1374,7 +1433,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1450,10 +1509,9 @@ class _NodeResults(_ElementResults):
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
 
-            import warnings
-
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1463,14 +1521,14 @@ class _NodeResults(_ElementResults):
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         inputs = sanitize_dataset(
-            ds=self.solution[self.inputs] * self._calculation_results.hours_per_timestep,
+            ds=self.solution[self.inputs] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
             drop_suffix='|',
         )
         outputs = sanitize_dataset(
-            ds=self.solution[self.outputs] * self._calculation_results.hours_per_timestep,
+            ds=self.solution[self.outputs] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
@@ -1522,7 +1580,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_plotly(
                 data_left=inputs,
                 data_right=outputs,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 title=title,
                 text_info=text_info,
                 subtitles=('Inputs', 'Outputs'),
@@ -1536,7 +1594,7 @@ class _NodeResults(_ElementResults):
             figure_like = plotting.dual_pie_with_matplotlib(
                 data_left=inputs.to_pandas(),
                 data_right=outputs.to_pandas(),
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 title=title,
                 subtitles=('Inputs', 'Outputs'),
                 legend_title='Flows',
@@ -1549,7 +1607,7 @@ class _NodeResults(_ElementResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1590,10 +1648,9 @@ class _NodeResults(_ElementResults):
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
 
-            import warnings
-
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1604,7 +1661,7 @@ class _NodeResults(_ElementResults):
         ds = sanitize_dataset(
             ds=ds,
             threshold=threshold,
-            timesteps=self._calculation_results.timesteps_extra if with_last_timestep else None,
+            timesteps=self._results.timesteps_extra if with_last_timestep else None,
             negate=(
                 self.outputs + self.inputs
                 if negate_outputs and negate_inputs
@@ -1620,7 +1677,7 @@ class _NodeResults(_ElementResults):
         ds, _ = _apply_selection_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
-            ds = ds * self._calculation_results.hours_per_timestep
+            ds = ds * self._results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
 
         return ds
@@ -1737,10 +1794,9 @@ class ComponentResults(_NodeResults):
                     "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
                 )
 
-            import warnings
-
             warnings.warn(
-                "The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead.",
+                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -1772,7 +1828,7 @@ class ComponentResults(_NodeResults):
                 ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 facet_cols=facet_cols,
@@ -1788,7 +1844,7 @@ class ComponentResults(_NodeResults):
                 charge_state_ds,
                 facet_by=facet_by,
                 animate_by=animate_by,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode='line',  # Always line for charge_state
                 title='',  # No title needed for this temp figure
                 facet_cols=facet_cols,
@@ -1828,7 +1884,7 @@ class ComponentResults(_NodeResults):
             # For matplotlib, plot flows (node balance), then add charge_state as line
             fig, ax = plotting.with_matplotlib(
                 ds,
-                colors=colors if colors is not None else self._calculation_results.colors,
+                colors=colors if colors is not None else self._results.colors,
                 mode=mode,
                 title=title,
                 **plot_kwargs,
@@ -1860,7 +1916,7 @@ class ComponentResults(_NodeResults):
 
         return plotting.export_figure(
             figure_like=figure_like,
-            default_path=self._calculation_results.folder / title,
+            default_path=self._results.folder / title,
             default_filetype=default_filetype,
             user_path=None if isinstance(save, bool) else pathlib.Path(save),
             show=show,
@@ -1890,7 +1946,7 @@ class ComponentResults(_NodeResults):
         return sanitize_dataset(
             ds=self.solution[variable_names],
             threshold=threshold,
-            timesteps=self._calculation_results.timesteps_extra,
+            timesteps=self._results.timesteps_extra,
             negate=(
                 self.outputs + self.inputs
                 if negate_outputs and negate_inputs
@@ -1921,7 +1977,7 @@ class EffectResults(_ElementResults):
 class FlowResults(_ElementResults):
     def __init__(
         self,
-        calculation_results: CalculationResults,
+        results: Results,
         label: str,
         variables: list[str],
         constraints: list[str],
@@ -1929,7 +1985,7 @@ class FlowResults(_ElementResults):
         end: str,
         component: str,
     ):
-        super().__init__(calculation_results, label, variables, constraints)
+        super().__init__(results, label, variables, constraints)
         self.start = start
         self.end = end
         self.component = component
@@ -1940,7 +1996,7 @@ class FlowResults(_ElementResults):
 
     @property
     def flow_hours(self) -> xr.DataArray:
-        return (self.flow_rate * self._calculation_results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+        return (self.flow_rate * self._results.hours_per_timestep).rename(f'{self.label}|flow_hours')
 
     @property
     def size(self) -> xr.DataArray:
@@ -1948,16 +2004,16 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return self._calculation_results.flow_system.flows[self.label].size.rename(name)
+            return self._results.flow_system.flows[self.label].size.rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
 
 
-class SegmentedCalculationResults:
-    """Results container for segmented optimization calculations with temporal decomposition.
+class SegmentedResults:
+    """Results container for segmented optimization optimizations with temporal decomposition.
 
-    This class manages results from SegmentedCalculation runs where large optimization
+    This class manages results from SegmentedOptimization runs where large optimization
     problems are solved by dividing the time horizon into smaller, overlapping segments.
     It provides unified access to results across all segments while maintaining the
     ability to analyze individual segment behavior.
@@ -1980,8 +2036,8 @@ class SegmentedCalculationResults:
         Load and analyze segmented results:
 
         ```python
-        # Load segmented calculation results
-        results = SegmentedCalculationResults.from_file('results', 'annual_segmented')
+        # Load segmented optimization results
+        results = SegmentedResults.from_file('results', 'annual_segmented')
 
         # Access unified results across all segments
         full_timeline = results.all_timesteps
@@ -1997,20 +2053,20 @@ class SegmentedCalculationResults:
         max_discontinuity = segment_boundaries['max_storage_jump']
         ```
 
-        Create from segmented calculation:
+        Create from segmented optimization:
 
         ```python
-        # After running segmented calculation
-        segmented_calc = SegmentedCalculation(
+        # After running segmented optimization
+        segmented_opt = SegmentedOptimization(
             name='annual_system',
             flow_system=system,
             timesteps_per_segment=730,  # Monthly segments
             overlap_timesteps=48,  # 2-day overlap
         )
-        segmented_calc.do_modeling_and_solve(solver='gurobi')
+        segmented_opt.do_modeling_and_solve(solver='gurobi')
 
         # Extract unified results
-        results = SegmentedCalculationResults.from_calculation(segmented_calc)
+        results = SegmentedResults.from_optimization(segmented_opt)
 
         # Save combined results
         results.to_file(compression=5)
@@ -2051,33 +2107,50 @@ class SegmentedCalculationResults:
     """
 
     @classmethod
-    def from_calculation(cls, calculation: SegmentedCalculation):
+    def from_optimization(cls, optimization: SegmentedOptimization) -> SegmentedResults:
+        """Create SegmentedResults from a SegmentedOptimization instance.
+
+        Args:
+            optimization: The SegmentedOptimization instance to extract results from.
+
+        Returns:
+            SegmentedResults: New instance containing the optimization results.
+        """
         return cls(
-            [calc.results for calc in calculation.sub_calculations],
-            all_timesteps=calculation.all_timesteps,
-            timesteps_per_segment=calculation.timesteps_per_segment,
-            overlap_timesteps=calculation.overlap_timesteps,
-            name=calculation.name,
-            folder=calculation.folder,
+            [calc.results for calc in optimization.sub_optimizations],
+            all_timesteps=optimization.all_timesteps,
+            timesteps_per_segment=optimization.timesteps_per_segment,
+            overlap_timesteps=optimization.overlap_timesteps,
+            name=optimization.name,
+            folder=optimization.folder,
         )
 
     @classmethod
-    def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedCalculationResults:
-        """Load SegmentedCalculationResults from saved files.
+    def from_file(cls, folder: str | pathlib.Path, name: str) -> SegmentedResults:
+        """Load SegmentedResults from saved files.
 
         Args:
             folder: Directory containing saved files.
             name: Base name of saved files.
 
         Returns:
-            SegmentedCalculationResults: Loaded instance.
+            SegmentedResults: Loaded instance.
         """
         folder = pathlib.Path(folder)
         path = folder / name
-        logger.info(f'loading calculation "{name}" from file ("{path.with_suffix(".nc4")}")')
-        meta_data = fx_io.load_json(path.with_suffix('.json'))
+        meta_data_path = path.with_suffix('.json')
+        logger.info(f'loading segemented optimization meta data from file ("{meta_data_path}")')
+        meta_data = fx_io.load_json(meta_data_path)
+
+        # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
+        sub_names = meta_data.get('sub_optimizations') or meta_data.get('sub_calculations')
+        if sub_names is None:
+            raise KeyError(
+                "Missing 'sub_optimizations' (or legacy 'sub_calculations') key in segmented results metadata."
+            )
+
         return cls(
-            [CalculationResults.from_file(folder, sub_name) for sub_name in meta_data['sub_calculations']],
+            [Results.from_file(folder, sub_name) for sub_name in sub_names],
             all_timesteps=pd.DatetimeIndex(
                 [datetime.datetime.fromisoformat(date) for date in meta_data['all_timesteps']], name='time'
             ),
@@ -2089,7 +2162,7 @@ class SegmentedCalculationResults:
 
     def __init__(
         self,
-        segment_results: list[CalculationResults],
+        segment_results: list[Results],
         all_timesteps: pd.DatetimeIndex,
         timesteps_per_segment: int,
         overlap_timesteps: int,
@@ -2102,7 +2175,6 @@ class SegmentedCalculationResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.all_timesteps)
         self._colors = {}
 
     @property
@@ -2111,7 +2183,7 @@ class SegmentedCalculationResults:
             'all_timesteps': [datetime.datetime.isoformat(date) for date in self.all_timesteps],
             'timesteps_per_segment': self.timesteps_per_segment,
             'overlap_timesteps': self.overlap_timesteps,
-            'sub_calculations': [calc.name for calc in self.segment_results],
+            'sub_optimizations': [calc.name for calc in self.segment_results],
         }
 
     @property
@@ -2138,8 +2210,8 @@ class SegmentedCalculationResults:
         Setup colors for all variables across all segment results.
 
         This method applies the same color configuration to all segments, ensuring
-        consistent visualization across the entire segmented calculation. The color
-        mapping is propagated to each segment's CalculationResults instance.
+        consistent visualization across the entire segmented optimization. The color
+        mapping is propagated to each segment's Results instance.
 
         Args:
             config: Configuration for color assignment. Can be:
@@ -2172,6 +2244,9 @@ class SegmentedCalculationResults:
             Complete variable-to-color mapping dictionary from the first segment
             (all segments will have the same mapping)
         """
+        if not self.segment_results:
+            raise ValueError('No segment_results available; cannot setup colors on an empty SegmentedResults.')
+
         self.colors = self.segment_results[0].setup_colors(config=config, default_colorscale=default_colorscale)
 
         return self.colors
@@ -2254,11 +2329,10 @@ class SegmentedCalculationResults:
                     "and new parameter 'reshape_time'. Use only 'reshape_time'."
                 )
 
-            import warnings
-
             warnings.warn(
                 "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-                "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+                f"Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2273,10 +2347,9 @@ class SegmentedCalculationResults:
                     "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
                 )
 
-            import warnings
-
             warnings.warn(
-                "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+                f"The 'color_map' parameter is deprecated. Use 'colors' instead. "
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -2298,29 +2371,79 @@ class SegmentedCalculationResults:
             **plot_kwargs,
         )
 
-    def to_file(self, folder: str | pathlib.Path | None = None, name: str | None = None, compression: int = 5):
+    def to_file(
+        self,
+        folder: str | pathlib.Path | None = None,
+        name: str | None = None,
+        compression: int = 5,
+        overwrite: bool = False,
+    ):
         """Save segmented results to files.
 
         Args:
             folder: Save folder (defaults to instance folder).
             name: File name (defaults to instance name).
             compression: Compression level 0-9.
+            overwrite: If False, raise error if results files already exist. If True, overwrite existing files.
+
+        Raises:
+            FileExistsError: If overwrite=False and result files already exist.
         """
         folder = self.folder if folder is None else pathlib.Path(folder)
         name = self.name if name is None else name
         path = folder / name
-        if not folder.exists():
-            try:
-                folder.mkdir(parents=False)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {folder} and its parent do not exist. Please create them first.'
-                ) from e
-        for segment in self.segment_results:
-            segment.to_file(folder=folder, name=segment.name, compression=compression)
 
-        fx_io.save_json(self.meta_data, path.with_suffix('.json'))
-        logger.info(f'Saved calculation "{name}" to {path}')
+        # Ensure folder exists, creating parent directories as needed
+        folder.mkdir(parents=True, exist_ok=True)
+
+        # Check if metadata file already exists (unless overwrite is True)
+        metadata_file = path.with_suffix('.json')
+        if not overwrite and metadata_file.exists():
+            raise FileExistsError(
+                f'Segmented results file already exists: {metadata_file}. '
+                f'Use overwrite=True to overwrite existing files.'
+            )
+
+        # Save segments (they will check for overwrite themselves)
+        for segment in self.segment_results:
+            segment.to_file(folder=folder, name=segment.name, compression=compression, overwrite=overwrite)
+
+        fx_io.save_json(self.meta_data, metadata_file)
+        logger.info(f'Saved optimization "{name}" to {path}')
+
+
+class SegmentedCalculationResults(SegmentedResults):
+    """DEPRECATED: Use SegmentedResults instead.
+
+    Backwards-compatible alias for SegmentedResults class.
+    All functionality is inherited from SegmentedResults.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Only warn if directly instantiating SegmentedCalculationResults (not subclasses)
+        if self.__class__.__name__ == 'SegmentedCalculationResults':
+            warnings.warn(
+                f'SegmentedCalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+                'Use SegmentedResults instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def from_calculation(cls, calculation: SegmentedOptimization) -> SegmentedCalculationResults:
+        """Create SegmentedCalculationResults from a SegmentedCalculation object.
+
+        DEPRECATED: Use SegmentedResults.from_optimization() instead.
+        Backwards-compatible method that redirects to from_optimization().
+
+        Args:
+            calculation: SegmentedCalculation object with solved model.
+
+        Returns:
+            SegmentedCalculationResults: New instance with extracted results.
+        """
+        return cls.from_optimization(calculation)
 
 
 def plot_heatmap(
@@ -2349,7 +2472,7 @@ def plot_heatmap(
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
     This function provides a standalone interface to the heatmap plotting capabilities,
-    supporting the same modern features as CalculationResults.plot_heatmap().
+    supporting the same modern features as Results.plot_heatmap().
 
     Args:
         data: Data to plot. Can be a single DataArray or an xarray Dataset.
@@ -2401,11 +2524,10 @@ def plot_heatmap(
                 "and new parameter 'reshape_time'. Use only 'reshape_time'."
             )
 
-        import warnings
-
         warnings.warn(
             "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead.",
+            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2420,10 +2542,9 @@ def plot_heatmap(
                 "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
             )
 
-        import warnings
-
         warnings.warn(
-            "The 'color_map' parameter is deprecated. Use 'colors' instead.",
+            f"The 'color_map' parameter is deprecated. Use 'colors' instead."
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2437,10 +2558,9 @@ def plot_heatmap(
                 "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
             )
 
-        import warnings
-
         warnings.warn(
-            "The 'indexer' parameter is deprecated. Use 'select' instead.",
+            f"The 'indexer' parameter is deprecated. Use 'select' instead. "
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

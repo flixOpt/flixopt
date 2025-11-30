@@ -558,11 +558,11 @@ def flow_system_long():
 
     thermal_load_ts, electrical_load_ts = (
         fx.TimeSeriesData(thermal_load),
-        fx.TimeSeriesData(electrical_load, aggregation_weight=0.7),
+        fx.TimeSeriesData(electrical_load, clustering_weight=0.7),
     )
     p_feed_in, p_sell = (
-        fx.TimeSeriesData(-(p_el - 0.5), aggregation_group='p_el'),
-        fx.TimeSeriesData(p_el + 0.5, aggregation_group='p_el'),
+        fx.TimeSeriesData(-(p_el - 0.5), clustering_group='p_el'),
+        fx.TimeSeriesData(p_el + 0.5, clustering_group='p_el'),
     )
 
     flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
@@ -703,19 +703,17 @@ def assert_almost_equal_numeric(
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 
-def create_calculation_and_solve(
+def create_optimization_and_solve(
     flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
-) -> fx.FullCalculation:
-    calculation = fx.FullCalculation(name, flow_system)
-    calculation.do_modeling()
+) -> fx.Optimization:
+    optimization = fx.Optimization(name, flow_system)
+    optimization.do_modeling()
     try:
-        calculation.solve(solver)
-    except RuntimeError as e:
-        if allow_infeasible:
-            pass
-        else:
-            raise RuntimeError from e
-    return calculation
+        optimization.solve(solver)
+    except RuntimeError:
+        if not allow_infeasible:
+            raise
+    return optimization
 
 
 def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
@@ -726,11 +724,11 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
         flow_system: The FlowSystem to build the model from.
 
     Returns:
-        FlowSystemModel: The built model from FullCalculation.do_modeling().
+        FlowSystemModel: The built model from Optimization.do_modeling().
     """
-    calculation = fx.FullCalculation('GenericName', flow_system)
-    calculation.do_modeling()
-    return calculation.model
+    optimization = fx.Optimization('GenericName', flow_system)
+    optimization.do_modeling()
+    return optimization.model
 
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):

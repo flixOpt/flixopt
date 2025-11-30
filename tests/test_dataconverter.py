@@ -496,7 +496,7 @@ class TestTimeSeriesDataConversion:
     def test_timeseries_data_basic(self, time_coords):
         """TimeSeriesData should work like DataArray."""
         data_array = xr.DataArray([10, 20, 30, 40, 50], coords={'time': time_coords}, dims='time')
-        ts_data = TimeSeriesData(data_array, aggregation_group='test')
+        ts_data = TimeSeriesData(data_array, clustering_group='test')
 
         result = DataConverter.to_dataarray(ts_data, coords={'time': time_coords})
 

@@ -1,4 +1,4 @@
-# flixOpt Documentation Configuration
+# FlixOpt Documentation Configuration
 # https://mkdocstrings.github.io/python/usage/configuration/docstrings/
 # https://squidfunk.github.io/mkdocs-material/setup/
 
@@ -69,7 +69,7 @@ theme:
         name: Switch to system preference
 
   font:
-    text: Inter  # Modern, readable font
+    text: Roboto  # Clean, technical documentation font
     code: Fira Code  # Beautiful code font with ligatures
 
   logo: images/flixopt-icon.svg
@@ -129,13 +129,15 @@ markdown_extensions:
       permalink: true
       permalink_title: Anchor link to this section
       toc_depth: 2
+      title: On this page
 
   # Code blocks
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-      auto_title: true
+      auto_title: false
+      use_pygments: true
   - pymdownx.inlinehilite
   - pymdownx.snippets:
       base_path: ..
@@ -276,10 +278,10 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/flixOpt/flixopt
-      name: flixOpt on GitHub
+      name: FlixOpt on GitHub
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/flixopt/
-      name: flixOpt on PyPI
+      name: FlixOpt on PyPI
 
   analytics:
     provider: google

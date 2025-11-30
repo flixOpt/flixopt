@@ -5,13 +5,12 @@ These are tightly connected to features.py
 
 from __future__ import annotations
 
-import warnings
-from typing import TYPE_CHECKING, Any
+import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
@@ -19,8 +18,9 @@ from .structure import Interface, register_class_for_io
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -735,7 +735,7 @@ class InvestParameters(Interface):
         For long-term investments, the cost values should be annualized to the corresponding operation time (annuity).
 
         - Use equivalent annual cost (capital cost / equipment lifetime)
-        - Apply appropriate discount rates for present value calculations
+        - Apply appropriate discount rates for present value optimizations
         - Account for inflation, escalation, and financing costs
 
         Example: €1M equipment with 20-year life → €50k/year fixed cost

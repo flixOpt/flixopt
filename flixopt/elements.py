@@ -4,15 +4,15 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
@@ -28,19 +28,15 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
     from .types import (
-        Bool_PS,
-        Bool_S,
-        Bool_TPS,
-        Effect_PS,
-        Effect_S,
         Effect_TPS,
         Numeric_PS,
         Numeric_S,
         Numeric_TPS,
         Scalar,
     )
+
+logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
@@ -493,7 +489,8 @@ class Flow(Element):
             self.bus = bus.label_full
             warnings.warn(
                 f'Bus {bus.label} is passed as a Bus object to {self.label}. This is deprecated and will be removed '
-                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow.',
+                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 UserWarning,
                 stacklevel=1,
             )
@@ -893,8 +890,19 @@ class BusModel(ElementModel):
 
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_input * excess_penalty).sum())
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_output * excess_penalty).sum())
+            # Add penalty shares as temporal effects (time-dependent)
+            from .effects import PENALTY_EFFECT_LABEL
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={PENALTY_EFFECT_LABEL: self.excess_input * excess_penalty},
+                target='temporal',
+            )
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={PENALTY_EFFECT_LABEL: self.excess_output * excess_penalty},
+                target='temporal',
+            )
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]

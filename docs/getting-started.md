@@ -24,18 +24,23 @@ pip install "flixopt[full]"
 
 ## Logging
 
-FlixOpt uses [loguru](https://loguru.readthedocs.io/) for logging. Logging is silent by default but can be easily configured. For beginners, use our internal convenience methods. Experts can use loguru directly.
+FlixOpt uses Python's standard logging module with optional colored output via [colorlog](https://github.com/borntyping/python-colorlog). Logging is silent by default but can be easily configured.
 
 ```python
 from flixopt import CONFIG
 
-# Enable console logging
-CONFIG.Logging.console = True
-CONFIG.Logging.level = 'INFO'
-CONFIG.apply()
+# Enable colored console logging
+CONFIG.Logging.enable_console('INFO')
 
 # Or use a preset configuration for exploring
 CONFIG.exploring()
+```
+
+For advanced logging configuration, you can use Python's standard logging module directly:
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 ```
 
 For more details on logging configuration, see the [`CONFIG.Logging`][flixopt.config.CONFIG.Logging] documentation.
@@ -48,7 +53,7 @@ Working with FlixOpt follows a general pattern:
 2. **Define [`Effects`][flixopt.effects.Effect]** (costs, emissions, etc.)
 3. **Define [`Buses`][flixopt.elements.Bus]** as connection points in your system
 4. **Add [`Components`][flixopt.components]** like converters, storage, sources/sinks with their Flows
-5. **Run [`Calculations`][flixopt.calculation]** to optimize your system
+5. **Run [`Optimizations`][flixopt.optimization]** to optimize your system
 6. **Analyze [`Results`][flixopt.results]** using built-in or external visualization tools
 
 ## Next Steps

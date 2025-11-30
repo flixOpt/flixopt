@@ -143,41 +143,86 @@ $$
 
 ## Penalty
 
-In addition to user-defined [Effects](#effects), every FlixOpt model includes a **Penalty** term $\Phi$ to:
+Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
 
 - Prevent infeasible problems
-- Simplify troubleshooting by allowing constraint violations with high cost
+- Allow introducing a bias without influencing effects, simplifying results analysis
 
-Penalty shares originate from elements, similar to effect shares:
+**Key Feature:** Penalty is implemented as a standard Effect (labeled `Penalty`), so you can **add penalty contributions anywhere effects are used**:
 
-$$ \label{eq:Penalty}
-\Phi = \sum_{l \in \mathcal{L}} \left( s_{l \rightarrow \Phi}  +\sum_{\text{t}_i \in \mathcal{T}} s_{l \rightarrow \Phi}(\text{t}_{i}) \right)
+```python
+import flixopt as fx
+
+# Add penalty contributions just like any other effect
+on_off = fx.OnOffParameters(
+    effects_per_switch_on={'Penalty': 1}  # Add bias against switching on this component, without adding costs
+)
+```
+
+**Optionally Define Custom Penalty:**
+Users can define their own Penalty effect with custom properties (unit, constraints, etc.):
+
+```python
+# Define custom penalty effect (must use fx.PENALTY_EFFECT_LABEL)
+custom_penalty = fx.Effect(
+    fx.PENALTY_EFFECT_LABEL,  # Always use this constant: 'Penalty'
+    unit='€',
+    description='Penalty costs for constraint violations',
+    maximum_total=1e6,  # Limit total penalty for debugging
+)
+flow_system.add_elements(custom_penalty)
+```
+
+If not user-defined, the Penalty effect is automatically created during modeling with default settings.
+
+**Periodic penalty shares** (time-independent):
+$$ \label{eq:Penalty_periodic}
+E_{\Phi, \text{per}} = \sum_{l \in \mathcal{L}} s_{l \rightarrow \Phi,\text{per}}
+$$
+
+**Temporal penalty shares** (time-dependent):
+$$ \label{eq:Penalty_temporal}
+E_{\Phi, \text{temp}}(\text{t}_{i}) = \sum_{l \in \mathcal{L}} s_{l \rightarrow \Phi, \text{temp}}(\text{t}_i)
+$$
+
+**Total penalty** (combining both domains):
+$$ \label{eq:Penalty_total}
+E_{\Phi} = E_{\Phi,\text{per}} + \sum_{\text{t}_i \in \mathcal{T}} E_{\Phi, \text{temp}}(\text{t}_{i})
 $$
 
 Where:
 
 - $\mathcal{L}$ is the set of all elements
 - $\mathcal{T}$ is the set of all timesteps
-- $s_{l \rightarrow \Phi}$ is the penalty share from element $l$
+- $s_{l \rightarrow \Phi, \text{per}}$ is the periodic penalty share from element $l$
+- $s_{l \rightarrow \Phi, \text{temp}}(\text{t}_i)$ is the temporal penalty share from element $l$ at timestep $\text{t}_i$
 
-**Current usage:** Penalties primarily occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost.
+**Primary usage:** Penalties occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost, and in time series aggregation to allow period flexibility.
+
+**Key properties:**
+- Penalty shares are added via `add_share_to_effects(name, expressions={fx.PENALTY_EFFECT_LABEL: ...}, target='temporal'/'periodic')`
+- Like other effects, penalty can be constrained (e.g., `maximum_total` for debugging)
+- Results include breakdown: temporal, periodic, and total penalty contributions
+- Penalty is always added to the objective function (cannot be disabled)
+- Access via `flow_system.effects.penalty_effect` or `flow_system.effects[fx.PENALTY_EFFECT_LABEL]`
+- **Scenario weighting**: Penalty is weighted identically to the objective effect—see [Time + Scenario](#time--scenario) for details
 
 ---
 
 ## Objective Function
 
-The optimization objective minimizes the chosen effect plus any penalties:
+The optimization objective minimizes the chosen effect plus the penalty effect:
 
 $$ \label{eq:Objective}
-\min \left( E_{\Omega} + \Phi \right)
+\min \left( E_{\Omega} + E_{\Phi} \right)
 $$
 
 Where:
 
 - $E_{\Omega}$ is the chosen **objective effect** (see $\eqref{eq:Effect_Total}$)
-- $\Phi$ is the [penalty](#penalty) term
+- $E_{\Phi}$ is the [penalty effect](#penalty) (see $\eqref{eq:Penalty_total}$)
 
-One effect must be designated as the objective via `is_objective=True`.
+One effect must be designated as the objective via `is_objective=True`. The penalty effect is automatically created and always added to the objective.
 
 ### Multi-Criteria Optimization
 
@@ -200,57 +245,56 @@ When the FlowSystem includes **periods** and/or **scenarios** (see [Dimensions](
 ### Time Only (Base Case)
 
 $$
-\min \quad E_{\Omega} + \Phi = \sum_{\text{t}_i \in \mathcal{T}} E_{\Omega,\text{temp}}(\text{t}_i) + E_{\Omega,\text{per}} + \Phi
+\min \quad E_{\Omega} + E_{\Phi} = \sum_{\text{t}_i \in \mathcal{T}} E_{\Omega,\text{temp}}(\text{t}_i) + E_{\Omega,\text{per}} + E_{\Phi,\text{per}} + \sum_{\text{t}_i \in \mathcal{T}} E_{\Phi,\text{temp}}(\text{t}_i)
 $$
 
 Where:
-
-- Temporal effects sum over time: $\sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i)$
-- Periodic effects are constant: $E_{\Omega,\text{per}}$
-- Penalty sums over time: $\Phi = \sum_{\text{t}_i} \Phi(\text{t}_i)$
+- Temporal effects sum over time: $\sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i)$ and $\sum_{\text{t}_i} E_{\Phi,\text{temp}}(\text{t}_i)$
+- Periodic effects are constant: $E_{\Omega,\text{per}}$ and $E_{\Phi,\text{per}}$
 
 ---
 
 ### Time + Scenario
 
 $$
-\min \quad \sum_{s \in \mathcal{S}} w_s \cdot \left( E_{\Omega}(s) + \Phi(s) \right)
+\min \quad \sum_{s \in \mathcal{S}} w_s \cdot \left( E_{\Omega}(s) + E_{\Phi}(s) \right)
 $$
 
 Where:
 
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$ (typically scenario probability)
-- Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ (same for all $s$)
-- Temporal effects are **scenario-specific**: $E_{\Omega,\text{temp}}(s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, s)$
-- Penalties are **scenario-specific**: $\Phi(s) = \sum_{\text{t}_i} \Phi(\text{t}_i, s)$
+- Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ and $E_{\Phi,\text{per}}$ (same for all $s$)
+- Temporal effects are **scenario-specific**: $E_{\Omega,\text{temp}}(s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, s)$ and $E_{\Phi,\text{temp}}(s) = \sum_{\text{t}_i} E_{\Phi,\text{temp}}(\text{t}_i, s)$
 
 **Interpretation:**
 - Investment decisions (periodic) made once, used across all scenarios
 - Operations (temporal) differ by scenario
 - Objective balances expected value across scenarios
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) are weighted identically by $w_s$**
 
 ---
 
 ### Time + Period
 
 $$
-\min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \left( E_{\Omega}(y) + \Phi(y) \right)
+\min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \left( E_{\Omega}(y) + E_{\Phi}(y) \right)
 $$
 
 Where:
 
 - $\mathcal{Y}$ is the set of periods (e.g., years)
 - $w_y$ is the weight for period $y$ (typically annual discount factor)
-- Each period $y$ has **independent** periodic and temporal effects
+- Each period $y$ has **independent** periodic and temporal effects (including penalty)
 - Each period $y$ has **independent** investment and operational decisions
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) are weighted identically by $w_y$**
 
 ---
 
 ### Time + Period + Scenario (Full Multi-Dimensional)
 
 $$
-\min \quad \sum_{y \in \mathcal{Y}} \left[ w_y \cdot E_{\Omega,\text{per}}(y) + \sum_{s \in \mathcal{S}} w_{y,s} \cdot \left( E_{\Omega,\text{temp}}(y,s) + \Phi(y,s) \right) \right]
+\min \quad \sum_{y \in \mathcal{Y}} \left[ w_y \cdot \left( E_{\Omega,\text{per}}(y) + E_{\Phi,\text{per}}(y) \right) + \sum_{s \in \mathcal{S}} w_{y,s} \cdot \left( E_{\Omega,\text{temp}}(y,s) + E_{\Phi,\text{temp}}(y,s) \right) \right]
 $$
 
 Where:
@@ -259,15 +303,15 @@ Where:
 - $\mathcal{Y}$ is the set of periods
 - $w_y$ is the period weight (for periodic effects)
 - $w_{y,s}$ is the combined period-scenario weight (for temporal effects)
-- **Periodic effects** $E_{\Omega,\text{per}}(y)$ are period-specific but **scenario-independent**
-- **Temporal effects** $E_{\Omega,\text{temp}}(y,s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, y, s)$ are **fully indexed**
-- **Penalties** $\Phi(y,s)$ are **fully indexed**
+- **Periodic effects** $E_{\Omega,\text{per}}(y)$ and $E_{\Phi,\text{per}}(y)$ are period-specific but **scenario-independent**
+- **Temporal effects** $E_{\Omega,\text{temp}}(y,s) = \sum_{\text{t}_i} E_{\Omega,\text{temp}}(\text{t}_i, y, s)$ and $E_{\Phi,\text{temp}}(y,s) = \sum_{\text{t}_i} E_{\Phi,\text{temp}}(\text{t}_i, y, s)$ are **fully indexed**
 
 **Key Principle:**
 - Scenarios and periods are **operationally independent** (no energy/resource exchange)
 - Coupled **only through the weighted objective function**
 - **Periodic effects within a period are shared across all scenarios** (investment made once per period)
 - **Temporal effects are independent per scenario** (different operations under different conditions)
+- **Both $E_{\Omega}$ (objective effect) and $E_{\Phi}$ (penalty) use identical weighting** ($w_y$ for periodic, $w_{y,s}$ for temporal)
 
 ---
 
@@ -280,7 +324,8 @@ Where:
 | **Total temporal effect** | $E_{e,\text{temp},\text{tot}} = \sum_{\text{t}_i} E_{e,\text{temp}}(\text{t}_i)$ | Sum over time | Depends on dimensions |
 | **Total periodic effect** | $E_{e,\text{per}}$ | Constant | $(y)$ when periods present |
 | **Total effect** | $E_e = E_{e,\text{per}} + E_{e,\text{temp},\text{tot}}$ | Combined | Depends on dimensions |
-| **Objective** | $\min(E_{\Omega} + \Phi)$ | With weights when multi-dimensional | See formulations above |
+| **Penalty effect** | $E_\Phi = E_{\Phi,\text{per}} + E_{\Phi,\text{temp},\text{tot}}$ | Combined (same as effects) | **Weighted identically to objective effect** |
+| **Objective** | $\min(E_{\Omega} + E_{\Phi})$ | With weights when multi-dimensional | See formulations above |
 
 ---
 

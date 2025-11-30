@@ -4,18 +4,18 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
+import logging
 import warnings
 from collections import defaultdict
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
     DataConverter,
@@ -32,7 +32,9 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .types import Bool_TPS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, NumericOrBool
+    from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
+
+logger = logging.getLogger('flixopt')
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
@@ -148,7 +150,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         - The `.flows` container is automatically populated from all component inputs and outputs.
         - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
         - The instance starts disconnected (self._connected_and_transformed == False) and will be
-          connected_and_transformed automatically when trying to solve a calculation.
+          connected_and_transformed automatically when trying to optimize.
     """
 
     model: FlowSystemModel | None
@@ -209,7 +211,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
-        self._used_in_calculation = False
+        self._used_in_optimization = False
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
@@ -993,7 +995,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     warnings.warn(
                         f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
                         f'This is deprecated and will be removed in the future. '
-                        f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead.',
+                        f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead. '
+                        f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                         DeprecationWarning,
                         stacklevel=1,
                     )
@@ -1107,7 +1110,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             "The 'all_elements' property is deprecated. Use dict-like interface instead: "
             "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
             'flow_system.values(), or flow_system.items(). '
-            'This property will be removed in v4.0.0.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1124,7 +1127,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def used_in_calculation(self) -> bool:
-        return self._used_in_calculation
+        return self._used_in_optimization
 
     @property
     def scenario_weights(self) -> xr.DataArray | None:
@@ -1163,7 +1166,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def weights(self) -> Numeric_S | None:
         warnings.warn(
-            'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead.',
+            f'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1178,7 +1182,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             value: Scenario weights to set
         """
         warnings.warn(
-            'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead.',
+            f'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )

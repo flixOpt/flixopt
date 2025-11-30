@@ -25,8 +25,7 @@ accessible for standalone data visualization tasks.
 
 from __future__ import annotations
 
-import itertools
-import os
+import logging
 import pathlib
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -39,13 +38,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
-from loguru import logger
 
 from .color_processing import process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
     import pyvis
+
+logger = logging.getLogger('flixopt')
 
 # Define the colors for the 'portland' colorscale in matplotlib
 _portland_colors = [
