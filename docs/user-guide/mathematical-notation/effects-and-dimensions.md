@@ -396,7 +396,7 @@ Penalty is weighted identically to the objective effect across all dimensions.
 | $E_{temp}(t)$ | $\mathbb{R}$ | Temporal effect at timestep $t$ |
 | $E_{per}$ | $\mathbb{R}$ | Periodic effect (per period) |
 | $E$ | $\mathbb{R}$ | Total effect ($E_{per} + \sum_t E_{temp}(t)$) |
-| $w_s$ | $[0, 1]$ | Scenario weight (probability) |
+| $w_s$ | $\mathbb{R}_{\geq 0}$ | Scenario weight (probability) |
 | $w_y$ | $\mathbb{R}_{> 0}$ | Period weight (duration/discount) |
 | $p(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate at timestep $t$ |
 | $s^{start}(t)$ | $\{0, 1\}$ | Startup indicator |

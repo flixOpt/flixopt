@@ -123,9 +123,9 @@ heat = fx.Flow(label='heat', bus=heat_bus, size=100, relative_minimum=0.3)
 | $p(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate at timestep $t$ |
 | $P$ | $\mathbb{R}_{\geq 0}$ | Size (capacity) — fixed or optimized |
 | $s(t)$ | $\{0, 1\}$ | Binary status (with `status_parameters`) |
-| $p_{rel}^{min}$ | $[0, 1]$ | Minimum relative flow (`relative_minimum`) |
-| $p_{rel}^{max}$ | $[0, 1]$ | Maximum relative flow (`relative_maximum`) |
-| $\pi(t)$ | $[0, 1]$ | Fixed profile (`fixed_relative_profile`) |
+| $p_{rel}^{min}$ | $\mathbb{R}_{\geq 0}$ | Minimum relative flow (`relative_minimum`) |
+| $p_{rel}^{max}$ | $\mathbb{R}_{\geq 0}$ | Maximum relative flow (`relative_maximum`) |
+| $\pi(t)$ | $\mathbb{R}_{\geq 0}$ | Fixed profile (`fixed_relative_profile`) |
 | $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
 
 **Classes:** [`Flow`][flixopt.elements.Flow], [`FlowModel`][flixopt.elements.FlowModel]

@@ -104,9 +104,9 @@ Detect transitions: $s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)$
 | $s(t)$ | $\{0, 1\}$ | Binary status (0=off, 1=on) |
 | $s^{start}(t)$ | $\{0, 1\}$ | Startup indicator |
 | $s^{stop}(t)$ | $\{0, 1\}$ | Shutdown indicator |
-| $T_{up}^{min}$ | $\mathbb{Z}_{\geq 0}$ | Min uptime (`min_uptime`) |
-| $T_{up}^{max}$ | $\mathbb{Z}_{\geq 0}$ | Max uptime (`max_uptime`) |
-| $T_{down}^{min}$ | $\mathbb{Z}_{\geq 0}$ | Min downtime (`min_downtime`) |
+| $T_{up}^{min}$ | $\mathbb{R}_{\geq 0}$ | Min uptime in hours (`min_uptime`) |
+| $T_{up}^{max}$ | $\mathbb{R}_{\geq 0}$ | Max uptime in hours (`max_uptime`) |
+| $T_{down}^{min}$ | $\mathbb{R}_{\geq 0}$ | Min downtime in hours (`min_downtime`) |
 | $H^{min}$ | $\mathbb{R}_{\geq 0}$ | Min total active hours (`active_hours_min`) |
 | $H^{max}$ | $\mathbb{R}_{\geq 0}$ | Max total active hours (`active_hours_max`) |
 | $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |

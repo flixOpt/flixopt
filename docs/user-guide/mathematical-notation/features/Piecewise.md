@@ -146,8 +146,8 @@ When segment $i$ is active ($s_i = 1$), the lambdas interpolate between $x_i^{st
 |--------|------|-------------|
 | $x$ | $\mathbb{R}$ | Interpolated variable value |
 | $s_i$ | $\{0, 1\}$ | Binary: segment $i$ is active |
-| $\lambda_i^0$ | $[0, 1]$ | Interpolation weight for segment start |
-| $\lambda_i^1$ | $[0, 1]$ | Interpolation weight for segment end |
+| $\lambda_i^0$ | $\mathbb{R}_{\geq 0}$ | Interpolation weight for segment start |
+| $\lambda_i^1$ | $\mathbb{R}_{\geq 0}$ | Interpolation weight for segment end |
 | $x_i^{start}$ | $\mathbb{R}$ | Start value of segment $i$ |
 | $x_i^{end}$ | $\mathbb{R}$ | End value of segment $i$ |
 | $n$ | $\mathbb{Z}_{> 0}$ | Number of segments |

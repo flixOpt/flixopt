@@ -110,11 +110,11 @@ fx.Storage(...,
 | $C$ | $\mathbb{R}_{\geq 0}$ | Capacity (`capacity_in_flow_hours`) |
 | $p_{in}(t)$ | $\mathbb{R}_{\geq 0}$ | Charging power (from `charging` flow) |
 | $p_{out}(t)$ | $\mathbb{R}_{\geq 0}$ | Discharging power (from `discharging` flow) |
-| $\eta_{in}$ | $[0, 1]$ | Charge efficiency (`eta_charge`) |
-| $\eta_{out}$ | $[0, 1]$ | Discharge efficiency (`eta_discharge`) |
-| $\dot{c}_{loss}$ | $[0, 1]$ | Self-discharge rate (`relative_loss_per_hour`) |
-| $c_{rel}^{min}$ | $[0, 1]$ | Min charge state (`relative_minimum_charge_state`) |
-| $c_{rel}^{max}$ | $[0, 1]$ | Max charge state (`relative_maximum_charge_state`) |
+| $\eta_{in}$ | $\mathbb{R}_{\geq 0}$ | Charge efficiency (`eta_charge`) |
+| $\eta_{out}$ | $\mathbb{R}_{\geq 0}$ | Discharge efficiency (`eta_discharge`) |
+| $\dot{c}_{loss}$ | $\mathbb{R}_{\geq 0}$ | Self-discharge rate (`relative_loss_per_hour`) |
+| $c_{rel}^{min}$ | $\mathbb{R}_{\geq 0}$ | Min charge state (`relative_minimum_charge_state`) |
+| $c_{rel}^{max}$ | $\mathbb{R}_{\geq 0}$ | Max charge state (`relative_maximum_charge_state`) |
 | $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
 
 **Classes:** [`Storage`][flixopt.components.Storage], [`StorageModel`][flixopt.components.StorageModel]
