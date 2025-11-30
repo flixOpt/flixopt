@@ -24,9 +24,7 @@ The documentation follows the same structure as Core Concepts:
 
 Additional sections cover:
 
-- **[Features](features/InvestParameters.md)** — Investment decisions, on/off operation, piecewise linearization
 - **[Dimensions](dimensions.md)** — Time, periods, and scenarios
-- **[Modeling Patterns](modeling-patterns/index.md)** — Internal implementation details (advanced)
 
 ## Notation Conventions
 
