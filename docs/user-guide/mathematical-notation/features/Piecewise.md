@@ -27,6 +27,9 @@ $$
 
 When segment $i$ is active ($s_i = 1$), the lambdas interpolate between $x_i^{start}$ and $x_i^{end}$. When inactive ($s_i = 0$), both lambdas are zero.
 
+!!! note "Implementation Note"
+    This formulation is an explicit binary reformulation of SOS2 (Special Ordered Set Type 2) constraints. It produces identical results but uses more variables. We will migrate to native SOS2 constraints once [linopy](https://github.com/PyPSA/linopy) supports them.
+
 ---
 
 ## Building Blocks
