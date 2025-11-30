@@ -10,6 +10,18 @@ import xarray as xr
 
 import flixopt as fx
 
+
+# Get solutions for plotting for different optimizations
+def get_solutions(optimizations: list, variable: str) -> xr.Dataset:
+    dataarrays = []
+    for optimization in optimizations:
+        if optimization.name == 'Segmented':
+            dataarrays.append(optimization.results.solution_without_overlap(variable).rename(optimization.name))
+        else:
+            dataarrays.append(optimization.results.solution[variable].rename(optimization.name))
+    return xr.merge(dataarrays, join='outer')
+
+
 if __name__ == '__main__':
     fx.CONFIG.exploring()
 
@@ -20,7 +32,7 @@ if __name__ == '__main__':
     segment_length, overlap_length = 96, 1
 
     # Aggregated Properties
-    aggregation_parameters = fx.AggregationParameters(
+    clustering_parameters = fx.ClusteringParameters(
         hours_per_period=6,
         nr_of_periods=4,
         fix_storage_flows=False,
@@ -49,9 +61,9 @@ if __name__ == '__main__':
 
     # TimeSeriesData objects
     TS_heat_demand = fx.TimeSeriesData(heat_demand)
-    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, aggregation_weight=0.7)
-    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_price - 0.5), aggregation_group='p_el')
-    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, aggregation_group='p_el')
+    TS_electricity_demand = fx.TimeSeriesData(electricity_demand, clustering_weight=0.7)
+    TS_electricity_price_sell = fx.TimeSeriesData(-(electricity_price - 0.5), clustering_group='p_el')
+    TS_electricity_price_buy = fx.TimeSeriesData(electricity_price + 0.5, clustering_group='p_el')
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
@@ -166,42 +178,32 @@ if __name__ == '__main__':
     )
     flow_system.plot_network()
 
-    # Calculations
-    calculations: list[fx.FullCalculation | fx.AggregatedCalculation | fx.SegmentedCalculation] = []
+    # Optimizations
+    optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
 
     if full:
-        calculation = fx.FullCalculation('Full', flow_system)
-        calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
+        optimization = fx.Optimization('Full', flow_system.copy())
+        optimization.do_modeling()
+        optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
     if segmented:
-        calculation = fx.SegmentedCalculation('Segmented', flow_system, segment_length, overlap_length)
-        calculation.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
+        optimization = fx.SegmentedOptimization('Segmented', flow_system.copy(), segment_length, overlap_length)
+        optimization.do_modeling_and_solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
     if aggregated:
         if keep_extreme_periods:
-            aggregation_parameters.time_series_for_high_peaks = [TS_heat_demand]
-            aggregation_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
-        calculation = fx.AggregatedCalculation('Aggregated', flow_system, aggregation_parameters)
-        calculation.do_modeling()
-        calculation.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
-        calculations.append(calculation)
-
-    # Get solutions for plotting for different calculations
-    def get_solutions(calcs: list, variable: str) -> xr.Dataset:
-        dataarrays = []
-        for calc in calcs:
-            if calc.name == 'Segmented':
-                dataarrays.append(calc.results.solution_without_overlap(variable).rename(calc.name))
-            else:
-                dataarrays.append(calc.results.model.variables[variable].solution.rename(calc.name))
-        return xr.merge(dataarrays)
+            clustering_parameters.time_series_for_high_peaks = [TS_heat_demand]
+            clustering_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
+        optimization = fx.ClusteredOptimization('Aggregated', flow_system.copy(), clustering_parameters)
+        optimization.do_modeling()
+        optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        optimizations.append(optimization)
 
     # --- Plotting for comparison ---
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'Speicher|charge_state'),
+        get_solutions(optimizations, 'Speicher|charge_state'),
         mode='line',
         title='Charge State Comparison',
         ylabel='Charge state',
@@ -209,7 +211,7 @@ if __name__ == '__main__':
     ).write_html('results/Charge State.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'BHKW2(Q_th)|flow_rate'),
+        get_solutions(optimizations, 'BHKW2(Q_th)|flow_rate'),
         mode='line',
         title='BHKW2(Q_th) Flow Rate Comparison',
         ylabel='Flow rate',
@@ -217,7 +219,7 @@ if __name__ == '__main__':
     ).write_html('results/BHKW2 Thermal Power.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(temporal)|per_timestep'),
+        get_solutions(optimizations, 'costs(temporal)|per_timestep'),
         mode='line',
         title='Operation Cost Comparison',
         ylabel='Costs [€]',
@@ -225,15 +227,17 @@ if __name__ == '__main__':
     ).write_html('results/Operation Costs.html')
 
     fx.plotting.with_plotly(
-        get_solutions(calculations, 'costs(temporal)|per_timestep').sum('time'),
+        get_solutions(optimizations, 'costs(temporal)|per_timestep').sum('time'),
         mode='stacked_bar',
         title='Total Cost Comparison',
         ylabel='Costs [€]',
     ).update_layout(barmode='group').write_html('results/Total Costs.html')
 
     fx.plotting.with_plotly(
-        pd.DataFrame([calc.durations for calc in calculations], index=[calc.name for calc in calculations]).to_xarray(),
+        pd.DataFrame(
+            [calc.durations for calc in optimizations], index=[calc.name for calc in optimizations]
+        ).to_xarray(),
         mode='stacked_bar',
-    ).update_layout(title='Duration Comparison', xaxis_title='Calculation type', yaxis_title='Time (s)').write_html(
+    ).update_layout(title='Duration Comparison', xaxis_title='Optimization type', yaxis_title='Time (s)').write_html(
         'results/Speed Comparison.html'
     )
