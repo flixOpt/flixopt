@@ -252,7 +252,7 @@ class ModelingPrimitives:
         duration_dim: str = 'time',
         duration_per_step: int | float | xr.DataArray = None,
         previous_duration: xr.DataArray = 0,
-    ) -> tuple[linopy.Variable, tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]]:
+    ) -> tuple[dict[str, linopy.Variable], dict[str, linopy.Constraint]]:
         """Creates consecutive duration tracking for a binary state variable.
 
         Tracks how long a binary state has been continuously active (=1).

@@ -282,7 +282,12 @@ class StatusModel(Submodel):
 
     @property
     def inactive(self) -> linopy.Variable | None:
-        """Binary inactive state variable (deprecated - use 1 - status expression instead)"""
+        """Binary inactive state variable.
+
+        Note:
+            Only created when downtime tracking is enabled (min_downtime or max_downtime set).
+            For general use, prefer the expression `1 - status` instead of this variable.
+        """
         return self.get('inactive')
 
     @property
@@ -311,7 +316,10 @@ class StatusModel(Submodel):
         return self.get('downtime')
 
     def _get_previous_uptime(self):
-        """Get previous uptime (consecutive active hours). Previously inactive by default, for one timestep"""
+        """Get previous uptime (consecutive active hours).
+
+        Returns 0 if no previous status is provided (assumes previously inactive).
+        """
         hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
         if self._previous_status is None:
             return 0
@@ -319,7 +327,10 @@ class StatusModel(Submodel):
             return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status, hours_per_step)
 
     def _get_previous_downtime(self):
-        """Get previous downtime (consecutive inactive hours). Previously inactive by default, for one timestep"""
+        """Get previous downtime (consecutive inactive hours).
+
+        Returns one timestep duration if no previous status is provided (assumes previously inactive).
+        """
         hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
         if self._previous_status is None:
             return hours_per_step
