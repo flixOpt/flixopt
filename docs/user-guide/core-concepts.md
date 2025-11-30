@@ -28,7 +28,7 @@ Element labels must be unique across all types. See the [`FlowSystem` API refere
 
 - Have a `size` which, generally speaking, defines how much energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
 - Have a `flow_rate`, which defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
-- Have constraints to limit the flow-rate (min/max, total flow hours, on/off etc.)
+- Have constraints to limit the flow-rate (min/max, total flow hours, active/inactive status etc.)
 - Can have fixed profiles (for demands or renewable generation)
 - Can have [Effects](#effects) associated by their use (costs, emissions, labour, ...)
 

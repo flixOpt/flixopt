@@ -24,7 +24,7 @@ nav:
         - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
       - Features:
         - InvestParameters: user-guide/mathematical-notation/features/InvestParameters.md
-        - OnOffParameters: user-guide/mathematical-notation/features/OnOffParameters.md
+        - StatusParameters: user-guide/mathematical-notation/features/StatusParameters.md
         - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
       - Effects, Penalty & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
       - Modeling Patterns:
