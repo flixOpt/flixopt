@@ -20,11 +20,7 @@ The documentation follows the same structure as Core Concepts:
 | **Flows** — what moves | [Flow](elements/Flow.md) — capacity bounds, load factors, profiles |
 | **Converters** — transform things | [LinearConverter](elements/LinearConverter.md) — conversion ratios |
 | **Storages** — save for later | [Storage](elements/Storage.md) — charge dynamics, efficiency losses |
-| **Effects** — what you track | [Effects & Objective](effects-penalty-objective.md) — cost aggregation, constraints |
-
-Additional sections cover:
-
-- **[Dimensions](dimensions.md)** — Time, periods, and scenarios
+| **Effects** — what you track | [Effects & Dimensions](effects-and-dimensions.md) — objectives, costs, scenarios, periods |
 
 ## Notation Conventions
 
@@ -108,4 +104,4 @@ Start with the element that's most relevant to your question:
 - **Why is my component not running?** → [Flow](elements/Flow.md) (capacity bounds)
 - **How does storage charge/discharge?** → [Storage](elements/Storage.md) (charge dynamics)
 - **How are efficiencies handled?** → [LinearConverter](elements/LinearConverter.md) (conversion)
-- **How are costs calculated?** → [Effects & Objective](effects-penalty-objective.md)
+- **How are costs calculated?** → [Effects & Dimensions](effects-and-dimensions.md)

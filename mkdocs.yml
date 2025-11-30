@@ -32,11 +32,10 @@ nav:
       - Flow: user-guide/mathematical-notation/elements/Flow.md
       - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
       - Storage: user-guide/mathematical-notation/elements/Storage.md
-      - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
+      - Effects & Dimensions: user-guide/mathematical-notation/effects-and-dimensions.md
       - Investment: user-guide/mathematical-notation/features/InvestParameters.md
       - Status: user-guide/mathematical-notation/features/StatusParameters.md
       - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-      - Dimensions: user-guide/mathematical-notation/dimensions.md
     - Recipes: user-guide/recipes/index.md
     - Support:
       - FAQ: user-guide/faq.md

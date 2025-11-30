@@ -42,7 +42,7 @@ class Effect(Element):
     pricing), and flexible constraint formulation.
 
     Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/>
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -310,7 +310,7 @@ class EffectModel(ElementModel):
     and effect bounds.
 
     Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/>
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
     """
 
     element: Effect  # Type hint
