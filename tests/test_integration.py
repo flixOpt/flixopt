@@ -267,13 +267,13 @@ class TestModelingTypes:
             calc.do_modeling()
             calc.solve(highs_solver)
         elif modeling_type == 'segmented':
-            calc = fx.SegmentedCalculation('segModel', flow_system, timesteps_per_segment=96, overlap_timesteps=1)
+            calc = fx.SegmentedOptimization('segModel', flow_system, timesteps_per_segment=96, overlap_timesteps=1)
             calc.do_modeling_and_solve(highs_solver)
         elif modeling_type == 'aggregated':
-            calc = fx.AggregatedCalculation(
+            calc = fx.ClusteredOptimization(
                 'aggModel',
                 flow_system,
-                fx.AggregationParameters(
+                fx.ClusteringParameters(
                     hours_per_period=6,
                     nr_of_periods=4,
                     fix_storage_flows=False,

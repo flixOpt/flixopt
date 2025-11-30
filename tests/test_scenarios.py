@@ -143,7 +143,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     boiler = fx.linear_converters.Boiler(
         'Kessel',
         thermal_efficiency=0.5,
-        on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
+        status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
         thermal_flow=fx.Flow(
             'Q_th',
             bus='Fernwärme',
@@ -158,14 +158,14 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 mandatory=True,
                 effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_min=0,
-                on_hours_max=1000,
-                consecutive_on_hours_max=10,
-                consecutive_on_hours_min=1,
-                consecutive_off_hours_max=10,
-                effects_per_switch_on=0.01,
-                switch_on_max=1000,
+            status_parameters=fx.StatusParameters(
+                active_hours_min=0,
+                active_hours_max=1000,
+                max_uptime=10,
+                min_uptime=1,
+                max_downtime=10,
+                effects_per_startup=0.01,
+                startup_limit=1000,
             ),
             flow_hours_max=1e6,
         ),
@@ -231,7 +231,7 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
                     'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                 }
             ),
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+            status_parameters=fx.StatusParameters(effects_per_startup=0.01),
         )
     )
 
@@ -345,7 +345,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
-    np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
+    np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
 
     calc = fx.Optimization(flow_system=flow_system, name='test_scenarios_selection', normalize_weights=False)
     calc.do_modeling()
@@ -357,8 +357,8 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     np.testing.assert_allclose(
         calc.results.objective,
         (
-            (calc.results.solution['costs'] * flow_system.weights).sum()
-            + (calc.results.solution['Penalty'] * flow_system.weights).sum()
+            (calc.results.solution['costs'] * flow_system.scenario_weights).sum()
+            + (calc.results.solution['Penalty'] * flow_system.scenario_weights).sum()
         ).item(),
     )  ## Account for rounding errors
 
@@ -752,8 +752,8 @@ def test_weights_io_persistence():
     fs_loaded = fx.FlowSystem.from_dataset(ds)
 
     # Verify weights persisted correctly
-    np.testing.assert_allclose(fs_loaded.weights.values, fs_original.weights.values)
-    assert fs_loaded.weights.dims == fs_original.weights.dims
+    np.testing.assert_allclose(fs_loaded.scenario_weights.values, fs_original.scenario_weights.values)
+    assert fs_loaded.scenario_weights.dims == fs_original.scenario_weights.dims
 
 
 def test_weights_selection():
@@ -788,7 +788,7 @@ def test_weights_selection():
 
     # Verify weights are correctly sliced
     assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))
-    np.testing.assert_allclose(fs_subset.weights.values, custom_scenario_weights[[0, 2]])
+    np.testing.assert_allclose(fs_subset.scenario_weights.values, custom_scenario_weights[[0, 2]])
 
     # Verify weights are 1D with just scenario dimension (no period dimension)
-    assert fs_subset.weights.dims == ('scenario',)
+    assert fs_subset.scenario_weights.dims == ('scenario',)

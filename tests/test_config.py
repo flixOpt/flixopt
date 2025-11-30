@@ -211,13 +211,6 @@ class TestConfigModule:
         assert CONFIG.Modeling.big == 12345678
         assert CONFIG.Solving.mip_gap == 0.001
 
-    def test_change_logging_level_deprecated(self):
-        """Test deprecated change_logging_level function."""
-        from flixopt import change_logging_level
-
-        with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
-            change_logging_level('INFO')
-
     def test_exception_logging(self, capfd):
         """Test that exceptions are properly logged with tracebacks."""
         CONFIG.Logging.enable_console('INFO')

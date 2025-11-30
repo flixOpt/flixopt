@@ -9,12 +9,9 @@ import copy
 import logging
 import pathlib
 import timeit
-import warnings as _warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-from .config import DEPRECATION_REMOVAL_VERSION
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -401,39 +398,3 @@ class ClusteringModel(Submodel):
                 var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
                 short_name=f'limit_corrections|{variable.name}',
             )
-
-
-# ===== Deprecated aliases for backward compatibility =====
-
-
-def _create_deprecation_warning(old_name: str, new_name: str):
-    """Helper to create a deprecation warning"""
-    _warnings.warn(
-        f"'{old_name}' is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use '{new_name}' instead.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
-class Aggregation(Clustering):
-    """Deprecated: Use Clustering instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('Aggregation', 'Clustering')
-        super().__init__(*args, **kwargs)
-
-
-class AggregationParameters(ClusteringParameters):
-    """Deprecated: Use ClusteringParameters instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('AggregationParameters', 'ClusteringParameters')
-        super().__init__(*args, **kwargs)
-
-
-class AggregationModel(ClusteringModel):
-    """Deprecated: Use ClusteringModel instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('AggregationModel', 'ClusteringModel')
-        super().__init__(*args, **kwargs)
