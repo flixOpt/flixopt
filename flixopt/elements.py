@@ -930,8 +930,8 @@ class BusModel(ElementModel):
     element: Bus  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Bus):
-        self.excess_input: linopy.Variable | None = None
-        self.excess_output: linopy.Variable | None = None
+        self.virtual_supply: linopy.Variable | None = None
+        self.virtual_demand: linopy.Variable | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
@@ -948,35 +948,37 @@ class BusModel(ElementModel):
         if self.element.with_excess:
             excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
 
-            self.excess_input = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_input')
-
-            self.excess_output = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='excess_output'
+            self.virtual_supply = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='virtual_supply'
             )
 
-            eq_bus_balance.lhs -= -self.excess_input + self.excess_output
+            self.virtual_demand = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='virtual_demand'
+            )
+
+            eq_bus_balance.lhs -= -self.virtual_supply + self.virtual_demand
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
 
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.excess_input * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.virtual_supply * excess_penalty},
                 target='temporal',
             )
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.excess_output * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.virtual_demand * excess_penalty},
                 target='temporal',
             )
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
         outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
-        if self.excess_input is not None:
-            inputs.append(self.excess_input.name)
-        if self.excess_output is not None:
-            outputs.append(self.excess_output.name)
+        if self.virtual_supply is not None:
+            inputs.append(self.virtual_supply.name)
+        if self.virtual_demand is not None:
+            outputs.append(self.virtual_demand.name)
         return {
             **super().results_structure(),
             'inputs': inputs,
