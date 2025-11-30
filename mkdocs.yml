@@ -17,7 +17,6 @@ nav:
       - Quick Start: home/quick-start.md
     - About:
       - Users: home/users.md
-      - Models: home/models.md
       - Citing: home/citing.md
       - License: home/license.md
 
