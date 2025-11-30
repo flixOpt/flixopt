@@ -130,20 +130,14 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
 
 ## Reference
 
-| Variable | Description |
-|----------|-------------|
-| $P$ | Investment size |
-| $s_{inv}$ | Binary decision (0=no, 1=yes) |
-
-| Parameter | Python | Description |
-|-----------|--------|-------------|
-| Min size | `minimum_size` | Lower bound |
-| Max size | `maximum_size` | Upper bound |
-| Fixed size | `fixed_size` | Binary: this or nothing |
-| Per-size cost | `specific_effects` | €/unit |
-| Fixed cost | `effects_of_investment` | One-time if investing |
-| Retirement | `effects_of_retirement` | Cost if not investing |
-| Piecewise cost | `piecewise_effects_of_investment` | Non-linear cost curve |
-| Force invest | `mandatory` | No binary variable |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $P$ | $\mathbb{R}_{\geq 0}$ | Investment size (capacity) |
+| $s_{inv}$ | $\{0, 1\}$ | Binary investment decision (0=no, 1=yes) |
+| $P^{min}$ | $\mathbb{R}_{\geq 0}$ | Minimum size (`minimum_size`) |
+| $P^{max}$ | $\mathbb{R}_{\geq 0}$ | Maximum size (`maximum_size`) |
+| $c_{spec}$ | $\mathbb{R}$ | Per-size effect (`effects_of_investment_per_size`) |
+| $c_{fix}$ | $\mathbb{R}$ | Fixed effect (`effects_of_investment`) |
+| $c_{ret}$ | $\mathbb{R}$ | Retirement effect (`effects_of_retirement`) |
 
 **Classes:** [`InvestParameters`][flixopt.interface.InvestParameters], [`InvestmentModel`][flixopt.features.InvestmentModel]

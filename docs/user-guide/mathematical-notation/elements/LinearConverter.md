@@ -142,10 +142,10 @@ chp = fx.linear_converters.CHP(
 
 The converter creates **constraints** linking flows, not new variables.
 
-| Parameter | Python | Description |
-|-----------|--------|-------------|
-| Inputs | `inputs` | List of input Flows |
-| Outputs | `outputs` | List of output Flows |
-| Ratios | `conversion_factors` | List of factor dicts |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $p_f(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate of flow $f$ at timestep $t$ |
+| $a_f$ | $\mathbb{R}$ | Conversion factor for input flow $f$ |
+| $b_f$ | $\mathbb{R}$ | Conversion factor for output flow $f$ |
 
 **Classes:** [`LinearConverter`][flixopt.components.LinearConverter], [`LinearConverterModel`][flixopt.components.LinearConverterModel]

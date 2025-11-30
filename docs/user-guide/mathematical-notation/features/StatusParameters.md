@@ -99,21 +99,16 @@ Detect transitions: $s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)$
 
 ## Reference
 
-| Variable | Description |
-|----------|-------------|
-| $s(t)$ | Binary status (0=off, 1=on) |
-| $s^{start}(t)$ | Startup indicator |
-| $s^{stop}(t)$ | Shutdown indicator |
-
-| Parameter | Python | Description |
-|-----------|--------|-------------|
-| Startup cost | `effects_per_startup` | Per-startup effects |
-| Running cost | `effects_per_active_hour` | Per-hour effects |
-| Min on | `min_uptime` | Min consecutive hours on |
-| Min off | `min_downtime` | Min consecutive hours off |
-| Max on | `max_uptime` | Max consecutive hours on |
-| Total min | `active_hours_min` | Min total hours |
-| Total max | `active_hours_max` | Max total hours |
-| Max starts | `startup_limit` | Max startups per period |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $s(t)$ | $\{0, 1\}$ | Binary status (0=off, 1=on) |
+| $s^{start}(t)$ | $\{0, 1\}$ | Startup indicator |
+| $s^{stop}(t)$ | $\{0, 1\}$ | Shutdown indicator |
+| $T_{up}^{min}$ | $\mathbb{Z}_{\geq 0}$ | Min uptime (`min_uptime`) |
+| $T_{up}^{max}$ | $\mathbb{Z}_{\geq 0}$ | Max uptime (`max_uptime`) |
+| $T_{down}^{min}$ | $\mathbb{Z}_{\geq 0}$ | Min downtime (`min_downtime`) |
+| $H^{min}$ | $\mathbb{R}_{\geq 0}$ | Min total active hours (`active_hours_min`) |
+| $H^{max}$ | $\mathbb{R}_{\geq 0}$ | Max total active hours (`active_hours_max`) |
+| $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
 
 **Classes:** [`StatusParameters`][flixopt.interface.StatusParameters], [`StatusModel`][flixopt.features.StatusModel]

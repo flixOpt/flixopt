@@ -142,17 +142,14 @@ When segment $i$ is active ($s_i = 1$), the lambdas interpolate between $x_i^{st
 
 ## Reference
 
-| Variable | Description |
-|----------|-------------|
-| $s_i$ | Binary: segment $i$ is active |
-| $\lambda_i^0$ | Interpolation weight for segment start |
-| $\lambda_i^1$ | Interpolation weight for segment end |
-
-| Class | Description |
-|-------|-------------|
-| `Piece(start, end)` | Linear segment |
-| `Piecewise([pieces])` | Collection of segments |
-| `PiecewiseConversion({flow: piecewise})` | Synchronized multi-flow conversion |
-| `PiecewiseEffects(origin, shares)` | Size-to-effect mapping |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $x$ | $\mathbb{R}$ | Interpolated variable value |
+| $s_i$ | $\{0, 1\}$ | Binary: segment $i$ is active |
+| $\lambda_i^0$ | $[0, 1]$ | Interpolation weight for segment start |
+| $\lambda_i^1$ | $[0, 1]$ | Interpolation weight for segment end |
+| $x_i^{start}$ | $\mathbb{R}$ | Start value of segment $i$ |
+| $x_i^{end}$ | $\mathbb{R}$ | End value of segment $i$ |
+| $n$ | $\mathbb{Z}_{> 0}$ | Number of segments |
 
 **Classes:** [`Piecewise`][flixopt.interface.Piecewise], [`Piece`][flixopt.interface.Piece], [`PiecewiseConversion`][flixopt.interface.PiecewiseConversion], [`PiecewiseEffects`][flixopt.interface.PiecewiseEffects]

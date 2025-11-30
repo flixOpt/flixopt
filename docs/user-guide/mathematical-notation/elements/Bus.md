@@ -41,13 +41,12 @@ heat_bus = fx.Bus(
 
 ## Reference
 
-| Variable | Description |
-|----------|-------------|
-| $\phi_{in}(t)$ | Virtual supply (covers shortages) |
-| $\phi_{out}(t)$ | Virtual demand (absorbs surplus) |
-
-| Parameter | Python | Default |
-|-----------|--------|---------|
-| Penalty | `excess_penalty_per_flow_hour` | `1e5` |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $p(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate of connected flows |
+| $\phi_{in}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual supply (covers shortages) |
+| $\phi_{out}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual demand (absorbs surplus) |
+| $c_\phi$ | $\mathbb{R}_{\geq 0}$ | Penalty factor (`excess_penalty_per_flow_hour`) |
+| $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
 
 **Classes:** [`Bus`][flixopt.elements.Bus], [`BusModel`][flixopt.elements.BusModel]
