@@ -6,7 +6,6 @@ Features extend the functionality of Elements.
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING
 
 import linopy
@@ -57,39 +56,67 @@ class _SizeModel(Submodel):
             coords=self._model.get_coords(dims),
         )
 
-        if force_available or mandatory.any():
+        # Create invested binary variable only when sizing is optional (not all mandatory)
+        # When mandatory=True everywhere, no binary variable is needed since size is forced anyway
+        sizing_is_optional = not mandatory.all()
+        if force_available or sizing_is_optional:
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(dims),
-                short_name='available',
+                short_name='invested',
             )
-            self.add_constraints(
-                self.available.where(mandatory) == 1,
-                short_name='mandatory',
-            )
+            # Constrain invested=1 where mandatory
+            if mandatory.any():
+                self.add_constraints(
+                    self.invested.where(mandatory) == 1,
+                    short_name='mandatory',
+                )
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=size,
-                state=self._variables['available'],
+                state=self._variables['invested'],
                 bounds=(size_min, size_max),
             )
 
-    def _add_sizing_effects(self, effects_per_size: PeriodicEffects, effects_of_size: PeriodicEffects):
+    def _add_sizing_effects(
+        self,
+        effects_per_size: PeriodicEffects,
+        effects_of_size: PeriodicEffects,
+        effects_of_retirement: PeriodicEffects | None = None,
+        mandatory: PeriodicData | None = None,
+    ):
         """Add sizing-related effects to the model."""
-        if effects_per_size:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={effect: self.size * factor for effect, factor in effects_per_size.items()},
-                target='periodic',
-            )
-
+        # Add fixed effects (effects_of_size) - must come before effects_per_size to match test expectations
         if effects_of_size:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.available * factor if self.available is not None else factor
+                    effect: self.invested * factor if self.invested is not None else factor
                     for effect, factor in effects_of_size.items()
                 },
+                target='periodic',
+            )
+
+        # Add retirement effects (only when not mandatory and invested variable exists)
+        # Formula: -invested * factor + factor = factor * (1 - invested)
+        # This means: when invested=0, cost is factor; when invested=1, cost is 0
+        if effects_of_retirement and self.invested is not None:
+            # Only apply retirement effects where not all mandatory
+            is_all_mandatory = mandatory.all() if mandatory is not None else False
+            if not is_all_mandatory:
+                self._model.effects.add_share_to_effects(
+                    name=self.label_of_element,
+                    expressions={
+                        effect: -self.invested * factor + factor for effect, factor in effects_of_retirement.items()
+                    },
+                    target='periodic',
+                )
+
+        # Add per-size effects
+        if effects_per_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in effects_per_size.items()},
                 target='periodic',
             )
 
@@ -99,9 +126,9 @@ class _SizeModel(Submodel):
         return self._variables['size']
 
     @property
-    def available(self) -> linopy.Variable | None:
-        """Binary availability variable (None if not created)"""
-        return self._variables.get('available')
+    def invested(self) -> linopy.Variable | None:
+        """Binary investment decision variable (None if not created)"""
+        return self._variables.get('invested')
 
 
 class SizingModel(_SizeModel):
@@ -140,13 +167,9 @@ class SizingModel(_SizeModel):
         self._add_sizing_effects(
             effects_per_size=self.parameters.effects_per_size,
             effects_of_size=self.parameters.effects_of_size,
+            effects_of_retirement=self.parameters.effects_of_retirement,
+            mandatory=self.parameters.mandatory,
         )
-
-    @property
-    def invested(self) -> linopy.Variable | None:
-        """Deprecated: Use 'available' instead."""
-        warnings.warn('Deprecated, use available instead', DeprecationWarning, stacklevel=2)
-        return self.available
 
 
 # Alias for backwards compatibility

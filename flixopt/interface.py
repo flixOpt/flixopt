@@ -703,12 +703,16 @@ class _SizeParameters(Interface):
         mandatory: bool | Bool_PS = False,
         effects_of_size: Effect_PS | Numeric_PS | None = None,
         effects_per_size: Effect_PS | Numeric_PS | None = None,
+        effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_per_size: PiecewiseEffects | None = None,
     ):
         self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
         self.fixed_size = fixed_size
         self.mandatory = mandatory
         self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
+        self.effects_of_retirement: PeriodicEffectsUser = (
+            effects_of_retirement if effects_of_retirement is not None else {}
+        )
         self.piecewise_effects_per_size = piecewise_effects_per_size
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
@@ -730,6 +734,12 @@ class _SizeParameters(Interface):
             prefix=name_prefix,
             effect_values=self.effects_per_size,
             suffix='effects_per_size',
+            dims=['period', 'scenario'],
+        )
+        self.effects_of_retirement = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_of_retirement,
+            suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
 
@@ -764,7 +774,9 @@ class _SizeParameters(Interface):
 
         if self.fixed_size is not None:
             val = numeric_to_str_for_repr(self.fixed_size)
-            status = 'mandatory' if self.mandatory else 'optional'
+            # Handle both bool and DataArray cases (before/after transform_data)
+            is_mandatory = self.mandatory.all() if hasattr(self.mandatory, 'all') else self.mandatory
+            status = 'mandatory' if is_mandatory else 'optional'
             return f'{val} ({status})'
 
         # Show range if available
@@ -848,8 +860,7 @@ class InvestParameters(SizingParameters):
             kwargs['effects_per_size'] = kwargs.pop('effects_of_investment_per_size')
         if 'piecewise_effects_of_investment' in kwargs:
             kwargs['piecewise_effects_per_size'] = kwargs.pop('piecewise_effects_of_investment')
-        # Remove deprecated parameters
-        kwargs.pop('effects_of_retirement', None)
+        # Remove unsupported parameters
         kwargs.pop('linked_periods', None)
 
         warnings.warn(
@@ -857,7 +868,7 @@ class InvestParameters(SizingParameters):
             'Parameter names have changed: effects_of_investment -> effects_of_size, '
             'effects_of_investment_per_size -> effects_per_size, '
             'piecewise_effects_of_investment -> piecewise_effects_per_size. '
-            'effects_of_retirement and linked_periods are no longer supported.',
+            'linked_periods is no longer supported.',
             DeprecationWarning,
             stacklevel=2,
         )
