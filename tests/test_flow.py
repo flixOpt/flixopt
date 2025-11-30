@@ -560,9 +560,11 @@ class TestFlowOnModel:
             flow.submodel.status.status,
             model.add_variables(binary=True, coords=model.get_coords()),
         )
+        # Upper bound is total hours when active_hours_max is not specified
+        total_hours = model.hours_per_step.sum('time').max().item()
         assert_var_equal(
             model.variables['Sink(Wärme)|active_hours'],
-            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
+            model.add_variables(lower=0, upper=total_hours, coords=model.get_coords(['period', 'scenario'])),
         )
         assert_conequal(
             model.constraints['Sink(Wärme)|flow_rate|lb'],
