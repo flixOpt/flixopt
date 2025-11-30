@@ -66,8 +66,8 @@ def flow_system_base(timesteps: pd.DatetimeIndex) -> fx.FlowSystem:
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
-        fx.Bus('Fernwärme', excess_penalty_per_flow_hour=None),
-        fx.Bus('Gas', excess_penalty_per_flow_hour=None),
+        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=None),
+        fx.Bus('Gas', imbalance_penalty_per_flow_hour=None),
     )
     flow_system.add_elements(fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True))
     flow_system.add_elements(
