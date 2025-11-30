@@ -21,7 +21,8 @@ One effect is the **objective** (minimized). Others are tracked or constrained.
 
     Accumulated over timesteps — operational costs, emissions, energy:
 
-    $E_{temp}(t) = \text{value}(t) \cdot c \cdot \Delta t$
+    - Per flow hour: $E(t) = p(t) \cdot c \cdot \Delta t$
+    - Per event (startup): $E(t) = s^{start}(t) \cdot c$
 
     ```python
     fx.Flow(..., effects_per_flow_hour={'costs': 50})  # €50/MWh
