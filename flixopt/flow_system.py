@@ -77,7 +77,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         >>>
         >>> # Add elements to the system
         >>> boiler = fx.Component('Boiler', inputs=[heat_flow], on_off_parameters=...)
-        >>> heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e4)
+        >>> heat_bus = fx.Bus('Heat', imbalance_penalty_per_flow_hour=1e4)
         >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
         >>> flow_system.add_elements(boiler, heat_bus, costs)
 
