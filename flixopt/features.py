@@ -5,6 +5,8 @@ Features extend the functionality of Elements.
 
 from __future__ import annotations
 
+import logging
+import warnings
 from typing import TYPE_CHECKING
 
 import linopy
@@ -13,140 +15,142 @@ import numpy as np
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
 
+logger = logging.getLogger('flixopt')
+
 if TYPE_CHECKING:
     from collections.abc import Collection
 
     import xarray as xr
 
     from .core import FlowSystemDimensions
-    from .interface import InvestParameters, Piecewise, StatusParameters
-    from .types import Numeric_PS, Numeric_TPS
+    from .interface import Piecewise, SizingParameters, StatusParameters
+    from .types import Numeric_PS, Numeric_TPS, PeriodicData, PeriodicEffects
 
 
-class InvestmentModel(Submodel):
-    """Mathematical model implementation for investment decisions.
+class _SizeModel(Submodel):
+    """A model that creates the size variable together with an optional binary availability variable."""
 
-    Creates optimization variables and constraints for investment sizing decisions,
-    supporting both binary and continuous sizing with comprehensive effect modeling.
+    def _create_sizing_variables_and_constraints(
+        self,
+        size_min: PeriodicData,
+        size_max: PeriodicData,
+        mandatory: PeriodicData,
+        dims: list[FlowSystemDimensions],
+        force_available: bool = False,
+    ):
+        """Create sizing variables and constraints.
 
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
+        Args:
+            size_min: Minimum size bound
+            size_max: Maximum size bound
+            mandatory: Whether sizing is mandatory (forces available=1)
+            dims: Dimensions for the variables
+            force_available: If True, always create the available binary variable
+        """
+        if not np.issubdtype(mandatory.dtype, np.bool_):
+            raise TypeError(f'Expected all bool values, got {mandatory.dtype=}: {mandatory}')
+
+        size = self.add_variables(
+            short_name='size',
+            lower=size_min.where(mandatory, 0),
+            upper=size_max,
+            coords=self._model.get_coords(dims),
+        )
+
+        if force_available or mandatory.any():
+            self.add_variables(
+                binary=True,
+                coords=self._model.get_coords(dims),
+                short_name='available',
+            )
+            self.add_constraints(
+                self.available.where(mandatory) == 1,
+                short_name='mandatory',
+            )
+            BoundingPatterns.bounds_with_state(
+                self,
+                variable=size,
+                state=self._variables['available'],
+                bounds=(size_min, size_max),
+            )
+
+    def _add_sizing_effects(self, effects_per_size: PeriodicEffects, effects_of_size: PeriodicEffects):
+        """Add sizing-related effects to the model."""
+        if effects_per_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={effect: self.size * factor for effect, factor in effects_per_size.items()},
+                target='periodic',
+            )
+
+        if effects_of_size:
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={
+                    effect: self.available * factor if self.available is not None else factor
+                    for effect, factor in effects_of_size.items()
+                },
+                target='periodic',
+            )
+
+    @property
+    def size(self) -> linopy.Variable:
+        """Capacity size variable"""
+        return self._variables['size']
+
+    @property
+    def available(self) -> linopy.Variable | None:
+        """Binary availability variable (None if not created)"""
+        return self._variables.get('available')
+
+
+class SizingModel(_SizeModel):
+    """Model for capacity sizing decisions.
+
+    This feature model handles capacity sizing with optional binary availability.
+    It applies bounds to the size variable and creates effects based on size.
 
     Args:
         model: The optimization model instance
-        label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-        parameters: The parameters of the feature model.
-        label_of_model: The label of the model. This is needed to construct the full label of the model.
+        label_of_element: The label of the parent element
+        parameters: The sizing parameters
+        label_of_model: Optional custom label for the model
     """
 
-    parameters: InvestParameters
+    parameters: SizingParameters
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: InvestParameters,
+        parameters: SizingParameters,
         label_of_model: str | None = None,
     ):
-        self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
         super()._do_modeling()
-        self._create_variables_and_constraints()
-        self._add_effects()
-
-    def _create_variables_and_constraints(self):
-        size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
-        if self.parameters.linked_periods is not None:
-            # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
-            size_min = size_min * self.parameters.linked_periods
-            size_max = size_max * self.parameters.linked_periods
-
-        self.add_variables(
-            short_name='size',
-            lower=size_min if self.parameters.mandatory else 0,
-            upper=size_max,
-            coords=self._model.get_coords(['period', 'scenario']),
+        self._create_sizing_variables_and_constraints(
+            size_min=self.parameters.minimum_or_fixed_size,
+            size_max=self.parameters.maximum_or_fixed_size,
+            mandatory=self.parameters.mandatory,
+            dims=['period', 'scenario'],
         )
-
-        if not self.parameters.mandatory:
-            self.add_variables(
-                binary=True,
-                coords=self._model.get_coords(['period', 'scenario']),
-                short_name='invested',
-            )
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self.size,
-                state=self._variables['invested'],
-                bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
-            )
-
-        if self.parameters.linked_periods is not None:
-            masked_size = self.size.where(self.parameters.linked_periods, drop=True)
-            self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                short_name='linked_periods',
-            )
-
-    def _add_effects(self):
-        """Add investment effects"""
-        if self.parameters.effects_of_investment:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.invested * factor if self.invested is not None else factor
-                    for effect, factor in self.parameters.effects_of_investment.items()
-                },
-                target='periodic',
-            )
-
-        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: -self.invested * factor + factor
-                    for effect, factor in self.parameters.effects_of_retirement.items()
-                },
-                target='periodic',
-            )
-
-        if self.parameters.effects_of_investment_per_size:
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={
-                    effect: self.size * factor
-                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
-                },
-                target='periodic',
-            )
-
-        if self.parameters.piecewise_effects_of_investment:
-            self.piecewise_effects = self.add_submodels(
-                PiecewiseEffectsModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}|PiecewiseEffects',
-                    piecewise_origin=(self.size.name, self.parameters.piecewise_effects_of_investment.piecewise_origin),
-                    piecewise_shares=self.parameters.piecewise_effects_of_investment.piecewise_shares,
-                    zero_point=self.invested,
-                ),
-                short_name='segments',
-            )
-
-    @property
-    def size(self) -> linopy.Variable:
-        """Investment size variable"""
-        return self._variables['size']
+        self._add_sizing_effects(
+            effects_per_size=self.parameters.effects_per_size,
+            effects_of_size=self.parameters.effects_of_size,
+        )
 
     @property
     def invested(self) -> linopy.Variable | None:
-        """Binary investment decision variable"""
-        if 'invested' not in self._variables:
-            return None
-        return self._variables['invested']
+        """Deprecated: Use 'available' instead."""
+        warnings.warn('Deprecated, use available instead', DeprecationWarning, stacklevel=2)
+        return self.available
+
+
+# Alias for backwards compatibility
+InvestmentModel = SizingModel
 
 
 class StatusModel(Submodel):

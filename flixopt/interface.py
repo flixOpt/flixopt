@@ -6,19 +6,22 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING
-
-import numpy as np
-import pandas as pd
-import xarray as xr
 
 from .config import CONFIG
 from .structure import Interface, register_class_for_io
+from .types import Bool_PS, Numeric_PS, PeriodicData, PeriodicEffectsUser
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
 
-    from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
+    import xarray as xr
+
+    from .types import Effect_PS, Effect_TPS, Numeric_TPS
+
+# Backwards compatibility alias
+PeriodicDataUser = Numeric_PS
 
 logger = logging.getLogger('flixopt')
 
@@ -689,250 +692,50 @@ class PiecewiseEffects(Interface):
             piecewise.transform_data(f'{name_prefix}|PiecewiseEffects|{effect}')
 
 
-@register_class_for_io
-class InvestParameters(Interface):
-    """Define investment decision parameters with flexible sizing and effect modeling.
-
-    This class models investment decisions in optimization problems, supporting
-    both binary (invest/don't invest) and continuous sizing choices with
-    comprehensive cost structures. It enables realistic representation of
-    investment economics including fixed costs, scale effects, and divestment penalties.
-
-    Investment Decision Types:
-        **Binary Investments**: Fixed size investments creating yes/no decisions
-        (e.g., install a specific generator, build a particular facility)
-
-        **Continuous Sizing**: Variable size investments with minimum/maximum bounds
-        (e.g., battery capacity from 10-1000 kWh, pipeline diameter optimization)
-
-    Cost Modeling Approaches:
-        - **Fixed Effects**: One-time costs independent of size (permits, connections)
-        - **Specific Effects**: Linear costs proportional to size (€/kW, €/m²)
-        - **Piecewise Effects**: Non-linear relationships (bulk discounts, learning curves)
-        - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
-
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
-
-    Args:
-        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
-        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
-            Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
-            Ignored if fixed_size is specified.
-        mandatory: Controls whether investment is required. When True, forces investment
-            to occur (useful for mandatory upgrades or replacement decisions).
-            When False (default), optimization can choose not to invest.
-            With multiple periods, at least one period has to have an investment.
-        effects_of_investment: Fixed costs if investment is made, regardless of size.
-            Dict: {'effect_name': value} (e.g., {'cost': 10000}).
-        effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
-            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
-        piecewise_effects_of_investment: Non-linear costs using PiecewiseEffects.
-            Combinable with effects_of_investment and effects_of_investment_per_size.
-        effects_of_retirement: Costs incurred if NOT investing (demolition, penalties).
-            Dict: {'effect_name': value}.
-        linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
-            For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
-
-    Cost Annualization Requirements:
-        All cost values must be properly weighted to match the optimization model's time horizon.
-        For long-term investments, the cost values should be annualized to the corresponding operation time (annuity).
-
-        - Use equivalent annual cost (capital cost / equipment lifetime)
-        - Apply appropriate discount rates for present value optimizations
-        - Account for inflation, escalation, and financing costs
-
-        Example: €1M equipment with 20-year life → €50k/year fixed cost
-
-    Examples:
-        Simple binary investment (solar panels):
-
-        ```python
-        solar_investment = InvestParameters(
-            fixed_size=100,  # 100 kW system (binary decision)
-            mandatory=False,  # Investment is optional
-            effects_of_investment={
-                'cost': 25000,  # Installation and permitting costs
-                'CO2': -50000,  # Avoided emissions over lifetime
-            },
-            effects_of_investment_per_size={
-                'cost': 1200,  # €1200/kW for panels (annualized)
-                'CO2': -800,  # kg CO2 avoided per kW annually
-            },
-        )
-        ```
-
-        Flexible sizing with economies of scale:
-
-        ```python
-        battery_investment = InvestParameters(
-            minimum_size=10,  # Minimum viable system size (kWh)
-            maximum_size=1000,  # Maximum installable capacity
-            mandatory=False,  # Investment is optional
-            effects_of_investment={
-                'cost': 5000,  # Grid connection and control system
-                'installation_time': 2,  # Days for fixed components
-            },
-            piecewise_effects_of_investment=PiecewiseEffects(
-                piecewise_origin=Piecewise(
-                    [
-                        Piece(0, 100),  # Small systems
-                        Piece(100, 500),  # Medium systems
-                        Piece(500, 1000),  # Large systems
-                    ]
-                ),
-                piecewise_shares={
-                    'cost': Piecewise(
-                        [
-                            Piece(800, 750),  # High cost/kWh for small systems
-                            Piece(750, 600),  # Medium cost/kWh
-                            Piece(600, 500),  # Bulk discount for large systems
-                        ]
-                    )
-                },
-            ),
-        )
-        ```
-
-        Mandatory replacement with retirement costs:
-
-        ```python
-        boiler_replacement = InvestParameters(
-            minimum_size=50,
-            maximum_size=200,
-            mandatory=False,  # Can choose not to replace
-            effects_of_investment={
-                'cost': 15000,  # Installation costs
-                'disruption': 3,  # Days of downtime
-            },
-            effects_of_investment_per_size={
-                'cost': 400,  # €400/kW capacity
-                'maintenance': 25,  # Annual maintenance per kW
-            },
-            effects_of_retirement={
-                'cost': 8000,  # Demolition if not replaced
-                'environmental': 100,  # Disposal fees
-            },
-        )
-        ```
-
-        Multi-technology comparison:
-
-        ```python
-        # Gas turbine option
-        gas_turbine = InvestParameters(
-            fixed_size=50,  # MW
-            effects_of_investment={'cost': 2500000, 'CO2': 1250000},
-            effects_of_investment_per_size={'fuel_cost': 45, 'maintenance': 12},
-        )
-
-        # Wind farm option
-        wind_farm = InvestParameters(
-            minimum_size=20,
-            maximum_size=100,
-            effects_of_investment={'cost': 1000000, 'CO2': -5000000},
-            effects_of_investment_per_size={'cost': 1800000, 'land_use': 0.5},
-        )
-        ```
-
-        Technology learning curve:
-
-        ```python
-        hydrogen_electrolyzer = InvestParameters(
-            minimum_size=1,
-            maximum_size=50,  # MW
-            piecewise_effects_of_investment=PiecewiseEffects(
-                piecewise_origin=Piecewise(
-                    [
-                        Piece(0, 5),  # Small scale: early adoption
-                        Piece(5, 20),  # Medium scale: cost reduction
-                        Piece(20, 50),  # Large scale: mature technology
-                    ]
-                ),
-                piecewise_shares={
-                    'capex': Piecewise(
-                        [
-                            Piece(2000, 1800),  # Learning reduces costs
-                            Piece(1800, 1400),  # Continued cost reduction
-                            Piece(1400, 1200),  # Technology maturity
-                        ]
-                    ),
-                    'efficiency': Piecewise(
-                        [
-                            Piece(65, 68),  # Improving efficiency
-                            Piece(68, 72),  # with scale and experience
-                            Piece(72, 75),  # Best efficiency at scale
-                        ]
-                    ),
-                },
-            ),
-        )
-        ```
-
-    Common Use Cases:
-        - Power generation: Plant sizing, technology selection, retrofit decisions
-        - Industrial equipment: Capacity expansion, efficiency upgrades, replacements
-        - Infrastructure: Network expansion, facility construction, system upgrades
-        - Energy storage: Battery sizing, pumped hydro, compressed air systems
-        - Transportation: Fleet expansion, charging infrastructure, modal shifts
-        - Buildings: HVAC systems, insulation upgrades, renewable integration
-
-    """
+class _SizeParameters(Interface):
+    """Base class for sizing and investment parameters."""
 
     def __init__(
         self,
         fixed_size: Numeric_PS | None = None,
         minimum_size: Numeric_PS | None = None,
         maximum_size: Numeric_PS | None = None,
-        mandatory: bool = False,
-        effects_of_investment: Effect_PS | Numeric_PS | None = None,
-        effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None,
-        effects_of_retirement: Effect_PS | Numeric_PS | None = None,
-        piecewise_effects_of_investment: PiecewiseEffects | None = None,
-        linked_periods: Numeric_PS | tuple[int, int] | None = None,
+        mandatory: bool | Bool_PS = False,
+        effects_of_size: Effect_PS | Numeric_PS | None = None,
+        effects_per_size: Effect_PS | Numeric_PS | None = None,
+        piecewise_effects_per_size: PiecewiseEffects | None = None,
     ):
-        self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
-        self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
+        self.effects_of_size: PeriodicEffectsUser = effects_of_size if effects_of_size is not None else {}
         self.fixed_size = fixed_size
         self.mandatory = mandatory
-        self.effects_of_investment_per_size = (
-            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
-        )
-        self.piecewise_effects_of_investment = piecewise_effects_of_investment
+        self.effects_per_size: PeriodicEffectsUser = effects_per_size if effects_per_size is not None else {}
+        self.piecewise_effects_per_size = piecewise_effects_per_size
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
-        self.linked_periods = linked_periods
 
     def _set_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
         super()._set_flow_system(flow_system)
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment._set_flow_system(flow_system)
+        if self.piecewise_effects_per_size is not None:
+            self.piecewise_effects_per_size._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_of_investment = self._fit_effect_coords(
+        self.effects_of_size = self._fit_effect_coords(
             prefix=name_prefix,
-            effect_values=self.effects_of_investment,
-            suffix='effects_of_investment',
+            effect_values=self.effects_of_size,
+            suffix='effects_of_size',
             dims=['period', 'scenario'],
         )
-        self.effects_of_retirement = self._fit_effect_coords(
+        self.effects_per_size = self._fit_effect_coords(
             prefix=name_prefix,
-            effect_values=self.effects_of_retirement,
-            suffix='effects_of_retirement',
-            dims=['period', 'scenario'],
-        )
-        self.effects_of_investment_per_size = self._fit_effect_coords(
-            prefix=name_prefix,
-            effect_values=self.effects_of_investment_per_size,
-            suffix='effects_of_investment_per_size',
+            effect_values=self.effects_per_size,
+            suffix='effects_per_size',
             dims=['period', 'scenario'],
         )
 
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data(f'{name_prefix}|PiecewiseEffects')
+        if self.piecewise_effects_per_size is not None:
+            self.piecewise_effects_per_size.has_time_dim = False
+            self.piecewise_effects_per_size.transform_data(f'{name_prefix}|PiecewiseEffects')
 
         self.minimum_size = self._fit_coords(
             f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
@@ -940,45 +743,19 @@ class InvestParameters(Interface):
         self.maximum_size = self._fit_coords(
             f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
-        # Convert tuple (first_period, last_period) to DataArray if needed
-        if isinstance(self.linked_periods, (tuple, list)):
-            if len(self.linked_periods) != 2:
-                raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
-                )
-            if self.flow_system.periods is None:
-                raise ValueError(
-                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
-                    f'Please define periods in FlowSystem or use linked_periods=None.'
-                )
-            logger.debug(f'Computing linked_periods from {self.linked_periods}')
-            start, end = self.linked_periods
-            if start not in self.flow_system.periods.values:
-                logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {self.flow_system.periods.values}'
-                )
-            if end not in self.flow_system.periods.values:
-                logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {self.flow_system.periods.values}'
-                )
-            self.linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
-            logger.debug(f'Computed {self.linked_periods=}')
-
-        self.linked_periods = self._fit_coords(
-            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
-        )
         self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
+        self.mandatory = self._fit_coords(f'{name_prefix}|mandatory', self.mandatory, dims=['period', 'scenario'])
 
     @property
-    def minimum_or_fixed_size(self) -> Numeric_PS:
+    def minimum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
     @property
-    def maximum_or_fixed_size(self) -> Numeric_PS:
+    def maximum_or_fixed_size(self) -> PeriodicData:
         return self.fixed_size if self.fixed_size is not None else self.maximum_size
 
     def format_for_repr(self) -> str:
-        """Format InvestParameters for display in repr methods.
+        """Format SizingParameters for display in repr methods.
 
         Returns:
             Formatted string showing size information
@@ -996,18 +773,260 @@ class InvestParameters(Interface):
             parts.append(f'min: {numeric_to_str_for_repr(self.minimum_size)}')
         if self.maximum_size is not None:
             parts.append(f'max: {numeric_to_str_for_repr(self.maximum_size)}')
-        return ', '.join(parts) if parts else 'invest'
+        return ', '.join(parts) if parts else 'sizing'
 
-    @staticmethod
-    def compute_linked_periods(first_period: int, last_period: int, periods: pd.Index | list[int]) -> xr.DataArray:
-        return xr.DataArray(
-            xr.where(
-                (first_period <= np.array(periods)) & (np.array(periods) <= last_period),
-                1,
-                0,
+
+@register_class_for_io
+class SizingParameters(_SizeParameters):
+    """Define sizing parameters with flexible capacity bounds and effect modeling.
+
+    This class models sizing decisions in optimization problems, supporting
+    both binary (yes/no) and continuous sizing choices with comprehensive cost structures.
+
+    Sizing Decision Types:
+        **Binary Sizing**: Fixed size creating yes/no decisions
+        (e.g., install a 100 kW system or not)
+
+        **Continuous Sizing**: Variable size with minimum/maximum bounds
+        (e.g., battery capacity from 10-1000 kWh)
+
+    Cost Modeling Approaches:
+        - **Fixed Effects**: Costs independent of size (permits, connections)
+        - **Specific Effects**: Linear costs proportional to size (€/kW)
+        - **Piecewise Effects**: Non-linear relationships (bulk discounts)
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/SizingParameters/>
+
+    Args:
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        mandatory: Controls whether sizing is required. When True, forces capacity > 0.
+        effects_of_size: Fixed costs if capacity is available, regardless of size.
+            Dict: {'effect_name': value} (e.g., {'cost': 10000}).
+        effects_per_size: Variable costs proportional to size (per-unit costs).
+            Dict: {'effect_name': value/unit} (e.g., {'cost': 1200}).
+        piecewise_effects_per_size: Non-linear costs using PiecewiseEffects.
+
+    Examples:
+        Simple binary sizing:
+
+        ```python
+        solar_sizing = SizingParameters(
+            fixed_size=100,  # 100 kW system
+            effects_of_size={'cost': 25000},
+            effects_per_size={'cost': 1200},
+        )
+        ```
+
+        Flexible sizing:
+
+        ```python
+        battery_sizing = SizingParameters(
+            minimum_size=10,
+            maximum_size=1000,
+            effects_of_size={'cost': 5000},
+            effects_per_size={'cost': 600},
+        )
+        ```
+    """
+
+    # SizingParameters inherits all functionality from _SizeParameters
+    pass
+
+
+@register_class_for_io
+class InvestParameters(SizingParameters):
+    """Deprecated: Use SizingParameters instead."""
+
+    def __init__(self, **kwargs):
+        # Map old parameter names to new ones for backwards compatibility
+        if 'effects_of_investment' in kwargs:
+            kwargs['effects_of_size'] = kwargs.pop('effects_of_investment')
+        if 'effects_of_investment_per_size' in kwargs:
+            kwargs['effects_per_size'] = kwargs.pop('effects_of_investment_per_size')
+        if 'piecewise_effects_of_investment' in kwargs:
+            kwargs['piecewise_effects_per_size'] = kwargs.pop('piecewise_effects_of_investment')
+        # Remove deprecated parameters
+        kwargs.pop('effects_of_retirement', None)
+        kwargs.pop('linked_periods', None)
+
+        warnings.warn(
+            'InvestParameters is deprecated, use SizingParameters instead. '
+            'Parameter names have changed: effects_of_investment -> effects_of_size, '
+            'effects_of_investment_per_size -> effects_per_size, '
+            'piecewise_effects_of_investment -> piecewise_effects_per_size. '
+            'effects_of_retirement and linked_periods are no longer supported.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(**kwargs)
+
+
+InvestmentPeriodData = PeriodicDataUser
+"""This datatype is used to define things related to the period of investment."""
+InvestmentPeriodDataBool = bool | InvestmentPeriodData
+"""This datatype is used to define things with boolean data related to the period of investment."""
+
+
+@register_class_for_io
+class InvestmentParameters(_SizeParameters):
+    """Define investment timing parameters with fixed lifetime.
+
+    This class models WHEN to invest with a fixed lifetime duration.
+    It includes all sizing parameters (capacity bounds, effects) plus timing controls.
+
+    InvestmentParameters combines both TIMING (when to invest) and CAPACITY (how much)
+    aspects in a single class, optimizing when to make an investment that will last
+    for a fixed duration.
+
+    Investment Timing Features:
+        **Single Investment Decision**: Decide which period to invest in (at most once)
+        **Fixed Lifetime**: Investment lasts for a specified number of periods
+        **Timing-Dependent Effects**: Effects that vary based on when investment occurs
+            (e.g., technology learning curves, time-varying costs)
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestmentParameters/>
+
+    Args:
+        lifetime: REQUIRED. The investment lifetime in number of periods.
+            Once invested, the asset operates for this many periods.
+        allow_investment: Allow investment in specific periods. Default: True (all periods).
+        force_investment: Force investment to occur in a specific period. Default: False.
+        effects_of_investment: Effects that depend on when investment occurs.
+            Dict mapping effect names to values.
+        effects_of_investment_per_size: Size-dependent effects that also depend on investment period.
+            Dict mapping effect names to values.
+        previous_lifetime: Remaining lifetime of existing capacity from previous periods. Default: 0.
+        fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
+        minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
+        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        mandatory: Controls whether investment is required. When True, forces investment.
+        effects_of_size: Fixed costs if investment is made, regardless of size.
+        effects_per_size: Variable costs proportional to size (per-unit costs).
+        piecewise_effects_per_size: Non-linear costs using PiecewiseEffects.
+
+    Examples:
+        Basic investment timing:
+
+        ```python
+        timing = InvestmentParameters(
+            lifetime=10,  # Investment lasts 10 periods
+            allow_investment=True,  # Can invest in any period
+        )
+        ```
+
+        Force investment in specific period:
+
+        ```python
+        timing = InvestmentParameters(
+            lifetime=10,  # Must operate for 10 periods
+            force_investment=xr.DataArray(
+                [0, 0, 1, 0, 0],  # Force in period 3 (2030)
+                coords=[('period', [2020, 2025, 2030, 2035, 2040])],
             ),
-            coords=(pd.Index(periods, name='period'),),
-        ).rename('linked_periods')
+        )
+        ```
+
+    Common Use Cases:
+        - Technology learning: Model cost reductions over time
+        - Multi-period optimization: Optimize investment timing across periods
+        - Regulatory changes: Model period-specific incentives or constraints
+        - Strategic timing: Find optimal investment timing considering future conditions
+    """
+
+    def __init__(
+        self,
+        lifetime: InvestmentPeriodData,
+        allow_investment: InvestmentPeriodDataBool = True,
+        force_investment: InvestmentPeriodDataBool = False,
+        effects_of_investment: PeriodicEffectsUser | None = None,
+        effects_of_investment_per_size: PeriodicEffectsUser | None = None,
+        previous_lifetime: int = 0,
+        # Sizing parameters (inherited from _SizeParameters)
+        fixed_size: PeriodicDataUser | None = None,
+        minimum_size: PeriodicDataUser | None = None,
+        maximum_size: PeriodicDataUser | None = None,
+        mandatory: bool | xr.DataArray = False,
+        effects_of_size: PeriodicEffectsUser | None = None,
+        effects_per_size: PeriodicEffectsUser | None = None,
+        piecewise_effects_per_size: PiecewiseEffects | None = None,
+    ):
+        if lifetime is None:
+            raise ValueError('InvestmentParameters requires lifetime to be specified.')
+
+        # Initialize investment-specific attributes
+        self.lifetime = lifetime
+        self.allow_investment = allow_investment
+        self.force_investment = force_investment
+        self.previous_lifetime = previous_lifetime
+
+        self.effects_of_investment: dict[str, xr.DataArray] = (
+            effects_of_investment if effects_of_investment is not None else {}
+        )
+        self.effects_of_investment_per_size: dict[str, xr.DataArray] = (
+            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
+        )
+
+        # Initialize base sizing parameters
+        super().__init__(
+            fixed_size=fixed_size,
+            minimum_size=minimum_size,
+            maximum_size=maximum_size,
+            mandatory=mandatory,
+            effects_of_size=effects_of_size,
+            effects_per_size=effects_per_size,
+            piecewise_effects_per_size=piecewise_effects_per_size,
+        )
+
+    def transform_data(self, name_prefix: str = '') -> None:
+        """Transform user data into internal model coordinates."""
+        super().transform_data(name_prefix)
+        # Transform boolean/data flags to DataArrays
+        self.allow_investment = self._fit_coords(
+            f'{name_prefix}|allow_investment', self.allow_investment, dims=['period', 'scenario']
+        )
+        self.force_investment = self._fit_coords(
+            f'{name_prefix}|force_investment', self.force_investment, dims=['period', 'scenario']
+        )
+        self.previous_lifetime = self._fit_coords(
+            f'{name_prefix}|previous_lifetime', self.previous_lifetime, dims=['scenario']
+        )
+        self.lifetime = self._fit_coords(f'{name_prefix}|lifetime', self.lifetime, dims=['scenario'])
+        self.effects_of_investment = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_of_investment,
+            suffix='effects_of_investment',
+            dims=['period', 'scenario'],
+        )
+        self.effects_of_investment_per_size = self._fit_effect_coords(
+            prefix=name_prefix,
+            effect_values=self.effects_of_investment_per_size,
+            suffix='effects_of_investment_per_size',
+            dims=['period', 'scenario'],
+        )
+
+    def _plausibility_checks(self) -> None:
+        """Validate parameter consistency."""
+        super()._plausibility_checks()
+        if self.flow_system.periods is None:
+            raise ValueError("InvestmentParameters requires the flow_system to have a 'periods' dimension.")
+
+        # Check force_investment uniqueness (can only force in one period per scenario)
+        if (self.force_investment.sum('period') > 1).any():
+            raise ValueError('force_investment can only be True for a single period per scenario.')
+
+        # Check lifetime feasibility
+        _periods = self.flow_system.periods.values
+        if len(_periods) > 1:
+            # Warn if investment in late periods would extend beyond model horizon
+            max_horizon = _periods[-1] - _periods[0]
+            if (self.lifetime > max_horizon).any():
+                logger.warning(
+                    f'Fixed lifetime ({self.lifetime.values}) if Investment exceeds model horizon ({max_horizon}). '
+                )
 
 
 @register_class_for_io

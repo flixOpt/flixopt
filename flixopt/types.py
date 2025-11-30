@@ -137,6 +137,22 @@ For vintage-dependent effects that vary by period."""
 Scalar: TypeAlias = int | float | np.integer | np.floating
 """Scalar numeric values only. Not converted to DataArray (unlike dimensioned types)."""
 
+
+# Transformed data types (after fit_to_model_coords)
+PeriodicData: TypeAlias = xr.DataArray
+"""Periodic data (after transformation). Always an xr.DataArray with period, scenario dims."""
+
+PeriodicEffects: TypeAlias = dict[str, xr.DataArray]
+"""Periodic effects (after transformation). Dict mapping effect names to DataArrays."""
+
+
+# User-facing types for effects (before transformation)
+PeriodicEffectsUser: TypeAlias = dict[
+    str, int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray
+]
+"""User input for periodic effects. Dict mapping effect names to numeric values (any format)."""
+
+
 # Export public API
 __all__ = [
     # Numeric types
@@ -161,4 +177,8 @@ __all__ = [
     # Other
     'Scalar',
     'NumericOrBool',
+    # Transformed data types
+    'PeriodicData',
+    'PeriodicEffects',
+    'PeriodicEffectsUser',
 ]
