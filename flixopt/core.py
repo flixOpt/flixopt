@@ -43,10 +43,6 @@ class TimeSeriesData(xr.DataArray):
         *args: Any,
         clustering_group: str | None = None,
         clustering_weight: float | None = None,
-        aggregation_group: str | None = None,
-        aggregation_weight: float | None = None,
-        agg_group: str | None = None,
-        agg_weight: float | None = None,
         **kwargs: Any,
     ):
         """
@@ -56,48 +52,8 @@ class TimeSeriesData(xr.DataArray):
                 clustering weight (1/n where n is the number of series in the group). Mutually exclusive with clustering_weight.
             clustering_weight: Clustering weight (0-1). Use this to assign a specific weight to a single time series.
                 Mutually exclusive with clustering_group.
-            aggregation_group: Deprecated, use clustering_group instead
-            aggregation_weight: Deprecated, use clustering_weight instead
-            agg_group: Deprecated, use clustering_group instead
-            agg_weight: Deprecated, use clustering_weight instead
             **kwargs: Additional arguments passed to DataArray
         """
-        # Handle deprecated parameters
-        if agg_group is not None:
-            warnings.warn(
-                f'agg_group is deprecated, use clustering_group instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            clustering_group = agg_group
-        if aggregation_group is not None:
-            warnings.warn(
-                f'aggregation_group is deprecated, use clustering_group instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if clustering_group is None:
-                clustering_group = aggregation_group
-
-        if agg_weight is not None:
-            warnings.warn(
-                f'agg_weight is deprecated, use clustering_weight instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            clustering_weight = agg_weight
-        if aggregation_weight is not None:
-            warnings.warn(
-                f'aggregation_weight is deprecated, use clustering_weight instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if clustering_weight is None:
-                clustering_weight = aggregation_weight
 
         if (clustering_group is not None) and (clustering_weight is not None):
             raise ValueError('Use either clustering_group or clustering_weight, not both')
@@ -197,48 +153,6 @@ class TimeSeriesData(xr.DataArray):
 
         info_str = f'TimeSeriesData({", ".join(clustering_info)})' if clustering_info else 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
-
-    @property
-    def aggregation_group(self):
-        """Deprecated: Use clustering_group instead."""
-        warnings.warn(
-            f'aggregation_group is deprecated, use clustering_group instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.clustering_group
-
-    @property
-    def aggregation_weight(self):
-        """Deprecated: Use clustering_weight instead."""
-        warnings.warn(
-            f'aggregation_weight is deprecated, use clustering_weight instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.clustering_weight
-
-    @property
-    def agg_group(self):
-        warnings.warn(
-            f'agg_group is deprecated, use clustering_group instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.clustering_group
-
-    @property
-    def agg_weight(self):
-        warnings.warn(
-            f'agg_weight is deprecated, use clustering_weight instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.clustering_weight
 
 
 class DataConverter:

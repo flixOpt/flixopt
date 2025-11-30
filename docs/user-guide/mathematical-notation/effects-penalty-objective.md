@@ -7,6 +7,7 @@
 **Example:**
 
 [`Flows`][flixopt.elements.Flow] have an attribute `effects_per_flow_hour` that defines the effect contribution per flow-hour:
+
 - Costs (€/kWh)
 - Emissions (kg CO₂/kWh)
 - Primary energy consumption (kWh_primary/kWh)
@@ -260,6 +261,7 @@ $$
 $$
 
 Where:
+
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$ (typically scenario probability)
 - Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ and $E_{\Phi,\text{per}}$ (same for all $s$)
@@ -280,6 +282,7 @@ $$
 $$
 
 Where:
+
 - $\mathcal{Y}$ is the set of periods (e.g., years)
 - $w_y$ is the weight for period $y$ (typically annual discount factor)
 - Each period $y$ has **independent** periodic and temporal effects (including penalty)
@@ -295,6 +298,7 @@ $$
 $$
 
 Where:
+
 - $\mathcal{S}$ is the set of scenarios
 - $\mathcal{Y}$ is the set of periods
 - $w_y$ is the period weight (for periodic effects)

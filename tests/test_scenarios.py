@@ -143,7 +143,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     boiler = fx.linear_converters.Boiler(
         'Kessel',
         thermal_efficiency=0.5,
-        on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
+        status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
         thermal_flow=fx.Flow(
             'Q_th',
             bus='Fernwärme',
@@ -158,14 +158,14 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
                 mandatory=True,
                 effects_of_investment_per_size={'costs': 10, 'PE': 2},
             ),
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_min=0,
-                on_hours_max=1000,
-                consecutive_on_hours_max=10,
-                consecutive_on_hours_min=1,
-                consecutive_off_hours_max=10,
-                effects_per_switch_on=0.01,
-                switch_on_max=1000,
+            status_parameters=fx.StatusParameters(
+                active_hours_min=0,
+                active_hours_max=1000,
+                max_uptime=10,
+                min_uptime=1,
+                max_downtime=10,
+                effects_per_startup=0.01,
+                startup_limit=1000,
             ),
             flow_hours_max=1e6,
         ),
@@ -231,7 +231,7 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
                     'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                 }
             ),
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+            status_parameters=fx.StatusParameters(effects_per_startup=0.01),
         )
     )
 

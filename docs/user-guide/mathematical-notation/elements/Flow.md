@@ -23,8 +23,8 @@ $$
 $$
 
 
-This mathematical formulation can be extended by using [OnOffParameters](../features/OnOffParameters.md)
-to define the on/off state of the Flow, or by using [InvestParameters](../features/InvestParameters.md)
+This mathematical formulation can be extended by using [StatusParameters](../features/StatusParameters.md)
+to define the active/inactive state of the Flow, or by using [InvestParameters](../features/InvestParameters.md)
 to change the size of the Flow from a constant to an optimization variable.
 
 ---
@@ -34,7 +34,7 @@ to change the size of the Flow from a constant to an optimization variable.
 Flow formulation uses the following modeling patterns:
 
 - **[Scaled Bounds](../modeling-patterns/bounds-and-states.md#scaled-bounds)** - Basic flow rate bounds (equation $\eqref{eq:flow_rate}$)
-- **[Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)** - When combined with [OnOffParameters](../features/OnOffParameters.md)
+- **[Scaled Bounds with State](../modeling-patterns/bounds-and-states.md#scaled-bounds-with-state)** - When combined with [StatusParameters](../features/StatusParameters.md)
 - **[Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state)** - Investment decisions with [InvestParameters](../features/InvestParameters.md)
 
 ---
@@ -44,11 +44,12 @@ Flow formulation uses the following modeling patterns:
 **Python Class:** [`Flow`][flixopt.elements.Flow]
 
 **Key Parameters:**
+
 - `size`: Flow size $\text{P}$ (can be fixed or variable with InvestParameters)
 - `relative_minimum`, `relative_maximum`: Relative bounds $\text{p}^{\text{L}}_{\text{rel}}, \text{p}^{\text{U}}_{\text{rel}}$
 - `effects_per_flow_hour`: Operational effects (costs, emissions, etc.)
 - `invest_parameters`: Optional investment modeling (see [InvestParameters](../features/InvestParameters.md))
-- `on_off_parameters`: Optional on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
+- `status_parameters`: Optional active/inactive operation (see [StatusParameters](../features/StatusParameters.md))
 
 See the [`Flow`][flixopt.elements.Flow] API documentation for complete parameter list and usage examples.
 
@@ -56,7 +57,7 @@ See the [`Flow`][flixopt.elements.Flow] API documentation for complete parameter
 
 ## See Also
 
-- [OnOffParameters](../features/OnOffParameters.md) - Binary on/off operation
+- [StatusParameters](../features/StatusParameters.md) - Binary active/inactive operation
 - [InvestParameters](../features/InvestParameters.md) - Variable flow sizing
 - [Bus](../elements/Bus.md) - Flow balance constraints
 - [LinearConverter](../elements/LinearConverter.md) - Flow ratio constraints
