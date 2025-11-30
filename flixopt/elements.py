@@ -197,8 +197,8 @@ class Bus(Element):
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
         imbalance_penalty_per_flow_hour: Penalty costs for bus balance violations.
-            When None, no excess/deficit is allowed (hard constraint). When set to a
-            value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
+            When None (default), no imbalance is allowed (hard constraint). When set to a
+            value > 0, allows bus imbalances at penalty cost.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -247,10 +247,14 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        imbalance_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
+        imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
+        imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
+            kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
+        )
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
