@@ -194,7 +194,7 @@ class StatusModel(Submodel):
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
                 self.parameters.active_hours_max
                 if self.parameters.active_hours_max is not None
-                else self._model.hours_per_step.sum('time').item(),
+                else self._model.hours_per_step.sum('time').max().item(),
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
