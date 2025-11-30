@@ -4,19 +4,28 @@ Piecewise linearization approximates non-linear relationships using connected li
 
 ## Mathematical Formulation
 
-A piecewise linear function with $n$ segments uses SOS2 (Special Ordered Set Type 2) variables:
+A piecewise linear function with $n$ segments uses per-segment interpolation:
 
 $$
-x = \sum_{i=0}^{n} \lambda_i \cdot x_i \quad \text{and} \quad y = \sum_{i=0}^{n} \lambda_i \cdot y_i
+x = \sum_{i=1}^{n} \left( \lambda_i^0 \cdot x_i^{start} + \lambda_i^1 \cdot x_i^{end} \right)
 $$
 
-Where:
+Each segment $i$ has:
 
-- $(x_i, y_i)$ are the breakpoints defining the segments
-- $\lambda_i \geq 0$ are interpolation weights with $\sum_i \lambda_i = 1$
-- At most two adjacent $\lambda_i$ can be non-zero (SOS2 constraint)
+- $s_i \in \{0, 1\}$ — binary indicating if segment is active
+- $\lambda_i^0, \lambda_i^1 \geq 0$ — interpolation weights for segment endpoints
 
-This ensures $y$ follows the piecewise linear path defined by the breakpoints.
+Constraints ensure valid interpolation:
+
+$$
+\lambda_i^0 + \lambda_i^1 = s_i \quad \forall i
+$$
+
+$$
+\sum_{i=1}^{n} s_i \leq 1
+$$
+
+When segment $i$ is active ($s_i = 1$), the lambdas interpolate between $x_i^{start}$ and $x_i^{end}$. When inactive ($s_i = 0$), both lambdas are zero.
 
 ---
 
@@ -41,7 +50,7 @@ This ensures $y$ follows the piecewise linear path defined by the breakpoints.
 
 === "Piecewise"
 
-    Multiple connected pieces forming a piecewise linear function:
+    Multiple segments forming a piecewise linear function:
 
     ```python
     fx.Piecewise([
@@ -132,8 +141,9 @@ This ensures $y$ follows the piecewise linear path defined by the breakpoints.
 
 | Variable | Description |
 |----------|-------------|
-| $\lambda_i$ | SOS2 interpolation weight for breakpoint $i$ |
-| $(x_i, y_i)$ | Breakpoint coordinates |
+| $s_i$ | Binary: segment $i$ is active |
+| $\lambda_i^0$ | Interpolation weight for segment start |
+| $\lambda_i^1$ | Interpolation weight for segment end |
 
 | Class | Description |
 |-------|-------------|
