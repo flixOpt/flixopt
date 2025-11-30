@@ -23,20 +23,7 @@ heat = fx.Flow(label='heat', bus=heat_bus, size=100, relative_minimum=0.3)
 
 ## Adding Features
 
-=== "Fixed Profile"
-
-    Lock the flow to a time series (demands, renewables):
-
-    $p(t) = P \cdot \pi(t)$
-
-    ```python
-    demand = fx.Flow(
-        label='demand', bus=heat_bus, size=100,
-        fixed_relative_profile=[0.5, 0.8, 1.0, 0.6]  # π(t)
-    )
-    ```
-
-=== "On/Off Operation"
+=== "Status"
 
     Allow the flow to be zero with `status_parameters`:
 
@@ -76,9 +63,9 @@ heat = fx.Flow(label='heat', bus=heat_bus, size=100, relative_minimum=0.3)
 
     See [InvestParameters](../features/InvestParameters.md).
 
-=== "Flow Costs"
+=== "Flow Effects"
 
-    Add costs per energy (flow hours):
+    Add effects per energy (flow hours) moved:
 
     ```python
     gas = fx.Flow(
@@ -88,6 +75,20 @@ heat = fx.Flow(label='heat', bus=heat_bus, size=100, relative_minimum=0.3)
     ```
 
     Flow hours: $h(t) = p(t) \cdot \Delta t$
+
+
+=== "Fixed Profile"
+
+    Lock the flow to a time series (demands, renewables):
+
+    $p(t) = P \cdot \pi(t)$
+
+    ```python
+    demand = fx.Flow(
+        label='demand', bus=heat_bus, size=100,
+        fixed_relative_profile=[0.5, 0.8, 1.0, 0.6]  # π(t)
+    )
+    ```
 
 ---
 
