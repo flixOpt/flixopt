@@ -114,22 +114,23 @@ chp = fx.linear_converters.CHP(
 
     See [StatusParameters](../features/StatusParameters.md).
 
-=== "Piecewise Efficiency"
+=== "Piecewise Conversion"
 
-    For non-linear efficiency curves:
+    For variable efficiency — all flows change together based on operating point:
 
     ```python
-    curve = fx.Piecewise([
-        fx.Piece(start=(0, 0), end=(50, 40)),    # 80% at low load
-        fx.Piece(start=(50, 40), end=(100, 90)), # 100% at high load
-    ])
-
-    boiler = fx.LinearConverter(
-        ...,
-        piecewise_conversion=fx.PiecewiseConversion(
-            origin_flow='gas',
-            piecewise_shares={'heat': curve},
-        ),
+    chp = fx.LinearConverter(
+        label='CHP',
+        inputs=[fx.Flow('fuel', bus=gas_bus)],
+        outputs=[
+            fx.Flow('el', bus=elec_bus, size=60),
+            fx.Flow('heat', bus=heat_bus),
+        ],
+        piecewise_conversion=fx.PiecewiseConversion({
+            'el':   fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
+            'heat': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            'fuel': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
+        }),
     )
     ```
 

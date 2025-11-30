@@ -1,111 +1,130 @@
 # Piecewise
 
-Piecewise linearization models non-linear relationships with connected linear segments.
+Piecewise linearization approximates non-linear relationships using connected linear segments.
 
-## Basic: Linear Segments
+## Mathematical Formulation
 
-```plotly
-{
-  "data": [
-    {"x": [0, 50], "y": [0, 45], "mode": "lines+markers", "name": "Piece 1", "line": {"color": "#009688", "width": 3}, "marker": {"size": 10}},
-    {"x": [50, 100], "y": [45, 90], "mode": "lines+markers", "name": "Piece 2", "line": {"color": "#00bcd4", "width": 3}, "marker": {"size": 10}}
-  ],
-  "layout": {"xaxis": {"title": "Input"}, "yaxis": {"title": "Output"}, "height": 250, "margin": {"t": 20}}
-}
-```
+A piecewise linear function with $n$ segments uses SOS2 (Special Ordered Set Type 2) variables:
 
-```python
-curve = fx.Piecewise([
-    fx.Piece((0, 0), (50, 45)),     # Slope 0.9
-    fx.Piece((50, 45), (100, 90)),  # Slope 0.9
-])
-```
+$$
+x = \sum_{i=0}^{n} \lambda_i \cdot x_i \quad \text{and} \quad y = \sum_{i=0}^{n} \lambda_i \cdot y_i
+$$
 
-The optimizer picks a point along exactly one segment.
+Where:
+
+- $(x_i, y_i)$ are the breakpoints defining the segments
+- $\lambda_i \geq 0$ are interpolation weights with $\sum_i \lambda_i = 1$
+- At most two adjacent $\lambda_i$ can be non-zero (SOS2 constraint)
+
+This ensures $y$ follows the piecewise linear path defined by the breakpoints.
 
 ---
 
-## Use Cases
+## Building Blocks
 
-=== "Part-Load Efficiency"
+=== "Piece"
 
-    Boiler: 80% at low load, 92% at high load:
+    A linear segment from start to end value:
 
     ```python
-    gas_to_heat = fx.Piecewise([
-        fx.Piece((0, 0), (30, 24)),     # 80%
-        fx.Piece((30, 24), (100, 92)),  # 92%
-    ])
+    fx.Piece(start=10, end=50)  # Linear from 10 to 50
+    ```
 
-    boiler = fx.LinearConverter(
-        ...,
-        piecewise_conversion=fx.PiecewiseConversion(
-            origin_flow='gas',
-            piecewise_shares={'heat': gas_to_heat},
-        ),
+    Values can be time-varying:
+
+    ```python
+    fx.Piece(
+        start=np.linspace(5, 6, n_timesteps),
+        end=np.linspace(30, 35, n_timesteps)
     )
     ```
 
-=== "Variable COP"
+=== "Piecewise"
 
-    Heat pump COP varies with load:
+    Multiple connected pieces forming a piecewise linear function:
 
     ```python
-    elec_to_heat = fx.Piecewise([
-        fx.Piece((0, 0), (50, 125)),      # COP ~2.5
-        fx.Piece((50, 125), (100, 350)),  # COP ~4.5
+    fx.Piecewise([
+        fx.Piece(0, 30),   # Segment 1: 0 → 30
+        fx.Piece(30, 60),  # Segment 2: 30 → 60
     ])
+    ```
 
-    hp = fx.LinearConverter(
-        ...,
-        piecewise_conversion=fx.PiecewiseConversion(
-            origin_flow='el',
-            piecewise_shares={'heat': elec_to_heat},
-        ),
+=== "PiecewiseConversion"
+
+    Synchronizes multiple flows — all interpolate at the same relative position:
+
+    ```python
+    fx.PiecewiseConversion({
+        'input_flow':  fx.Piecewise([...]),
+        'output_flow': fx.Piecewise([...]),
+    })
+    ```
+
+    All piecewise functions must have the same number of segments.
+
+=== "PiecewiseEffects"
+
+    Maps a size/capacity variable to effects (costs, emissions):
+
+    ```python
+    fx.PiecewiseEffects(
+        piecewise_origin=fx.Piecewise([...]),  # Size segments
+        piecewise_shares={'costs': fx.Piecewise([...])},  # Effect segments
     )
     ```
 
-=== "Forbidden Region"
+---
 
-    Turbine: off or 40-100%, nothing in between:
+## Usage
+
+=== "Variable Efficiency"
+
+    Converter efficiency that varies with load:
 
     ```python
-    curve = fx.Piecewise([
-        fx.Piece((0, 0), (0, 0)),        # Off (point)
-        fx.Piece((40, 40), (100, 100)),  # Operating
-    ])
+    chp = fx.LinearConverter(
+        ...,
+        piecewise_conversion=fx.PiecewiseConversion({
+            'el':   fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
+            'heat': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            'fuel': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
+        }),
+    )
     ```
 
 === "Economies of Scale"
 
-    Investment cost decreases with size:
+    Investment cost per unit decreases with size:
 
     ```python
     fx.InvestParameters(
         piecewise_effects_of_investment=fx.PiecewiseEffects(
-            piecewise_origin=fx.Piecewise([...]),
-            piecewise_shares={'costs': fx.Piecewise([
-                fx.Piece((0, 0), (100, 80000)),      # €800/kWh
-                fx.Piece((100, 80000), (500, 350000)),  # €675/kWh
-            ])},
+            piecewise_origin=fx.Piecewise([
+                fx.Piece(0, 100),
+                fx.Piece(100, 500),
+            ]),
+            piecewise_shares={
+                'costs': fx.Piecewise([
+                    fx.Piece(0, 80_000),
+                    fx.Piece(80_000, 280_000),
+                ])
+            },
         ),
     )
     ```
 
----
+=== "Forbidden Operating Region"
 
-## Zero Point
+    Equipment cannot operate in certain ranges:
 
-Allow equipment to be completely off without a zero piece:
-
-```python
-curve = fx.Piecewise(
-    pieces=[
-        fx.Piece((10, 9), (100, 90)),  # Operating range 10-100
-    ],
-    zero_point=True,  # Can also be off (0, 0)
-)
-```
+    ```python
+    fx.PiecewiseConversion({
+        'fuel':  fx.Piecewise([fx.Piece(0, 0), fx.Piece(40, 100)]),
+        'power': fx.Piecewise([fx.Piece(0, 0), fx.Piece(35, 95)]),
+    })
+    # Either off (0,0) or operating above 40%
+    ```
 
 ---
 
@@ -113,12 +132,14 @@ curve = fx.Piecewise(
 
 | Variable | Description |
 |----------|-------------|
-| $\beta_k$ | Piece $k$ is active |
-| $\lambda_0, \lambda_1$ | Weights on start/end points |
+| $\lambda_i$ | SOS2 interpolation weight for breakpoint $i$ |
+| $(x_i, y_i)$ | Breakpoint coordinates |
 
-| Parameter | Description |
-|-----------|-------------|
-| `Piece(start, end)` | Define segment from start to end point |
-| `zero_point` | Allow all variables = 0 |
+| Class | Description |
+|-------|-------------|
+| `Piece(start, end)` | Linear segment |
+| `Piecewise([pieces])` | Collection of segments |
+| `PiecewiseConversion({flow: piecewise})` | Synchronized multi-flow conversion |
+| `PiecewiseEffects(origin, shares)` | Size-to-effect mapping |
 
-**Classes:** [`Piecewise`][flixopt.interface.Piecewise], [`Piece`][flixopt.interface.Piece]
+**Classes:** [`Piecewise`][flixopt.interface.Piecewise], [`Piece`][flixopt.interface.Piece], [`PiecewiseConversion`][flixopt.interface.PiecewiseConversion], [`PiecewiseEffects`][flixopt.interface.PiecewiseEffects]

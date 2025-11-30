@@ -101,6 +101,31 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
     )
     ```
 
+=== "Piecewise Cost"
+
+    Non-linear cost curves (e.g., economies of scale):
+
+    $E = f_{piecewise}(P)$
+
+    ```python
+    fx.InvestParameters(
+        piecewise_effects_of_investment=fx.PiecewiseEffects(
+            piecewise_origin=fx.Piecewise([
+                fx.Piece(0, 100),
+                fx.Piece(100, 500),
+            ]),
+            piecewise_shares={
+                'costs': fx.Piecewise([
+                    fx.Piece(0, 80_000),      # €800/kW for 0-100
+                    fx.Piece(80_000, 280_000), # €500/kW for 100-500
+                ])
+            },
+        ),
+    )
+    ```
+
+    See [Piecewise](Piecewise.md) for details on the formulation.
+
 ---
 
 ## Reference
@@ -118,6 +143,7 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
 | Per-size cost | `specific_effects` | €/unit |
 | Fixed cost | `effects_of_investment` | One-time if investing |
 | Retirement | `effects_of_retirement` | Cost if not investing |
+| Piecewise cost | `piecewise_effects_of_investment` | Non-linear cost curve |
 | Force invest | `mandatory` | No binary variable |
 
 **Classes:** [`InvestParameters`][flixopt.interface.InvestParameters], [`InvestmentModel`][flixopt.features.InvestmentModel]
