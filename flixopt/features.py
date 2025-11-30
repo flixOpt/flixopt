@@ -280,32 +280,56 @@ class InvestmentModel(_SizeModel):
             decrease_binary=self.decommissioning_occurs,
             name=f'{self.label_of_element}|size|changes',
             max_change=self.parameters.maximum_or_fixed_size,
-            previous_level=0 if self.parameters.previous_lifetime == 0 else self.size.isel(period=0),
+            initial_level=0 if self.parameters.previous_lifetime == 0 else self.size.isel(period=0),
             coord='period',
         )
 
     def _track_lifetime(self):
-        """Create constraints that link investment period to decommissioning period based on lifetime."""
-        periods = self._model.flow_system._fit_coords(
-            'periods', self._model.flow_system.periods.values, dims=['period', 'scenario']
-        )
+        """
+        Create constraints linking investment periods to decommissioning periods based on lifetime.
 
-        # Calculate decommissioning periods (vectorized)
-        import xarray as xr
+        The constraint enforces: if investment occurs in period p, decommissioning must occur
+        in period p + lifetime. For the first period, previous_lifetime is subtracted
+        (modeling existing capacity with remaining lifetime).
 
-        is_first = periods == periods.isel(period=0)
-        decom_period = periods + self.parameters.lifetime - xr.where(is_first, self.parameters.previous_lifetime, 0)
+        Example with periods [2020, 2025, 2030, 2035, 2040] and lifetime=2:
+        - Invest in 2020 → decommission in 2030 (2020 + 2*5 years)
+        - Invest in 2025 → decommission in 2035 (2025 + 2*5 years)
+        - Invest in 2030 → decommission in 2040 (2030 + 2*5 years)
+        - Invest in 2035/2040 → decommission beyond horizon (no constraint needed)
 
-        # Map to available periods (drop invalid ones for sel to work)
-        valid = decom_period.where(decom_period <= self._model.flow_system.periods.values[-1], drop=True)
-        avail_decom = periods.sel(period=valid, method='bfill').assign_coords(period=valid.period)
+        If previous_lifetime=1 (existing capacity with 1 period left):
+        - First period 2020: decommission in 2025 (2020 + 2 - 1 = 2021 → mapped to 2025)
+        """
+        period_values = self._model.flow_system.periods.values
 
-        # One constraint per unique decommissioning period
-        for decom_val in np.unique(avail_decom.values):
-            mask = (avail_decom == decom_val).reindex_like(periods).fillna(0)
+        # Build investment-to-decommissioning mapping for each period
+        invest_to_decom = {}
+        for i, invest_period in enumerate(period_values):
+            # Calculate lifetime offset: full lifetime for new investment,
+            # reduced by previous_lifetime for first period (existing capacity)
+            effective_lifetime = self.parameters.lifetime
+            if i == 0 and self.parameters.previous_lifetime > 0:
+                effective_lifetime -= self.parameters.previous_lifetime
+
+            # Decommissioning period = invest period + lifetime (in period units)
+            decom_period_idx = i + effective_lifetime
+            if decom_period_idx < len(period_values):
+                invest_to_decom[invest_period] = period_values[decom_period_idx]
+            # Else: decommissioning is beyond optimization horizon, no constraint needed
+
+        # Group investments by their decommissioning period
+        decom_to_invest_periods: dict = {}
+        for invest_p, decom_p in invest_to_decom.items():
+            decom_to_invest_periods.setdefault(decom_p, []).append(invest_p)
+
+        # Create constraint for each decommissioning period:
+        # sum of investments leading to this decom period == decom occurs in this period
+        for decom_period, invest_periods in decom_to_invest_periods.items():
+            invest_sum = self.investment_occurs.sel(period=invest_periods).sum('period')
             self.add_constraints(
-                self.investment_occurs.where(mask).sum('period') == self.decommissioning_occurs.sel(period=decom_val),
-                short_name=f'size|lifetime{int(decom_val)}',
+                invest_sum == self.decommissioning_occurs.sel(period=decom_period),
+                short_name=f'size|lifetime{int(decom_period)}',
             )
 
     def _apply_investment_period_constraints(self):
