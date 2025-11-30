@@ -505,12 +505,16 @@
    Home Page Inline Styles (moved from docs/index.md)
    ========================================================================= */
 
+/* Center home page content when navigation is hidden */
+/* Remove this rule as it conflicts with TOC layout */
+
 .hero-section {
   text-align: center;
   padding: 4rem 2rem 3rem 2rem;
   background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
   border-radius: 1rem;
-  margin-bottom: 3rem;
+  margin: 0 auto 3rem auto;
+  max-width: 1200px;
 }
 
 .hero-section h1 {
@@ -558,47 +562,6 @@
   margin-top: 2rem;
 }
 
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-  margin: 3rem 0;
-}
-
-.feature-card {
-  padding: 2rem;
-  border-radius: 0.75rem;
-  background: var(--md-code-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest);
-  transition: all 0.3s ease;
-  text-align: center;
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-  border-color: var(--md-primary-fg-color);
-}
-
-.feature-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.feature-card h3 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  font-size: 1.25rem;
-}
-
-.feature-card p {
-  color: var(--md-default-fg-color--light);
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
 .stats-banner {
   display: flex;
   justify-content: space-around;
@@ -631,45 +594,14 @@
 }
 
 .architecture-section {
-  margin: 4rem 0;
+  margin: 4rem auto;
   padding: 2rem;
   background: var(--md-code-bg-color);
   border-radius: 0.75rem;
+  max-width: 1200px;
 }
 
-.quick-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 3rem 0;
-}
 
-.quick-link-card {
-  padding: 1.5rem;
-  border-left: 4px solid var(--md-primary-fg-color);
-  background: var(--md-code-bg-color);
-  border-radius: 0.5rem;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: block;
-}
-
-.quick-link-card:hover {
-  background: var(--md-default-fg-color--lightest);
-  transform: translateX(4px);
-}
-
-.quick-link-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.1rem;
-  color: var(--md-primary-fg-color);
-}
-
-.quick-link-card p {
-  margin: 0;
-  color: var(--md-default-fg-color--light);
-  font-size: 0.9rem;
-}
 
 @media screen and (max-width: 768px) {
   .hero-section h1 {
@@ -683,10 +615,6 @@
   .hero-buttons {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .feature-grid {
-    grid-template-columns: 1fr;
   }
 
   .stats-banner {
@@ -839,27 +767,26 @@ button:focus-visible {
    Footer Alignment Fix
    ========================================================================= */
 
-/* Align footer with content width */
-.md-footer-meta__inner,
-.md-footer__inner {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding-left: 1.2rem;
-  padding-right: 1.2rem;
+/* Hide the social media footer section */
+.md-footer-meta {
+  display: none;
+}
+
+/* Footer navigation content matches page width */
+.md-footer .md-grid {
+  max-width: 1300px !important;
+  padding-left: 1.2rem !important;
+  padding-right: 1.2rem !important;
 }
 
 @media screen and (min-width: 76.25em) {
-  .md-footer-meta__inner,
-  .md-footer__inner {
-    padding-left: 1rem;
-    padding-right: 1rem;
+  .md-footer .md-grid {
+    padding-left: 1rem !important;
   }
 }
 
 @media screen and (min-width: 100em) {
-  .md-footer-meta__inner,
-  .md-footer__inner {
-    padding-left: 2rem;
-    padding-right: 2rem;
+  .md-footer .md-grid {
+    padding-left: 2rem !important;
   }
 }

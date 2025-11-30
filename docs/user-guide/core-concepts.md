@@ -1,155 +1,196 @@
-# Core concepts of flixopt
+# Core Concepts
 
-FlixOpt is built around a set of core concepts that work together to represent and optimize **any system involving flows and conversions** - whether that's energy systems, material flows, supply chains, water networks, or production processes.
+This page introduces the fundamental concepts of flixOpt through practical scenarios. Understanding these concepts will help you model any system involving flows and conversions.
 
-This page provides a high-level overview of these concepts and how they interact.
+## The Big Picture
 
-## Main building blocks
+Imagine you're managing a district heating system. You have:
 
-### FlowSystem
+- A **gas boiler** that burns natural gas to produce heat
+- A **heat pump** that uses electricity to extract heat from the environment
+- A **thermal storage tank** to buffer heat production and demand
+- **Buildings** that need heat throughout the day
+- Access to the **gas grid** and **electricity grid**
 
-The [`FlowSystem`][flixopt.flow_system.FlowSystem] is the central organizing unit in FlixOpt.
-Every FlixOpt model starts with creating a FlowSystem. It:
+Your goal: **minimize total operating costs** while meeting all heat demands.
 
-- Defines the timesteps for the optimization
-- Contains and connects [components](#components), [buses](#buses), and [flows](#flows)
-- Manages the [effects](#effects) (objectives and constraints)
+This is exactly the kind of problem flixOpt solves. Let's see how each concept maps to this scenario.
 
-FlowSystem provides two ways to access elements:
+## Buses: Where Things Connect
 
-- **Dict-like interface**: Access any element by label: `flow_system['Boiler']`, `'Boiler' in flow_system`, `flow_system.keys()`
-- **Direct containers**: Access type-specific containers: `flow_system.components`, `flow_system.buses`, `flow_system.effects`, `flow_system.flows`
+A [`Bus`][flixopt.elements.Bus] is a connection point where energy or material flows meet. Think of it as a junction or hub.
 
-Element labels must be unique across all types. See the [`FlowSystem` API reference][flixopt.flow_system.FlowSystem] for detailed examples and usage patterns.
+!!! example "In our heating system"
+    - **Heat Bus** — where heat from the boiler, heat pump, and storage meets the building demand
+    - **Gas Bus** — connection to the gas grid
+    - **Electricity Bus** — connection to the power grid
 
-### Flows
+**The key rule:** At every bus, **inputs must equal outputs** at each timestep.
 
-[`Flow`][flixopt.elements.Flow] objects represent the movement of energy or material between a [Bus](#buses) and a [Component](#components) in a predefined direction.
+$$\sum inputs = \sum outputs$$
 
-- Have a `size` which, generally speaking, defines how much energy or material can be moved. Usually measured in MW, kW, m³/h, etc.
-- Have a `flow_rate`, which defines how fast energy or material is transported. Usually measured in MW, kW, m³/h, etc.
-- Have constraints to limit the flow-rate (min/max, total flow hours, active/inactive status etc.)
-- Can have fixed profiles (for demands or renewable generation)
-- Can have [Effects](#effects) associated by their use (costs, emissions, labour, ...)
+This balance constraint is what makes your model physically meaningful — energy can't appear or disappear.
 
-#### Flow Hours
-While the **Flow Rate** defines the rate in which energy or material is transported, the **Flow Hours** define the amount of energy or material that is transported.
-Its defined by the flow_rate times the duration of the timestep in hours.
+## Flows: What Moves Between Elements
 
-Examples:
+A [`Flow`][flixopt.elements.Flow] represents the movement of energy or material. Every flow connects a component to a bus, with a defined direction.
 
-| Flow Rate | Timestep | Flow Hours |
-|-----------|----------|------------|
-| 10 (MW)   | 1 hour   | 10 (MWh)   |
-| 10 (MW)   | 6 minutes | 0.1 (MWh) |
-| 10 (kg/h) | 1 hour   | 10 (kg)    |
+!!! example "In our heating system"
+    - Heat flowing **from** the boiler **to** the Heat Bus
+    - Gas flowing **from** the Gas Bus **to** the boiler
+    - Heat flowing **from** the Heat Bus **to** the buildings
 
-### Buses
+Flows have:
 
-[`Bus`][flixopt.elements.Bus] objects represent nodes or connection points in a FlowSystem. They:
+- A **size** (capacity) — *"This boiler can deliver up to 500 kW"*
+- A **flow rate** — *"Right now it's running at 300 kW"*
 
-- Balance incoming and outgoing flows
-- Can represent physical networks like heat, electricity, or gas
-- Handle infeasible balances gently by allowing the balance to be closed in return for a big Penalty (optional)
+## Components: The Equipment
 
-### Components
+[`Components`][flixopt.elements.Component] are the physical (or logical) elements that transform, store, or transfer flows.
 
-[`Component`][flixopt.elements.Component] objects usually represent physical entities in your system that interact with [`Flows`][flixopt.elements.Flow]. The generic component types work across all domains:
+### Converters — Transform One Thing Into Another
 
-- [`LinearConverters`][flixopt.components.LinearConverter] - Converts input flows to output flows with (piecewise) linear relationships
-    - *Energy: boilers, heat pumps, turbines*
-    - *Manufacturing: assembly lines, processing equipment*
-    - *Chemistry: reactors, separators*
-- [`Storages`][flixopt.components.Storage] - Stores energy or material over time
-    - *Energy: batteries, thermal storage, gas storage*
-    - *Logistics: warehouses, buffer inventory*
-    - *Water: reservoirs, tanks*
-- [`Sources`][flixopt.components.Source] / [`Sinks`][flixopt.components.Sink] / [`SourceAndSinks`][flixopt.components.SourceAndSink] - Produce or consume flows
-    - *Energy: demands, renewable generation*
-    - *Manufacturing: raw material supply, product demand*
-    - *Supply chain: suppliers, customers*
-- [`Transmissions`][flixopt.components.Transmission] - Moves flows between locations with possible losses
-    - *Energy: pipelines, power lines*
-    - *Logistics: transport routes*
-    - *Water: distribution networks*
+A [`LinearConverter`][flixopt.components.LinearConverter] takes inputs and produces outputs with a defined efficiency.
 
-**Pre-built specialized components** for energy systems include [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc. These can serve as blueprints for custom domain-specific components.
+!!! example "In our heating system"
+    - **Gas Boiler**: Gas → Heat (η = 90%)
+    - **Heat Pump**: Electricity → Heat (COP = 3.5)
 
-### Effects
+The conversion relationship:
 
-[`Effect`][flixopt.effects.Effect] objects represent impacts or metrics related to your system. While commonly used to allocate costs, they're completely flexible:
+$$output = \eta \cdot input$$
 
-**Energy systems:**
-- Costs (investment, operation)
-- Emissions (CO₂, NOx, etc.)
-- Primary energy consumption
+### Storages — Save for Later
 
-**Other domains:**
-- Production time, labor hours (manufacturing)
-- Water consumption, wastewater (process industries)
-- Transport distance, vehicle utilization (logistics)
-- Space consumption
-- Any custom metric relevant to your domain
+A [`Storage`][flixopt.components.Storage] accumulates and releases energy or material over time.
 
-These can be freely defined and crosslink to each other (`CO₂` ──[specific CO₂-costs]─→ `Costs`).
-One effect is designated as the **optimization objective** (typically Costs), while others can be constrained.
-This approach allows for multi-criteria optimization using both:
+!!! example "In our heating system"
+    - **Thermal Tank**: Store excess heat during cheap hours, use it during expensive hours
 
- - **Weighted Sum Method**: Optimize a theoretical Effect which other Effects crosslink to
- - **ε-constraint method**: Constrain effects to specific limits
+The storage tracks its state over time:
 
-### Optimization
+$$charge(t+1) = charge(t) + charging - discharging$$
 
-A [`FlowSystem`][flixopt.flow_system.FlowSystem] can be converted to a Model and optimized by creating an [`Optimization`][flixopt.optimization.Optimization] from it.
+### Sources & Sinks — System Boundaries
 
-FlixOpt offers different optimization modes:
+[`Sources`][flixopt.components.Source] and [`Sinks`][flixopt.components.Sink] connect your system to the outside world.
 
-- [`Optimization`][flixopt.optimization.Optimization] - Solves the entire problem at once
-- [`SegmentedOptimization`][flixopt.optimization.SegmentedOptimization] - Solves the problem in segments (with optional overlap), improving performance for large problems
-- [`ClusteredOptimization`][flixopt.optimization.ClusteredOptimization] - Uses typical periods to reduce computational requirements
+!!! example "In our heating system"
+    - **Gas Source**: Buy gas from the grid at market prices
+    - **Electricity Source**: Buy power at time-varying prices
+    - **Heat Sink**: The building demand that must be met
 
-### Results
+## Effects: What You're Tracking
 
-The results of an optimization are stored in a [`Results`][flixopt.results.Results] object.
-This object contains the solutions of the optimization as well as all information about the [`Optimization`][flixopt.optimization.Optimization] and the [`FlowSystem`][flixopt.flow_system.FlowSystem] it was created from.
-The solution is stored as an `xarray.Dataset`, but can be accessed through their associated Component, Bus or Effect.
+An [`Effect`][flixopt.effects.Effect] represents any metric you want to track or optimize. One effect is your **objective** (what you minimize or maximize), others can be **constraints**.
 
-This [`Results`][flixopt.results.Results] object can be saved to file and reloaded from file, allowing you to analyze the results anytime after the solve.
+!!! example "In our heating system"
+    - **Costs** (objective) — minimize total operating costs
+    - **CO₂ Emissions** (constraint) — stay below 1000 tonnes/year
+    - **Gas Consumption** (tracking) — report total gas used
 
-## How These Concepts Work Together
+Effects can be linked: *"Each kg of CO₂ costs €80 in emissions trading"* — this creates a connection from the CO₂ effect to the Costs effect.
 
-The process of working with FlixOpt can be divided into 3 steps:
+## FlowSystem: Putting It All Together
 
-1. Create a [`FlowSystem`][flixopt.flow_system.FlowSystem], containing all the elements and data of your system
-     -  Define the time horizon of your system (and optionally your periods and scenarios, see [Dimensions](mathematical-notation/dimensions.md)))
-     -  Add [`Effects`][flixopt.effects.Effect] to represent costs, emissions, etc.
-     -  Add [`Buses`][flixopt.elements.Bus] as connection points in your system and [`Sinks`][flixopt.components.Sink] & [`Sources`][flixopt.components.Source] as connections to the outer world (markets, power grid, ...)
-     -  Add [`Components`][flixopt.components] like [`Boilers`][flixopt.linear_converters.Boiler], [`HeatPumps`][flixopt.linear_converters.HeatPump], [`CHPs`][flixopt.linear_converters.CHP], etc.
-     -  Add
-     - [`FlowSystems`][flixopt.flow_system.FlowSystem] can also be loaded from a netCDF file*
-2. Translate the model to a mathematical optimization problem
-     - Create an [`Optimization`][flixopt.optimization.Optimization] from your FlowSystem and choose a Solver
-     - ...The Optimization is translated internally to a mathematical optimization problem...
-     - ...and solved by the chosen solver.
-3. Analyze the results
-     - The results are stored in a [`Results`][flixopt.results.Results] object
-     - This object can be saved to file and reloaded from file, retaining all information about the optimization
-     - As it contains the used [`FlowSystem`][flixopt.flow_system.FlowSystem], it fully documents all assumptions taken to create the results.
+The [`FlowSystem`][flixopt.flow_system.FlowSystem] is your complete model. It contains all buses, components, flows, and effects, plus the **time definition** for your optimization.
+
+```python
+import flixopt as fx
+
+# Define timesteps (e.g., hourly for one week)
+timesteps = pd.date_range('2024-01-01', periods=168, freq='h')
+
+# Create the system
+flow_system = fx.FlowSystem(timesteps)
+
+# Add elements
+flow_system.add_elements(heat_bus, gas_bus, electricity_bus)
+flow_system.add_elements(boiler, heat_pump, storage)
+flow_system.add_elements(costs_effect, co2_effect)
+```
+
+## The Workflow: Model → Optimize → Analyze
+
+Working with flixOpt follows three steps:
+
+```mermaid
+graph LR
+    A[1. Build FlowSystem] --> B[2. Run Optimization]
+    B --> C[3. Analyze Results]
+```
+
+### 1. Build Your Model
+
+Define your system structure, parameters, and time series data.
+
+### 2. Run the Optimization
+
+Create an [`Optimization`][flixopt.optimization.Optimization] and solve it:
+
+```python
+optimization = fx.Optimization('my_model', flow_system)
+results = optimization.solve(fx.solvers.HighsSolver())
+```
+
+### 3. Analyze Results
+
+The [`Results`][flixopt.results.Results] object contains all solution data:
+
+```python
+# Access component results
+boiler_output = results['Boiler'].node_balance()
+
+# Get total costs
+total_costs = results.solution['Costs']
+```
 
 <figure markdown>
   ![FlixOpt Conceptual Usage](../images/architecture_flixOpt.png)
   <figcaption>Conceptual Usage and IO operations of FlixOpt</figcaption>
 </figure>
 
-## Advanced Usage
-As flixopt is build on [linopy](https://github.com/PyPSA/linopy), any model created with FlixOpt can be extended or modified using the great [linopy API](https://linopy.readthedocs.io/en/latest/api.html).
-This allows to adjust your model to very specific requirements without loosing the convenience of FlixOpt.
+## Quick Reference
 
-<!--## Next Steps-->
-<!---->
-<!--Now that you understand the basic concepts, learn more about each one:-->
-<!---->
-<!--- [FlowSystem](api/flow_system.md) - Time series and system organization-->
-<!--- [Components](api/components.md) - Available component types and how to use them-->
-<!--- [Effects](apieffects.md) - Costs, emissions, and other impacts-->
-<!--- [Optimization Modes](api/optimization.md) - Different approaches to solving your model-->
+| Concept | What It Represents | Real-World Example |
+|---------|-------------------|-------------------|
+| **Bus** | Connection point | Heat network, electrical grid |
+| **Flow** | Energy/material movement | Heat delivery, gas consumption |
+| **LinearConverter** | Transformation equipment | Boiler, heat pump, turbine |
+| **Storage** | Time-shifting capability | Battery, thermal tank, warehouse |
+| **Source/Sink** | System boundary | Grid connection, demand |
+| **Effect** | Metric to track/optimize | Costs, emissions, energy use |
+| **FlowSystem** | Complete model | Your entire system |
+
+## Beyond Energy Systems
+
+While our example used a heating system, flixOpt works for any flow-based optimization:
+
+| Domain | Buses | Components | Effects |
+|--------|-------|------------|---------|
+| **District Heating** | Heat, Gas, Electricity | Boilers, CHPs, Heat Pumps | Costs, CO₂ |
+| **Manufacturing** | Raw Materials, Products | Machines, Assembly Lines | Costs, Time, Labor |
+| **Supply Chain** | Warehouses, Locations | Transport, Storage | Costs, Distance |
+| **Water Networks** | Reservoirs, Treatment | Pumps, Pipes | Costs, Energy |
+
+## Next Steps
+
+- **[Building Models](building-models/index.md)** — Step-by-step guide to constructing models
+- **[Examples](../examples/index.md)** — Working code for common scenarios
+- **[Mathematical Notation](mathematical-notation/index.md)** — Detailed constraint formulations
+
+## Advanced: Extending with linopy
+
+flixOpt is built on [linopy](https://github.com/PyPSA/linopy). You can access and extend the underlying optimization model for custom constraints:
+
+```python
+# Access the linopy model after building
+optimization.do_modeling()
+model = optimization.model
+
+# Add custom constraints using linopy API
+model.add_constraints(...)
+```
+
+This allows advanced users to add domain-specific constraints while keeping flixOpt's convenience for standard modeling.
