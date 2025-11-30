@@ -5,14 +5,13 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .core import PlausibilityError
 from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
@@ -486,18 +485,11 @@ class Flow(Element):
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
-            self.bus = bus.label_full
-            warnings.warn(
-                f'Bus {bus.label} is passed as a Bus object to {self.label}. This is deprecated and will be removed '
-                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                UserWarning,
-                stacklevel=1,
+            raise TypeError(
+                f'Bus {bus.label} is passed as a Bus object to Flow {self.label}. '
+                f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
             )
-            self._bus_object = bus
-        else:
-            self.bus = bus
-            self._bus_object = None
+        self.bus = bus
 
     def create_model(self, model: FlowSystemModel) -> FlowModel:
         self._plausibility_checks()
