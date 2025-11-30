@@ -946,7 +946,7 @@ class BusModel(ElementModel):
 
         # Add excess to balance and penalty if needed
         if self.element.with_excess:
-            excess_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
+            imbalance_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
 
             self.virtual_supply = self.add_variables(
                 lower=0, coords=self._model.get_coords(), short_name='virtual_supply'
@@ -963,12 +963,12 @@ class BusModel(ElementModel):
 
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.virtual_supply * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.virtual_supply * imbalance_penalty},
                 target='temporal',
             )
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.virtual_demand * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: self.virtual_demand * imbalance_penalty},
                 target='temporal',
             )
 

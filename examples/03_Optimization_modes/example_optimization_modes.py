@@ -41,7 +41,7 @@ if __name__ == '__main__':
         penalty_of_period_freedom=0,
     )
     keep_extreme_periods = True
-    excess_penalty = 1e5  # or set to None if not needed
+    imbalance_penalty = 1e5  # or set to None if not needed
 
     # Data Import
     data_import = pd.read_csv(
@@ -67,10 +67,10 @@ if __name__ == '__main__':
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
-        fx.Bus('Strom', imbalance_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Gas', imbalance_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Kohle', imbalance_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Strom', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Kohle', imbalance_penalty_per_flow_hour=imbalance_penalty),
     )
 
     # Effects
