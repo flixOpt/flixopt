@@ -38,23 +38,6 @@ The MIT License is a permissive open-source license that allows you to:
 ✅ **Sublicense** under different terms
 ✅ **Use privately** without making your modifications public
 
-**Requirements:**
-
-- Include the copyright notice and license text in copies of the software
-- The software is provided "as is" without warranty
-
-## Third-Party Licenses
-
-flixOpt depends on several open-source libraries, each with their own licenses:
-
-- **NumPy** - BSD License
-- **Pandas** - BSD License
-- **Matplotlib** - PSF License
-- **HiGHS** - MIT License
-- **NetworkX** - BSD License
-
-Please refer to the individual packages for their specific license terms.
-
 ## Contributing
 
 By contributing to flixOpt, you agree that your contributions will be licensed under the MIT License. See our [Contributing Guide](../contribute.md) for more information.
