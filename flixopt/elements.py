@@ -887,19 +887,16 @@ class BusModel(ElementModel):
                 lower=0, coords=self._model.get_coords(), short_name='virtual_demand'
             )
 
-            eq_bus_balance.lhs -= -self.virtual_supply + self.virtual_demand
+            # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
+            eq_bus_balance.lhs += self.virtual_supply - self.virtual_demand
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
 
+            total_imbalance_penalty = (self.virtual_supply + self.virtual_demand) * imbalance_penalty
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.virtual_supply * imbalance_penalty},
-                target='temporal',
-            )
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.virtual_demand * imbalance_penalty},
+                expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
                 target='temporal',
             )
 

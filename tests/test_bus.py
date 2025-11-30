@@ -65,8 +65,7 @@ class TestBusModel:
         assert 'TestBus->Penalty(temporal)' in model.constraints
         assert 'TestBus->Penalty(temporal)' in model.variables
 
-        # The penalty share should equal the excess times the penalty cost
-        # Note: Each excess (input and output) creates its own share constraint, so we have two
+        # The penalty share should equal the imbalance (virtual_supply + virtual_demand) times the penalty cost
         # Let's verify the total penalty contribution by checking the effect's temporal model
         penalty_effect = flow_system.effects.penalty_effect
         assert penalty_effect.submodel is not None

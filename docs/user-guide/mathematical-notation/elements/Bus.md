@@ -5,8 +5,8 @@ $$ \label{eq:bus_balance}
   \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
 $$
 
-Optionally, a Bus can have a `imbalance_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
-This is usefull as it handles a possible ifeasiblity gently.
+Optionally, a Bus can have an `imbalance_penalty_per_flow_hour` parameter, which allows to penalize the balance for missing or excess flow-rates.
+This is useful as it handles a possible infeasibility gently.
 
 This changes the balance to
 
