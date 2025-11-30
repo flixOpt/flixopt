@@ -4,7 +4,6 @@ It provides Datatypes, logging functionality, and some functions to transform da
 """
 
 import logging
-import warnings
 from itertools import permutations
 from typing import Any, Literal
 
@@ -12,7 +11,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import DEPRECATION_REMOVAL_VERSION
 from .types import NumericOrBool
 
 logger = logging.getLogger('flixopt')
@@ -101,40 +99,11 @@ class TimeSeriesData(xr.DataArray):
         da: xr.DataArray,
         clustering_group: str | None = None,
         clustering_weight: float | None = None,
-        aggregation_group: str | None = None,
-        aggregation_weight: float | None = None,
     ):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
-        # Handle deprecated parameters
-        if aggregation_group is not None:
-            warnings.warn(
-                f'aggregation_group is deprecated, use clustering_group instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if clustering_group is None:
-                clustering_group = aggregation_group
-        if aggregation_weight is not None:
-            warnings.warn(
-                f'aggregation_weight is deprecated, use clustering_weight instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if clustering_weight is None:
-                clustering_weight = aggregation_weight
-
-        # Get clustering metadata from attrs or parameters (try both old and new attrs keys for backward compat)
-        final_clustering_group = (
-            clustering_group
-            if clustering_group is not None
-            else da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
-        )
+        final_clustering_group = clustering_group if clustering_group is not None else da.attrs.get('clustering_group')
         final_clustering_weight = (
-            clustering_weight
-            if clustering_weight is not None
-            else da.attrs.get('clustering_weight', da.attrs.get('aggregation_weight'))
+            clustering_weight if clustering_weight is not None else da.attrs.get('clustering_weight')
         )
 
         return cls(da, clustering_group=final_clustering_group, clustering_weight=final_clustering_weight)

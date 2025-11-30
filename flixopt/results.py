@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
+from .config import CONFIG, SUCCESS_LEVEL
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ResultsContainer
 
@@ -209,7 +209,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         summary: dict,
         folder: pathlib.Path | None = None,
         model: linopy.Model | None = None,
-        **kwargs,  # To accept old "flow_system" parameter
     ):
         """Initialize Results with optimization data.
         Usually, this class is instantiated by an Optimization object via `Results.from_optimization()`
@@ -222,28 +221,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             summary: Optimization metadata.
             folder: Results storage folder.
             model: Linopy optimization model.
-        Deprecated:
-            flow_system: Use flow_system_data instead.
-
-        Note:
-            The legacy alias `CalculationResults` is deprecated. Use `Results` instead.
         """
-        # Handle potential old "flow_system" parameter for backward compatibility
-        if 'flow_system' in kwargs and flow_system_data is None:
-            flow_system_data = kwargs.pop('flow_system')
-            warnings.warn(
-                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
-                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-        # Validate that flow_system_data is provided
-        if flow_system_data is None:
-            raise TypeError(
-                "flow_system_data is required (or use deprecated 'flow_system' for backward compatibility)."
-            )
 
         self.solution = solution
         self.flow_system_data = flow_system_data
@@ -909,11 +887,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         | Literal['auto']
         | None = 'auto',
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
-        # Deprecated parameters (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-        color_map: str | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -1030,10 +1003,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             facet_cols=facet_cols,
             reshape_time=reshape_time,
             fill=fill,
-            indexer=indexer,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
             **plot_kwargs,
         )
 
@@ -1120,39 +1089,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
                 fx_io.document_linopy_model(self.model, path=paths.model_documentation)
 
         logger.log(SUCCESS_LEVEL, f'Saved optimization results "{name}" to {paths.model_documentation.parent}')
-
-
-class CalculationResults(Results):
-    """DEPRECATED: Use Results instead.
-
-    Backwards-compatible alias for Results class.
-    All functionality is inherited from Results.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Only warn if directly instantiating CalculationResults (not subclasses)
-        if self.__class__.__name__ == 'CalculationResults':
-            warnings.warn(
-                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().__init__(*args, **kwargs)
-
-    @classmethod
-    def from_calculation(cls, calculation: Optimization) -> CalculationResults:
-        """Create CalculationResults from a Calculation object.
-
-        DEPRECATED: Use Results.from_optimization() instead.
-        Backwards-compatible method that redirects to from_optimization().
-
-        Args:
-            calculation: Calculation object with solved model.
-
-        Returns:
-            CalculationResults: New instance with extracted results.
-        """
-        return cls.from_optimization(calculation)
 
 
 class _ElementResults:
@@ -1265,8 +1201,6 @@ class _NodeResults(_ElementResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -1367,22 +1301,6 @@ class _NodeResults(_ElementResults):
             >>> fig.update_layout(template='plotly_dark', width=1200, height=600)
             >>> fig.show()
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
@@ -1450,8 +1368,6 @@ class _NodeResults(_ElementResults):
         show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
@@ -1501,22 +1417,6 @@ class _NodeResults(_ElementResults):
 
             >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         # Extract dpi for export_figure
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
@@ -1624,8 +1524,6 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
         select: dict[FlowSystemDimensions, Any] | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1640,22 +1538,6 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1716,8 +1598,6 @@ class ComponentResults(_NodeResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
@@ -1786,22 +1666,6 @@ class ComponentResults(_NodeResults):
 
             >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         # Extract dpi for export_figure
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
@@ -2280,10 +2144,6 @@ class SegmentedResults:
         animate_by: str | None = None,
         facet_cols: int | None = None,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
-        # Deprecated parameters (kept for backwards compatibility)
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-        color_map: str | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
@@ -2302,9 +2162,6 @@ class SegmentedResults:
             animate_by: Dimension to animate over (Plotly only).
             facet_cols: Number of columns in the facet grid layout.
             fill: Method to fill missing values: 'ffill' or 'bfill'.
-            heatmap_timeframes: (Deprecated) Use reshape_time instead.
-            heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
-            color_map: (Deprecated) Use colors instead.
             **plot_kwargs: Additional plotting customization options.
                 Common options:
 
@@ -2320,41 +2177,6 @@ class SegmentedResults:
         Returns:
             Figure object.
         """
-        # Handle deprecated parameters
-        if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
-            # Check for conflict with new parameter
-            if reshape_time != 'auto':  # Check if user explicitly set reshape_time
-                raise ValueError(
-                    "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
-                    "and new parameter 'reshape_time'. Use only 'reshape_time'."
-                )
-
-            warnings.warn(
-                "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-                f"Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Override reshape_time if old parameters provided
-            if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
-                reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
-
-        if color_map is not None:
-            # Check for conflict with new parameter
-            if colors is not None:  # Check if user explicitly set colors
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
-                )
-
-            warnings.warn(
-                f"The 'color_map' parameter is deprecated. Use 'colors' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            colors = color_map
-
         return plot_heatmap(
             data=self.solution_without_overlap(variable_name),
             name=variable_name,
@@ -2412,40 +2234,6 @@ class SegmentedResults:
         logger.info(f'Saved optimization "{name}" to {path}')
 
 
-class SegmentedCalculationResults(SegmentedResults):
-    """DEPRECATED: Use SegmentedResults instead.
-
-    Backwards-compatible alias for SegmentedResults class.
-    All functionality is inherited from SegmentedResults.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Only warn if directly instantiating SegmentedCalculationResults (not subclasses)
-        if self.__class__.__name__ == 'SegmentedCalculationResults':
-            warnings.warn(
-                f'SegmentedCalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-                'Use SegmentedResults instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().__init__(*args, **kwargs)
-
-    @classmethod
-    def from_calculation(cls, calculation: SegmentedOptimization) -> SegmentedCalculationResults:
-        """Create SegmentedCalculationResults from a SegmentedCalculation object.
-
-        DEPRECATED: Use SegmentedResults.from_optimization() instead.
-        Backwards-compatible method that redirects to from_optimization().
-
-        Args:
-            calculation: SegmentedCalculation object with solved model.
-
-        Returns:
-            SegmentedCalculationResults: New instance with extracted results.
-        """
-        return cls.from_optimization(calculation)
-
-
 def plot_heatmap(
     data: xr.DataArray | xr.Dataset,
     name: str | None = None,
@@ -2462,11 +2250,6 @@ def plot_heatmap(
     | Literal['auto']
     | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
-    # Deprecated parameters (kept for backwards compatibility)
-    indexer: dict[str, Any] | None = None,
-    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-    color_map: str | None = None,
     **plot_kwargs: Any,
 ):
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
@@ -2515,57 +2298,6 @@ def plot_heatmap(
 
         >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
-    # Handle deprecated heatmap time parameters
-    if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
-        # Check for conflict with new parameter
-        if reshape_time != 'auto':  # User explicitly set reshape_time
-            raise ValueError(
-                "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
-                "and new parameter 'reshape_time'. Use only 'reshape_time'."
-            )
-
-        warnings.warn(
-            "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # Override reshape_time if both old parameters provided
-        if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
-            reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
-
-    # Handle deprecated color_map parameter
-    if color_map is not None:
-        if colors is not None:  # User explicitly set colors
-            raise ValueError(
-                "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
-            )
-
-        warnings.warn(
-            f"The 'color_map' parameter is deprecated. Use 'colors' instead."
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        colors = color_map
-
-    # Handle deprecated indexer parameter
-    if indexer is not None:
-        # Check for conflict with new parameter
-        if select is not None:  # User explicitly set select
-            raise ValueError(
-                "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-            )
-
-        warnings.warn(
-            f"The 'indexer' parameter is deprecated. Use 'select' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        select = indexer
-
     # Convert Dataset to DataArray with 'variable' dimension
     if isinstance(data, xr.Dataset):
         # Extract all data variables from the Dataset
