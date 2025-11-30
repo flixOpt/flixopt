@@ -52,7 +52,7 @@ flow_system = fx.FlowSystem(
     timesteps=timesteps,
     periods=periods,
     scenarios=scenarios,
-    weights=np.array([0.5, 0.5])  # Scenario weights
+    scenario_weights=np.array([0.5, 0.5])  # Scenario weights
 )
 ```
 
@@ -102,7 +102,7 @@ Scenarios within a period are **operationally independent**:
 - Each scenario has its own operational variables: $p(\text{t}_i, s_1)$ and $p(\text{t}_i, s_2)$ are independent
 - Scenarios cannot exchange energy, information, or resources
 - Storage states are separate: $c(\text{t}_i, s_1) \neq c(\text{t}_i, s_2)$
-- Binary states (on/off) are independent: $s(\text{t}_i, s_1)$ vs $s(\text{t}_i, s_2)$
+- Binary states (active/inactive) are independent: $s(\text{t}_i, s_1)$ vs $s(\text{t}_i, s_2)$
 
 Scenarios are connected **only through the objective function** via weights:
 
@@ -114,6 +114,7 @@ Where:
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$
 - The optimizer balances performance across scenarios according to their weights
+- **Both the objective effect and Penalty effect are weighted by $w_s$** (see [Penalty weighting](effects-penalty-objective.md#penalty))
 
 ### Period Independence
 
@@ -129,6 +130,8 @@ Periods are connected **only through weighted aggregation** in the objective:
 $$
 \min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \text{Objective}_y
 $$
+
+Where **both the objective effect and Penalty effect are weighted by $w_y$** (see [Penalty weighting](effects-penalty-objective.md#penalty))
 
 ### Shared Periodic Decisions: The Exception
 
@@ -203,16 +206,18 @@ $$
 
 Where:
 - $\mathcal{T}$ is the set of time steps
-- $\mathcal{E}$ is the set of effects
+- $\mathcal{E}$ is the set of effects (including the Penalty effect $E_\Phi$)
 - $\mathcal{S}$ is the set of scenarios
 - $\mathcal{Y}$ is the set of periods
 - $s_{e}(\cdots)$ are the effect contributions (costs, emissions, etc.)
 - $w_s, w_y, w_{y,s}$ are the dimension weights
+- **Penalty effect is weighted identically to other effects**
 
 **See [Effects, Penalty & Objective](effects-penalty-objective.md) for complete formulations including:**
 - How temporal and periodic effects expand with dimensions
 - Detailed objective function for each dimensional case
 - Periodic (investment) vs temporal (operational) effect handling
+- Explicit Penalty weighting formulations
 
 ---
 
@@ -220,28 +225,75 @@ Where:
 
 Weights determine the relative importance of scenarios and periods in the objective function.
 
-**Specification:**
+### Scenario Weights
+
+You provide scenario weights explicitly via the `scenario_weights` parameter:
 
 ```python
 flow_system = fx.FlowSystem(
     timesteps=timesteps,
-    periods=periods,
     scenarios=scenarios,
-    weights=weights  # Shape depends on dimensions
+    scenario_weights=np.array([0.3, 0.7])  # Scenario probabilities
 )
 ```
 
-**Weight Dimensions:**
+**Default:** If not specified, all scenarios have equal weight (normalized to sum to 1).
 
-| Dimensions Present | Weight Shape | Example | Meaning |
-|-------------------|--------------|---------|---------|
-| Time + Scenario | 1D array of length `n_scenarios` | `[0.3, 0.7]` | Scenario probabilities |
-| Time + Period | 1D array of length `n_periods` | `[0.5, 0.3, 0.2]` | Period importance |
-| Time + Period + Scenario | 2D array `(n_periods, n_scenarios)` | `[[0.25, 0.25], [0.25, 0.25]]` | Combined weights |
+### Period Weights
 
-**Default:** If not specified, all scenarios/periods have equal weight (normalized to sum to 1).
+Period weights are **automatically computed** from the period index (similar to how `hours_per_timestep` is computed from the time index):
 
-**Normalization:** Set `normalize_weights=True` in `Calculation` to automatically normalize weights to sum to 1.
+```python
+# Period weights are computed from the differences between period values
+periods = pd.Index([2020, 2025, 2030, 2035])
+# → period_weights = [5, 5, 5, 5] (representing 5-year intervals)
+
+flow_system = fx.FlowSystem(
+    timesteps=timesteps,
+    periods=periods,
+    # No need to specify period weights - they're computed automatically
+)
+```
+
+**How period weights are computed:**
+- For periods `[2020, 2025, 2030, 2035]`, the weights are `[5, 5, 5, 5]` (the interval sizes)
+- This ensures that when you use `.sel()` to select a subset of periods, the weights are correctly recalculated
+- You can specify `weight_of_last_period` if the last period weight cannot be inferred from the index
+
+### Combined Weights
+
+When both periods and scenarios are present, the combined `weights` array (accessible via `flow_system.model.objective_weights`) is computed as:
+
+$$
+w_{y,s} = w_y \times \frac{w_s}{\sum_{s \in \mathcal{S}} w_s}
+$$
+
+Where:
+- $w_y$ are the period weights (computed from period index)
+- $w_s$ are the scenario weights (user-specified)
+- $\mathcal{S}$ is the set of all scenarios
+- The scenario weights are normalized to sum to 1 before multiplication
+
+**Example:**
+```python
+periods = pd.Index([2020, 2030, 2040])  # → period_weights = [10, 10, 10]
+scenarios = pd.Index(['Base', 'High'])
+scenario_weights = np.array([0.6, 0.4])
+
+flow_system = fx.FlowSystem(
+    timesteps=timesteps,
+    periods=periods,
+    scenarios=scenarios,
+    scenario_weights=scenario_weights
+)
+
+# Combined weights shape: (3 periods, 2 scenarios)
+# [[6.0, 4.0],   # 2020: 10 × [0.6, 0.4]
+#  [6.0, 4.0],   # 2030: 10 × [0.6, 0.4]
+#  [6.0, 4.0]]   # 2040: 10 × [0.6, 0.4]
+```
+
+**Normalization:** Set `normalize_weights=False` in `Optimization` to turn off the normalization.
 
 ---
 

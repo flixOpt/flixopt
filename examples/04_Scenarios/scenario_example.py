@@ -83,7 +83,9 @@ if __name__ == '__main__':
     # Base Case: 60% probability, High Demand: 40% probability
     scenario_weights = np.array([0.6, 0.4])
 
-    flow_system = fx.FlowSystem(timesteps=timesteps, periods=periods, scenarios=scenarios, weights=scenario_weights)
+    flow_system = fx.FlowSystem(
+        timesteps=timesteps, periods=periods, scenarios=scenarios, scenario_weights=scenario_weights
+    )
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
@@ -114,27 +116,29 @@ if __name__ == '__main__':
     # Modern condensing gas boiler with realistic efficiency
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
-        eta=0.92,  # Realistic efficiency for modern condensing gas boiler (92%)
-        Q_th=fx.Flow(
+        thermal_efficiency=0.92,  # Realistic efficiency for modern condensing gas boiler (92%)
+        thermal_flow=fx.Flow(
             label='Q_th',
             bus='Fernwärme',
             size=50,
             relative_minimum=0.1,
             relative_maximum=1,
-            on_off_parameters=fx.OnOffParameters(),
+            status_parameters=fx.StatusParameters(),
         ),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
+        fuel_flow=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
     # Modern CHP unit with realistic efficiencies (total efficiency ~88%)
     chp = fx.linear_converters.CHP(
         label='CHP',
-        eta_th=0.48,  # Realistic thermal efficiency (48%)
-        eta_el=0.40,  # Realistic electrical efficiency (40%)
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-        Q_fu=fx.Flow('Q_fu', bus='Gas'),
+        thermal_efficiency=0.48,  # Realistic thermal efficiency (48%)
+        electrical_efficiency=0.40,  # Realistic electrical efficiency (40%)
+        electrical_flow=fx.Flow(
+            'P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
+        ),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas'),
     )
 
     # Storage: Thermal energy storage system with charging and discharging capabilities
@@ -192,13 +196,13 @@ if __name__ == '__main__':
 
     # --- Define and Run Calculation ---
     # Create a calculation object to model the Flow System
-    calculation = fx.FullCalculation(name='Sim1', flow_system=flow_system)
-    calculation.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
+    optimization = fx.Optimization(name='Sim1', flow_system=flow_system)
+    optimization.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
 
     # --- Solve the Calculation and Save Results ---
-    calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
+    optimization.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
-    calculation.results.setup_colors(
+    optimization.results.setup_colors(
         {
             'CHP': 'red',
             'Greys': ['Gastarif', 'Einspeisung', 'Heat Demand'],
@@ -207,16 +211,16 @@ if __name__ == '__main__':
         }
     )
 
-    calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # --- Analyze Results ---
-    calculation.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
-    calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
-    calculation.results['Storage'].plot_charge_state()
-    calculation.results['Fernwärme'].plot_node_balance_pie(select={'period': 2020, 'scenario': 'Base Case'})
+    optimization.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
+    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    optimization.results['Storage'].plot_charge_state()
+    optimization.results['Fernwärme'].plot_node_balance_pie(select={'period': 2020, 'scenario': 'Base Case'})
 
     # Convert the results for the storage component to a dataframe and display
-    df = calculation.results['Storage'].node_balance_with_charge_state()
+    df = optimization.results['Storage'].node_balance_with_charge_state()
 
     # Save results to file for later usage
-    calculation.results.to_file()
+    optimization.results.to_file()

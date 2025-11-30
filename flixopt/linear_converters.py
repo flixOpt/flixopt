@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .components import LinearConverter
-from .core import TemporalDataUser, TimeSeriesData
 from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
-    from .interface import OnOffParameters
+    from .interface import StatusParameters
+    from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -31,11 +31,11 @@ class Boiler(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
+        thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
             output to fuel input energy content.
-        Q_fu: Fuel input-flow representing fuel consumption.
-        Q_th: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        fuel_flow: Fuel input-flow representing fuel consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -45,9 +45,9 @@ class Boiler(LinearConverter):
         ```python
         gas_boiler = Boiler(
             label='natural_gas_boiler',
-            eta=0.85,  # 85% thermal efficiency
-            Q_fu=natural_gas_flow,
-            Q_th=hot_water_flow,
+            thermal_efficiency=0.85,  # 85% thermal efficiency
+            fuel_flow=natural_gas_flow,
+            thermal_flow=hot_water_flow,
         )
         ```
 
@@ -56,18 +56,18 @@ class Boiler(LinearConverter):
         ```python
         biomass_boiler = Boiler(
             label='wood_chip_boiler',
-            eta=seasonal_efficiency_profile,  # Time-varying efficiency
-            Q_fu=biomass_flow,
-            Q_th=district_heat_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=4,  # Minimum 4-hour operation
-                effects_per_switch_on={'startup_fuel': 50},  # Startup fuel penalty
+            thermal_efficiency=seasonal_efficiency_profile,  # Time-varying efficiency
+            fuel_flow=biomass_flow,
+            thermal_flow=district_heat_flow,
+            status_parameters=StatusParameters(
+                min_uptime=4,  # Minimum 4-hour operation
+                effects_per_startup={'startup_fuel': 50},  # Startup fuel penalty
             ),
         )
         ```
 
     Note:
-        The conversion relationship is: Q_th = Q_fu × eta
+        The conversion relationship is: thermal_flow = fuel_flow × thermal_efficiency
 
         Efficiency should be between 0 and 1, where 1 represents perfect conversion
         (100% of fuel energy converted to useful thermal output).
@@ -76,31 +76,39 @@ class Boiler(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
-        Q_fu: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        thermal_efficiency: Numeric_TPS | None = None,
+        fuel_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
+        # Validate required parameters
+        if fuel_flow is None:
+            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+
         super().__init__(
             label,
-            inputs=[Q_fu],
-            outputs=[Q_th],
-            conversion_factors=[{Q_fu.label: eta, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            inputs=[fuel_flow],
+            outputs=[thermal_flow],
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
-        self.Q_fu = Q_fu
-        self.Q_th = Q_th
+        self.fuel_flow = fuel_flow
+        self.thermal_flow = thermal_flow
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def eta(self):
-        return self.conversion_factors[0][self.Q_fu.label]
+    def thermal_efficiency(self):
+        return self.conversion_factors[0][self.fuel_flow.label]
 
-    @eta.setter
-    def eta(self, value):
-        check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_fu.label] = value
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
+        self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -115,12 +123,12 @@ class Power2Heat(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta: Thermal efficiency factor (0-1 range). For resistance heating this is
+        thermal_efficiency: Thermal efficiency factor (0-1 range). For resistance heating this is
             typically close to 1.0 (nearly 100% efficiency), but may be lower for
             electrode boilers or systems with distribution losses.
-        P_el: Electrical input-flow representing electricity consumption.
-        Q_th: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        electrical_flow: Electrical input-flow representing electricity consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -130,9 +138,9 @@ class Power2Heat(LinearConverter):
         ```python
         electric_heater = Power2Heat(
             label='resistance_heater',
-            eta=0.98,  # 98% efficiency (small losses)
-            P_el=electricity_flow,
-            Q_th=space_heating_flow,
+            thermal_efficiency=0.98,  # 98% efficiency (small losses)
+            electrical_flow=electricity_flow,
+            thermal_flow=space_heating_flow,
         )
         ```
 
@@ -141,20 +149,20 @@ class Power2Heat(LinearConverter):
         ```python
         electrode_boiler = Power2Heat(
             label='electrode_steam_boiler',
-            eta=0.95,  # 95% efficiency including boiler losses
-            P_el=industrial_electricity,
-            Q_th=process_steam_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=1,  # Minimum 1-hour operation
-                effects_per_switch_on={'startup_cost': 100},
+            thermal_efficiency=0.95,  # 95% efficiency including boiler losses
+            electrical_flow=industrial_electricity,
+            thermal_flow=process_steam_flow,
+            status_parameters=StatusParameters(
+                min_uptime=1,  # Minimum 1-hour operation
+                effects_per_startup={'startup_cost': 100},
             ),
         )
         ```
 
     Note:
-        The conversion relationship is: Q_th = P_el × eta
+        The conversion relationship is: thermal_flow = electrical_flow × thermal_efficiency
 
-        Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (eta ≤ 1.0)
+        Unlike heat pumps, Power2Heat systems cannot exceed 100% efficiency (thermal_efficiency ≤ 1.0)
         as they only convert electrical energy without extracting additional energy
         from the environment. However, they provide fast response times and precise
         temperature control.
@@ -163,32 +171,40 @@ class Power2Heat(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta: TemporalDataUser,
-        P_el: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        thermal_efficiency: Numeric_TPS | None = None,
+        electrical_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
+        # Validate required parameters
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+
         super().__init__(
             label,
-            inputs=[P_el],
-            outputs=[Q_th],
-            conversion_factors=[{P_el.label: eta, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            inputs=[electrical_flow],
+            outputs=[thermal_flow],
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.electrical_flow = electrical_flow
+        self.thermal_flow = thermal_flow
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def eta(self):
-        return self.conversion_factors[0][self.P_el.label]
+    def thermal_efficiency(self):
+        return self.conversion_factors[0][self.electrical_flow.label]
 
-    @eta.setter
-    def eta(self, value):
-        check_bounds(value, 'eta', self.label_full, 0, 1)
-        self.conversion_factors[0][self.P_el.label] = value
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
+        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -203,12 +219,12 @@ class HeatPump(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+        cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. COP > 1 indicates the heat pump extracts
             additional energy from the environment.
-        P_el: Electrical input-flow representing electricity consumption.
-        Q_th: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        electrical_flow: Electrical input-flow representing electricity consumption.
+        thermal_flow: Thermal output-flow representing heat generation.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -218,9 +234,9 @@ class HeatPump(LinearConverter):
         ```python
         air_hp = HeatPump(
             label='air_source_heat_pump',
-            COP=3.5,  # COP of 3.5 (350% efficiency)
-            P_el=electricity_flow,
-            Q_th=heating_flow,
+            cop=3.5,  # COP of 3.5 (350% efficiency)
+            electrical_flow=electricity_flow,
+            thermal_flow=heating_flow,
         )
         ```
 
@@ -229,18 +245,18 @@ class HeatPump(LinearConverter):
         ```python
         ground_hp = HeatPump(
             label='geothermal_heat_pump',
-            COP=temperature_dependent_cop,  # Time-varying COP based on ground temp
-            P_el=electricity_flow,
-            Q_th=radiant_heating_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=2,  # Avoid frequent cycling
-                effects_per_running_hour={'maintenance': 0.5},
+            cop=temperature_dependent_cop,  # Time-varying COP based on ground temp
+            electrical_flow=electricity_flow,
+            thermal_flow=radiant_heating_flow,
+            status_parameters=StatusParameters(
+                min_uptime=2,  # Avoid frequent cycling
+                effects_per_active_hour={'maintenance': 0.5},
             ),
         )
         ```
 
     Note:
-        The conversion relationship is: Q_th = P_el × COP
+        The conversion relationship is: thermal_flow = electrical_flow × COP
 
         COP should be greater than 1 for realistic heat pump operation, with typical
         values ranging from 2-6 depending on technology and operating conditions.
@@ -250,32 +266,40 @@ class HeatPump(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
-        P_el: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        cop: Numeric_TPS | None = None,
+        electrical_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
+        # Validate required parameters
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if cop is None:
+            raise ValueError(f"'{label}': cop is required and cannot be None")
+
         super().__init__(
             label,
-            inputs=[P_el],
-            outputs=[Q_th],
-            conversion_factors=[{P_el.label: COP, Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            inputs=[electrical_flow],
+            outputs=[thermal_flow],
+            conversion_factors=[],
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
-        self.P_el = P_el
-        self.Q_th = Q_th
-        self.COP = COP
+        self.electrical_flow = electrical_flow
+        self.thermal_flow = thermal_flow
+        self.cop = cop  # Uses setter
 
     @property
-    def COP(self):  # noqa: N802
-        return self.conversion_factors[0][self.P_el.label]
+    def cop(self):
+        return self.conversion_factors[0][self.electrical_flow.label]
 
-    @COP.setter
-    def COP(self, value):  # noqa: N802
-        check_bounds(value, 'COP', self.label_full, 1, 20)
-        self.conversion_factors[0][self.P_el.label] = value
+    @cop.setter
+    def cop(self, value):
+        check_bounds(value, 'cop', self.label_full, 1, 20)
+        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
 
 @register_class_for_io
@@ -293,9 +317,9 @@ class CoolingTower(LinearConverter):
         specific_electricity_demand: Auxiliary electricity demand per unit of cooling
             power (dimensionless, typically 0.01-0.05 range). Represents the fraction
             of thermal power that must be supplied as electricity for fans and pumps.
-        P_el: Electrical input-flow representing electricity consumption for fans/pumps.
-        Q_th: Thermal input-flow representing waste heat to be rejected to environment.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        electrical_flow: Electrical input-flow representing electricity consumption for fans/pumps.
+        thermal_flow: Thermal input-flow representing waste heat to be rejected to environment.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -306,8 +330,8 @@ class CoolingTower(LinearConverter):
         cooling_tower = CoolingTower(
             label='process_cooling_tower',
             specific_electricity_demand=0.025,  # 2.5% auxiliary power
-            P_el=cooling_electricity,
-            Q_th=waste_heat_flow,
+            electrical_flow=cooling_electricity,
+            thermal_flow=waste_heat_flow,
         )
         ```
 
@@ -317,17 +341,17 @@ class CoolingTower(LinearConverter):
         condenser_cooling = CoolingTower(
             label='power_plant_cooling',
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
-            P_el=auxiliary_electricity,
-            Q_th=condenser_waste_heat,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=4,  # Minimum operation time
-                effects_per_running_hour={'water_consumption': 2.5},  # m³/h
+            electrical_flow=auxiliary_electricity,
+            thermal_flow=condenser_waste_heat,
+            status_parameters=StatusParameters(
+                min_uptime=4,  # Minimum operation time
+                effects_per_active_hour={'water_consumption': 2.5},  # m³/h
             ),
         )
         ```
 
     Note:
-        The conversion relationship is: P_el = Q_th × specific_electricity_demand
+        The conversion relationship is: electrical_flow = thermal_flow × specific_electricity_demand
 
         The cooling tower consumes electrical power proportional to the thermal load.
         No thermal energy is produced - all thermal input is rejected to the environment.
@@ -339,34 +363,38 @@ class CoolingTower(LinearConverter):
     def __init__(
         self,
         label: str,
-        specific_electricity_demand: TemporalDataUser,
-        P_el: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        specific_electricity_demand: Numeric_TPS,
+        electrical_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
+        # Validate required parameters
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+
         super().__init__(
             label,
-            inputs=[P_el, Q_th],
+            inputs=[electrical_flow, thermal_flow],
             outputs=[],
-            conversion_factors=[{P_el.label: -1, Q_th.label: specific_electricity_demand}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
-        self.P_el = P_el
-        self.Q_th = Q_th
-
-        check_bounds(specific_electricity_demand, 'specific_electricity_demand', self.label_full, 0, 1)
+        self.electrical_flow = electrical_flow
+        self.thermal_flow = thermal_flow
+        self.specific_electricity_demand = specific_electricity_demand  # Uses setter
 
     @property
     def specific_electricity_demand(self):
-        return self.conversion_factors[0][self.Q_th.label]
+        return self.conversion_factors[0][self.thermal_flow.label]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_th.label] = value
+        self.conversion_factors = [{self.electrical_flow.label: -1, self.thermal_flow.label: value}]
 
 
 @register_class_for_io
@@ -381,14 +409,14 @@ class CHP(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        eta_th: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
+        thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to useful thermal output.
-        eta_el: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
+        electrical_efficiency: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to electrical output.
-        Q_fu: Fuel input-flow representing fuel consumption.
-        P_el: Electrical output-flow representing electricity generation.
-        Q_th: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        fuel_flow: Fuel input-flow representing fuel consumption.
+        electrical_flow: Electrical output-flow representing electricity generation.
+        thermal_flow: Thermal output-flow representing heat generation.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -398,11 +426,11 @@ class CHP(LinearConverter):
         ```python
         gas_chp = CHP(
             label='natural_gas_chp',
-            eta_th=0.45,  # 45% thermal efficiency
-            eta_el=0.35,  # 35% electrical efficiency (80% total)
-            Q_fu=natural_gas_flow,
-            P_el=electricity_flow,
-            Q_th=district_heat_flow,
+            thermal_efficiency=0.45,  # 45% thermal efficiency
+            electrical_efficiency=0.35,  # 35% electrical efficiency (80% total)
+            fuel_flow=natural_gas_flow,
+            electrical_flow=electricity_flow,
+            thermal_flow=district_heat_flow,
         )
         ```
 
@@ -411,25 +439,25 @@ class CHP(LinearConverter):
         ```python
         industrial_chp = CHP(
             label='industrial_chp',
-            eta_th=0.40,
-            eta_el=0.38,
-            Q_fu=fuel_gas_flow,
-            P_el=plant_electricity,
-            Q_th=process_steam,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=8,  # Minimum 8-hour operation
-                effects_per_switch_on={'startup_cost': 5000},
-                on_hours_total_max=6000,  # Annual operating limit
+            thermal_efficiency=0.40,
+            electrical_efficiency=0.38,
+            fuel_flow=fuel_gas_flow,
+            electrical_flow=plant_electricity,
+            thermal_flow=process_steam,
+            status_parameters=StatusParameters(
+                min_uptime=8,  # Minimum 8-hour operation
+                effects_per_startup={'startup_cost': 5000},
+                active_hours_max=6000,  # Annual operating limit
             ),
         )
         ```
 
     Note:
         The conversion relationships are:
-        - Q_th = Q_fu × eta_th (thermal output)
-        - P_el = Q_fu × eta_el (electrical output)
+        - thermal_flow = fuel_flow × thermal_efficiency (thermal output)
+        - electrical_flow = fuel_flow × electrical_efficiency (electrical output)
 
-        Total efficiency (eta_th + eta_el) should be ≤ 1.0, with typical combined
+        Total efficiency (thermal_efficiency + electrical_efficiency) should be ≤ 1.0, with typical combined
         efficiencies of 80-90% for modern CHP units. This provides significant
         efficiency gains compared to separate heat and power generation.
     """
@@ -437,49 +465,66 @@ class CHP(LinearConverter):
     def __init__(
         self,
         label: str,
-        eta_th: TemporalDataUser,
-        eta_el: TemporalDataUser,
-        Q_fu: Flow,
-        P_el: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        thermal_efficiency: Numeric_TPS | None = None,
+        electrical_efficiency: Numeric_TPS | None = None,
+        fuel_flow: Flow | None = None,
+        electrical_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
-        heat = {Q_fu.label: eta_th, Q_th.label: 1}
-        electricity = {Q_fu.label: eta_el, P_el.label: 1}
+        # Validate required parameters
+        if fuel_flow is None:
+            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if thermal_efficiency is None:
+            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+        if electrical_efficiency is None:
+            raise ValueError(f"'{label}': electrical_efficiency is required and cannot be None")
 
         super().__init__(
             label,
-            inputs=[Q_fu],
-            outputs=[Q_th, P_el],
-            conversion_factors=[heat, electricity],
-            on_off_parameters=on_off_parameters,
+            inputs=[fuel_flow],
+            outputs=[thermal_flow, electrical_flow],
+            conversion_factors=[{}, {}],
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
-        self.Q_fu = Q_fu
-        self.P_el = P_el
-        self.Q_th = Q_th
+        self.fuel_flow = fuel_flow
+        self.electrical_flow = electrical_flow
+        self.thermal_flow = thermal_flow
+        self.thermal_efficiency = thermal_efficiency  # Uses setter
+        self.electrical_efficiency = electrical_efficiency  # Uses setter
 
-        check_bounds(eta_el + eta_th, 'eta_th+eta_el', self.label_full, 0, 1)
+        check_bounds(
+            electrical_efficiency + thermal_efficiency,
+            'thermal_efficiency+electrical_efficiency',
+            self.label_full,
+            0,
+            1,
+        )
 
     @property
-    def eta_th(self):
-        return self.conversion_factors[0][self.Q_fu.label]
+    def thermal_efficiency(self):
+        return self.conversion_factors[0][self.fuel_flow.label]
 
-    @eta_th.setter
-    def eta_th(self, value):
-        check_bounds(value, 'eta_th', self.label_full, 0, 1)
-        self.conversion_factors[0][self.Q_fu.label] = value
+    @thermal_efficiency.setter
+    def thermal_efficiency(self, value):
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
+        self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
-    def eta_el(self):
-        return self.conversion_factors[1][self.Q_fu.label]
+    def electrical_efficiency(self):
+        return self.conversion_factors[1][self.fuel_flow.label]
 
-    @eta_el.setter
-    def eta_el(self, value):
-        check_bounds(value, 'eta_el', self.label_full, 0, 1)
-        self.conversion_factors[1][self.Q_fu.label] = value
+    @electrical_efficiency.setter
+    def electrical_efficiency(self, value):
+        check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
+        self.conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
 
 
 @register_class_for_io
@@ -494,14 +539,14 @@ class HeatPumpWithSource(LinearConverter):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        COP: Coefficient of Performance (typically 1-20 range). Defines the ratio of
+        cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. The heat source extraction is automatically
-            calculated as Q_ab = Q_th × (COP-1)/COP.
-        P_el: Electrical input-flow representing electricity consumption for compressor.
-        Q_ab: Heat source input-flow representing thermal energy extracted from environment
+            calculated as heat_source_flow = thermal_flow × (COP-1)/COP.
+        electrical_flow: Electrical input-flow representing electricity consumption for compressor.
+        heat_source_flow: Heat source input-flow representing thermal energy extracted from environment
             (ground, air, water source).
-        Q_th: Thermal output-flow representing useful heat delivered to the application.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        thermal_flow: Thermal output-flow representing useful heat delivered to the application.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -511,10 +556,10 @@ class HeatPumpWithSource(LinearConverter):
         ```python
         ground_source_hp = HeatPumpWithSource(
             label='geothermal_heat_pump',
-            COP=4.5,  # High COP due to stable ground temperature
-            P_el=electricity_flow,
-            Q_ab=ground_heat_extraction,  # Heat extracted from ground loop
-            Q_th=building_heating_flow,
+            cop=4.5,  # High COP due to stable ground temperature
+            electrical_flow=electricity_flow,
+            heat_source_flow=ground_heat_extraction,  # Heat extracted from ground loop
+            thermal_flow=building_heating_flow,
         )
         ```
 
@@ -523,22 +568,22 @@ class HeatPumpWithSource(LinearConverter):
         ```python
         waste_heat_pump = HeatPumpWithSource(
             label='waste_heat_pump',
-            COP=temperature_dependent_cop,  # Varies with temperature of heat source
-            P_el=electricity_consumption,
-            Q_ab=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
-            Q_th=heat_supply,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=0.5,  # 30-minute minimum runtime
-                effects_per_switch_on={'costs': 1000},
+            cop=temperature_dependent_cop,  # Varies with temperature of heat source
+            electrical_flow=electricity_consumption,
+            heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
+            thermal_flow=heat_supply,
+            status_parameters=StatusParameters(
+                min_uptime=0.5,  # 30-minute minimum runtime
+                effects_per_startup={'costs': 1000},
             ),
         )
         ```
 
     Note:
         The conversion relationships are:
-        - Q_th = P_el × COP (thermal output from electrical input)
-        - Q_ab = Q_th × (COP-1)/COP (heat source extraction)
-        - Energy balance: Q_th = P_el + Q_ab
+        - thermal_flow = electrical_flow × COP (thermal output from electrical input)
+        - heat_source_flow = thermal_flow × (COP-1)/COP (heat source extraction)
+        - Energy balance: thermal_flow = electrical_flow + heat_source_flow
 
         This formulation explicitly tracks the heat source, which is
         important for systems where the source capacity or temperature is limited,
@@ -551,49 +596,56 @@ class HeatPumpWithSource(LinearConverter):
     def __init__(
         self,
         label: str,
-        COP: TemporalDataUser,
-        P_el: Flow,
-        Q_ab: Flow,
-        Q_th: Flow,
-        on_off_parameters: OnOffParameters | None = None,
+        cop: Numeric_TPS | None = None,
+        electrical_flow: Flow | None = None,
+        heat_source_flow: Flow | None = None,
+        thermal_flow: Flow | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
+        # Validate required parameters
+        if electrical_flow is None:
+            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+        if heat_source_flow is None:
+            raise ValueError(f"'{label}': heat_source_flow is required and cannot be None")
+        if thermal_flow is None:
+            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+        if cop is None:
+            raise ValueError(f"'{label}': cop is required and cannot be None")
+
         super().__init__(
             label,
-            inputs=[P_el, Q_ab],
-            outputs=[Q_th],
-            conversion_factors=[{P_el.label: COP, Q_th.label: 1}, {Q_ab.label: COP / (COP - 1), Q_th.label: 1}],
-            on_off_parameters=on_off_parameters,
+            inputs=[electrical_flow, heat_source_flow],
+            outputs=[thermal_flow],
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
-        self.P_el = P_el
-        self.Q_ab = Q_ab
-        self.Q_th = Q_th
-
-        if np.any(np.asarray(self.COP) <= 1):
-            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+        self.electrical_flow = electrical_flow
+        self.heat_source_flow = heat_source_flow
+        self.thermal_flow = thermal_flow
+        self.cop = cop  # Uses setter
 
     @property
-    def COP(self):  # noqa: N802
-        return self.conversion_factors[0][self.P_el.label]
+    def cop(self):
+        return self.conversion_factors[0][self.electrical_flow.label]
 
-    @COP.setter
-    def COP(self, value):  # noqa: N802
-        check_bounds(value, 'COP', self.label_full, 1, 20)
-        if np.any(np.asarray(value) <= 1):
-            raise ValueError(f'{self.label_full}.COP must be strictly > 1 for HeatPumpWithSource.')
+    @cop.setter
+    def cop(self, value):
+        check_bounds(value, 'cop', self.label_full, 1, 20)
+        if np.any(np.asarray(value) == 1):
+            raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
-            {self.P_el.label: value, self.Q_th.label: 1},
-            {self.Q_ab.label: value / (value - 1), self.Q_th.label: 1},
+            {self.electrical_flow.label: value, self.thermal_flow.label: 1},
+            {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
 
 
 def check_bounds(
-    value: TemporalDataUser,
+    value: Numeric_TPS,
     parameter_label: str,
     element_label: str,
-    lower_bound: TemporalDataUser,
-    upper_bound: TemporalDataUser,
+    lower_bound: Numeric_TPS,
+    upper_bound: Numeric_TPS,
 ) -> None:
     """
     Check if the value is within the bounds. The bounds are exclusive.
@@ -605,19 +657,16 @@ def check_bounds(
         lower_bound: The lower bound.
         upper_bound: The upper bound.
     """
-    if isinstance(value, TimeSeriesData):
-        value = value.data
-    if isinstance(lower_bound, TimeSeriesData):
-        lower_bound = lower_bound.data
-    if isinstance(upper_bound, TimeSeriesData):
-        upper_bound = upper_bound.data
-    if not np.all(value > lower_bound):
+    # Convert to array for shape and statistics
+    value_arr = np.asarray(value)
+
+    if not np.all(value_arr > lower_bound):
         logger.warning(
-            f"'{element_label}.{parameter_label}' is equal or below the common lower bound {lower_bound}."
-            f'    {parameter_label}.min={np.min(value)};    {parameter_label}={value}'
+            f"'{element_label}.{parameter_label}' <= lower bound {lower_bound}. "
+            f'{parameter_label}.min={float(np.min(value_arr))}, shape={np.shape(value_arr)}'
         )
-    if not np.all(value < upper_bound):
+    if not np.all(value_arr < upper_bound):
         logger.warning(
-            f"'{element_label}.{parameter_label}' exceeds or matches the common upper bound {upper_bound}."
-            f'    {parameter_label}.max={np.max(value)};    {parameter_label}={value}'
+            f"'{element_label}.{parameter_label}' >= upper bound {upper_bound}. "
+            f'{parameter_label}.max={float(np.max(value_arr))}, shape={np.shape(value_arr)}'
         )

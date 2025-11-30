@@ -362,7 +362,7 @@ class TestStorageModel:
             charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
             discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
             capacity_in_flow_hours=30,
-            initial_charge_state='lastValueOfSim',  # Cyclic initialization
+            initial_charge_state='equals_final',  # Cyclic initialization
             eta_charge=0.9,
             eta_discharge=0.9,
             relative_loss_per_hour=0.05,
@@ -408,8 +408,8 @@ class TestStorageModel:
         # Binary variables should exist when preventing simultaneous operation
         if prevent_simultaneous:
             binary_vars = {
-                'SimultaneousStorage(Q_th_in)|on',
-                'SimultaneousStorage(Q_th_out)|on',
+                'SimultaneousStorage(Q_th_in)|status',
+                'SimultaneousStorage(Q_th_out)|status',
             }
             for var_name in binary_vars:
                 assert var_name in model.variables, f'Missing binary variable: {var_name}'
@@ -420,7 +420,8 @@ class TestStorageModel:
 
             assert_conequal(
                 model.constraints['SimultaneousStorage|prevent_simultaneous_use'],
-                model.variables['SimultaneousStorage(Q_th_in)|on'] + model.variables['SimultaneousStorage(Q_th_out)|on']
+                model.variables['SimultaneousStorage(Q_th_in)|status']
+                + model.variables['SimultaneousStorage(Q_th_out)|status']
                 <= 1,
             )
 

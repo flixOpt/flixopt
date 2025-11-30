@@ -2,14 +2,14 @@
 
 import logging
 import sys
-from pathlib import Path
 
 import pytest
 
-from flixopt.config import _DEFAULTS, CONFIG, _setup_logging
+from flixopt.config import CONFIG, SUCCESS_LEVEL, MultilineFormatter
+
+logger = logging.getLogger('flixopt')
 
 
-# All tests in this class will run in the same worker to prevent issues with global config altering
 @pytest.mark.xdist_group(name='config_tests')
 class TestConfigModule:
     """Test the CONFIG class and logging setup."""
@@ -19,599 +19,264 @@ class TestConfigModule:
         CONFIG.reset()
 
     def teardown_method(self):
-        """Clean up after each test to prevent state leakage."""
+        """Clean up after each test."""
         CONFIG.reset()
 
     def test_config_defaults(self):
         """Test that CONFIG has correct default values."""
-        assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.file is None
-        assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.console is False
         assert CONFIG.Modeling.big == 10_000_000
         assert CONFIG.Modeling.epsilon == 1e-5
-        assert CONFIG.Modeling.big_binary_bound == 100_000
         assert CONFIG.Solving.mip_gap == 0.01
         assert CONFIG.Solving.time_limit_seconds == 300
-        assert CONFIG.Solving.log_to_console is True
-        assert CONFIG.Solving.log_main_results is True
         assert CONFIG.config_name == 'flixopt'
 
-    def test_module_initialization(self):
-        """Test that logging is initialized on module import."""
-        # Apply config to ensure handlers are initialized
-        CONFIG.apply()
-        logger = logging.getLogger('flixopt')
-        # Should have at least one handler (file handler by default)
-        assert len(logger.handlers) == 1
-        # Should have a file handler with default settings
-        assert isinstance(logger.handlers[0], logging.NullHandler)
+    def test_silent_by_default(self, capfd):
+        """Test that flixopt is silent by default."""
+        logger.info('should not appear')
+        captured = capfd.readouterr()
+        assert 'should not appear' not in captured.out
 
-    def test_config_apply_console(self):
-        """Test applying config with console logging enabled."""
-        CONFIG.Logging.console = True
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.apply()
+    def test_enable_console_logging(self, capfd):
+        """Test enabling console logging."""
+        CONFIG.Logging.enable_console('INFO')
+        logger.info('test message')
+        captured = capfd.readouterr()
+        assert 'test message' in captured.out
 
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.DEBUG
-        # Should have a StreamHandler for console output
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
-        # Should not have NullHandler when console is enabled
-        assert not any(isinstance(h, logging.NullHandler) for h in logger.handlers)
-
-    def test_config_apply_file(self, tmp_path):
-        """Test applying config with file logging enabled."""
+    def test_enable_file_logging(self, tmp_path):
+        """Test enabling file logging."""
         log_file = tmp_path / 'test.log'
-        CONFIG.Logging.file = str(log_file)
-        CONFIG.Logging.level = 'WARNING'
-        CONFIG.apply()
+        CONFIG.Logging.enable_file('INFO', str(log_file))
+        logger.info('test file message')
 
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.WARNING
-        # Should have a RotatingFileHandler for file output
-        from logging.handlers import RotatingFileHandler
+        assert log_file.exists()
+        assert 'test file message' in log_file.read_text()
 
-        assert any(isinstance(h, RotatingFileHandler) for h in logger.handlers)
+    def test_console_and_file_together(self, tmp_path, capfd):
+        """Test logging to both console and file."""
+        log_file = tmp_path / 'test.log'
+        CONFIG.Logging.enable_console('INFO')
+        CONFIG.Logging.enable_file('INFO', str(log_file))
 
-    def test_config_apply_rich(self):
-        """Test applying config with rich logging enabled."""
-        CONFIG.Logging.console = True
-        CONFIG.Logging.rich = True
-        CONFIG.apply()
+        logger.info('test both')
 
-        logger = logging.getLogger('flixopt')
-        # Should have a RichHandler
-        from rich.logging import RichHandler
+        # Check both outputs
+        assert 'test both' in capfd.readouterr().out
+        assert 'test both' in log_file.read_text()
 
-        assert any(isinstance(h, RichHandler) for h in logger.handlers)
+    def test_disable_logging(self, capfd):
+        """Test disabling logging."""
+        CONFIG.Logging.enable_console('INFO')
+        CONFIG.Logging.disable()
 
-    def test_config_apply_multiple_changes(self):
-        """Test applying multiple config changes at once."""
-        CONFIG.Logging.console = True
-        CONFIG.Logging.level = 'ERROR'
-        CONFIG.apply()
+        logger.info('should not appear')
+        assert 'should not appear' not in capfd.readouterr().out
 
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.ERROR
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+    def test_custom_success_level(self, capfd):
+        """Test custom SUCCESS log level."""
+        CONFIG.Logging.enable_console('INFO')
+        logger.log(SUCCESS_LEVEL, 'success message')
+        assert 'success message' in capfd.readouterr().out
+
+    def test_success_level_as_minimum(self, capfd):
+        """Test setting SUCCESS as minimum log level."""
+        CONFIG.Logging.enable_console('SUCCESS')
+
+        # INFO should not appear (level 20 < 25)
+        logger.info('info message')
+        assert 'info message' not in capfd.readouterr().out
+
+        # SUCCESS should appear (level 25)
+        logger.log(SUCCESS_LEVEL, 'success message')
+        assert 'success message' in capfd.readouterr().out
+
+        # WARNING should appear (level 30 > 25)
+        logger.warning('warning message')
+        assert 'warning message' in capfd.readouterr().out
+
+    def test_success_level_numeric(self, capfd):
+        """Test setting SUCCESS level using numeric value."""
+        CONFIG.Logging.enable_console(25)
+        logger.log(25, 'success with numeric level')
+        assert 'success with numeric level' in capfd.readouterr().out
+
+    def test_success_level_constant(self, capfd):
+        """Test using SUCCESS_LEVEL constant."""
+        CONFIG.Logging.enable_console(SUCCESS_LEVEL)
+        logger.log(SUCCESS_LEVEL, 'success with constant')
+        assert 'success with constant' in capfd.readouterr().out
+        assert SUCCESS_LEVEL == 25
+
+    def test_success_file_logging(self, tmp_path):
+        """Test SUCCESS level with file logging."""
+        log_file = tmp_path / 'test_success.log'
+        CONFIG.Logging.enable_file('SUCCESS', str(log_file))
+
+        # INFO should not be logged
+        logger.info('info not logged')
+
+        # SUCCESS should be logged
+        logger.log(SUCCESS_LEVEL, 'success logged to file')
+
+        content = log_file.read_text()
+        assert 'info not logged' not in content
+        assert 'success logged to file' in content
+
+    def test_success_color_customization(self, capfd):
+        """Test customizing SUCCESS level color."""
+        CONFIG.Logging.enable_console('SUCCESS')
+
+        # Customize SUCCESS color
+        CONFIG.Logging.set_colors(
+            {
+                'SUCCESS': 'bold_green,bg_black',
+                'WARNING': 'yellow',
+            }
+        )
+
+        logger.log(SUCCESS_LEVEL, 'colored success')
+        output = capfd.readouterr().out
+        assert 'colored success' in output
+
+    def test_multiline_formatting(self):
+        """Test that multi-line messages get box borders."""
+        formatter = MultilineFormatter()
+        record = logging.LogRecord('test', logging.INFO, '', 1, 'Line 1\nLine 2\nLine 3', (), None)
+        formatted = formatter.format(record)
+        assert '┌─' in formatted
+        assert '└─' in formatted
+
+    def test_console_stderr(self, capfd):
+        """Test logging to stderr."""
+        CONFIG.Logging.enable_console('INFO', stream=sys.stderr)
+        logger.info('stderr test')
+        assert 'stderr test' in capfd.readouterr().err
+
+    def test_non_colored_output(self, capfd):
+        """Test non-colored console output."""
+        CONFIG.Logging.enable_console('INFO', colored=False)
+        logger.info('plain text')
+        assert 'plain text' in capfd.readouterr().out
+
+    def test_preset_exploring(self, capfd):
+        """Test exploring preset."""
+        CONFIG.exploring()
+        logger.info('exploring')
+        assert 'exploring' in capfd.readouterr().out
+        assert CONFIG.Solving.log_to_console is True
+
+    def test_preset_debug(self, capfd):
+        """Test debug preset."""
+        CONFIG.debug()
+        logger.debug('debug')
+        assert 'debug' in capfd.readouterr().out
+
+    def test_preset_production(self, tmp_path):
+        """Test production preset."""
+        log_file = tmp_path / 'prod.log'
+        CONFIG.production(str(log_file))
+        logger.info('production')
+
+        assert log_file.exists()
+        assert 'production' in log_file.read_text()
+        assert CONFIG.Plotting.default_show is False
+
+    def test_preset_silent(self, capfd):
+        """Test silent preset."""
+        CONFIG.silent()
+        logger.info('should not appear')
+        assert 'should not appear' not in capfd.readouterr().out
+
+    def test_config_reset(self):
+        """Test that reset() restores defaults and disables logging."""
+        CONFIG.Modeling.big = 99999999
+        CONFIG.Logging.enable_console('DEBUG')
+
+        CONFIG.reset()
+
+        assert CONFIG.Modeling.big == 10_000_000
+        assert len(logger.handlers) == 0
 
     def test_config_to_dict(self):
         """Test converting CONFIG to dictionary."""
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.Logging.console = True
-
         config_dict = CONFIG.to_dict()
-
-        assert config_dict['config_name'] == 'flixopt'
-        assert config_dict['logging']['level'] == 'DEBUG'
-        assert config_dict['logging']['console'] is True
-        assert config_dict['logging']['file'] is None
-        assert config_dict['logging']['rich'] is False
-        assert 'modeling' in config_dict
         assert config_dict['modeling']['big'] == 10_000_000
-        assert 'solving' in config_dict
         assert config_dict['solving']['mip_gap'] == 0.01
-        assert config_dict['solving']['time_limit_seconds'] == 300
-        assert config_dict['solving']['log_to_console'] is True
-        assert config_dict['solving']['log_main_results'] is True
 
-    def test_config_load_from_file(self, tmp_path):
-        """Test loading configuration from YAML file."""
-        config_file = tmp_path / 'config.yaml'
-        config_content = """
-config_name: test_config
-logging:
-  level: DEBUG
-  console: true
-  rich: false
-modeling:
-  big: 20000000
-  epsilon: 1e-6
-solving:
-  mip_gap: 0.001
-  time_limit_seconds: 600
-  log_main_results: false
-"""
-        config_file.write_text(config_content)
+    def test_attribute_modification(self):
+        """Test modifying config attributes."""
+        CONFIG.Modeling.big = 12345678
+        CONFIG.Solving.mip_gap = 0.001
 
-        CONFIG.load_from_file(config_file)
-
-        assert CONFIG.config_name == 'test_config'
-        assert CONFIG.Logging.level == 'DEBUG'
-        assert CONFIG.Logging.console is True
-        assert CONFIG.Modeling.big == 20000000
-        # YAML may load epsilon as string, so convert for comparison
-        assert float(CONFIG.Modeling.epsilon) == 1e-6
+        assert CONFIG.Modeling.big == 12345678
         assert CONFIG.Solving.mip_gap == 0.001
-        assert CONFIG.Solving.time_limit_seconds == 600
-        assert CONFIG.Solving.log_main_results is False
 
-    def test_config_load_from_file_not_found(self):
-        """Test that loading from non-existent file raises error."""
-        with pytest.raises(FileNotFoundError):
-            CONFIG.load_from_file('nonexistent_config.yaml')
+    def test_exception_logging(self, capfd):
+        """Test that exceptions are properly logged with tracebacks."""
+        CONFIG.Logging.enable_console('INFO')
 
-    def test_config_load_from_file_partial(self, tmp_path):
-        """Test loading partial configuration (should keep unspecified settings)."""
-        config_file = tmp_path / 'partial_config.yaml'
-        config_content = """
-logging:
-  level: ERROR
-"""
-        config_file.write_text(config_content)
+        try:
+            raise ValueError('Test exception')
+        except ValueError:
+            logger.exception('An error occurred')
 
-        # Set a non-default value first
-        CONFIG.Logging.console = True
-        CONFIG.apply()
+        captured = capfd.readouterr().out
+        assert 'An error occurred' in captured
+        assert 'ValueError' in captured
+        assert 'Test exception' in captured
+        assert 'Traceback' in captured
 
-        CONFIG.load_from_file(config_file)
+    def test_exception_logging_non_colored(self, capfd):
+        """Test that exceptions are properly logged with tracebacks in non-colored mode."""
+        CONFIG.Logging.enable_console('INFO', colored=False)
 
-        # Should update level but keep other settings
-        assert CONFIG.Logging.level == 'ERROR'
-        # Verify console setting is preserved (not in YAML)
-        assert CONFIG.Logging.console is True
+        try:
+            raise ValueError('Test exception non-colored')
+        except ValueError:
+            logger.exception('An error occurred')
 
-    def test_setup_logging_silent_default(self):
-        """Test that _setup_logging creates silent logger by default."""
-        _setup_logging()
+        captured = capfd.readouterr().out
+        assert 'An error occurred' in captured
+        assert 'ValueError: Test exception non-colored' in captured
+        assert 'Traceback' in captured
 
-        logger = logging.getLogger('flixopt')
-        # Should have NullHandler when console=False and log_file=None
-        assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
-        assert not logger.propagate
+    def test_enable_file_preserves_custom_handlers(self, tmp_path, capfd):
+        """Test that enable_file preserves custom non-file handlers."""
+        # Add a custom console handler first
+        CONFIG.Logging.enable_console('INFO')
+        logger.info('console test')
+        assert 'console test' in capfd.readouterr().out
 
-    def test_setup_logging_with_console(self):
-        """Test _setup_logging with console output."""
-        _setup_logging(console=True, default_level='DEBUG')
+        # Now add file logging - should keep the console handler
+        log_file = tmp_path / 'test.log'
+        CONFIG.Logging.enable_file('INFO', str(log_file))
 
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.DEBUG
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        logger.info('both outputs')
 
-    def test_setup_logging_clears_handlers(self):
-        """Test that _setup_logging clears existing handlers."""
-        logger = logging.getLogger('flixopt')
+        # Check console still works
+        console_output = capfd.readouterr().out
+        assert 'both outputs' in console_output
 
-        # Add a dummy handler
-        dummy_handler = logging.NullHandler()
-        logger.addHandler(dummy_handler)
-        _ = len(logger.handlers)
+        # Check file was created and has the message
+        assert log_file.exists()
+        assert 'both outputs' in log_file.read_text()
 
-        _setup_logging(console=True)
+    def test_enable_file_removes_duplicate_file_handlers(self, tmp_path):
+        """Test that enable_file removes existing file handlers to avoid duplicates."""
+        log_file = tmp_path / 'test.log'
 
-        # Should have cleared old handlers and added new one
-        assert dummy_handler not in logger.handlers
+        # Enable file logging twice
+        CONFIG.Logging.enable_file('INFO', str(log_file))
+        CONFIG.Logging.enable_file('INFO', str(log_file))
 
-    def test_change_logging_level_removed(self):
-        """Test that change_logging_level function is deprecated but still exists."""
-        # This function is deprecated - users should use CONFIG.apply() instead
-        import flixopt
+        logger.info('duplicate test')
 
-        # Function should still exist but be deprecated
-        assert hasattr(flixopt, 'change_logging_level')
-
-        # Should emit deprecation warning when called
-        with pytest.warns(DeprecationWarning, match='change_logging_level is deprecated'):
-            flixopt.change_logging_level('DEBUG')
-
-    def test_public_api(self):
-        """Test that CONFIG and change_logging_level are exported from config module."""
-        from flixopt import config
-
-        # CONFIG should be accessible
-        assert hasattr(config, 'CONFIG')
-
-        # change_logging_level should be accessible (but deprecated)
-        assert hasattr(config, 'change_logging_level')
-
-        # _setup_logging should exist but be marked as private
-        assert hasattr(config, '_setup_logging')
-
-        # merge_configs should not exist (was removed)
-        assert not hasattr(config, 'merge_configs')
-
-    def test_logging_levels(self):
-        """Test all valid logging levels."""
-        levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-
-        for level in levels:
-            CONFIG.Logging.level = level
-            CONFIG.Logging.console = True
-            CONFIG.apply()
-
-            logger = logging.getLogger('flixopt')
-            assert logger.level == getattr(logging, level)
-
-    def test_logger_propagate_disabled(self):
-        """Test that logger propagation is disabled."""
-        CONFIG.apply()
-        logger = logging.getLogger('flixopt')
-        assert not logger.propagate
-
-    def test_file_handler_rotation(self, tmp_path):
-        """Test that file handler uses rotation."""
-        log_file = tmp_path / 'rotating.log'
-        CONFIG.Logging.file = str(log_file)
-        CONFIG.apply()
-
-        logger = logging.getLogger('flixopt')
+        # Count file handlers - should only be 1
         from logging.handlers import RotatingFileHandler
 
-        file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+        file_handlers = [h for h in logger.handlers if isinstance(h, (logging.FileHandler, RotatingFileHandler))]
         assert len(file_handlers) == 1
 
-        handler = file_handlers[0]
-        # Check rotation settings
-        assert handler.maxBytes == 10_485_760  # 10MB
-        assert handler.backupCount == 5
-
-    def test_custom_config_yaml_complete(self, tmp_path):
-        """Test loading a complete custom configuration."""
-        config_file = tmp_path / 'custom_config.yaml'
-        config_content = """
-config_name: my_custom_config
-logging:
-  level: CRITICAL
-  console: true
-  rich: true
-  file: /tmp/custom.log
-modeling:
-  big: 50000000
-  epsilon: 1e-4
-  big_binary_bound: 200000
-solving:
-  mip_gap: 0.005
-  time_limit_seconds: 900
-  log_main_results: false
-"""
-        config_file.write_text(config_content)
-
-        CONFIG.load_from_file(config_file)
-
-        # Check all settings were applied
-        assert CONFIG.config_name == 'my_custom_config'
-        assert CONFIG.Logging.level == 'CRITICAL'
-        assert CONFIG.Logging.console is True
-        assert CONFIG.Logging.rich is True
-        assert CONFIG.Logging.file == '/tmp/custom.log'
-        assert CONFIG.Modeling.big == 50000000
-        assert float(CONFIG.Modeling.epsilon) == 1e-4
-        assert CONFIG.Modeling.big_binary_bound == 200000
-        assert CONFIG.Solving.mip_gap == 0.005
-        assert CONFIG.Solving.time_limit_seconds == 900
-        assert CONFIG.Solving.log_main_results is False
-
-        # Verify logging was applied
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.CRITICAL
-
-    def test_config_file_with_console_and_file(self, tmp_path):
-        """Test configuration with both console and file logging enabled."""
-        log_file = tmp_path / 'test.log'
-        config_file = tmp_path / 'config.yaml'
-        config_content = f"""
-logging:
-  level: INFO
-  console: true
-  rich: false
-  file: {log_file}
-"""
-        config_file.write_text(config_content)
-
-        CONFIG.load_from_file(config_file)
-
-        logger = logging.getLogger('flixopt')
-        # Should have both StreamHandler and RotatingFileHandler
-        from logging.handlers import RotatingFileHandler
-
-        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
-        assert any(isinstance(h, RotatingFileHandler) for h in logger.handlers)
-        # Should NOT have NullHandler when console/file are enabled
-        assert not any(isinstance(h, logging.NullHandler) for h in logger.handlers)
-
-    def test_config_to_dict_roundtrip(self, tmp_path):
-        """Test that config can be saved to dict, modified, and restored."""
-        # Set custom values
-        CONFIG.Logging.level = 'WARNING'
-        CONFIG.Logging.console = True
-        CONFIG.Modeling.big = 99999999
-
-        # Save to dict
-        config_dict = CONFIG.to_dict()
-
-        # Verify dict structure
-        assert config_dict['logging']['level'] == 'WARNING'
-        assert config_dict['logging']['console'] is True
-        assert config_dict['modeling']['big'] == 99999999
-
-        # Could be written to YAML and loaded back
-        yaml_file = tmp_path / 'saved_config.yaml'
-        import yaml
-
-        with open(yaml_file, 'w') as f:
-            yaml.dump(config_dict, f)
-
-        # Reset config
-        CONFIG.Logging.level = 'INFO'
-        CONFIG.Logging.console = False
-        CONFIG.Modeling.big = 10_000_000
-
-        # Load back from file
-        CONFIG.load_from_file(yaml_file)
-
-        # Should match original values
-        assert CONFIG.Logging.level == 'WARNING'
-        assert CONFIG.Logging.console is True
-        assert CONFIG.Modeling.big == 99999999
-
-    def test_config_file_with_only_modeling(self, tmp_path):
-        """Test config file that only sets modeling parameters."""
-        config_file = tmp_path / 'modeling_only.yaml'
-        config_content = """
-modeling:
-  big: 999999
-  epsilon: 0.001
-"""
-        config_file.write_text(config_content)
-
-        # Set logging config before loading
-        original_level = CONFIG.Logging.level
-        CONFIG.load_from_file(config_file)
-
-        # Modeling should be updated
-        assert CONFIG.Modeling.big == 999999
-        assert float(CONFIG.Modeling.epsilon) == 0.001
-
-        # Logging should keep default/previous values
-        assert CONFIG.Logging.level == original_level
-
-    def test_config_attribute_modification(self):
-        """Test that config attributes can be modified directly."""
-        # Store original values
-        original_big = CONFIG.Modeling.big
-        original_level = CONFIG.Logging.level
-
-        # Modify attributes
-        CONFIG.Modeling.big = 12345678
-        CONFIG.Modeling.epsilon = 1e-8
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.Logging.console = True
-
-        # Verify modifications
-        assert CONFIG.Modeling.big == 12345678
-        assert CONFIG.Modeling.epsilon == 1e-8
-        assert CONFIG.Logging.level == 'DEBUG'
-        assert CONFIG.Logging.console is True
-
-        # Reset
-        CONFIG.Modeling.big = original_big
-        CONFIG.Logging.level = original_level
-        CONFIG.Logging.console = False
-
-    def test_logger_actually_logs(self, tmp_path):
-        """Test that the logger actually writes log messages."""
-        log_file = tmp_path / 'actual_test.log'
-        CONFIG.Logging.file = str(log_file)
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.apply()
-
-        logger = logging.getLogger('flixopt')
-        test_message = 'Test log message from config test'
-        logger.debug(test_message)
-
-        # Check that file was created and contains the message
-        assert log_file.exists()
+        # Message should appear only once in the file
         log_content = log_file.read_text()
-        assert test_message in log_content
-
-    def test_modeling_config_persistence(self):
-        """Test that Modeling config is independent of Logging config."""
-        # Set custom modeling values
-        CONFIG.Modeling.big = 99999999
-        CONFIG.Modeling.epsilon = 1e-8
-
-        # Change and apply logging config
-        CONFIG.Logging.console = True
-        CONFIG.apply()
-
-        # Modeling values should be unchanged
-        assert CONFIG.Modeling.big == 99999999
-        assert CONFIG.Modeling.epsilon == 1e-8
-
-    def test_config_reset(self):
-        """Test that CONFIG.reset() restores all defaults."""
-        # Modify all config values
-        CONFIG.Logging.level = 'DEBUG'
-        CONFIG.Logging.console = False
-        CONFIG.Logging.rich = True
-        CONFIG.Logging.file = '/tmp/test.log'
-        CONFIG.Modeling.big = 99999999
-        CONFIG.Modeling.epsilon = 1e-8
-        CONFIG.Modeling.big_binary_bound = 500000
-        CONFIG.Solving.mip_gap = 0.0001
-        CONFIG.Solving.time_limit_seconds = 1800
-        CONFIG.Solving.log_to_console = False
-        CONFIG.Solving.log_main_results = False
-        CONFIG.config_name = 'test_config'
-
-        # Reset should restore all defaults
-        CONFIG.reset()
-
-        # Verify all values are back to defaults
-        assert CONFIG.Logging.level == 'INFO'
-        assert CONFIG.Logging.console is False
-        assert CONFIG.Logging.rich is False
-        assert CONFIG.Logging.file is None
-        assert CONFIG.Modeling.big == 10_000_000
-        assert CONFIG.Modeling.epsilon == 1e-5
-        assert CONFIG.Modeling.big_binary_bound == 100_000
-        assert CONFIG.Solving.mip_gap == 0.01
-        assert CONFIG.Solving.time_limit_seconds == 300
-        assert CONFIG.Solving.log_to_console is True
-        assert CONFIG.Solving.log_main_results is True
-        assert CONFIG.config_name == 'flixopt'
-
-        # Verify logging was also reset
-        logger = logging.getLogger('flixopt')
-        assert logger.level == logging.INFO
-        assert isinstance(logger.handlers[0], logging.NullHandler)
-
-    def test_reset_matches_class_defaults(self):
-        """Test that reset() values match the _DEFAULTS constants.
-
-        This ensures the reset() method and class attribute defaults
-        stay synchronized by using the same source of truth (_DEFAULTS).
-        """
-        # Modify all values to something different
-        CONFIG.Logging.level = 'CRITICAL'
-        CONFIG.Logging.file = '/tmp/test.log'
-        CONFIG.Logging.rich = True
-        CONFIG.Logging.console = True
-        CONFIG.Modeling.big = 999999
-        CONFIG.Modeling.epsilon = 1e-10
-        CONFIG.Modeling.big_binary_bound = 999999
-        CONFIG.Solving.mip_gap = 0.0001
-        CONFIG.Solving.time_limit_seconds = 9999
-        CONFIG.Solving.log_to_console = False
-        CONFIG.Solving.log_main_results = False
-        CONFIG.config_name = 'modified'
-
-        # Verify values are actually different from defaults
-        assert CONFIG.Logging.level != _DEFAULTS['logging']['level']
-        assert CONFIG.Modeling.big != _DEFAULTS['modeling']['big']
-        assert CONFIG.Solving.mip_gap != _DEFAULTS['solving']['mip_gap']
-        assert CONFIG.Solving.log_to_console != _DEFAULTS['solving']['log_to_console']
-
-        # Now reset
-        CONFIG.reset()
-
-        # Verify reset() restored exactly the _DEFAULTS values
-        assert CONFIG.Logging.level == _DEFAULTS['logging']['level']
-        assert CONFIG.Logging.file == _DEFAULTS['logging']['file']
-        assert CONFIG.Logging.rich == _DEFAULTS['logging']['rich']
-        assert CONFIG.Logging.console == _DEFAULTS['logging']['console']
-        assert CONFIG.Modeling.big == _DEFAULTS['modeling']['big']
-        assert CONFIG.Modeling.epsilon == _DEFAULTS['modeling']['epsilon']
-        assert CONFIG.Modeling.big_binary_bound == _DEFAULTS['modeling']['big_binary_bound']
-        assert CONFIG.Solving.mip_gap == _DEFAULTS['solving']['mip_gap']
-        assert CONFIG.Solving.time_limit_seconds == _DEFAULTS['solving']['time_limit_seconds']
-        assert CONFIG.Solving.log_to_console == _DEFAULTS['solving']['log_to_console']
-        assert CONFIG.Solving.log_main_results == _DEFAULTS['solving']['log_main_results']
-        assert CONFIG.config_name == _DEFAULTS['config_name']
-
-    def test_solving_config_defaults(self):
-        """Test that CONFIG.Solving has correct default values."""
-        assert CONFIG.Solving.mip_gap == 0.01
-        assert CONFIG.Solving.time_limit_seconds == 300
-        assert CONFIG.Solving.log_to_console is True
-        assert CONFIG.Solving.log_main_results is True
-
-    def test_solving_config_modification(self):
-        """Test that CONFIG.Solving attributes can be modified."""
-        # Modify solving config
-        CONFIG.Solving.mip_gap = 0.005
-        CONFIG.Solving.time_limit_seconds = 600
-        CONFIG.Solving.log_main_results = False
-        CONFIG.apply()
-
-        # Verify modifications
-        assert CONFIG.Solving.mip_gap == 0.005
-        assert CONFIG.Solving.time_limit_seconds == 600
-        assert CONFIG.Solving.log_main_results is False
-
-    def test_solving_config_integration_with_solvers(self):
-        """Test that solvers use CONFIG.Solving defaults."""
-        from flixopt import solvers
-
-        # Test with default config
-        CONFIG.reset()
-        solver1 = solvers.HighsSolver()
-        assert solver1.mip_gap == CONFIG.Solving.mip_gap
-        assert solver1.time_limit_seconds == CONFIG.Solving.time_limit_seconds
-
-        # Modify config and create new solver
-        CONFIG.Solving.mip_gap = 0.002
-        CONFIG.Solving.time_limit_seconds = 900
-        CONFIG.apply()
-
-        solver2 = solvers.GurobiSolver()
-        assert solver2.mip_gap == 0.002
-        assert solver2.time_limit_seconds == 900
-
-        # Explicit values should override config
-        solver3 = solvers.HighsSolver(mip_gap=0.1, time_limit_seconds=60)
-        assert solver3.mip_gap == 0.1
-        assert solver3.time_limit_seconds == 60
-
-    def test_solving_config_yaml_loading(self, tmp_path):
-        """Test loading solving config from YAML file."""
-        config_file = tmp_path / 'solving_config.yaml'
-        config_content = """
-solving:
-  mip_gap: 0.0001
-  time_limit_seconds: 1200
-  log_main_results: false
-"""
-        config_file.write_text(config_content)
-
-        CONFIG.load_from_file(config_file)
-
-        assert CONFIG.Solving.mip_gap == 0.0001
-        assert CONFIG.Solving.time_limit_seconds == 1200
-        assert CONFIG.Solving.log_main_results is False
-
-    def test_solving_config_in_to_dict(self):
-        """Test that CONFIG.Solving is included in to_dict()."""
-        CONFIG.Solving.mip_gap = 0.003
-        CONFIG.Solving.time_limit_seconds = 450
-        CONFIG.Solving.log_main_results = False
-
-        config_dict = CONFIG.to_dict()
-
-        assert 'solving' in config_dict
-        assert config_dict['solving']['mip_gap'] == 0.003
-        assert config_dict['solving']['time_limit_seconds'] == 450
-        assert config_dict['solving']['log_main_results'] is False
-
-    def test_solving_config_persistence(self):
-        """Test that Solving config is independent of other configs."""
-        # Set custom solving values
-        CONFIG.Solving.mip_gap = 0.007
-        CONFIG.Solving.time_limit_seconds = 750
-
-        # Change and apply logging config
-        CONFIG.Logging.console = True
-        CONFIG.apply()
-
-        # Solving values should be unchanged
-        assert CONFIG.Solving.mip_gap == 0.007
-        assert CONFIG.Solving.time_limit_seconds == 750
-
-        # Change modeling config
-        CONFIG.Modeling.big = 99999999
-        CONFIG.apply()
-
-        # Solving values should still be unchanged
-        assert CONFIG.Solving.mip_gap == 0.007
-        assert CONFIG.Solving.time_limit_seconds == 750
+        assert log_content.count('duplicate test') == 1

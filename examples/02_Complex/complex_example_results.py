@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     # --- Load Results ---
     try:
-        results = fx.results.CalculationResults.from_file('results', 'complex example')
+        results = fx.results.Results.from_file('results', 'complex example')
     except FileNotFoundError as e:
         raise FileNotFoundError(
             f"Results file not found in the specified directory ('results'). "
@@ -29,8 +29,8 @@ if __name__ == '__main__':
         bus.plot_node_balance(show=False, save=f'results/{bus.label}--balance.html')
 
     # --- Plotting internal variables manually ---
-    results.plot_heatmap('BHKW2(Q_th)|on')
-    results.plot_heatmap('Kessel(Q_th)|on')
+    results.plot_heatmap('BHKW2(Q_th)|status')
+    results.plot_heatmap('Kessel(Q_th)|status')
 
     # Dataframes from results:
     fw_bus = results['Fernwärme'].node_balance().to_dataframe()

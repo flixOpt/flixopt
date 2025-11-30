@@ -3,7 +3,7 @@ Unit tests for the flixopt framework.
 
 This module defines a set of unit tests for testing the functionality of the `flixopt` framework.
 The tests focus on verifying the correct behavior of flow systems, including component modeling,
-investment optimization, and operational constraints like on-off behavior.
+investment optimization, and operational constraints like status behavior.
 
 ### Approach:
 1. **Setup**: Each test initializes a flow system with a set of predefined elements and parameters.
@@ -11,10 +11,10 @@ investment optimization, and operational constraints like on-off behavior.
 3. **Solution**: The models are solved using the `solve_and_load` method, which performs modeling, solves the optimization problem, and loads the results.
 4. **Validation**: Results are validated using assertions, primarily `assert_allclose`, to ensure model outputs match expected values with a specified tolerance.
 
-Classes group related test cases by their functional focus:
-- Minimal modeling setup (`TestMinimal`)
-- Investment behavior (`TestInvestment`)
-- On-off operational constraints (`TestOnOff`).
+Tests group related cases by their functional focus:
+- Minimal modeling setup (`TestMinimal` class)
+- Investment behavior (`TestInvestment` class)
+- Status operational constraints (functions: `test_startup_shutdown`, `test_consecutive_uptime_downtime`, etc.)
 """
 
 import numpy as np
@@ -85,19 +85,19 @@ def flow_system_minimal(timesteps) -> fx.FlowSystem:
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
         )
     )
     return flow_system
 
 
-def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.results.CalculationResults:
-    calculation = fx.FullCalculation('Calculation', flow_system)
-    calculation.do_modeling()
-    calculation.solve(solver)
-    return calculation.results
+def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.results.Results:
+    optimization = fx.Optimization('Calculation', flow_system)
+    optimization.do_modeling()
+    optimization.solve(solver)
+    return optimization.results
 
 
 @pytest.fixture
@@ -141,9 +141,9 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.SizingParameters(fixed_size=1000, effects_of_size=10, effects_per_size=1),
@@ -162,14 +162,14 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         1000,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -182,9 +182,9 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.SizingParameters(effects_of_size=10, effects_per_size=1),
@@ -203,14 +203,14 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         20,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -223,9 +223,9 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.SizingParameters(minimum_size=40, effects_of_size=10, effects_per_size=1),
@@ -244,14 +244,14 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -264,9 +264,9 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.SizingParameters(mandatory=False, minimum_size=40, effects_of_size=10, effects_per_size=1),
@@ -274,9 +274,9 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         ),
         fx.linear_converters.Boiler(
             'Boiler_optional',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.SizingParameters(mandatory=False, minimum_size=50, effects_of_size=10, effects_per_size=1),
@@ -296,14 +296,14 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         err_msg='The total costs does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.size.solution.item(),
+        boiler.thermal_flow.submodel.investment.size.solution.item(),
         40,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel._investment.invested.solution.item(),
+        boiler.thermal_flow.submodel.investment.invested.solution.item(),
         1,
         rtol=1e-5,
         atol=1e-10,
@@ -311,14 +311,14 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_optional.Q_th.submodel._investment.size.solution.item(),
+        boiler_optional.thermal_flow.submodel.investment.size.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__Investment_size" does not have the right value',
     )
     assert_allclose(
-        boiler_optional.Q_th.submodel._investment.invested.solution.item(),
+        boiler_optional.thermal_flow.submodel.investment.invested.solution.item(),
         0,
         rtol=1e-5,
         atol=1e-10,
@@ -332,9 +332,9 @@ def test_on(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100, on_off_parameters=fx.OnOffParameters()),
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=100, status_parameters=fx.StatusParameters()),
         )
     )
 
@@ -350,14 +350,14 @@ def test_on(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -371,13 +371,13 @@ def test_off(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_off_hours_max=100),
+                status_parameters=fx.StatusParameters(max_downtime=100),
             ),
         )
     )
@@ -394,21 +394,21 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.off.solution.values,
-        1 - boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.inactive.solution.values,
+        1 - boiler.thermal_flow.submodel.status.status.solution.values,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -416,19 +416,19 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
 
-def test_switch_on_off(solver_fixture, time_steps_fixture):
-    """Tests if the Switch On/Off Variable is correctly created and calculated in a Flow"""
+def test_startup_shutdown(solver_fixture, time_steps_fixture):
+    """Tests if the startup/shutdown Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(force_switch_on=True),
+                status_parameters=fx.StatusParameters(force_startup_tracking=True),
             ),
         )
     )
@@ -445,28 +445,28 @@ def test_switch_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.switch_on.solution.values,
+        boiler.thermal_flow.submodel.status.startup.solution.values,
         [0, 1, 0, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.on_off.switch_off.solution.values,
+        boiler.thermal_flow.submodel.status.shutdown.solution.values,
         [0, 0, 0, 1, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -480,20 +480,20 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=1),
+                status_parameters=fx.StatusParameters(active_hours_max=1),
             ),
         ),
         fx.linear_converters.Boiler(
             'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
+            thermal_efficiency=0.2,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=100),
         ),
     )
 
@@ -509,14 +509,14 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -530,24 +530,24 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_max=2),
+                status_parameters=fx.StatusParameters(active_hours_max=2),
             ),
         ),
         fx.linear_converters.Boiler(
             'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.2,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(on_hours_total_min=3),
+                status_parameters=fx.StatusParameters(active_hours_min=3),
             ),
         ),
     )
@@ -568,14 +568,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [0, 0, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 12 - 1e-5],
         rtol=1e-5,
         atol=1e-10,
@@ -583,14 +583,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        sum(boiler_backup.Q_th.submodel.on_off.on.solution.values),
+        sum(boiler_backup.thermal_flow.submodel.status.status.solution.values),
         3,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.submodel.flow_rate.solution.values,
+        boiler_backup.thermal_flow.submodel.flow_rate.solution.values,
         [0, 10, 1.0e-05, 0, 1.0e-05],
         rtol=1e-5,
         atol=1e-10,
@@ -598,26 +598,26 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
 
-def test_consecutive_on_off(solver_fixture, time_steps_fixture):
-    """Tests if the consecutive on/off hours are correctly created and calculated in a Flow"""
+def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
+    """Tests if the consecutive uptime/downtime are correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
-                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_max=2, consecutive_on_hours_min=2),
+                status_parameters=fx.StatusParameters(max_uptime=2, min_uptime=2),
             ),
         ),
         fx.linear_converters.Boiler(
             'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme', size=100),
+            thermal_efficiency=0.2,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=100),
         ),
     )
     flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
@@ -636,14 +636,14 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.on_off.on.solution.values,
+        boiler.thermal_flow.submodel.status.status.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [5, 10, 0, 18, 12],
         rtol=1e-5,
         atol=1e-10,
@@ -651,7 +651,7 @@ def test_consecutive_on_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_backup.Q_th.submodel.flow_rate.solution.values,
+        boiler_backup.thermal_flow.submodel.flow_rate.solution.values,
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -665,20 +665,20 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     flow_system.add_elements(
         fx.linear_converters.Boiler(
             'Boiler',
-            0.5,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
+            thermal_efficiency=0.5,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
         ),
         fx.linear_converters.Boiler(
             'Boiler_backup',
-            0.2,
-            Q_fu=fx.Flow('Q_fu', bus='Gas'),
-            Q_th=fx.Flow(
+            thermal_efficiency=0.2,
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
                 previous_flow_rate=np.array([20]),  # Otherwise its Off before the start
-                on_off_parameters=fx.OnOffParameters(consecutive_off_hours_max=2, consecutive_off_hours_min=2),
+                status_parameters=fx.StatusParameters(max_downtime=2, min_downtime=2),
             ),
         ),
     )
@@ -699,21 +699,21 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler_backup.Q_th.submodel.on_off.on.solution.values,
+        boiler_backup.thermal_flow.submodel.status.status.solution.values,
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.submodel.on_off.off.solution.values,
+        boiler_backup.thermal_flow.submodel.status.inactive.solution.values,
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        boiler_backup.Q_th.submodel.flow_rate.solution.values,
+        boiler_backup.thermal_flow.submodel.flow_rate.solution.values,
         [0, 0, 1e-5, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -721,7 +721,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        boiler.Q_th.submodel.flow_rate.solution.values,
+        boiler.thermal_flow.submodel.flow_rate.solution.values,
         [5, 0, 20 - 1e-5, 18, 12],
         rtol=1e-5,
         atol=1e-10,

@@ -19,6 +19,7 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
+from .config import SUCCESS_LEVEL
 from .elements import Bus
 
 if TYPE_CHECKING:
@@ -780,7 +781,7 @@ def shownetwork(graph: nx.DiGraph):
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    print(f'Network visualization started on http://127.0.0.1:{port}/')
+    logger.log(SUCCESS_LEVEL, f'Network visualization started on http://127.0.0.1:{port}/')
 
     # Store server reference for cleanup
     app.server_instance = server

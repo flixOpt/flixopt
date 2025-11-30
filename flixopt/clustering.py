@@ -1,6 +1,6 @@
 """
-This module contains the Aggregation functionality for the flixopt framework.
-Through this, aggregating TimeSeriesData is possible.
+This module contains the Clustering functionality for the flixopt framework.
+Through this, clustering TimeSeriesData is possible.
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-class Aggregation:
+class Clustering:
     """
-    aggregation organizing class
+    Clustering organizing class
     """
 
     def __init__(
@@ -106,7 +106,8 @@ class Aggregation:
         self.aggregated_data = self.tsam.predictOriginalData()
 
         self.clustering_duration_seconds = timeit.default_timer() - start_time  # Zeit messen:
-        logger.info(self.describe_clusters())
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(self.describe_clusters())
 
     def describe_clusters(self) -> str:
         description = {}
@@ -238,7 +239,7 @@ class Aggregation:
         return np.array(idx_var1), np.array(idx_var2)
 
 
-class AggregationParameters:
+class ClusteringParameters:
     def __init__(
         self,
         hours_per_period: float,
@@ -251,7 +252,7 @@ class AggregationParameters:
         time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
         """
-        Initializes aggregation parameters for time series data
+        Initializes clustering parameters for time series data
 
         Args:
             hours_per_period: Duration of each period in hours.
@@ -294,26 +295,26 @@ class AggregationParameters:
         return bool(self.time_series_for_low_peaks)
 
 
-class AggregationModel(Submodel):
-    """The AggregationModel holds equations and variables related to the Aggregation of a FlowSystem.
+class ClusteringModel(Submodel):
+    """The ClusteringModel holds equations and variables related to the Clustering of a FlowSystem.
     It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
     escape the equation to their related binaries in other periods"""
 
     def __init__(
         self,
         model: FlowSystemModel,
-        aggregation_parameters: AggregationParameters,
+        clustering_parameters: ClusteringParameters,
         flow_system: FlowSystem,
-        aggregation_data: Aggregation,
+        clustering_data: Clustering,
         components_to_clusterize: list[Component] | None,
     ):
         """
         Modeling-Element for "index-equating"-equations
         """
-        super().__init__(model, label_of_element='Aggregation', label_of_model='Aggregation')
+        super().__init__(model, label_of_element='Clustering', label_of_model='Clustering')
         self.flow_system = flow_system
-        self.aggregation_parameters = aggregation_parameters
-        self.aggregation_data = aggregation_data
+        self.clustering_parameters = clustering_parameters
+        self.clustering_data = clustering_data
         self.components_to_clusterize = components_to_clusterize
 
     def do_modeling(self):
@@ -322,7 +323,7 @@ class AggregationModel(Submodel):
         else:
             components = [component for component in self.components_to_clusterize]
 
-        indices = self.aggregation_data.get_equation_indices(skip_first_index_of_period=True)
+        indices = self.clustering_data.get_equation_indices(skip_first_index_of_period=True)
 
         time_variables: set[str] = {
             name for name in self._model.variables if 'time' in self._model.variables[name].dims
@@ -331,22 +332,30 @@ class AggregationModel(Submodel):
         binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
-            if isinstance(component, Storage) and not self.aggregation_parameters.fix_storage_flows:
+            if isinstance(component, Storage) and not self.clustering_parameters.fix_storage_flows:
                 continue  # Fix Nothing in The Storage
 
             all_variables_of_component = set(component.submodel.variables)
 
-            if self.aggregation_parameters.aggregate_data_and_fix_non_binary_vars:
+            if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
                 relevant_variables = component.submodel.variables[all_variables_of_component & time_variables]
             else:
                 relevant_variables = component.submodel.variables[all_variables_of_component & binary_time_variables]
             for variable in relevant_variables:
                 self._equate_indices(component.submodel.variables[variable], indices)
 
-        penalty = self.aggregation_parameters.penalty_of_period_freedom
-        if (self.aggregation_parameters.percentage_of_period_freedom > 0) and penalty != 0:
-            for variable in self.variables_direct.values():
-                self._model.effects.add_share_to_penalty('Aggregation', variable * penalty)
+        penalty = self.clustering_parameters.penalty_of_period_freedom
+        if (self.clustering_parameters.percentage_of_period_freedom > 0) and penalty != 0:
+            from .effects import PENALTY_EFFECT_LABEL
+
+            for variable_name in self.variables_direct:
+                variable = self.variables_direct[variable_name]
+                # Sum correction variables over all dimensions to get periodic penalty contribution
+                self._model.effects.add_share_to_effects(
+                    name='Aggregation',
+                    expressions={PENALTY_EFFECT_LABEL: (variable * penalty).sum('time')},
+                    target='periodic',
+                )
 
     def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
         assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
@@ -362,7 +371,7 @@ class AggregationModel(Submodel):
         # Korrektur: (bisher nur für Binärvariablen:)
         if (
             variable.name in self._model.variables.binaries
-            and self.aggregation_parameters.percentage_of_period_freedom > 0
+            and self.clustering_parameters.percentage_of_period_freedom > 0
         ):
             sel = variable.isel(time=indices[0])
             coords = {d: sel.indexes[d] for d in sel.dims}
@@ -384,7 +393,7 @@ class AggregationModel(Submodel):
 
             # Begrenzung der Korrektur-Anzahl:
             # eq: sum(K) <= n_Corr_max
-            limit = int(np.floor(self.aggregation_parameters.percentage_of_period_freedom / 100 * length))
+            limit = int(np.floor(self.clustering_parameters.percentage_of_period_freedom / 100 * length))
             self.add_constraints(
                 var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
                 short_name=f'limit_corrections|{variable.name}',

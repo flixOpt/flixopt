@@ -19,6 +19,8 @@ import yaml
 if TYPE_CHECKING:
     import linopy
 
+    from .types import Numeric_TPS
+
 logger = logging.getLogger('flixopt')
 
 
@@ -115,7 +117,7 @@ def save_json(
     path: str | pathlib.Path,
     indent: int = 4,
     ensure_ascii: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a JSON file with consistent formatting.
@@ -170,6 +172,35 @@ def _load_yaml_unsafe(path: str | pathlib.Path) -> dict | list:
         return yaml.unsafe_load(f) or {}
 
 
+def _create_compact_dumper():
+    """
+    Create a YAML dumper class with custom representer for compact numeric lists.
+
+    Returns:
+        A yaml.SafeDumper subclass configured to format numeric lists inline.
+    """
+
+    def represent_list(dumper, data):
+        """
+        Custom representer for lists to format them inline (flow style)
+        but only if they contain only numbers or nested numeric lists.
+        """
+        if data and all(
+            isinstance(item, (int, float, np.integer, np.floating))
+            or (isinstance(item, list) and all(isinstance(x, (int, float, np.integer, np.floating)) for x in item))
+            for item in data
+        ):
+            return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=True)
+        return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=False)
+
+    # Create custom dumper with the representer
+    class CompactDumper(yaml.SafeDumper):
+        pass
+
+    CompactDumper.add_representer(list, represent_list)
+    return CompactDumper
+
+
 def save_yaml(
     data: dict | list,
     path: str | pathlib.Path,
@@ -178,7 +209,7 @@ def save_yaml(
     allow_unicode: bool = True,
     sort_keys: bool = False,
     compact_numeric_lists: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """
     Save data to a YAML file with consistent formatting.
@@ -196,31 +227,11 @@ def save_yaml(
     path = pathlib.Path(path)
 
     if compact_numeric_lists:
-        # Define custom representer for compact numeric lists
-        def represent_list(dumper, data):
-            """
-            Custom representer for lists to format them inline (flow style)
-            but only if they contain only numbers or nested numeric lists.
-            """
-            if data and all(
-                isinstance(item, (int, float, np.integer, np.floating))
-                or (isinstance(item, list) and all(isinstance(x, (int, float, np.integer, np.floating)) for x in item))
-                for item in data
-            ):
-                return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=True)
-            return dumper.represent_sequence('tag:yaml.org,2002:seq', data, flow_style=False)
-
-        # Create custom dumper with the representer
-        class CompactDumper(yaml.SafeDumper):
-            pass
-
-        CompactDumper.add_representer(list, represent_list)
-
         with open(path, 'w', encoding='utf-8') as f:
             yaml.dump(
                 data,
                 f,
-                Dumper=CompactDumper,
+                Dumper=_create_compact_dumper(),
                 indent=indent,
                 width=width,
                 allow_unicode=allow_unicode,
@@ -240,6 +251,56 @@ def save_yaml(
                 default_flow_style=False,
                 **kwargs,
             )
+
+
+def format_yaml_string(
+    data: dict | list,
+    indent: int = 4,
+    width: int = 1000,
+    allow_unicode: bool = True,
+    sort_keys: bool = False,
+    compact_numeric_lists: bool = False,
+    **kwargs: Any,
+) -> str:
+    """
+    Format data as a YAML string with consistent formatting.
+
+    This function provides the same formatting as save_yaml() but returns a string
+    instead of writing to a file. Useful for logging or displaying YAML data.
+
+    Args:
+        data: Data to format (dict or list).
+        indent: Number of spaces for indentation (default: 4).
+        width: Maximum line width (default: 1000).
+        allow_unicode: If True, allow Unicode characters (default: True).
+        sort_keys: If True, sort dictionary keys (default: False).
+        compact_numeric_lists: If True, format numeric lists inline for better readability (default: False).
+        **kwargs: Additional arguments to pass to yaml.dump().
+
+    Returns:
+        Formatted YAML string.
+    """
+    if compact_numeric_lists:
+        return yaml.dump(
+            data,
+            Dumper=_create_compact_dumper(),
+            indent=indent,
+            width=width,
+            allow_unicode=allow_unicode,
+            sort_keys=sort_keys,
+            default_flow_style=False,
+            **kwargs,
+        )
+    else:
+        return yaml.safe_dump(
+            data,
+            indent=indent,
+            width=width,
+            allow_unicode=allow_unicode,
+            sort_keys=sort_keys,
+            default_flow_style=False,
+            **kwargs,
+        )
 
 
 def load_config_file(path: str | pathlib.Path) -> dict:
@@ -439,7 +500,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     }
 
     if model.status == 'warning':
-        logger.critical(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
+        logger.warning(f'The model has a warning status {model.status=}. Trying to extract infeasibilities')
         try:
             import io
             from contextlib import redirect_stdout
@@ -452,7 +513,7 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
 
             documentation['infeasible_constraints'] = f.getvalue()
         except NotImplementedError:
-            logger.critical(
+            logger.warning(
                 'Infeasible constraints could not get retrieved. This functionality is only availlable with gurobi'
             )
             documentation['infeasible_constraints'] = 'Not possible to retrieve infeasible constraints'
@@ -537,8 +598,8 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
 
 
 @dataclass
-class CalculationResultsPaths:
-    """Container for all paths related to saving CalculationResults."""
+class ResultsPaths:
+    """Container for all paths related to saving Results."""
 
     folder: pathlib.Path
     name: str
@@ -567,18 +628,24 @@ class CalculationResultsPaths:
             'model_documentation': self.model_documentation,
         }
 
-    def create_folders(self, parents: bool = False) -> None:
+    def create_folders(self, parents: bool = False, exist_ok: bool = True) -> None:
         """Ensure the folder exists.
+
         Args:
-            parents: Whether to create the parent folders if they do not exist.
+            parents: If True, create parent directories as needed. If False, parent must exist.
+            exist_ok: If True, do not raise error if folder already exists. If False, raise FileExistsError.
+
+        Raises:
+            FileNotFoundError: If parents=False and parent directory doesn't exist.
+            FileExistsError: If exist_ok=False and folder already exists.
         """
-        if not self.folder.exists():
-            try:
-                self.folder.mkdir(parents=parents)
-            except FileNotFoundError as e:
-                raise FileNotFoundError(
-                    f'Folder {self.folder} and its parent do not exist. Please create them first.'
-                ) from e
+        try:
+            self.folder.mkdir(parents=parents, exist_ok=exist_ok)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Cannot create folder {self.folder}: parent directory does not exist. '
+                f'Use parents=True to create parent directories.'
+            ) from e
 
     def update(self, new_name: str | None = None, new_folder: pathlib.Path | None = None) -> None:
         """Update name and/or folder and refresh all paths."""
@@ -592,7 +659,7 @@ class CalculationResultsPaths:
 
 
 def numeric_to_str_for_repr(
-    value: int | float | np.integer | np.floating | np.ndarray | pd.Series | pd.DataFrame | xr.DataArray,
+    value: Numeric_TPS,
     precision: int = 1,
     atol: float = 1e-10,
 ) -> str:
@@ -862,7 +929,7 @@ def build_repr_from_init(
         return f'{obj.__class__.__name__}(<repr_failed>)'
 
 
-def format_flow_details(obj, has_inputs: bool = True, has_outputs: bool = True) -> str:
+def format_flow_details(obj: Any, has_inputs: bool = True, has_outputs: bool = True) -> str:
     """Format inputs and outputs as indented bullet list.
 
     Args:

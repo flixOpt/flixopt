@@ -7,8 +7,8 @@ from .conftest import (
     assert_conequal,
     assert_sets_equal,
     assert_var_equal,
-    create_calculation_and_solve,
     create_linopy_model,
+    create_optimization_and_solve,
 )
 
 
@@ -247,17 +247,17 @@ class TestEffectResults:
             effect3,
             fx.linear_converters.Boiler(
                 'Boiler',
-                eta=0.5,
-                Q_th=fx.Flow(
+                thermal_efficiency=0.5,
+                thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
                     size=fx.SizingParameters(effects_per_size=10, minimum_size=20, mandatory=True),
                 ),
-                Q_fu=fx.Flow('Q_fu', bus='Gas'),
+                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             ),
         )
 
-        results = create_calculation_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
+        results = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
 
         effect_share_factors = {
             'temporal': {
@@ -340,3 +340,28 @@ class TestEffectResults:
             results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
             results.solution['Effect3'],
         )
+
+
+class TestPenaltyAsObjective:
+    """Test that Penalty cannot be set as the objective effect."""
+
+    def test_penalty_cannot_be_created_as_objective(self):
+        """Test that creating a Penalty effect with is_objective=True raises ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match='Penalty.*cannot be set as the objective'):
+            fx.Effect('Penalty', '€', 'Test Penalty', is_objective=True)
+
+    def test_penalty_cannot_be_set_as_objective_via_setter(self):
+        """Test that setting Penalty as objective via setter raises ValueError."""
+        import pandas as pd
+        import pytest
+
+        # Create a fresh flow system without pre-existing objective
+        flow_system = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=10, freq='h'))
+        penalty_effect = fx.Effect('Penalty', '€', 'Test Penalty', is_objective=False)
+
+        flow_system.add_elements(penalty_effect)
+
+        with pytest.raises(ValueError, match='Penalty.*cannot be set as the objective'):
+            flow_system.effects.objective_effect = penalty_effect

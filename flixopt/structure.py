@@ -10,7 +10,6 @@ import logging
 import re
 from dataclasses import dataclass
 from difflib import get_close_matches
-from io import StringIO
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,11 +22,10 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from rich.console import Console
-from rich.pretty import Pretty
 
 from . import io as fx_io
-from .core import TimeSeriesData, get_dataarray_stats
+from .config import DEPRECATION_REMOVAL_VERSION
+from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     import pathlib
@@ -35,9 +33,9 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
+    from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
-
 
 CLASS_REGISTRY = {}
 
@@ -100,6 +98,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
 
     def do_modeling(self):
+        # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
             component.create_model(self)
@@ -189,6 +188,42 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
 
+    @property
+    def scenario_weights(self) -> xr.DataArray:
+        """
+        Scenario weights of model. With optional normalization.
+        """
+        if self.flow_system.scenarios is None:
+            return xr.DataArray(1)
+
+        if self.flow_system.scenario_weights is None:
+            scenario_weights = xr.DataArray(
+                np.ones(self.flow_system.scenarios.size, dtype=float),
+                coords={'scenario': self.flow_system.scenarios},
+                dims=['scenario'],
+                name='scenario_weights',
+            )
+        else:
+            scenario_weights = self.flow_system.scenario_weights
+
+        if not self.normalize_weights:
+            return scenario_weights
+
+        norm = scenario_weights.sum('scenario')
+        if np.isclose(norm, 0.0).any():
+            raise ValueError('FlowSystemModel.scenario_weights: weights sum to 0; cannot normalize.')
+        return scenario_weights / norm
+
+    @property
+    def objective_weights(self) -> xr.DataArray:
+        """
+        Objective weights of model. With optional normalization of scenario weights.
+        """
+        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        scenario_weights = self.scenario_weights
+
+        return period_weights * scenario_weights
+
     def get_coords(
         self,
         dims: Collection[str] | None = None,
@@ -219,19 +254,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             coords['time'] = self.flow_system.timesteps_extra
 
         return xr.Coordinates(coords) if coords else None
-
-    @property
-    def weights(self) -> int | xr.DataArray:
-        """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
-        if self.flow_system.weights is not None:
-            weights = self.flow_system.weights
-        else:
-            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
-
-        if not self.normalize_weights:
-            return weights
-
-        return weights / weights.sum()
 
     def __repr__(self) -> str:
         """
@@ -269,20 +291,95 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(flow_system): Transform data to match FlowSystem dimensions
+        transform_data(name_prefix=''): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
         Args:
-            flow_system: The FlowSystem containing timing and dimensional information
             name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses
+
+        Note:
+            The FlowSystem reference is available via self._flow_system (for Interface objects)
+            or self.flow_system property (for Element objects). Elements must be registered
+            to a FlowSystem before calling this method.
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
+
+    def _set_flow_system(self, flow_system: FlowSystem) -> None:
+        """Store flow_system reference and propagate to nested Interface objects.
+
+        This method is called automatically during element registration to enable
+        elements to access FlowSystem properties without passing the reference
+        through every method call.
+
+        Subclasses with nested Interface objects should override this method
+        to explicitly propagate the reference to their nested interfaces.
+
+        Args:
+            flow_system: The FlowSystem that this interface belongs to
+        """
+        self._flow_system = flow_system
+
+    @property
+    def flow_system(self) -> FlowSystem:
+        """Access the FlowSystem this interface is linked to.
+
+        Returns:
+            The FlowSystem instance this interface belongs to.
+
+        Raises:
+            RuntimeError: If interface has not been linked to a FlowSystem yet.
+
+        Note:
+            For Elements, this is set during add_elements().
+            For parameter classes, this is set recursively when the parent Element is registered.
+        """
+        if not hasattr(self, '_flow_system') or self._flow_system is None:
+            raise RuntimeError(
+                f'{self.__class__.__name__} is not linked to a FlowSystem. '
+                f'Ensure the parent element is registered via flow_system.add_elements() first.'
+            )
+        return self._flow_system
+
+    def _fit_coords(
+        self, name: str, data: NumericOrBool | None, dims: Collection[FlowSystemDimensions] | None = None
+    ) -> xr.DataArray | None:
+        """Convenience wrapper for FlowSystem.fit_to_model_coords().
+
+        Args:
+            name: The name for the data variable
+            data: The data to transform
+            dims: Optional dimension names
+
+        Returns:
+            Transformed data aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_to_model_coords(name, data, dims=dims)
+
+    def _fit_effect_coords(
+        self,
+        prefix: str | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
+        suffix: str | None = None,
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> Effect_TPS | None:
+        """Convenience wrapper for FlowSystem.fit_effects_to_model_coords().
+
+        Args:
+            prefix: Label prefix for effect names
+            effect_values: The effect values to transform
+            suffix: Optional label suffix
+            dims: Optional dimension names
+
+        Returns:
+            Transformed effect values aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_effects_to_model_coords(prefix, effect_values, suffix, dims=dims)
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
@@ -425,6 +522,7 @@ class Interface:
         current_value: Any = None,
         transform: callable = None,
         check_conflict: bool = True,
+        additional_warning_message: str = '',
     ) -> Any:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
@@ -440,6 +538,7 @@ class Interface:
             check_conflict: Whether to check if both old and new parameters are specified (default: True).
                 Note: For parameters with non-None default values (e.g., bool parameters with default=False),
                 set check_conflict=False since we cannot distinguish between an explicit value and the default.
+            additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
 
         Returns:
             The value to use (either from old parameter or current_value)
@@ -462,8 +561,18 @@ class Interface:
 
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
+            # Build base warning message
+            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
+
+            # Append additional message on a new line if provided
+            if additional_warning_message:
+                # Normalize whitespace: strip leading/trailing whitespace
+                extra_msg = additional_warning_message.strip()
+                if extra_msg:
+                    base_warning += '\n' + extra_msg
+
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.',
+                base_warning,
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )
@@ -861,6 +970,7 @@ class Element(Interface):
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
         self.submodel = None
+        self._flow_system: FlowSystem | None = None
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
@@ -921,14 +1031,17 @@ class ContainerMixin(dict[str, T]):
         self,
         elements: list[T] | dict[str, T] | None = None,
         element_type_name: str = 'elements',
+        truncate_repr: int | None = None,
     ):
         """
         Args:
             elements: Initial elements to add (list or dict)
             element_type_name: Name for display (e.g., 'components', 'buses')
+            truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
         """
         super().__init__()
         self._element_type_name = element_type_name
+        self._truncate_repr = truncate_repr
 
         if elements is not None:
             if isinstance(elements, dict):
@@ -999,8 +1112,20 @@ class ContainerMixin(dict[str, T]):
                     error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
             raise KeyError(error_msg) from None
 
-    def __repr__(self) -> str:
-        """Return a string representation similar to linopy.model.Variables."""
+    def _get_repr(self, max_items: int | None = None) -> str:
+        """
+        Get string representation with optional truncation.
+
+        Args:
+            max_items: Maximum number of items to show. If None, uses instance default (self._truncate_repr).
+                      If still None, shows all items.
+
+        Returns:
+            Formatted string representation
+        """
+        # Use provided max_items, or fall back to instance default
+        limit = max_items if max_items is not None else self._truncate_repr
+
         count = len(self)
         title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
 
@@ -1009,10 +1134,23 @@ class ContainerMixin(dict[str, T]):
             r += '<empty>\n'
         else:
             r = fx_io.format_title_with_underline(title)
-            for name in sorted(self.keys(), key=_natural_sort_key):
-                r += f' * {name}\n'
+            sorted_names = sorted(self.keys(), key=_natural_sort_key)
+
+            if limit is not None and limit > 0 and len(sorted_names) > limit:
+                # Show truncated list
+                for name in sorted_names[:limit]:
+                    r += f' * {name}\n'
+                r += f' ... (+{len(sorted_names) - limit} more)\n'
+            else:
+                # Show all items
+                for name in sorted_names:
+                    r += f' * {name}\n'
 
         return r
+
+    def __repr__(self) -> str:
+        """Return a string representation using the instance's truncate_repr setting."""
+        return self._get_repr()
 
 
 class ElementContainer(ContainerMixin[T]):
@@ -1215,6 +1353,7 @@ class CompositeContainerMixin(Generic[T_element]):
             if container:  # Only show non-empty groups
                 if parts:  # Add spacing between sections
                     parts.append('')
+                # Use container's __repr__ which respects its truncate_repr setting
                 parts.append(repr(container).rstrip('\n'))
 
         return '\n'.join(parts)
@@ -1393,7 +1532,12 @@ class Submodel(SubmodelsMixin):
         return self._model.hours_per_step
 
     def _do_modeling(self):
-        """Called at the end of initialization. Override in subclasses to create variables and constraints."""
+        """
+        Override in subclasses to create variables, constraints, and submodels.
+
+        This method is called during __init__. Create all nested submodels first
+        (so their variables exist), then create constraints that reference those variables.
+        """
         pass
 
 

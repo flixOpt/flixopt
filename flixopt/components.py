@@ -5,24 +5,23 @@ This module contains the basic components of the flixopt framework.
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .core import PeriodicDataUser, PlausibilityError, TemporalData, TemporalDataUser
+from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel, SizingModel
-from .interface import InvestmentParameters, OnOffParameters, PiecewiseConversion, SizingParameters
+from .interface import InvestmentParameters, InvestParameters, PiecewiseConversion, SizingParameters, StatusParameters
 from .modeling import BoundingPatterns
 from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
 
-    from .flow_system import FlowSystem
+    from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -49,9 +48,9 @@ class LinearConverter(Component):
         label: The label of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
         outputs: list of output Flows that are produced by the converter.
-        on_off_parameters: Information about on and off state of LinearConverter.
-            Component is On/Off if all connected Flows are On/Off. This induces an
-            On-Variable (binary) in all Flows! If possible, use OnOffParameters in a
+        status_parameters: Information about active and inactive state of LinearConverter.
+            Component is active/inactive if all connected Flows are active/inactive. This induces a
+            status variable (binary) in all Flows! If possible, use StatusParameters in a
             single Flow instead to keep the number of binary variables low.
         conversion_factors: Linear relationships between flows expressed as a list of
             dictionaries. Each dictionary maps flow labels to their coefficients in one
@@ -168,12 +167,12 @@ class LinearConverter(Component):
         label: str,
         inputs: list[Flow],
         outputs: list[Flow],
-        on_off_parameters: OnOffParameters | None = None,
-        conversion_factors: list[dict[str, TemporalDataUser]] | None = None,
+        status_parameters: StatusParameters | None = None,
+        conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
     ):
-        super().__init__(label, inputs, outputs, on_off_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -181,6 +180,12 @@ class LinearConverter(Component):
         self._plausibility_checks()
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
+
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to parent Component and piecewise_conversion."""
+        super()._set_flow_system(flow_system)
+        if self.piecewise_conversion is not None:
+            self.piecewise_conversion._set_flow_system(flow_system)
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -212,23 +217,23 @@ class LinearConverter(Component):
                         f'({flow.label_full}).'
                     )
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(flow_system, prefix)
+        super().transform_data(prefix)
         if self.conversion_factors:
-            self.conversion_factors = self._transform_conversion_factors(flow_system)
+            self.conversion_factors = self._transform_conversion_factors()
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data(flow_system, f'{prefix}|PiecewiseConversion')
+            self.piecewise_conversion.transform_data(f'{prefix}|PiecewiseConversion')
 
-    def _transform_conversion_factors(self, flow_system: FlowSystem) -> list[dict[str, xr.DataArray]]:
+    def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
         list_of_conversion_factors = []
         for idx, conversion_factor in enumerate(self.conversion_factors):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
-                ts = flow_system.fit_to_model_coords(f'{self.flows[flow].label_full}|conversion_factor{idx}', values)
+                ts = self._fit_coords(f'{self.flows[flow].label_full}|conversion_factor{idx}', values)
                 if ts is None:
                     raise PlausibilityError(f'{self.label_full}: conversion factor for flow "{flow}" must not be None')
                 transformed_dict[flow] = ts
@@ -276,7 +281,7 @@ class Storage(Component):
             Scalar for fixed size or SizingParameters for optimization.
         relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
         relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
-        initial_charge_state: Charge at start. Numeric or 'lastValueOfSim'. Default: 0.
+        initial_charge_state: Charge at start. Numeric or 'equals_final'. Default: 0.
         minimal_final_charge_state: Minimum absolute charge required at end (optional).
         maximal_final_charge_state: Maximum absolute charge allowed at end (optional).
         relative_minimum_final_charge_state: Minimum relative charge at end.
@@ -340,7 +345,7 @@ class Storage(Component):
             ),
             eta_charge=0.85,  # Pumping efficiency
             eta_discharge=0.90,  # Turbine efficiency
-            initial_charge_state='lastValueOfSim',  # Ensuring no deficit compared to start
+            initial_charge_state='equals_final',  # Ensuring no deficit compared to start
             relative_loss_per_hour=0.0001,  # Minimal evaporation
         )
         ```
@@ -386,17 +391,17 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: PeriodicDataUser | SizingParameters,
-        relative_minimum_charge_state: TemporalDataUser = 0,
-        relative_maximum_charge_state: TemporalDataUser = 1,
-        initial_charge_state: PeriodicDataUser | Literal['lastValueOfSim'] = 0,
-        minimal_final_charge_state: PeriodicDataUser | None = None,
-        maximal_final_charge_state: PeriodicDataUser | None = None,
-        relative_minimum_final_charge_state: PeriodicDataUser | None = None,
-        relative_maximum_final_charge_state: PeriodicDataUser | None = None,
-        eta_charge: TemporalDataUser = 1,
-        eta_discharge: TemporalDataUser = 1,
-        relative_loss_per_hour: TemporalDataUser = 0,
+        capacity_in_flow_hours: Numeric_PS | InvestParameters,
+        relative_minimum_charge_state: Numeric_TPS = 0,
+        relative_maximum_charge_state: Numeric_TPS = 1,
+        initial_charge_state: Numeric_PS | Literal['equals_final'] = 0,
+        minimal_final_charge_state: Numeric_PS | None = None,
+        maximal_final_charge_state: Numeric_PS | None = None,
+        relative_minimum_final_charge_state: Numeric_PS | None = None,
+        relative_maximum_final_charge_state: Numeric_PS | None = None,
+        eta_charge: Numeric_TPS = 1,
+        eta_discharge: Numeric_TPS = 1,
+        relative_loss_per_hour: Numeric_TPS = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -413,8 +418,8 @@ class Storage(Component):
         self.charging = charging
         self.discharging = discharging
         self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: TemporalDataUser = relative_minimum_charge_state
-        self.relative_maximum_charge_state: TemporalDataUser = relative_maximum_charge_state
+        self.relative_minimum_charge_state: Numeric_TPS = relative_minimum_charge_state
+        self.relative_maximum_charge_state: Numeric_TPS = relative_maximum_charge_state
 
         self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
         self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
@@ -423,9 +428,9 @@ class Storage(Component):
         self.minimal_final_charge_state = minimal_final_charge_state
         self.maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: TemporalDataUser = eta_charge
-        self.eta_discharge: TemporalDataUser = eta_discharge
-        self.relative_loss_per_hour: TemporalDataUser = relative_loss_per_hour
+        self.eta_charge: Numeric_TPS = eta_charge
+        self.eta_discharge: Numeric_TPS = eta_discharge
+        self.relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
 
@@ -434,46 +439,48 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def _set_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
+        super()._set_flow_system(flow_system)
+        if isinstance(self.capacity_in_flow_hours, InvestParameters):
+            self.capacity_in_flow_hours._set_flow_system(flow_system)
+
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(flow_system, prefix)
-        self.relative_minimum_charge_state = flow_system.fit_to_model_coords(
-            f'{prefix}|relative_minimum_charge_state',
-            self.relative_minimum_charge_state,
+        super().transform_data(prefix)
+        self.relative_minimum_charge_state = self._fit_coords(
+            f'{prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
         )
-        self.relative_maximum_charge_state = flow_system.fit_to_model_coords(
-            f'{prefix}|relative_maximum_charge_state',
-            self.relative_maximum_charge_state,
+        self.relative_maximum_charge_state = self._fit_coords(
+            f'{prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
         )
-        self.eta_charge = flow_system.fit_to_model_coords(f'{prefix}|eta_charge', self.eta_charge)
-        self.eta_discharge = flow_system.fit_to_model_coords(f'{prefix}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = flow_system.fit_to_model_coords(
-            f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour
-        )
+        self.eta_charge = self._fit_coords(f'{prefix}|eta_charge', self.eta_charge)
+        self.eta_discharge = self._fit_coords(f'{prefix}|eta_discharge', self.eta_discharge)
+        self.relative_loss_per_hour = self._fit_coords(f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour)
         if not isinstance(self.initial_charge_state, str):
-            self.initial_charge_state = flow_system.fit_to_model_coords(
+            self.initial_charge_state = self._fit_coords(
                 f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
             )
-        self.minimal_final_charge_state = flow_system.fit_to_model_coords(
+        self.minimal_final_charge_state = self._fit_coords(
             f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
         )
-        self.maximal_final_charge_state = flow_system.fit_to_model_coords(
+        self.maximal_final_charge_state = self._fit_coords(
             f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
         )
-        self.relative_minimum_final_charge_state = flow_system.fit_to_model_coords(
+        self.relative_minimum_final_charge_state = self._fit_coords(
             f'{prefix}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        self.relative_maximum_final_charge_state = flow_system.fit_to_model_coords(
+        self.relative_maximum_final_charge_state = self._fit_coords(
             f'{prefix}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
-            self.capacity_in_flow_hours.transform_data(flow_system, f'{prefix}|SizingParameters')
+            self.capacity_in_flow_hours.transform_data(f'{prefix}|SizingParameters')
         else:
-            self.capacity_in_flow_hours = flow_system.fit_to_model_coords(
+            self.capacity_in_flow_hours = self._fit_coords(
                 f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
@@ -484,12 +491,11 @@ class Storage(Component):
         super()._plausibility_checks()
 
         # Validate string values and set flag
-        initial_is_last = False
+        initial_equals_final = False
         if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state == 'lastValueOfSim':
-                initial_is_last = True
-            else:
+            if not self.initial_charge_state == 'equals_final':
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
+            initial_equals_final = True
 
         # Use new SizingParameters methods to get capacity bounds
         if isinstance(self.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
@@ -503,8 +509,8 @@ class Storage(Component):
         minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
         maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-        # Only perform numeric comparisons if not using 'lastValueOfSim'
-        if not initial_is_last:
+        # Only perform numeric comparisons if not using 'equals_final'
+        if not initial_equals_final:
             if (self.initial_charge_state > maximum_initial_capacity).any():
                 raise PlausibilityError(
                     f'{self.label_full}: {self.initial_charge_state=} '
@@ -567,8 +573,8 @@ class Transmission(Component):
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
             Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
-            Automatically creates binary variables for on/off states.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+            Automatically creates binary variables for active/inactive states.
+        status_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
             flow in both directions. Increases binary variables but reflects physical
             reality for most transmission systems. Default is True.
@@ -623,7 +629,7 @@ class Transmission(Component):
         )
         ```
 
-        Material conveyor with on/off operation:
+        Material conveyor with active/inactive status:
 
         ```python
         conveyor_belt = Transmission(
@@ -631,10 +637,10 @@ class Transmission(Component):
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
-            on_off_parameters=OnOffParameters(
-                effects_per_switch_on={'maintenance': 0.1},
-                consecutive_on_hours_min=2,  # Minimum 2-hour operation
-                switch_on_total_max=10,  # Maximum 10 starts per day
+            status_parameters=StatusParameters(
+                effects_per_startup={'maintenance': 0.1},
+                min_uptime=2,  # Minimum 2-hour operation
+                startup_limit=10,  # Maximum 10 starts per period
             ),
         )
         ```
@@ -648,7 +654,7 @@ class Transmission(Component):
         When using SizingParameters on in1, the capacity automatically applies to in2
         to maintain consistent bidirectional capacity without additional investment variables.
 
-        Absolute losses force the creation of binary on/off variables, which increases
+        Absolute losses force the creation of binary on/inactive variables, which increases
         computational complexity but enables realistic modeling of equipment with
         standby power consumption.
 
@@ -663,9 +669,9 @@ class Transmission(Component):
         out1: Flow,
         in2: Flow | None = None,
         out2: Flow | None = None,
-        relative_losses: TemporalDataUser | None = None,
-        absolute_losses: TemporalDataUser | None = None,
-        on_off_parameters: OnOffParameters = None,
+        relative_losses: Numeric_TPS | None = None,
+        absolute_losses: Numeric_TPS | None = None,
+        status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
@@ -674,7 +680,7 @@ class Transmission(Component):
             label,
             inputs=[flow for flow in (in1, in2) if flow is not None],
             outputs=[flow for flow in (out1, out2) if flow is not None],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             prevent_simultaneous_flows=None
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
@@ -722,11 +728,11 @@ class Transmission(Component):
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(flow_system, prefix)
-        self.relative_losses = flow_system.fit_to_model_coords(f'{prefix}|relative_losses', self.relative_losses)
-        self.absolute_losses = flow_system.fit_to_model_coords(f'{prefix}|absolute_losses', self.absolute_losses)
+        super().transform_data(prefix)
+        self.relative_losses = self._fit_coords(f'{prefix}|relative_losses', self.relative_losses)
+        self.absolute_losses = self._fit_coords(f'{prefix}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
@@ -735,13 +741,13 @@ class TransmissionModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
             for flow in element.inputs + element.outputs:
-                if flow.on_off_parameters is None:
-                    flow.on_off_parameters = OnOffParameters()
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
 
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Initiates all FlowModels"""
+        """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
         super()._do_modeling()
 
         # first direction
@@ -768,8 +774,8 @@ class TransmissionModel(ComponentModel):
             short_name=name,
         )
 
-        if self.element.absolute_losses is not None:
-            con_transmission.lhs += in_flow.submodel.on_off.on * self.element.absolute_losses
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
+            con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
 
         return con_transmission
 
@@ -782,8 +788,10 @@ class LinearConverterModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
+        """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
-        # conversion_factors:
+
+        # Create conversion factor constraints if specified
         if self.element.conversion_factors:
             all_input_flows = set(self.element.inputs)
             all_output_flows = set(self.element.outputs)
@@ -801,7 +809,7 @@ class LinearConverterModel(ComponentModel):
                 )
 
         else:
-            # TODO: Improve Inclusion of OnOffParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
+            # TODO: Improve Inclusion of StatusParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
             piecewise_conversion = {
                 self.element.flows[flow].submodel.flow_rate.name: piecewise
                 for flow, piecewise in self.element.piecewise_conversion.items()
@@ -813,7 +821,7 @@ class LinearConverterModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=f'{self.label_of_element}',
                     piecewise_variables=piecewise_conversion,
-                    zero_point=self.on_off.on if self.on_off is not None else False,
+                    zero_point=self.status.status if self.status is not None else False,
                     dims=('time', 'period', 'scenario'),
                 ),
                 short_name='PiecewiseConversion',
@@ -829,8 +837,10 @@ class StorageModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
+        """Create charge state variables, energy balance equations, and optional investment submodels"""
         super()._do_modeling()
 
+        # Create variables
         lb, ub = self._absolute_charge_state_bounds
         self.add_variables(
             lower=lb,
@@ -841,6 +851,7 @@ class StorageModel(ComponentModel):
 
         self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
 
+        # Create constraints (can now access flow.submodel.flow_rate)
         # netto_discharge:
         # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
         self.add_constraints(
@@ -890,6 +901,7 @@ class StorageModel(ComponentModel):
         # Initial charge state
         self._initial_and_final_charge_state()
 
+        # Balanced sizes
         if self.element.balanced:
             self.add_constraints(
                 self.element.charging.submodel._investment.size * 1
@@ -922,7 +934,7 @@ class StorageModel(ComponentModel):
             )
 
     @property
-    def _absolute_charge_state_bounds(self) -> tuple[TemporalData, TemporalData]:
+    def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
         if not isinstance(self.element.capacity_in_flow_hours, (SizingParameters, InvestmentParameters)):
             return (
@@ -971,7 +983,7 @@ class StorageModel(ComponentModel):
 
     @property
     def investment(self) -> InvestmentModel | None:
-        """OnOff feature"""
+        """Investment feature"""
         if 'investment' not in self.submodels:
             return None
         return self.submodels['investment']
@@ -1080,22 +1092,7 @@ class SourceAndSink(Component):
         outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
-        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
-        prevent_simultaneous_flow_rates = self._handle_deprecated_kwarg(
-            kwargs,
-            'prevent_simultaneous_sink_and_source',
-            'prevent_simultaneous_flow_rates',
-            prevent_simultaneous_flow_rates,
-            check_conflict=False,
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         super().__init__(
             label,
             inputs=inputs,
@@ -1104,33 +1101,6 @@ class SourceAndSink(Component):
             meta_data=meta_data,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-
-    @property
-    def source(self) -> Flow:
-        warnings.warn(
-            'The source property is deprecated. Use the outputs property instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.outputs[0]
-
-    @property
-    def sink(self) -> Flow:
-        warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.inputs[0]
-
-    @property
-    def prevent_simultaneous_sink_and_source(self) -> bool:
-        warnings.warn(
-            'The prevent_simultaneous_sink_and_source property is deprecated. Use the prevent_simultaneous_flow_rates property instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.prevent_simultaneous_flow_rates
 
 
 @register_class_for_io
@@ -1215,14 +1185,7 @@ class Source(Component):
         outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs,
     ):
-        # Handle deprecated parameter using centralized helper
-        outputs = self._handle_deprecated_kwarg(kwargs, 'source', 'outputs', outputs, transform=lambda x: [x])
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
@@ -1230,15 +1193,6 @@ class Source(Component):
             meta_data=meta_data,
             prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
         )
-
-    @property
-    def source(self) -> Flow:
-        warnings.warn(
-            'The source property is deprecated. Use the outputs property instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.outputs[0]
 
 
 @register_class_for_io
@@ -1324,13 +1278,8 @@ class Sink(Component):
         inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
-        **kwargs,
     ):
         """Initialize a Sink (consumes flow from the system).
-
-        Supports legacy `sink=` keyword for backward compatibility (deprecated): if `sink` is provided
-        it is used as the single input flow and a DeprecationWarning is issued; specifying both
-        `inputs` and `sink` raises ValueError.
 
         Args:
             label: Unique element label.
@@ -1338,15 +1287,7 @@ class Sink(Component):
             meta_data: Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
                 across the element's inputs by wiring that restriction into the base Component setup.
-
-        Note:
-            The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
         """
-        # Handle deprecated parameter using centralized helper
-        inputs = self._handle_deprecated_kwarg(kwargs, 'sink', 'inputs', inputs, transform=lambda x: [x])
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1355,12 +1296,3 @@ class Sink(Component):
             meta_data=meta_data,
             prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
         )
-
-    @property
-    def sink(self) -> Flow:
-        warnings.warn(
-            'The sink property is deprecated. Use the inputs property instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.inputs[0]

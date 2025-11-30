@@ -46,19 +46,19 @@ if __name__ == '__main__':
     # Boiler: Converts fuel (gas) into thermal energy (heat)
     boiler = fx.linear_converters.Boiler(
         label='Boiler',
-        eta=0.5,
-        Q_th=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas'),
+        thermal_efficiency=0.5,
+        thermal_flow=fx.Flow(label='Q_th', bus='Fernwärme', size=50, relative_minimum=0.1, relative_maximum=1),
+        fuel_flow=fx.Flow(label='Q_fu', bus='Gas'),
     )
 
     # Combined Heat and Power (CHP): Generates both electricity and heat from fuel
     chp = fx.linear_converters.CHP(
         label='CHP',
-        eta_th=0.5,
-        eta_el=0.4,
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-        Q_fu=fx.Flow('Q_fu', bus='Gas'),
+        thermal_efficiency=0.5,
+        electrical_efficiency=0.4,
+        electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas'),
     )
 
     # Storage: Energy storage system with charging and discharging capabilities
@@ -104,24 +104,24 @@ if __name__ == '__main__':
 
     # --- Define and Run Calculation ---
     # Create a calculation object to model the Flow System
-    calculation = fx.FullCalculation(name='Sim1', flow_system=flow_system)
-    calculation.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
+    optimization = fx.Optimization(name='Sim1', flow_system=flow_system)
+    optimization.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
 
     # --- Solve the Calculation and Save Results ---
-    calculation.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
+    optimization.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
     # Colors are automatically assigned using default colormap
     # Optional: Configure custom colors with
-    calculation.results.setup_colors()
-    calculation.results['Fernwärme'].plot_node_balance_pie()
-    calculation.results['Fernwärme'].plot_node_balance()
-    calculation.results['Storage'].plot_charge_state()
-    calculation.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    optimization.results.setup_colors()
+    optimization.results['Fernwärme'].plot_node_balance_pie()
+    optimization.results['Fernwärme'].plot_node_balance()
+    optimization.results['Storage'].plot_charge_state()
+    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
 
     # Convert the results for the storage component to a dataframe and display
-    df = calculation.results['Storage'].node_balance_with_charge_state()
+    df = optimization.results['Storage'].node_balance_with_charge_state()
     print(df)
 
     # Save results to file for later usage
-    calculation.results.to_file()
+    optimization.results.to_file()

@@ -4,7 +4,6 @@ This script shows how to use the flixopt framework to model a more complex energ
 
 import numpy as np
 import pandas as pd
-from rich.pretty import pprint  # Used for pretty printing
 
 import flixopt as fx
 
@@ -16,7 +15,7 @@ if __name__ == '__main__':
     check_penalty = False
     excess_penalty = 1e5
     use_chp_with_piecewise_conversion = True
-    time_indices = None  # Define specific time steps for custom calculations, or use the entire series
+    time_indices = None  # Define specific time steps for custom optimizations, or use the entire series
 
     # --- Define Demand and Price Profiles ---
     # Input data for electricity and heat demands, as well as electricity price
@@ -48,14 +47,14 @@ if __name__ == '__main__':
 
     # --- Define Components ---
     # 1. Define Boiler Component
-    # A gas boiler that converts fuel into thermal output, with investment and on-off parameters
+    # A gas boiler that converts fuel into thermal output, with investment and on-inactive parameters
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
-        eta=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(
-            effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
+        thermal_efficiency=0.5,  # Efficiency ratio
+        status_parameters=fx.StatusParameters(
+            effects_per_active_hour={Costs.label: 0, CO2.label: 1000}
         ),  # CO2 emissions per hour
-        Q_th=fx.Flow(
+        thermal_flow=fx.Flow(
             label='Q_th',  # Thermal output
             bus='Fernwärme',  # Linked bus
             size=fx.SizingParameters(
@@ -69,30 +68,30 @@ if __name__ == '__main__':
             relative_minimum=5 / 50,  # Minimum part load
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
-            flow_hours_total_max=1e6,  # Total energy flow limit
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_total_min=0,  # Minimum operating hours
-                on_hours_total_max=1000,  # Maximum operating hours
-                consecutive_on_hours_max=10,  # Max consecutive operating hours
-                consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
-                consecutive_off_hours_max=10,  # Max consecutive off hours
-                effects_per_switch_on=0.01,  # Cost per switch-on
-                switch_on_total_max=1000,  # Max number of starts
+            flow_hours_max=1e6,  # Total energy flow limit
+            status_parameters=fx.StatusParameters(
+                active_hours_min=0,  # Minimum operating hours
+                active_hours_max=1000,  # Maximum operating hours
+                max_uptime=10,  # Max consecutive operating hours
+                min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
+                max_downtime=10,  # Max consecutive inactive hours
+                effects_per_startup={Costs.label: 0.01},  # Cost per startup
+                startup_limit=1000,  # Max number of starts
             ),
         ),
-        Q_fu=fx.Flow(label='Q_fu', bus='Gas', size=200),
+        fuel_flow=fx.Flow(label='Q_fu', bus='Gas', size=200),
     )
 
     # 2. Define CHP Unit
     # Combined Heat and Power unit that generates both electricity and heat from fuel
     bhkw = fx.linear_converters.CHP(
         'BHKW2',
-        eta_th=0.5,
-        eta_el=0.4,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
-        P_el=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
-        Q_th=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
-        Q_fu=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
+        thermal_efficiency=0.5,
+        electrical_efficiency=0.4,
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
+        electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
+        thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
+        fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
     )
 
     # 3. Define CHP with Piecewise Conversion
@@ -113,7 +112,7 @@ if __name__ == '__main__':
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
         piecewise_conversion=piecewise_conversion,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
     )
 
     # 4. Define Storage Component
@@ -188,24 +187,24 @@ if __name__ == '__main__':
     flow_system.add_elements(Costs, CO2, PE, Gaskessel, Waermelast, Gasbezug, Stromverkauf, speicher)
     flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
-    pprint(flow_system)  # Get a string representation of the FlowSystem
+    print(flow_system)  # Get a string representation of the FlowSystem
     try:
         flow_system.start_network_app()  # Start the network app
     except ImportError as e:
         print(f'Network app requires extra dependencies: {e}')
 
     # --- Solve FlowSystem ---
-    calculation = fx.FullCalculation('complex example', flow_system, time_indices)
-    calculation.do_modeling()
+    optimization = fx.Optimization('complex example', flow_system, time_indices)
+    optimization.do_modeling()
 
-    calculation.solve(fx.solvers.HighsSolver(0.01, 60))
+    optimization.solve(fx.solvers.HighsSolver(0.01, 60))
 
     # --- Results ---
     # You can analyze results directly or save them to file and reload them later.
-    calculation.results.to_file()
+    optimization.results.to_file()
 
     # But let's plot some results anyway
-    calculation.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    calculation.results['BHKW2'].plot_node_balance()
-    calculation.results['Speicher'].plot_charge_state()
-    calculation.results['Fernwärme'].plot_node_balance_pie()
+    optimization.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
+    optimization.results['BHKW2'].plot_node_balance()
+    optimization.results['Speicher'].plot_charge_state()
+    optimization.results['Fernwärme'].plot_node_balance_pie()

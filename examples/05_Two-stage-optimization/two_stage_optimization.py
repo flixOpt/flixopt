@@ -47,27 +47,25 @@ if __name__ == '__main__':
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
         fx.linear_converters.Boiler(
             'Kessel',
-            eta=0.85,
-            Q_th=fx.Flow(label='Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow(
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow(label='Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow(
                 label='Q_fu',
                 bus='Gas',
                 size=fx.SizingParameters(effects_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
+                status_parameters=fx.StatusParameters(effects_per_startup=300),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
-            eta_th=0.58,
-            eta_el=0.22,
-            on_off_parameters=fx.OnOffParameters(
-                effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10
-            ),
-            P_el=fx.Flow('P_el', bus='Strom'),
-            Q_th=fx.Flow('Q_th', bus='Fernwärme'),
-            Q_fu=fx.Flow(
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
+            status_parameters=fx.StatusParameters(effects_per_startup=1_000, min_uptime=10, min_downtime=10),
+            electrical_flow=fx.Flow('P_el', bus='Strom'),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+            fuel_flow=fx.Flow(
                 'Q_fu',
                 bus='Kohle',
                 size=fx.SizingParameters(effects_per_size={'costs': 3_000}, minimum_size=10, maximum_size=500),
@@ -80,7 +78,7 @@ if __name__ == '__main__':
             capacity_in_flow_hours=fx.SizingParameters(
                 minimum_size=10, maximum_size=1000, effects_per_size={'costs': 60}
             ),
-            initial_charge_state='lastValueOfSim',
+            initial_charge_state='equals_final',
             eta_charge=1,
             eta_discharge=1,
             relative_loss_per_hour=0.001,
@@ -121,13 +119,13 @@ if __name__ == '__main__':
 
     # Separate optimization of flow sizes and dispatch
     start = timeit.default_timer()
-    calculation_sizing = fx.FullCalculation('Sizing', flow_system.resample('2h'))
+    calculation_sizing = fx.Optimization('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
     start = timeit.default_timer()
-    calculation_dispatch = fx.FullCalculation('Dispatch', flow_system)
+    calculation_dispatch = fx.Optimization('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
     calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
@@ -140,7 +138,7 @@ if __name__ == '__main__':
 
     # Optimization of both flow sizes and dispatch together
     start = timeit.default_timer()
-    calculation_combined = fx.FullCalculation('Combined', flow_system)
+    calculation_combined = fx.Optimization('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
