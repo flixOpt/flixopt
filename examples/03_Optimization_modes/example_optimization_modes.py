@@ -67,10 +67,10 @@ if __name__ == '__main__':
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
-        fx.Bus('Strom', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Fernwärme', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Gas', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Kohle', excess_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Strom', imbalance_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Gas', imbalance_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Kohle', imbalance_penalty_per_flow_hour=excess_penalty),
     )
 
     # Effects

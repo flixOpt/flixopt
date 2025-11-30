@@ -196,7 +196,7 @@ class Bus(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
+        imbalance_penalty_per_flow_hour: Penalty costs for bus balance violations.
             When None, no excess/deficit is allowed (hard constraint). When set to a
             value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
         meta_data: Used to store additional information. Not used internally but saved
@@ -208,7 +208,7 @@ class Bus(Element):
         ```python
         electricity_bus = Bus(
             label='main_electrical_bus',
-            excess_penalty_per_flow_hour=None,  # No imbalance allowed
+            imbalance_penalty_per_flow_hour=None,  # No imbalance allowed
         )
         ```
 
@@ -217,7 +217,7 @@ class Bus(Element):
         ```python
         heat_network = Bus(
             label='district_heating_network',
-            excess_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
+            imbalance_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
         )
         ```
 
@@ -226,14 +226,14 @@ class Bus(Element):
         ```python
         material_hub = Bus(
             label='material_processing_hub',
-            excess_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+            imbalance_penalty_per_flow_hour=waste_disposal_costs,  # Time series
         )
         ```
 
     Note:
         The bus balance equation enforced is: Σ(inflows) = Σ(outflows) + excess - deficit
 
-        When excess_penalty_per_flow_hour is None, excess and deficit are forced to zero.
+        When imbalance_penalty_per_flow_hour is None, virtual demand and supply are forced to zero.
         When a penalty cost is specified, the optimization can choose to violate the
         balance if economically beneficial, paying the penalty.
         The penalty is added to the objective directly.
@@ -247,11 +247,11 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
+        imbalance_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
+        self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
 
@@ -268,16 +268,16 @@ class Bus(Element):
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.excess_penalty_per_flow_hour = self._fit_coords(
-            f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
+        self.imbalance_penalty_per_flow_hour = self._fit_coords(
+            f'{prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
+        if self.imbalance_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self.imbalance_penalty_per_flow_hour, 0))
             if zero_penalty:
                 logger.warning(
-                    f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                    f'In Bus {self.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                 )
         if len(self.inputs) == 0 and len(self.outputs) == 0:
             raise ValueError(
@@ -286,7 +286,7 @@ class Bus(Element):
 
     @property
     def with_excess(self) -> bool:
-        return False if self.excess_penalty_per_flow_hour is None else True
+        return False if self.imbalance_penalty_per_flow_hour is None else True
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -946,7 +946,7 @@ class BusModel(ElementModel):
 
         # Add excess to balance and penalty if needed
         if self.element.with_excess:
-            excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
+            excess_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
 
             self.virtual_supply = self.add_variables(
                 lower=0, coords=self._model.get_coords(), short_name='virtual_supply'

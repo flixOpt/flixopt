@@ -196,7 +196,7 @@ Where:
 - $s_{l \rightarrow \Phi, \text{per}}$ is the periodic penalty share from element $l$
 - $s_{l \rightarrow \Phi, \text{temp}}(\text{t}_i)$ is the temporal penalty share from element $l$ at timestep $\text{t}_i$
 
-**Primary usage:** Penalties occur in [Buses](elements/Bus.md) via the `excess_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost, and in time series aggregation to allow period flexibility.
+**Primary usage:** Penalties occur in [Buses](elements/Bus.md) via the `imbalance_penalty_per_flow_hour` parameter, which allows nodal imbalances at a high cost, and in time series aggregation to allow period flexibility.
 
 **Key properties:**
 - Penalty shares are added via `add_share_to_effects(name, expressions={fx.PENALTY_EFFECT_LABEL: ...}, target='temporal'/'periodic')`
