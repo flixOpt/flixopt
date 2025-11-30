@@ -17,7 +17,7 @@ If balance can't be achieved → model is **infeasible**.
 
 ---
 
-## With Excess Penalty
+## With Imbalance Penalty
 
 Allow imbalance for debugging or soft constraints:
 
@@ -30,12 +30,12 @@ The slack variables $\phi$ are penalized: $(\phi_{in} + \phi_{out}) \cdot \Delta
 ```python
 heat_bus = fx.Bus(
     label='heat',
-    excess_penalty_per_flow_hour=1e5  # High penalty for imbalance
+    imbalance_penalty_per_flow_hour=1e5  # High penalty for imbalance
 )
 ```
 
 !!! tip "Debugging"
-    If excess is non-zero in results → your system couldn't meet demand. Check capacities and connections.
+    If you see a `virtual_demand` or `virtual_supply` and its non zero in results → your system couldn't meet demand. Check capacities and connections.
 
 ---
 
@@ -46,7 +46,7 @@ heat_bus = fx.Bus(
 | $p(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate of connected flows |
 | $\phi_{in}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual supply (covers shortages) |
 | $\phi_{out}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual demand (absorbs surplus) |
-| $c_\phi$ | $\mathbb{R}_{\geq 0}$ | Penalty factor (`excess_penalty_per_flow_hour`) |
+| $c_\phi$ | $\mathbb{R}_{\geq 0}$ | Penalty factor (`imbalance_penalty_per_flow_hour`) |
 | $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
 
 **Classes:** [`Bus`][flixopt.elements.Bus], [`BusModel`][flixopt.elements.BusModel]

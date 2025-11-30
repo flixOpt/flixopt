@@ -345,7 +345,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
-    np.testing.assert_allclose(flow_system.weights.values, flow_system_full.weights[0:2])
+    np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
 
     calc = fx.Optimization(flow_system=flow_system, name='test_scenarios_selection', normalize_weights=False)
     calc.do_modeling()
@@ -357,8 +357,8 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     np.testing.assert_allclose(
         calc.results.objective,
         (
-            (calc.results.solution['costs'] * flow_system.weights).sum()
-            + (calc.results.solution['Penalty'] * flow_system.weights).sum()
+            (calc.results.solution['costs'] * flow_system.scenario_weights).sum()
+            + (calc.results.solution['Penalty'] * flow_system.scenario_weights).sum()
         ).item(),
     )  ## Account for rounding errors
 
@@ -752,8 +752,8 @@ def test_weights_io_persistence():
     fs_loaded = fx.FlowSystem.from_dataset(ds)
 
     # Verify weights persisted correctly
-    np.testing.assert_allclose(fs_loaded.weights.values, fs_original.weights.values)
-    assert fs_loaded.weights.dims == fs_original.weights.dims
+    np.testing.assert_allclose(fs_loaded.scenario_weights.values, fs_original.scenario_weights.values)
+    assert fs_loaded.scenario_weights.dims == fs_original.scenario_weights.dims
 
 
 def test_weights_selection():
@@ -788,7 +788,7 @@ def test_weights_selection():
 
     # Verify weights are correctly sliced
     assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))
-    np.testing.assert_allclose(fs_subset.weights.values, custom_scenario_weights[[0, 2]])
+    np.testing.assert_allclose(fs_subset.scenario_weights.values, custom_scenario_weights[[0, 2]])
 
     # Verify weights are 1D with just scenario dimension (no period dimension)
-    assert fs_subset.weights.dims == ('scenario',)
+    assert fs_subset.scenario_weights.dims == ('scenario',)

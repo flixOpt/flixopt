@@ -15,7 +15,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .core import (
     ConversionError,
     DataConverter,
@@ -77,7 +77,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         >>>
         >>> # Add elements to the system
         >>> boiler = fx.Component('Boiler', inputs=[heat_flow], status_parameters=...)
-        >>> heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e4)
+        >>> heat_bus = fx.Bus('Heat', imbalance_penalty_per_flow_hour=1e4)
         >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
         >>> flow_system.add_elements(boiler, heat_bus, costs)
 
@@ -142,9 +142,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
           (components, buses, effects, flows) to find the element with the matching label.
         - Element labels must be unique across all container types. Attempting to add
           elements with duplicate labels will raise an error, ensuring each label maps to exactly one element.
-        - The `.all_elements` property is deprecated. Use the dict-like interface instead:
-          `flow_system['element']`, `'element' in flow_system`, `flow_system.keys()`,
-          `flow_system.values()`, or `flow_system.items()`.
         - Direct container access (`.components`, `.buses`, `.effects`, `.flows`) is useful
           when you need type-specific filtering or operations.
         - The `.flows` container is automatically populated from all component inputs and outputs.
@@ -166,18 +163,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_weights: Numeric_S | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
-        **kwargs,
     ):
-        scenario_weights = self._handle_deprecated_kwarg(
-            kwargs,
-            'weights',
-            'scenario_weights',
-            scenario_weights,
-            check_conflict=True,
-            additional_warning_message='This might lead to later errors if your custom weights used the period dimension.',
-        )
-        self._validate_kwargs(kwargs)
-
         self.timesteps = self._validate_timesteps(timesteps)
 
         # Compute all time-related metadata using shared helper
@@ -990,18 +976,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 flow.component = component.label_full
                 flow.is_input_in_component = True if flow in component.inputs else False
 
-                # Add Bus if not already added (deprecated)
-                if flow._bus_object is not None and flow._bus_object.label_full not in self.buses:
-                    warnings.warn(
-                        f'The Bus {flow._bus_object.label_full} was added to the FlowSystem from {flow.label_full}.'
-                        f'This is deprecated and will be removed in the future. '
-                        f'Please pass the Bus.label to the Flow and the Bus to the FlowSystem instead. '
-                        f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                        DeprecationWarning,
-                        stacklevel=1,
-                    )
-                    self._add_buses(flow._bus_object)
-
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
                 if bus is None:
@@ -1094,29 +1068,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._flows_cache
 
     @property
-    def all_elements(self) -> dict[str, Element]:
-        """
-        Get all elements as a dictionary.
-
-        .. deprecated:: 3.2.0
-            Use dict-like interface instead: `flow_system['element']`, `'element' in flow_system`,
-            `flow_system.keys()`, `flow_system.values()`, or `flow_system.items()`.
-            This property will be removed in v4.0.0.
-
-        Returns:
-            Dictionary mapping element labels to element objects.
-        """
-        warnings.warn(
-            "The 'all_elements' property is deprecated. Use dict-like interface instead: "
-            "flow_system['element'], 'element' in flow_system, flow_system.keys(), "
-            'flow_system.values(), or flow_system.items(). '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return {**self.components, **self.effects, **self.flows, **self.buses}
-
-    @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         active_coords = {'time': self.timesteps}
         if self.periods is not None:
@@ -1162,32 +1113,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
-
-    @property
-    def weights(self) -> Numeric_S | None:
-        warnings.warn(
-            f'FlowSystem.weights is deprecated. Use FlowSystem.scenario_weights instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.scenario_weights
-
-    @weights.setter
-    def weights(self, value: Numeric_S) -> None:
-        """
-        Set weights (deprecated - sets scenario_weights).
-
-        Args:
-            value: Scenario weights to set
-        """
-        warnings.warn(
-            f'Setting FlowSystem.weights is deprecated. Set FlowSystem.scenario_weights instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.scenario_weights = value  # Use the scenario_weights setter
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """

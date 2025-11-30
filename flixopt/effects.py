@@ -8,7 +8,6 @@ which are then transformed into the internal data structure.
 from __future__ import annotations
 
 import logging
-import warnings
 from collections import deque
 from typing import TYPE_CHECKING, Literal
 
@@ -16,7 +15,6 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .config import DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -477,21 +475,16 @@ class EffectCollection(ElementContainer[Effect]):
             Note: a standard effect must be defined when passing scalars or None labels.
         """
 
-        def get_effect_label(eff: Effect | str) -> str:
-            """Temporary function to get the label of an effect and warn for deprecation"""
-            if isinstance(eff, Effect):
-                warnings.warn(
-                    f'The use of effect objects when specifying EffectValues is deprecated. '
-                    f'Use the label of the effect instead. Used effect: {eff.label_full}. '
-                    f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                    UserWarning,
-                    stacklevel=2,
-                )
-                return eff.label
-            elif eff is None:
+        def get_effect_label(eff: str | None) -> str:
+            """Get the label of an effect"""
+            if eff is None:
                 return self.standard_effect.label
-            else:
-                return eff
+            if isinstance(eff, Effect):
+                raise TypeError(
+                    f'Effect objects are no longer accepted when specifying EffectValues. '
+                    f'Use the label string instead. Got: {eff.label_full}'
+                )
+            return eff
 
         if effect_values_user is None:
             return None

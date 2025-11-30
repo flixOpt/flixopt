@@ -5,14 +5,13 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .core import PlausibilityError
 from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
@@ -195,9 +194,9 @@ class Bus(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
-        excess_penalty_per_flow_hour: Penalty costs for bus balance violations.
-            When None, no excess/deficit is allowed (hard constraint). When set to a
-            value > 0, allows bus imbalances at penalty cost. Default is 1e5 (high penalty).
+        imbalance_penalty_per_flow_hour: Penalty costs for bus balance violations.
+            When None (default), no imbalance is allowed (hard constraint). When set to a
+            value > 0, allows bus imbalances at penalty cost.
         meta_data: Used to store additional information. Not used internally but saved
             in results. Only use Python native types.
 
@@ -207,7 +206,7 @@ class Bus(Element):
         ```python
         electricity_bus = Bus(
             label='main_electrical_bus',
-            excess_penalty_per_flow_hour=None,  # No imbalance allowed
+            imbalance_penalty_per_flow_hour=None,  # No imbalance allowed
         )
         ```
 
@@ -216,7 +215,7 @@ class Bus(Element):
         ```python
         heat_network = Bus(
             label='district_heating_network',
-            excess_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
+            imbalance_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
         )
         ```
 
@@ -225,14 +224,14 @@ class Bus(Element):
         ```python
         material_hub = Bus(
             label='material_processing_hub',
-            excess_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+            imbalance_penalty_per_flow_hour=waste_disposal_costs,  # Time series
         )
         ```
 
     Note:
-        The bus balance equation enforced is: Σ(inflows) = Σ(outflows) + excess - deficit
+        The bus balance equation enforced is: Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
 
-        When excess_penalty_per_flow_hour is None, excess and deficit are forced to zero.
+        When imbalance_penalty_per_flow_hour is None, virtual_supply and virtual_demand are forced to zero.
         When a penalty cost is specified, the optimization can choose to violate the
         balance if economically beneficial, paying the penalty.
         The penalty is added to the objective directly.
@@ -246,11 +245,16 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
-        excess_penalty_per_flow_hour: Numeric_TPS | None = 1e5,
+        imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
+        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.excess_penalty_per_flow_hour = excess_penalty_per_flow_hour
+        imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
+            kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
+        )
+        self._validate_kwargs(kwargs)
+        self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
 
@@ -267,16 +271,16 @@ class Bus(Element):
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.excess_penalty_per_flow_hour = self._fit_coords(
-            f'{prefix}|excess_penalty_per_flow_hour', self.excess_penalty_per_flow_hour
+        self.imbalance_penalty_per_flow_hour = self._fit_coords(
+            f'{prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
-        if self.excess_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.excess_penalty_per_flow_hour, 0))
+        if self.imbalance_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self.imbalance_penalty_per_flow_hour, 0))
             if zero_penalty:
                 logger.warning(
-                    f'In Bus {self.label_full}, the excess_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                    f'In Bus {self.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                 )
         if len(self.inputs) == 0 and len(self.outputs) == 0:
             raise ValueError(
@@ -284,8 +288,8 @@ class Bus(Element):
             )
 
     @property
-    def with_excess(self) -> bool:
-        return False if self.excess_penalty_per_flow_hour is None else True
+    def allows_imbalance(self) -> bool:
+        return self.imbalance_penalty_per_flow_hour is not None
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -484,18 +488,11 @@ class Flow(Element):
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
-            self.bus = bus.label_full
-            warnings.warn(
-                f'Bus {bus.label} is passed as a Bus object to {self.label}. This is deprecated and will be removed '
-                f'in the future. Add the Bus to the FlowSystem instead and pass its label to the Flow. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                UserWarning,
-                stacklevel=1,
+            raise TypeError(
+                f'Bus {bus.label} is passed as a Bus object to Flow {self.label}. '
+                f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
             )
-            self._bus_object = bus
-        else:
-            self.bus = bus
-            self._bus_object = None
+        self.bus = bus
 
     def create_model(self, model: FlowSystemModel) -> FlowModel:
         self._plausibility_checks()
@@ -880,8 +877,8 @@ class BusModel(ElementModel):
     element: Bus  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Bus):
-        self.excess_input: linopy.Variable | None = None
-        self.excess_output: linopy.Variable | None = None
+        self.virtual_supply: linopy.Variable | None = None
+        self.virtual_demand: linopy.Variable | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
@@ -894,39 +891,38 @@ class BusModel(ElementModel):
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
-        # Add excess to balance and penalty if needed
-        if self.element.with_excess:
-            excess_penalty = np.multiply(self._model.hours_per_step, self.element.excess_penalty_per_flow_hour)
+        # Add virtual supply/demand to balance and penalty if needed
+        if self.element.allows_imbalance:
+            imbalance_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
 
-            self.excess_input = self.add_variables(lower=0, coords=self._model.get_coords(), short_name='excess_input')
-
-            self.excess_output = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='excess_output'
+            self.virtual_supply = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='virtual_supply'
             )
 
-            eq_bus_balance.lhs -= -self.excess_input + self.excess_output
+            self.virtual_demand = self.add_variables(
+                lower=0, coords=self._model.get_coords(), short_name='virtual_demand'
+            )
+
+            # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
+            eq_bus_balance.lhs += self.virtual_supply - self.virtual_demand
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
 
+            total_imbalance_penalty = (self.virtual_supply + self.virtual_demand) * imbalance_penalty
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.excess_input * excess_penalty},
-                target='temporal',
-            )
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: self.excess_output * excess_penalty},
+                expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
                 target='temporal',
             )
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
         outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
-        if self.excess_input is not None:
-            inputs.append(self.excess_input.name)
-        if self.excess_output is not None:
-            outputs.append(self.excess_output.name)
+        if self.virtual_supply is not None:
+            inputs.append(self.virtual_supply.name)
+        if self.virtual_demand is not None:
+            outputs.append(self.virtual_demand.name)
         return {
             **super().results_structure(),
             'inputs': inputs,

@@ -53,6 +53,8 @@ Until here -->
 
 ## [Upcoming]
 
+**Summary**: Renamed OnOff terminology to Status terminology for better alignment with PyPSA and unit commitment standards. **All deprecated items from v4.x have been removed.**
+
 ### 💥 Breaking Changes
 
 **Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
@@ -119,8 +121,57 @@ Use find-and-replace to update your code with the mappings above. The functional
 
 A partial backwards compatibility wrapper would be misleading, so we opted for a clean breaking change.
 
+- `Bus.imbalance_penalty_per_flow_hour` now defaults to `None` (strict balance) instead of `1e5`
+
+### ♻️ Changed
+
+- Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
+- Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
+- Renamed `Bus.with_excess` → `allows_imbalance`
+
+### 🗑️ Deprecated
+
+- `Bus.excess_penalty_per_flow_hour` → use `imbalance_penalty_per_flow_hour`
 
 ### 🔥 Removed
+
+**Modules removed:**
+- `calculation.py` module - Use `optimization.py` instead
+
+**Classes removed:**
+- `Calculation`, `FullCalculation` → Use `Optimization`
+- `AggregatedCalculation` → Use `ClusteredOptimization`
+- `SegmentedCalculation` → Use `SegmentedOptimization`
+- `Aggregation` → Use `Clustering`
+- `AggregationParameters` → Use `ClusteringParameters`
+- `AggregationModel` → Use `ClusteringModel`
+- `CalculationResults` → Use `Results`
+- `SegmentedCalculationResults` → Use `SegmentedResults`
+
+**Functions removed:**
+- `change_logging_level()` → Use `CONFIG.Logging.enable_console()`
+
+**Methods removed:**
+- `Optimization._perform_aggregation()` → Use `_perform_clustering()`
+- `Optimization.calculate_aggregation_weights()` → Use `calculate_clustering_weights()`
+
+**Parameters removed:**
+- `Optimization.active_timesteps` → Use `flow_system.sel(time=...)` or `flow_system.isel(time=...)`
+- `TimeSeriesData.from_dataarray()`: `aggregation_group` → Use `clustering_group`
+- `TimeSeriesData.from_dataarray()`: `aggregation_weight` → Use `clustering_weight`
+- `FlowSystem.weights` → Use `scenario_weights`
+- `Results.__init__()`: `flow_system` → Use `flow_system_data`
+- `Results` plotting methods: `indexer` → Use `select`
+- `Results.plot_heatmap()`: `heatmap_timeframes`, `heatmap_timesteps_per_frame` → Use `reshape_time`
+- `Results.plot_heatmap()`: `color_map` → Use `colors`
+
+**Properties removed:**
+- `FlowSystem.all_elements` → Use dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`)
+- `FlowSystem.weights` → Use `scenario_weights`
+
+**Features removed:**
+- Passing `Bus` objects directly to `Flow` → Pass bus label string instead and add Bus to FlowSystem
+- Using `Effect` objects in `EffectValues` → Use effect label strings instead
 
 **Deprecated parameters removed** (all were deprecated in v4.0.0 or earlier):
 
