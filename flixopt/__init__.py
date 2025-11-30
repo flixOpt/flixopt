@@ -28,7 +28,7 @@ from .components import (
 )
 from .config import CONFIG, change_logging_level
 from .core import TimeSeriesData
-from .effects import Effect
+from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
@@ -43,6 +43,7 @@ __all__ = [
     'Flow',
     'Bus',
     'Effect',
+    'PENALTY_EFFECT_LABEL',
     'Source',
     'Sink',
     'SourceAndSink',

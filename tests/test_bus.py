@@ -60,11 +60,23 @@ class TestBusModel:
             == 0,
         )
 
+        # Penalty is now added as shares to the Penalty effect's temporal model
+        # Check that the penalty shares exist
+        assert 'TestBus->Penalty(temporal)' in model.constraints
+        assert 'TestBus->Penalty(temporal)' in model.variables
+
+        # The penalty share should equal the excess times the penalty cost
+        # Note: Each excess (input and output) creates its own share constraint, so we have two
+        # Let's verify the total penalty contribution by checking the effect's temporal model
+        penalty_effect = flow_system.effects.penalty_effect
+        assert penalty_effect.submodel is not None
+        assert 'TestBus' in penalty_effect.submodel.temporal.shares
+
         assert_conequal(
-            model.constraints['TestBus->Penalty'],
-            model.variables['TestBus->Penalty']
-            == (model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step).sum()
-            + (model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step).sum(),
+            model.constraints['TestBus->Penalty(temporal)'],
+            model.variables['TestBus->Penalty(temporal)']
+            == model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step
+            + model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step,
         )
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):

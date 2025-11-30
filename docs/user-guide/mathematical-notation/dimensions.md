@@ -114,6 +114,7 @@ Where:
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$
 - The optimizer balances performance across scenarios according to their weights
+- **Both the objective effect and Penalty effect are weighted by $w_s$** (see [Penalty weighting](effects-penalty-objective.md#penalty))
 
 ### Period Independence
 
@@ -129,6 +130,8 @@ Periods are connected **only through weighted aggregation** in the objective:
 $$
 \min \quad \sum_{y \in \mathcal{Y}} w_y \cdot \text{Objective}_y
 $$
+
+Where **both the objective effect and Penalty effect are weighted by $w_y$** (see [Penalty weighting](effects-penalty-objective.md#penalty))
 
 ### Shared Periodic Decisions: The Exception
 
@@ -203,16 +206,18 @@ $$
 
 Where:
 - $\mathcal{T}$ is the set of time steps
-- $\mathcal{E}$ is the set of effects
+- $\mathcal{E}$ is the set of effects (including the Penalty effect $E_\Phi$)
 - $\mathcal{S}$ is the set of scenarios
 - $\mathcal{Y}$ is the set of periods
 - $s_{e}(\cdots)$ are the effect contributions (costs, emissions, etc.)
 - $w_s, w_y, w_{y,s}$ are the dimension weights
+- **Penalty effect is weighted identically to other effects**
 
 **See [Effects, Penalty & Objective](effects-penalty-objective.md) for complete formulations including:**
 - How temporal and periodic effects expand with dimensions
 - Detailed objective function for each dimensional case
 - Periodic (investment) vs temporal (operational) effect handling
+- Explicit Penalty weighting formulations
 
 ---
 

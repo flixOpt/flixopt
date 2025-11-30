@@ -1,4 +1,12 @@
-# FlixOpt: Energy and Material Flow Optimization Framework
+# FlixOpt: Progressive Flow System Optimization
+
+<p align="center">
+  <b>F</b>lexible &nbsp;•&nbsp; <b>L</b>ow-entry &nbsp;•&nbsp; <b>I</b>nvestment &nbsp;•&nbsp; <b>X</b>-sector &nbsp;•&nbsp; <b>OPT</b>imization
+</p>
+
+<p align="center">
+  <i>Model more than costs</i> · <i>Easy to prototype</i> · <i>Based on dispatch</i> · <i>Sector coupling</i> · <i>Mathematical optimization</i>
+</p>
 
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://flixopt.github.io/flixopt/latest/)
 [![Build Status](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml/badge.svg)](https://github.com/flixOpt/flixopt/actions/workflows/python-app.yaml)
@@ -9,18 +17,18 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/flixopt)](https://pypi.org/project/flixopt/)
 [![GitHub last commit](https://img.shields.io/github/last-commit/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/commits/main)
 [![GitHub issues](https://img.shields.io/github/issues/flixOpt/flixopt)](https://github.com/flixOpt/flixopt/issues)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/flixOpt/flixopt/main.svg)](https://results.pre-commit.ci/latest/github/flixOpt/flixopt/main)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Powered by linopy](https://img.shields.io/badge/powered%20by-linopy-blue)](https://github.com/PyPSA/linopy/)
 [![Powered by xarray](https://img.shields.io/badge/powered%20by-xarray-blue)](https://xarray.dev/)
+[![DOI](https://zenodo.org/badge/540378857.svg)](https://doi.org/10.5281/zenodo.17448623)
 [![DOI](https://img.shields.io/badge/DOI-10.18086%2Feurosun.2022.04.07-blue)](https://doi.org/10.18086/eurosun.2022.04.07)
 [![GitHub stars](https://img.shields.io/github/stars/flixOpt/flixopt?style=social)](https://github.com/flixOpt/flixopt/stargazers)
 
 ---
 
-**FlixOpt is a Python framework for optimizing energy and material flow systems** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
+**FlixOpt is a Python framework for progressive flow system optimization** - from district heating networks to industrial production lines, from renewable energy portfolios to supply chain logistics.
 
-**Start simple, scale complex:** Build a working optimization model in minutes, then progressively add detail - multi-period investments, stochastic scenarios, custom constraints - without rewriting your code.
+Build simple models quickly, then incrementally add investment decision, multi-period planning, stochastic scenarios, and custom constraints without refactoring.
 
 ---
 
@@ -184,6 +192,9 @@ If FlixOpt supports your research or project, please cite:
 
 - **Main Citation:** [DOI:10.18086/eurosun.2022.04.07](https://doi.org/10.18086/eurosun.2022.04.07)
 - **Short Overview:** [DOI:10.13140/RG.2.2.14948.24969](https://doi.org/10.13140/RG.2.2.14948.24969)
+
+To pinpoint which version you used in your work, please reference one of these doi's here:
+- [![DOI](https://zenodo.org/badge/540378857.svg)](https://doi.org/10.5281/zenodo.17448623)
 
 ---
 

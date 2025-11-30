@@ -60,6 +60,90 @@ This is not yet publicly released!
 
 ---
 
+## [4.3.5] - 2025-11-29
+
+**Summary**: Fix zenodo again
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
+
+## [4.3.4] - 2025-11-27
+
+**Summary**: Fix zenodo again
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
+
+## [4.3.3] - 2025-11-27
+
+**Summary**: Fix zenodo again
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
+
+## [4.3.2] - 2025-11-27
+
+**Summary**: Fix zenodo
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
+
+## [4.3.1] - 2025-11-26
+
+**Summary**: Add zenodo for better citations and archiving.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### 📝 Docs
+- Added Zenodo DOI badge to README.md (placeholder, to be updated after first Zenodo release)
+
+### 👷 Development
+- Added Zenodo integration for automatic archival and citation
+  - Created `.zenodo.json` file for Zenodo metadata configuration
+  - Repository now ready for DOI assignment upon next release
+
+---
+
+## [4.3.0] - 2025-11-25
+
+**Summary**: Penalty is now a first-class Effect - add penalty contributions anywhere (e.g., `effects_per_flow_hour={'Penalty': 2.5}`) and optionally define bounds as with any other effect.
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+### ✨ Added
+
+- **Penalty as first-class Effect**: Users can now add Penalty contributions anywhere effects are used:
+  ```python
+  fx.Flow('Q', 'Bus', effects_per_flow_hour={'Penalty': 2.5})
+  fx.InvestParameters(..., effects_of_investment={'Penalty': 100})
+  ```
+- **User-definable Penalty**: Optionally define custom Penalty with constraints (auto-created if not defined):
+  ```python
+  penalty = fx.Effect(fx.PENALTY_EFFECT_LABEL, unit='€', maximum_total=1e6)
+  flow_system.add_elements(penalty)
+  ```
+
+### ♻️ Changed
+
+- Penalty is now a standard Effect with temporal/periodic dimensions, and periodic weights in the objective
+- **Results structure**: Penalty now has same structure as other effects in solution Dataset
+  - Use `results.solution['Penalty']` for total penalty value (same as before, but now it's an effect variable)
+  - Access components via `results.solution['Penalty(temporal)']` and `results.solution['Penalty(periodic)']` if needed
+
+### 📝 Docs
+
+- Updated mathematical notation for Penalty as Effect
+
+### 👷 Development
+
+- Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
+
+---
+
 ## [4.2.0] - 2025-11-25
 
 **Summary**: Renamed classes and parameters related to `Calculation`, `Aggregation` and `Results`. Fully backwards compatible

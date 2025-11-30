@@ -251,8 +251,11 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     normalized_weights = scenario_weights / sum(scenario_weights)
     np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
+    # Penalty is now an effect with temporal and periodic components
+    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
     assert_linequal(
-        model.objective.expression, (model.variables['costs'] * normalized_weights).sum() + model.variables['Penalty']
+        model.objective.expression,
+        (model.variables['costs'] * normalized_weights).sum() + (penalty_total * normalized_weights).sum(),
     )
     assert np.isclose(model.objective_weights.sum().item(), 1)
 
@@ -271,9 +274,12 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
 
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.objective_weights.values, normalized_scenario_weights_da)
+    # Penalty is now an effect with temporal and periodic components
+    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
     assert_linequal(
         model.objective.expression,
-        (model.variables['costs'] * normalized_scenario_weights_da).sum() + model.variables['Penalty'],
+        (model.variables['costs'] * normalized_scenario_weights_da).sum()
+        + (penalty_total * normalized_scenario_weights_da).sum(),
     )
     assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
@@ -347,9 +353,13 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     calc.results.to_file()
 
+    # Penalty has same structure as other effects: 'Penalty' is the total, 'Penalty(temporal)' and 'Penalty(periodic)' are components
     np.testing.assert_allclose(
         calc.results.objective,
-        ((calc.results.solution['costs'] * flow_system.weights).sum() + calc.results.solution['Penalty']).item(),
+        (
+            (calc.results.solution['costs'] * flow_system.weights).sum()
+            + (calc.results.solution['Penalty'] * flow_system.weights).sum()
+        ).item(),
     )  ## Account for rounding errors
 
     assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])

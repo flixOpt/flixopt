@@ -972,8 +972,19 @@ class BusModel(ElementModel):
 
             eq_bus_balance.lhs -= -self.excess_input + self.excess_output
 
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_input * excess_penalty).sum())
-            self._model.effects.add_share_to_penalty(self.label_of_element, (self.excess_output * excess_penalty).sum())
+            # Add penalty shares as temporal effects (time-dependent)
+            from .effects import PENALTY_EFFECT_LABEL
+
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={PENALTY_EFFECT_LABEL: self.excess_input * excess_penalty},
+                target='temporal',
+            )
+            self._model.effects.add_share_to_effects(
+                name=self.label_of_element,
+                expressions={PENALTY_EFFECT_LABEL: self.excess_output * excess_penalty},
+                target='temporal',
+            )
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
