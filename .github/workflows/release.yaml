@@ -80,7 +80,7 @@ jobs:
     name: Run tests
     needs: [check-preparation]
     if: needs.check-preparation.outputs.prepared == 'true'
-    uses: ./.github/workflows/test.yaml
+    uses: ./.github/workflows/tests.yaml
 
   build:
     name: Build package
