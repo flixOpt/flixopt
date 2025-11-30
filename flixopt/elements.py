@@ -231,9 +231,9 @@ class Bus(Element):
         ```
 
     Note:
-        The bus balance equation enforced is: Σ(inflows) = Σ(outflows) + excess - deficit
+        The bus balance equation enforced is: Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
 
-        When imbalance_penalty_per_flow_hour is None, virtual demand and supply are forced to zero.
+        When imbalance_penalty_per_flow_hour is None, virtual_supply and virtual_demand are forced to zero.
         When a penalty cost is specified, the optimization can choose to violate the
         balance if economically beneficial, paying the penalty.
         The penalty is added to the objective directly.
