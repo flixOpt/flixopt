@@ -4,17 +4,7 @@ If you use flixOpt in your research, please cite it.
 
 ## Citation
 
-When referencing flixOpt in academic publications, please use:
-
-```bibtex
-@software{flixopt,
-  author = {flixOpt Contributors},
-  title = {flixOpt: Energy and Material Flow Optimization Framework},
-  url = {https://github.com/flixOpt/flixopt},
-  version = {4.0.0},
-  year = {2024}
-}
-```
+When referencing flixOpt in academic publications, please use look here: [flixopt citation](https://zenodo.org/records/17756895)
 
 ## Publications
 
