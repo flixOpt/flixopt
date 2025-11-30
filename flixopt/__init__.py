@@ -31,7 +31,7 @@ from .core import TimeSeriesData
 from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 
 # Import new Optimization classes
 from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
@@ -60,7 +60,7 @@ __all__ = [
     'AggregatedCalculation',
     'SegmentedCalculation',
     'InvestParameters',
-    'OnOffParameters',
+    'StatusParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',

@@ -14,7 +14,7 @@ from .structure import register_class_for_io
 
 if TYPE_CHECKING:
     from .elements import Flow
-    from .interface import OnOffParameters
+    from .interface import StatusParameters
     from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
@@ -35,7 +35,7 @@ class Boiler(LinearConverter):
             output to fuel input energy content.
         fuel_flow: Fuel input-flow representing fuel consumption.
         thermal_flow: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -59,9 +59,9 @@ class Boiler(LinearConverter):
             thermal_efficiency=seasonal_efficiency_profile,  # Time-varying efficiency
             fuel_flow=biomass_flow,
             thermal_flow=district_heat_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=4,  # Minimum 4-hour operation
-                effects_per_switch_on={'startup_fuel': 50},  # Startup fuel penalty
+            status_parameters=StatusParameters(
+                min_uptime=4,  # Minimum 4-hour operation
+                effects_per_startup={'startup_fuel': 50},  # Startup fuel penalty
             ),
         )
         ```
@@ -79,7 +79,7 @@ class Boiler(LinearConverter):
         thermal_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -94,7 +94,7 @@ class Boiler(LinearConverter):
             label,
             inputs=[fuel_flow],
             outputs=[thermal_flow],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
         self.fuel_flow = fuel_flow
@@ -128,7 +128,7 @@ class Power2Heat(LinearConverter):
             electrode boilers or systems with distribution losses.
         electrical_flow: Electrical input-flow representing electricity consumption.
         thermal_flow: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -152,9 +152,9 @@ class Power2Heat(LinearConverter):
             thermal_efficiency=0.95,  # 95% efficiency including boiler losses
             electrical_flow=industrial_electricity,
             thermal_flow=process_steam_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=1,  # Minimum 1-hour operation
-                effects_per_switch_on={'startup_cost': 100},
+            status_parameters=StatusParameters(
+                min_uptime=1,  # Minimum 1-hour operation
+                effects_per_startup={'startup_cost': 100},
             ),
         )
         ```
@@ -174,7 +174,7 @@ class Power2Heat(LinearConverter):
         thermal_efficiency: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -189,7 +189,7 @@ class Power2Heat(LinearConverter):
             label,
             inputs=[electrical_flow],
             outputs=[thermal_flow],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
@@ -224,7 +224,7 @@ class HeatPump(LinearConverter):
             additional energy from the environment.
         electrical_flow: Electrical input-flow representing electricity consumption.
         thermal_flow: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -248,9 +248,9 @@ class HeatPump(LinearConverter):
             cop=temperature_dependent_cop,  # Time-varying COP based on ground temp
             electrical_flow=electricity_flow,
             thermal_flow=radiant_heating_flow,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=2,  # Avoid frequent cycling
-                effects_per_running_hour={'maintenance': 0.5},
+            status_parameters=StatusParameters(
+                min_uptime=2,  # Avoid frequent cycling
+                effects_per_active_hour={'maintenance': 0.5},
             ),
         )
         ```
@@ -269,7 +269,7 @@ class HeatPump(LinearConverter):
         cop: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -285,7 +285,7 @@ class HeatPump(LinearConverter):
             inputs=[electrical_flow],
             outputs=[thermal_flow],
             conversion_factors=[],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
         self.electrical_flow = electrical_flow
@@ -319,7 +319,7 @@ class CoolingTower(LinearConverter):
             of thermal power that must be supplied as electricity for fans and pumps.
         electrical_flow: Electrical input-flow representing electricity consumption for fans/pumps.
         thermal_flow: Thermal input-flow representing waste heat to be rejected to environment.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -343,9 +343,9 @@ class CoolingTower(LinearConverter):
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
             electrical_flow=auxiliary_electricity,
             thermal_flow=condenser_waste_heat,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=4,  # Minimum operation time
-                effects_per_running_hour={'water_consumption': 2.5},  # m³/h
+            status_parameters=StatusParameters(
+                min_uptime=4,  # Minimum operation time
+                effects_per_active_hour={'water_consumption': 2.5},  # m³/h
             ),
         )
         ```
@@ -366,7 +366,7 @@ class CoolingTower(LinearConverter):
         specific_electricity_demand: Numeric_TPS,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -379,7 +379,7 @@ class CoolingTower(LinearConverter):
             label,
             inputs=[electrical_flow, thermal_flow],
             outputs=[],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
@@ -416,7 +416,7 @@ class CHP(LinearConverter):
         fuel_flow: Fuel input-flow representing fuel consumption.
         electrical_flow: Electrical output-flow representing electricity generation.
         thermal_flow: Thermal output-flow representing heat generation.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -444,10 +444,10 @@ class CHP(LinearConverter):
             fuel_flow=fuel_gas_flow,
             electrical_flow=plant_electricity,
             thermal_flow=process_steam,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=8,  # Minimum 8-hour operation
-                effects_per_switch_on={'startup_cost': 5000},
-                on_hours_max=6000,  # Annual operating limit
+            status_parameters=StatusParameters(
+                min_uptime=8,  # Minimum 8-hour operation
+                effects_per_startup={'startup_cost': 5000},
+                active_hours_max=6000,  # Annual operating limit
             ),
         )
         ```
@@ -470,7 +470,7 @@ class CHP(LinearConverter):
         fuel_flow: Flow | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -490,7 +490,7 @@ class CHP(LinearConverter):
             inputs=[fuel_flow],
             outputs=[thermal_flow, electrical_flow],
             conversion_factors=[{}, {}],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
 
@@ -546,7 +546,7 @@ class HeatPumpWithSource(LinearConverter):
         heat_source_flow: Heat source input-flow representing thermal energy extracted from environment
             (ground, air, water source).
         thermal_flow: Thermal output-flow representing useful heat delivered to the application.
-        on_off_parameters: Parameters defining binary operation constraints and costs.
+        status_parameters: Parameters defining status, startup and shutdown constraints and effects
         meta_data: Used to store additional information. Not used internally but
             saved in results. Only use Python native types.
 
@@ -572,9 +572,9 @@ class HeatPumpWithSource(LinearConverter):
             electrical_flow=electricity_consumption,
             heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
             thermal_flow=heat_supply,
-            on_off_parameters=OnOffParameters(
-                consecutive_on_hours_min=0.5,  # 30-minute minimum runtime
-                effects_per_switch_on={'costs': 1000},
+            status_parameters=StatusParameters(
+                min_uptime=0.5,  # 30-minute minimum runtime
+                effects_per_startup={'costs': 1000},
             ),
         )
         ```
@@ -600,7 +600,7 @@ class HeatPumpWithSource(LinearConverter):
         electrical_flow: Flow | None = None,
         heat_source_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
-        on_off_parameters: OnOffParameters | None = None,
+        status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
     ):
         # Validate required parameters
@@ -617,7 +617,7 @@ class HeatPumpWithSource(LinearConverter):
             label,
             inputs=[electrical_flow, heat_source_flow],
             outputs=[thermal_flow],
-            on_off_parameters=on_off_parameters,
+            status_parameters=status_parameters,
             meta_data=meta_data,
         )
         self.electrical_flow = electrical_flow
