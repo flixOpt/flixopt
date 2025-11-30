@@ -255,6 +255,7 @@ class Bus(Element):
         imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
             kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
         )
+        self._validate_kwargs(kwargs)
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
