@@ -29,6 +29,9 @@ if COLORLOG_AVAILABLE:
 SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
+# Deprecation removal version - update this when planning the next major version
+DEPRECATION_REMOVAL_VERSION = '6.0.0'
+
 
 class MultilineFormatter(logging.Formatter):
     """Custom formatter that handles multi-line messages with box-style borders.
