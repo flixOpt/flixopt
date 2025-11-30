@@ -46,7 +46,7 @@ with mkdocs_gen_files.open(f'{api_dir}/index.md', 'w') as index_file:
     index_file.write('# API Reference\n\n')
     index_file.write(
         'This section contains the documentation for all modules and classes in flixopt.\n'
-        'For more information on how to use the classes and functions, see the [User Guide](../user-guide/index.md) section.\n'
+        'For more information on how to use the classes and functions, see the [User Guide](../user-guide/core-concepts/) section.\n'
     )
 
 # Print generated files for validation

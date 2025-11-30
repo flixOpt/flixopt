@@ -1,310 +1,197 @@
 # InvestParameters
 
-[`InvestParameters`][flixopt.interface.InvestParameters] model investment decisions in optimization problems, enabling both binary (invest/don't invest) and continuous sizing choices with comprehensive cost modeling.
+InvestParameters enable investment decisions — should we build this? If so, how big?
 
-## Investment Decision Types
+!!! example "Real-world examples"
+    - **Solar PV** — Install 100 kW system or not (binary)
+    - **Battery** — Choose capacity between 10-1000 kWh (continuous)
+    - **Boiler replacement** — Upgrade or pay demolition costs
 
-FlixOpt supports two main types of investment decisions:
+## Core Concept: Size as a Variable
 
-### Binary Investment
+When `size` is an `InvestParameters`, the capacity $P$ becomes an optimization variable instead of a fixed parameter.
 
-Fixed-size investment creating a yes/no decision (e.g., install a 100 kW generator):
+=== "Binary (Fixed Size)"
 
-$$\label{eq:invest_binary}
-v_\text{invest} = s_\text{invest} \cdot \text{size}_\text{fixed}
-$$
+    Build a predefined size or nothing:
 
-With:
+    $$
+    P = s_{inv} \cdot P_{fixed}
+    $$
 
-- $v_\text{invest}$ being the resulting investment size
-- $s_\text{invest} \in \{0, 1\}$ being the binary investment decision
-- $\text{size}_\text{fixed}$ being the predefined component size
+    Where $s_{inv} \in \{0, 1\}$ is the binary investment decision.
 
-**Behavior:**
-- $s_\text{invest} = 0$: no investment ($v_\text{invest} = 0$)
-- $s_\text{invest} = 1$: invest at fixed size ($v_\text{invest} = \text{size}_\text{fixed}$)
+    - $s_{inv} = 0$: Don't invest, $P = 0$
+    - $s_{inv} = 1$: Invest, $P = P_{fixed}$
 
----
+=== "Continuous (Size Range)"
 
-### Continuous Sizing
+    Choose size within bounds:
 
-Variable-size investment with bounds (e.g., battery capacity from 10-1000 kWh):
+    $$
+    s_{inv} \cdot P^{min} \leq P \leq s_{inv} \cdot P^{max}
+    $$
 
-$$\label{eq:invest_continuous}
-s_\text{invest} \cdot \text{size}_\text{min} \leq v_\text{invest} \leq s_\text{invest} \cdot \text{size}_\text{max}
-$$
+    - $s_{inv} = 0$: Don't invest, $P = 0$
+    - $s_{inv} = 1$: Invest, $P \in [P^{min}, P^{max}]$
 
-With:
+=== "Mandatory"
 
-- $v_\text{invest}$ being the investment size variable (continuous)
-- $s_\text{invest} \in \{0, 1\}$ being the binary investment decision
-- $\text{size}_\text{min}$ being the minimum investment size (if investing)
-- $\text{size}_\text{max}$ being the maximum investment size
+    Must invest, only choose size:
 
-**Behavior:**
-- $s_\text{invest} = 0$: no investment ($v_\text{invest} = 0$)
-- $s_\text{invest} = 1$: invest with size in $[\text{size}_\text{min}, \text{size}_\text{max}]$
+    $$
+    P^{min} \leq P \leq P^{max}
+    $$
 
-This uses the **bounds with state** pattern described in [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
+    No binary variable — investment is required.
 
----
+## Investment Effects (Costs)
 
-### Optional vs. Mandatory Investment
+=== "Fixed Effects"
 
-The `mandatory` parameter controls whether investment is required:
+    One-time costs if investing (permits, grid connection):
 
-**Optional Investment** (`mandatory=False`, default):
-$$\label{eq:invest_optional}
-s_\text{invest} \in \{0, 1\}
-$$
+    $$
+    E_{e,fix} = s_{inv} \cdot c_{fix}
+    $$
 
-The optimization can freely choose to invest or not.
+=== "Specific Effects"
 
-**Mandatory Investment** (`mandatory=True`):
-$$\label{eq:invest_mandatory}
-s_\text{invest} = 1
-$$
+    Costs proportional to size (€/kW):
 
-The investment must occur (useful for mandatory upgrades or replacements).
+    $$
+    E_{e,spec} = P \cdot c_{spec}
+    $$
 
----
+=== "Retirement Effects"
 
-## Effect Modeling
+    Costs if NOT investing (demolition):
 
-Investment effects (costs, emissions, etc.) are modeled using three components:
+    $$
+    E_{e,ret} = (1 - s_{inv}) \cdot c_{ret}
+    $$
 
-### Fixed Effects
+=== "Piecewise Effects"
 
-One-time effects incurred if investment is made, independent of size:
+    Non-linear costs (economies of scale):
 
-$$\label{eq:invest_fixed_effects}
-E_{e,\text{fix}} = s_\text{invest} \cdot \text{fix}_e
-$$
+    $$
+    E_{e,pw} = f_{pw}(P)
+    $$
 
-With:
+    See [Piecewise](Piecewise.md) for details.
 
-- $E_{e,\text{fix}}$ being the fixed contribution to effect $e$
-- $\text{fix}_e$ being the fixed effect value (e.g., fixed installation cost)
-
-**Examples:**
-- Fixed installation costs (permits, grid connection)
-- One-time environmental impacts (land preparation)
-- Fixed labor or administrative costs
-
----
-
-### Specific Effects
-
-Effects proportional to investment size (per-unit costs):
-
-$$\label{eq:invest_specific_effects}
-E_{e,\text{spec}} = v_\text{invest} \cdot \text{spec}_e
-$$
-
-With:
-
-- $E_{e,\text{spec}}$ being the size-dependent contribution to effect $e$
-- $\text{spec}_e$ being the specific effect value per unit size (e.g., €/kW)
-
-**Examples:**
-- Equipment costs (€/kW)
-- Material requirements (kg steel/kW)
-- Recurring costs (€/kW/year maintenance)
-
----
-
-### Piecewise Effects
-
-Non-linear effect relationships using piecewise linear approximations:
-
-$$\label{eq:invest_piecewise_effects}
-E_{e,\text{pw}} = \sum_{k=1}^{K} \lambda_k \cdot r_{e,k}
-$$
-
-Subject to:
-$$
-v_\text{invest} = \sum_{k=1}^{K} \lambda_k \cdot v_k
-$$
-
-With:
-
-- $E_{e,\text{pw}}$ being the piecewise contribution to effect $e$
-- $\lambda_k$ being the piecewise lambda variables (see [Piecewise](../features/Piecewise.md))
-- $r_{e,k}$ being the effect rate at piece $k$
-- $v_k$ being the size points defining the pieces
-
-**Use cases:**
-- Economies of scale (bulk discounts)
-- Technology learning curves
-- Threshold effects (capacity tiers with different costs)
-
-See [Piecewise](../features/Piecewise.md) for detailed mathematical formulation.
-
----
-
-### Retirement Effects
-
-Effects incurred if investment is NOT made (when retiring/not replacing existing equipment):
-
-$$\label{eq:invest_retirement_effects}
-E_{e,\text{retirement}} = (1 - s_\text{invest}) \cdot \text{retirement}_e
-$$
-
-With:
-
-- $E_{e,\text{retirement}}$ being the retirement contribution to effect $e$
-- $\text{retirement}_e$ being the retirement effect value
-
-**Behavior:**
-- $s_\text{invest} = 0$: retirement effects are incurred
-- $s_\text{invest} = 1$: no retirement effects
-
-**Examples:**
-- Demolition or disposal costs
-- Decommissioning expenses
-- Contractual penalties for not investing
-- Opportunity costs or lost revenues
-
----
-
-### Total Investment Effects
-
-The total contribution to effect $e$ from an investment is:
-
-$$\label{eq:invest_total_effects}
-E_{e,\text{invest}} = E_{e,\text{fix}} + E_{e,\text{spec}} + E_{e,\text{pw}} + E_{e,\text{retirement}}
-$$
-
-Effects integrate into the overall system effects as described in [Effects, Penalty & Objective](../effects-penalty-objective.md).
-
----
-
-## Integration with Components
-
-Investment parameters modify component sizing:
-
-### Without Investment
-Component size is a fixed parameter:
-$$
-\text{size} = \text{size}_\text{nominal}
-$$
-
-### With Investment
-Component size becomes a variable:
-$$
-\text{size} = v_\text{invest}
-$$
-
-This size variable then appears in component constraints. For example, flow rate bounds become:
+**Total investment effects:**
 
 $$
-v_\text{invest} \cdot \text{rel}_\text{lower} \leq p(t) \leq v_\text{invest} \cdot \text{rel}_\text{upper}
+E_{e,inv} = E_{e,fix} + E_{e,spec} + E_{e,ret} + E_{e,pw}
 $$
 
-Using the **scaled bounds** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#scaled-bounds).
+## Variables
 
----
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
+| $P$ | `size` | Investment size | Always |
+| $s_{inv}$ | `invested` | Binary decision | `mandatory=False` |
 
-## Cost Annualization
+## Parameters
 
-**Important:** All investment cost values must be properly weighted to match the optimization model's time horizon.
+| Symbol | Python Name | Description | Default |
+|--------|-------------|-------------|---------|
+| $P_{fixed}$ | `fixed_size` | Fixed size (binary decision) | None |
+| $P^{min}$ | `minimum_size` | Minimum size if investing | ε |
+| $P^{max}$ | `maximum_size` | Maximum size | Big M |
+| $c_{fix}$ | `effects_of_investment` | Fixed effects | None |
+| $c_{spec}$ | `effects_of_investment_per_size` | Per-unit effects | None |
+| $c_{ret}$ | `effects_of_retirement` | Effects if not investing | None |
+| - | `mandatory` | Force investment | False |
+| - | `piecewise_effects_of_investment` | Non-linear effects | None |
 
-For long-term investments, costs should be annualized:
+## Usage Examples
 
-$$\label{eq:annualization}
-\text{cost}_\text{annual} = \frac{\text{cost}_\text{capital} \cdot r}{1 - (1 + r)^{-n}}
-$$
+### Binary Investment (Solar)
 
-With:
-
-- $\text{cost}_\text{capital}$ being the upfront investment cost
-- $r$ being the discount rate
-- $n$ being the equipment lifetime in years
-
-**Example:** €1,000,000 equipment with 20-year life and 5% discount rate
-$$
-\text{cost}_\text{annual} = \frac{1{,}000{,}000 \cdot 0.05}{1 - (1.05)^{-20}} \approx €80{,}243/\text{year}
-$$
-
----
-
-## Implementation
-
-**Python Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
-
-**Key Parameters:**
-
-- `fixed_size`: For binary investments (mutually exclusive with continuous sizing)
-- `minimum_size`, `maximum_size`: For continuous sizing
-- `mandatory`: Whether investment is required (default: `False`)
-- `effects_of_investment`: Fixed effects incurred when investing (replaces deprecated `fix_effects`)
-- `effects_of_investment_per_size`: Per-unit effects proportional to size (replaces deprecated `specific_effects`)
-- `piecewise_effects_of_investment`: Non-linear effect modeling (replaces deprecated `piecewise_effects`)
-- `effects_of_retirement`: Effects for not investing (replaces deprecated `divest_effects`)
-
-See the [`InvestParameters`][flixopt.interface.InvestParameters] API documentation for complete parameter list and usage examples.
-
-**Used in:**
-- [`Flow`][flixopt.elements.Flow] - Flexible capacity decisions
-- [`Storage`][flixopt.components.Storage] - Storage sizing optimization
-- [`LinearConverter`][flixopt.components.LinearConverter] - Converter capacity planning
-- All components supporting investment decisions
-
----
-
-## Examples
-
-### Binary Investment (Solar Panels)
 ```python
-solar_investment = InvestParameters(
-    fixed_size=100,  # 100 kW system
-    mandatory=False,  # Optional investment (default)
-    effects_of_investment={'cost': 25000},  # Installation costs
-    effects_of_investment_per_size={'cost': 1200},  # €1200/kW
+solar = fx.Flow(
+    label='solar',
+    bus=elec_bus,
+    size=fx.InvestParameters(
+        fixed_size=100,  # 100 kW or nothing
+        effects_of_investment={'costs': 25000},      # Fixed: €25k
+        effects_of_investment_per_size={'costs': 1200},  # €1200/kW
+    ),
 )
 ```
 
 ### Continuous Sizing (Battery)
-```python
-battery_investment = InvestParameters(
-    minimum_size=10,  # kWh
-    maximum_size=1000,
-    mandatory=False,  # Optional investment (default)
-    effects_of_investment={'cost': 5000},  # Grid connection
-    effects_of_investment_per_size={'cost': 600},  # €600/kWh
-)
-```
 
-### With Retirement Costs (Replacement)
 ```python
-boiler_replacement = InvestParameters(
-    minimum_size=50,  # kW
-    maximum_size=200,
-    mandatory=False,  # Optional investment (default)
-    effects_of_investment={'cost': 15000},
-    effects_of_investment_per_size={'cost': 400},
-    effects_of_retirement={'cost': 8000},  # Demolition if not replaced
-)
-```
-
-### Economies of Scale (Piecewise)
-```python
-battery_investment = InvestParameters(
-    minimum_size=10,
-    maximum_size=1000,
-    piecewise_effects_of_investment=PiecewiseEffects(
-        piecewise_origin=Piecewise([
-            Piece(0, 100),    # Small
-            Piece(100, 500),  # Medium
-            Piece(500, 1000), # Large
-        ]),
-        piecewise_shares={
-            'cost': Piecewise([
-                Piece(800, 750),  # €800-750/kWh
-                Piece(750, 600),  # €750-600/kWh
-                Piece(600, 500),  # €600-500/kWh (bulk discount)
-            ])
-        },
+battery = fx.Storage(
+    ...,
+    capacity_in_flow_hours=fx.InvestParameters(
+        minimum_size=10,   # At least 10 kWh
+        maximum_size=1000, # At most 1 MWh
+        effects_of_investment={'costs': 5000},       # Grid connection
+        effects_of_investment_per_size={'costs': 600},  # €600/kWh
     ),
 )
 ```
+
+### With Retirement Costs
+
+```python
+boiler = fx.LinearConverter(
+    ...,
+    inputs=[fx.Flow(
+        label='gas',
+        bus=gas_bus,
+        size=fx.InvestParameters(
+            minimum_size=50,
+            maximum_size=200,
+            effects_of_investment_per_size={'costs': 400},
+            effects_of_retirement={'costs': 8000},  # Demolition if not replaced
+        ),
+    )],
+    ...
+)
+```
+
+### Mandatory Investment
+
+```python
+upgrade = fx.Flow(
+    label='grid',
+    bus=elec_bus,
+    size=fx.InvestParameters(
+        minimum_size=100,
+        maximum_size=500,
+        mandatory=True,  # Must invest
+        effects_of_investment_per_size={'costs': 1000},
+    ),
+)
+```
+
+## Cost Annualization
+
+Investment costs must be annualized to match the optimization time horizon:
+
+$$
+c_{annual} = \frac{c_{capital} \cdot r}{1 - (1 + r)^{-n}}
+$$
+
+Where $r$ is the discount rate and $n$ is the lifetime (years).
+
+!!! example "€1M equipment, 20 years, 5% discount"
+    $c_{annual} = \frac{1{,}000{,}000 \cdot 0.05}{1 - 1.05^{-20}} \approx €80{,}243/year$
+
+## Implementation Details
+
+- **Feature Class:** [`InvestParameters`][flixopt.interface.InvestParameters]
+- **Model Class:** [`InvestmentModel`][flixopt.features.InvestmentModel]
+
+## See Also
+
+- [Flow](../elements/Flow.md) — Using investment in flows
+- [Storage](../elements/Storage.md) — Storage capacity investment
+- [Piecewise](Piecewise.md) — Non-linear cost structures
+- [Effects & Objective](../effects-penalty-objective.md) — How costs are tracked

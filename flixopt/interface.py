@@ -82,8 +82,14 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """
-    Define a Piecewise, consisting of a list of Pieces.
+    """Define piecewise linear approximations for modeling non-linear relationships.
+
+    Enables modeling of non-linear relationships through piecewise linear segments
+    while maintaining problem linearity. Consists of a collection of Pieces that
+    define valid ranges for variables.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
@@ -706,8 +712,7 @@ class InvestParameters(Interface):
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
@@ -1028,8 +1033,7 @@ class StatusParameters(Interface):
         - **Process Equipment**: Compressors, pumps with operational constraints
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [StatusParameters](../user-guide/mathematical-notation/features/StatusParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
 
     Args:
         effects_per_startup: Costs or impacts incurred for each transition from

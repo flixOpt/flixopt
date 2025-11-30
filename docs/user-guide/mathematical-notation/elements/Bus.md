@@ -1,49 +1,149 @@
-A Bus is a simple nodal balance between its incoming and outgoing flow rates.
+# Bus
 
-$$ \label{eq:bus_balance}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
+A Bus is a connection point where flows meet and must balance. Think of it as a junction in your system where energy or material from multiple sources combines and is distributed to multiple consumers.
+
+!!! example "Real-world examples"
+    - **Heat Bus** — where boiler output, heat pump output, and storage discharge meet building demand
+    - **Electricity Bus** — where generators, grid imports, and battery discharge meet electrical loads
+    - **Gas Bus** — connection point to the gas grid
+
+## The Balance Equation
+
+The fundamental rule: **what goes in must equal what goes out**.
+
+=== "Without Excess (Strict)"
+
+    $$
+    \sum_{f \in \mathcal{F}_{in}} p_f(t) = \sum_{f \in \mathcal{F}_{out}} p_f(t)
+    $$
+
+    At every timestep $t$, the sum of all incoming flow rates must equal the sum of all outgoing flow rates. If this can't be satisfied, the model is infeasible.
+
+=== "With Excess (Soft)"
+
+    When `excess_penalty_per_flow_hour` is set, slack variables allow imbalance:
+
+    $$
+    \sum_{f \in \mathcal{F}_{in}} p_f(t) + \phi_{in}(t) = \sum_{f \in \mathcal{F}_{out}} p_f(t) + \phi_{out}(t)
+    $$
+
+    Where:
+
+    - $\phi_{in}(t)$ — "virtual supply" to cover shortages
+    - $\phi_{out}(t)$ — "virtual demand" to absorb surplus
+
+    Both are penalized in the objective:
+
+    $$
+    \Phi_b(t) = (\phi_{in}(t) + \phi_{out}(t)) \cdot \Delta t \cdot c_\phi
+    $$
+
+!!! note "Direction matters"
+    Flows have a defined direction. An *input* to the bus means energy/material flowing **into** the bus. An *output* means flowing **out of** the bus.
+
+!!! tip "Debugging with excess"
+    If excess variables are non-zero in your solution, it means your system couldn't meet all constraints. Check:
+
+    - Is demand too high for available capacity?
+    - Are there timesteps where no supply is available?
+    - Did you forget to connect a component?
+
+## Variables
+
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
+| $\phi_{in}(t)$ | `excess_input` | Virtual supply to cover shortages | `excess_penalty_per_flow_hour` is set |
+| $\phi_{out}(t)$ | `excess_output` | Virtual demand to absorb surplus | `excess_penalty_per_flow_hour` is set |
+
+## Parameters
+
+| Symbol | Python Name | Description | Default |
+|--------|-------------|-------------|---------|
+| $c_\phi$ | `excess_penalty_per_flow_hour` | Penalty cost per unit imbalance | `1e5` |
+| $\mathcal{F}_{in}$ | - | Set of input flows | From connected flows |
+| $\mathcal{F}_{out}$ | - | Set of output flows | From connected flows |
+
+## Usage Examples
+
+### Strict Balance (No Imbalance Allowed)
+
+```python
+electricity_bus = fx.Bus(
+    label='electricity',
+    excess_penalty_per_flow_hour=None  # No slack allowed
+)
+```
+
+If balance can't be achieved, the solver returns infeasible.
+
+### Balance with Penalty (Debugging/Soft Constraints)
+
+```python
+heat_bus = fx.Bus(
+    label='heat',
+    excess_penalty_per_flow_hour=1e5  # High penalty for imbalance
+)
+```
+
+Imbalance is allowed but heavily penalized. Use this to:
+
+- Debug infeasible models
+- Model emergency scenarios
+- Allow small numerical tolerances
+
+### Time-Varying Penalty
+
+```python
+# Higher penalty during peak hours
+penalty_profile = [100, 100, 500, 500, 500, 100, 100, ...]
+
+material_bus = fx.Bus(
+    label='material',
+    excess_penalty_per_flow_hour=penalty_profile
+)
+```
+
+## How Buses Connect Components
+
+Buses don't exist in isolation — they connect components through flows:
+
+```
+                    ┌─────────┐
+     gas_in ───────►│  Gas    │
+                    │   Bus   │
+                    └────┬────┘
+                         │ gas_out
+                         ▼
+                    ┌─────────┐
+                    │ Boiler  │
+                    └────┬────┘
+                         │ heat_out
+                         ▼
+                    ┌─────────┐
+     storage_out ──►│  Heat   │◄─── heat_pump_out
+                    │   Bus   │
+                    └────┬────┘
+                         │ demand_in
+                         ▼
+                    ┌─────────┐
+                    │ Demand  │
+                    │ (Sink)  │
+                    └─────────┘
+```
+
+Each arrow is a Flow. The Bus ensures that at every timestep:
+
+$$
+heat\_pump\_out + boiler\_out + storage\_out = demand\_in
 $$
 
-Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
-This is usefull as it handles a possible ifeasiblity gently.
+## Implementation Details
 
-This changes the balance to
-
-$$ \label{eq:bus_balance-excess}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_ \text{in}}(\text{t}_i) + \phi_\text{in}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i) + \phi_\text{out}(\text{t}_i)
-$$
-
-The penalty term is defined as
-
-$$ \label{eq:bus_penalty}
-  s_{b \rightarrow \Phi}(\text{t}_i) =
-      \text a_{b \rightarrow \Phi}(\text{t}_i) \cdot \Delta \text{t}_i
-      \cdot [ \phi_\text{in}(\text{t}_i) + \phi_\text{out}(\text{t}_i) ]
-$$
-
-With:
-
-- $\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$ being the set of all incoming and outgoing flows
-- $p_{f_\text{in}}(\text{t}_i)$ and $p_{f_\text{out}}(\text{t}_i)$ being the flow-rate at time $\text{t}_i$ for flow $f_\text{in}$ and $f_\text{out}$, respectively
-- $\phi_\text{in}(\text{t}_i)$ and $\phi_\text{out}(\text{t}_i)$ being the missing or excess flow-rate at time $\text{t}_i$, respectively
-- $\text{t}_i$ being the time step
-- $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
-- $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
-
----
-
-## Implementation
-
-**Python Class:** [`Bus`][flixopt.elements.Bus]
-
-See the API documentation for implementation details and usage examples.
-
----
+- **Element Class:** [`Bus`][flixopt.elements.Bus]
+- **Model Class:** [`BusModel`][flixopt.elements.BusModel]
 
 ## See Also
 
-- [Flow](../elements/Flow.md) - Definition of flow rates in the balance
-- [Effects, Penalty & Objective](../effects-penalty-objective.md) - How penalties are included in the objective function
-- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks
+- [Flow](Flow.md) — The flows that connect to buses
+- [Effects & Objective](../effects-penalty-objective.md) — How penalties affect the objective
+- [Core Concepts: Buses](../../core-concepts.md#buses-where-things-connect) — High-level overview
