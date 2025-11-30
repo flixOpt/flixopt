@@ -5,7 +5,7 @@ $$ \label{eq:bus_balance}
   \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
 $$
 
-Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
+Optionally, a Bus can have a `imbalance_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
 This is usefull as it handles a possible ifeasiblity gently.
 
 This changes the balance to
@@ -30,7 +30,7 @@ With:
 - $\phi_\text{in}(\text{t}_i)$ and $\phi_\text{out}(\text{t}_i)$ being the virtual supply and virtual demand at time $\text{t}_i$, respectively
 - $\text{t}_i$ being the time step
 - $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
-- $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
+- $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`imbalance_penalty_per_flow_hour`)
 
 ---
 
