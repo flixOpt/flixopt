@@ -65,6 +65,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 - Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
 - Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
+- Renamed `Bus.with_excess` → `allows_imbalance`
 
 ### 🗑️ Deprecated
 
