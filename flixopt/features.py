@@ -24,16 +24,19 @@ if TYPE_CHECKING:
 
 
 class InvestmentModel(Submodel):
-    """
-    This feature model is used to model the investment of a variable.
-    It applies the corresponding bounds to the variable and the active/inactive state of the variable.
+    """Mathematical model implementation for investment decisions.
+
+    Creates optimization variables and constraints for investment sizing decisions,
+    supporting both binary and continuous sizing with comprehensive effect modeling.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         model: The optimization model instance
         label_of_element: The label of the parent (Element). Used to construct the full label of the model.
         parameters: The parameters of the feature model.
         label_of_model: The label of the model. This is needed to construct the full label of the model.
-
     """
 
     parameters: InvestParameters
@@ -147,7 +150,14 @@ class InvestmentModel(Submodel):
 
 
 class StatusModel(Submodel):
-    """Status model for equipment with binary active/inactive states"""
+    """Mathematical model implementation for binary status.
+
+    Creates optimization variables and constraints for binary status modeling,
+    state transitions, duration tracking, and operational effects.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/OnOffParameters/>
+    """
 
     def __init__(
         self,
@@ -385,6 +395,15 @@ class PieceModel(Submodel):
 
 
 class PiecewiseModel(Submodel):
+    """Mathematical model implementation for piecewise linear approximations.
+
+    Creates optimization variables and constraints for piecewise linear relationships,
+    including lambda variables, piece activation binaries, and coupling constraints.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
+    """
+
     def __init__(
         self,
         model: FlowSystemModel,

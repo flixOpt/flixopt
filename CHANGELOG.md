@@ -16,7 +16,7 @@ This contains all commits, PRs, and contributors.
 Therefore, the Changelog should focus on the user-facing changes.
 
 Please remove all irrelevant sections before releasing.
-Please keep the format of the changelog consistent with the other releases, so the extraction for mkdocs works.
+Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 ---
 
 ## [Template] - ????-??-??
@@ -49,11 +49,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
-## [Unreleased] - ????-??-??
+Until here -->
+
+## [Upcoming]
 
 **Summary**: Renamed OnOff terminology to Status terminology for better alignment with PyPSA and unit commitment standards. **All deprecated items from v4.x have been removed.**
-
-### ✨ Added
 
 ### 💥 Breaking Changes
 
@@ -212,21 +212,13 @@ A partial backwards compatibility wrapper would be misleading, so we opted for a
 - Flow parameters: `Q_fu` → use `fuel_flow`, `P_el` → use `electrical_flow`, `Q_th` → use `thermal_flow`, `Q_ab` → use `heat_source_flow`
 - Efficiency parameters: `eta` → use `thermal_efficiency`, `eta_th` → use `thermal_efficiency`, `eta_el` → use `electrical_efficiency`, `COP` → use `cop`
 
-### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
 
 ### 📝 Docs
+- Improve documentation from the ground up
 
-### 👷 Development
-
-### 🚧 Known Issues
+This is not yet publicly released!
 
 ---
-
-Until here -->
 
 ## [4.3.5] - 2025-11-29
 

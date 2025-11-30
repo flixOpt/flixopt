@@ -190,8 +190,7 @@ class Bus(Element):
     or material flows between different Components.
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [Bus](../user-guide/mathematical-notation/elements/Bus.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Bus/>
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -331,8 +330,7 @@ class Flow(Element):
         - **StatusParameters**: Used for `status_parameters` when flow has discrete states
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [Flow](../user-guide/mathematical-notation/elements/Flow.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
 
     Args:
         label: Unique flow identifier within its component.
@@ -595,6 +593,15 @@ class Flow(Element):
 
 
 class FlowModel(ElementModel):
+    """Mathematical model implementation for Flow elements.
+
+    Creates optimization variables and constraints for flow rate bounds,
+    flow-hours tracking, and load factors.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
+    """
+
     element: Flow  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Flow):
@@ -858,6 +865,15 @@ class FlowModel(ElementModel):
 
 
 class BusModel(ElementModel):
+    """Mathematical model implementation for Bus elements.
+
+    Creates optimization variables and constraints for nodal balance equations,
+    and optional excess/deficit variables with penalty costs.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Bus/>
+    """
+
     element: Bus  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Bus):

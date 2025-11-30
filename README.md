@@ -96,7 +96,7 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 ### Key Features
 
 **Multi-criteria optimization:** Model costs, emissions, resource use - any custom metric. Optimize single objectives or use weighted combinations and ε-constraints.
-→ [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-penalty-objective/)
+→ [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/)
 
 **Performance at any scale:** Choose optimization modes without changing your model - Optimization, SegmentedOptimization, or ClusteredOptimization (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
 → [Optimization modes](https://flixopt.github.io/flixopt/latest/api-reference/optimization/)

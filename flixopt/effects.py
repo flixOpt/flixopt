@@ -32,16 +32,15 @@ PENALTY_EFFECT_LABEL = 'Penalty'
 
 @register_class_for_io
 class Effect(Element):
-    """
-    Represents system-wide impacts like costs, emissions, resource consumption, or other effects.
+    """Represents system-wide impacts like costs, emissions, or resource consumption.
 
-    Effects capture the broader impacts of system operation and investment decisions beyond
-    the primary energy/material flows. Each Effect accumulates contributions from Components,
-    Flows, and other system elements. One Effect is typically chosen as the optimization
-    objective, while others can serve as constraints or tracking metrics.
+    Effects quantify impacts aggregating contributions from Elements across the FlowSystem.
+    One Effect serves as the optimization objective, while others can be constrained or tracked.
+    Supports operational and investment contributions, cross-effect relationships (e.g., carbon
+    pricing), and flexible constraint formulation.
 
-    Effects support comprehensive modeling including operational and investment contributions,
-    cross-effect relationships (e.g., carbon pricing), and flexible constraint formulation.
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -302,6 +301,16 @@ class Effect(Element):
 
 
 class EffectModel(ElementModel):
+    """Mathematical model implementation for Effects.
+
+    Creates optimization variables and constraints for effect aggregation,
+    including periodic and temporal tracking, cross-effect contributions,
+    and effect bounds.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
+    """
+
     element: Effect  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Effect):
