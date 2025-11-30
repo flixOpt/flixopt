@@ -421,7 +421,7 @@ def test_off(solver_fixture, time_steps_fixture):
 
 
 def test_startup_shutdown(solver_fixture, time_steps_fixture):
-    """Tests if the Switch On/Off Variable is correctly created and calculated in a Flow"""
+    """Tests if the startup/shutdown Variable is correctly created and calculated in a Flow"""
     flow_system = flow_system_base(time_steps_fixture)
     flow_system.add_elements(
         fx.linear_converters.Boiler(

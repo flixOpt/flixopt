@@ -947,7 +947,7 @@ class ComponentModel(ElementModel):
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
-        # Create component on variable and OnOffModel if needed
+        # Create component status variable and StatusModel if needed
         if self.element.status_parameters:
             status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
             if len(all_flows) == 1:

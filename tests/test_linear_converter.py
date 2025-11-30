@@ -378,7 +378,7 @@ class TestLinearConverterModel:
             <= 1,
         )
 
-    def test_piecewise_conversion_with_onoff(self, basic_flow_system_linopy_coords, coords_config):
+    def test_piecewise_conversion_with_status(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion and StatusParameters."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
