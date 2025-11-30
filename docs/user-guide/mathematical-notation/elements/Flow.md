@@ -31,20 +31,20 @@ Every flow has two key quantities:
         - $P = 100$, $p_{rel}^{min} = 0.3$, $p_{rel}^{max} = 1$
         - Constraint: $30 \leq p(t) \leq 100$
 
-=== "Fixed Size + On/Off"
+=== "Fixed Size + Status"
 
-    When `on_off_parameters` is specified, the flow can also be zero:
+    When `status_parameters` is specified, the flow can also be zero:
 
     $$
     s(t) \cdot P \cdot p_{rel}^{min}(t) \leq p(t) \leq s(t) \cdot P \cdot p_{rel}^{max}(t)
     $$
 
-    Where $s(t) \in \{0, 1\}$ is the binary on/off state.
+    Where $s(t) \in \{0, 1\}$ is the binary status.
 
-    - When $s(t) = 0$: $p(t) = 0$ (off)
-    - When $s(t) = 1$: $P \cdot p_{rel}^{min} \leq p(t) \leq P \cdot p_{rel}^{max}$ (on)
+    - When $s(t) = 0$: $p(t) = 0$ (inactive)
+    - When $s(t) = 1$: $P \cdot p_{rel}^{min} \leq p(t) \leq P \cdot p_{rel}^{max}$ (active)
 
-    See [OnOffParameters](../features/OnOffParameters.md) for details.
+    See [StatusParameters](../features/StatusParameters.md) for details.
 
 === "Variable Size"
 
@@ -60,12 +60,12 @@ Every flow has two key quantities:
 
     See [InvestParameters](../features/InvestParameters.md) for details.
 
-=== "Variable Size + On/Off"
+=== "Variable Size + Status"
 
     !!! warning "Work in Progress"
         This section needs review. The linearization constraints below may not be accurate.
 
-    When both `size` is `InvestParameters` and `on_off_parameters` is set:
+    When both `size` is `InvestParameters` and `status_parameters` is set:
 
     $$
     P^{min} \leq P \leq P^{max}
@@ -140,9 +140,9 @@ This matters for costs: `effects_per_flow_hour` is cost per energy (€/MWh).
 |--------|-------------|-------------|--------------|
 | $p(t)$ | `flow_rate` | Flow rate at timestep $t$ | Always |
 | $P$ | `size` | Capacity (variable) | `size` is `InvestParameters` |
-| $s(t)$ | `on_off_state` | Binary state | `on_off_parameters` set |
-| $s^{on}(t)$ | `switch_on` | Switch-on indicator | `on_off_parameters` set |
-| $s^{off}(t)$ | `switch_off` | Switch-off indicator | `on_off_parameters` set |
+| $s(t)$ | `status` | Binary status | `status_parameters` set |
+| $s^{start}(t)$ | `startup` | Startup indicator | `status_parameters` set |
+| $s^{stop}(t)$ | `shutdown` | Shutdown indicator | `status_parameters` set |
 
 ## Parameters
 
@@ -192,17 +192,17 @@ solar = fx.Flow(
 )
 ```
 
-### With On/Off Operation
+### With Status Operation
 
 ```python
 generator = fx.Flow(
     label='power',
     bus=electricity_bus,
     size=50,
-    relative_minimum=0.4,  # 40% min when ON, but can be OFF
-    on_off_parameters=fx.StatusParameters(
+    relative_minimum=0.4,  # 40% min when active, but can be inactive
+    status_parameters=fx.StatusParameters(
         effects_per_startup={'costs': 500},
-        minimum_uptime=2,
+        min_uptime=2,
     ),
 )
 ```
@@ -230,5 +230,5 @@ battery_flow = fx.Flow(
 
 - [Bus](Bus.md) — Where flows connect
 - [LinearConverter](LinearConverter.md) — Components using flows
-- [OnOffParameters](../features/OnOffParameters.md) — Binary operation
+- [StatusParameters](../features/StatusParameters.md) — Binary operation
 - [InvestParameters](../features/InvestParameters.md) — Capacity optimization

@@ -133,8 +133,8 @@ Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
 import flixopt as fx
 
 # Add penalty contributions just like any other effect
-on_off = fx.OnOffParameters(
-    effects_per_switch_on={'Penalty': 1}  # Add bias against switching on this component, without adding costs
+status = fx.StatusParameters(
+    effects_per_startup={'Penalty': 1}  # Add bias against starting this component, without adding costs
 )
 ```
 
@@ -227,8 +227,8 @@ Every FlixOpt model includes a special **Penalty Effect** $E_\Phi$ to:
 import flixopt as fx
 
 # Add penalty contributions just like any other effect
-on_off = fx.OnOffParameters(
-    effects_per_switch_on={'Penalty': 1}  # Add bias against switching on this component, without adding costs
+status = fx.StatusParameters(
+    effects_per_startup={'Penalty': 1}  # Add bias against starting this component, without adding costs
 )
 ```
 

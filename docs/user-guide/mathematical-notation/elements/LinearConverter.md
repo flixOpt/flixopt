@@ -194,14 +194,14 @@ chp = fx.linear_converters.CHP(
         inputs=[fx.Flow(label='fuel', bus=fuel_bus, size=100)],
         outputs=[fx.Flow(label='el', bus=elec_bus, size=40, relative_minimum=0.4)],
         conversion_factors=[{'fuel': 0.4, 'el': 1}],
-        on_off_parameters=fx.OnOffParameters(
-            effects_per_switch_on={'costs': 1000},
-            consecutive_on_hours_min=4,
+        status_parameters=fx.StatusParameters(
+            effects_per_startup={'costs': 1000},
+            min_uptime=4,
         ),
     )
     ```
 
-    See [OnOffParameters](../features/OnOffParameters.md).
+    See [StatusParameters](../features/StatusParameters.md).
 
 ## Implementation Details
 
@@ -213,4 +213,4 @@ chp = fx.linear_converters.CHP(
 - [Flow](Flow.md) — Input and output flows
 - [Bus](Bus.md) — Where converters connect
 - [Piecewise](../features/Piecewise.md) — Non-linear efficiency
-- [OnOffParameters](../features/OnOffParameters.md) — Binary operation
+- [StatusParameters](../features/StatusParameters.md) — Binary operation

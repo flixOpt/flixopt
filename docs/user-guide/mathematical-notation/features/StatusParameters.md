@@ -1,317 +1,173 @@
 # StatusParameters
 
-[`StatusParameters`][flixopt.interface.StatusParameters] model equipment that operates in discrete active/inactive states rather than continuous operation. This captures realistic operational constraints including startup costs, minimum run times, cycling limitations, and maintenance scheduling.
+StatusParameters define a binary status variable with operational constraints and effects.
 
-## Binary State Variable
+!!! example "Real-world examples"
+    - **Power plant** — Startup costs, minimum run time
+    - **Batch reactor** — Must run complete cycles
+    - **Chiller** — Maximum operating hours per year
 
-Equipment operation is modeled using a binary state variable:
+## Core Concept: Binary Status Variable
 
-$$\label{eq:status_state}
-s(t) \in \{0, 1\} \quad \forall t
-$$
+StatusParameters create a binary status variable $s(t) \in \{0, 1\}$:
 
-With:
+- $s(t) = 0$: Inactive
+- $s(t) = 1$: Active
 
-- $s(t) = 1$: equipment is operating (active state)
-- $s(t) = 0$: equipment is shutdown (inactive state)
+!!! note "Connection to continuous variables"
+    How this binary status connects to continuous variables (like flow rate) is defined where `status_parameters` is used. See [Flow](../elements/Flow.md) for how flows use the status to modify their bounds.
 
-This state variable controls the equipment's operational constraints and modifies flow bounds using the **bounds with state** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
+## State Transitions
 
----
+=== "Startup Detection"
 
-## State Transitions and Switching
+    Track when status changes from inactive to active:
 
-State transitions are tracked using switch variables (see [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions)):
+    $$
+    s^{start}(t) - s^{stop}(t) = s(t) - s(t-1)
+    $$
 
-$$\label{eq:status_transitions}
-s^\text{startup}(t) - s^\text{shutdown}(t) = s(t) - s(t-1) \quad \forall t > 0
-$$
+    Where:
 
-$$\label{eq:status_switch_exclusivity}
-s^\text{startup}(t) + s^\text{shutdown}(t) \leq 1 \quad \forall t
-$$
+    - $s^{start}(t) = 1$ when starting up (0 → 1)
+    - $s^{stop}(t) = 1$ when shutting down (1 → 0)
 
-With:
+=== "Startup Effects"
 
-- $s^\text{startup}(t) \in \{0, 1\}$: equals 1 when switching from inactive to active (startup)
-- $s^\text{shutdown}(t) \in \{0, 1\}$: equals 1 when switching from active to inactive (shutdown)
+    Effects incurred each time equipment starts:
 
-**Behavior:**
-- Inactive → Active: $s^\text{startup}(t) = 1, s^\text{shutdown}(t) = 0$
-- Active → Inactive: $s^\text{startup}(t) = 0, s^\text{shutdown}(t) = 1$
-- No change: $s^\text{startup}(t) = 0, s^\text{shutdown}(t) = 0$
+    $$
+    E_{startup} = \sum_t s^{start}(t) \cdot c_{startup}
+    $$
 
----
+=== "Active Hour Effects"
 
-## Effects and Costs
+    Effects while status is active:
 
-### Startup Effects
+    $$
+    E_{active} = \sum_t s(t) \cdot \Delta t \cdot c_{active}
+    $$
 
-Effects incurred when equipment starts up:
+## Duration Constraints
 
-$$\label{eq:status_switch_effects}
-E_{e,\text{switch}} = \sum_{t} s^\text{startup}(t) \cdot \text{effect}_{e,\text{switch}}
-$$
+=== "Min Uptime"
 
-With:
+    Once active, must stay active for minimum duration:
 
-- $\text{effect}_{e,\text{switch}}$ being the effect value per startup event
+    $$
+    s^{start}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} s(j) \cdot \Delta t \geq T_{up}^{min}
+    $$
 
-**Examples:**
-- Startup fuel consumption
-- Wear and tear costs
-- Labor costs for startup procedures
-- Inrush power demands
+=== "Min Downtime"
 
----
+    Once inactive, must stay inactive for minimum duration:
 
-### Running Effects
+    $$
+    s^{stop}(t) = 1 \Rightarrow \sum_{j=t}^{t+k} (1-s(j)) \cdot \Delta t \geq T_{down}^{min}
+    $$
 
-Effects incurred while equipment is operating:
+=== "Max Uptime"
 
-$$\label{eq:status_running_effects}
-E_{e,\text{run}} = \sum_{t} s(t) \cdot \Delta t \cdot \text{effect}_{e,\text{run}}
-$$
+    Cannot stay active continuously beyond limit:
 
-With:
+    $$
+    \sum_{j=t}^{t+k} s(j) \cdot \Delta t \leq T_{up}^{max}
+    $$
 
-- $\text{effect}_{e,\text{run}}$ being the effect rate per operating hour
-- $\Delta t$ being the time step duration
+=== "Active Hours"
 
-**Examples:**
-- Fixed operating and maintenance costs
-- Auxiliary power consumption
-- Consumable materials
-- Emissions while running
+    Constrain total active hours per period:
 
----
+    $$
+    H^{min} \leq \sum_t s(t) \cdot \Delta t \leq H^{max}
+    $$
 
-## Operating Hour Constraints
+=== "Startup Limit"
 
-### Total Operating Hours
+    Limit number of startups per period:
 
-Bounds on total operating time across the planning horizon:
+    $$
+    \sum_t s^{start}(t) \leq N_{start}^{max}
+    $$
 
-$$\label{eq:status_total_hours}
-h_\text{min} \leq \sum_{t} s(t) \cdot \Delta t \leq h_\text{max}
-$$
+## Variables
 
-With:
+| Symbol | Python Name | Description | When Created |
+|--------|-------------|-------------|--------------|
+| $s(t)$ | `status` | Binary status | Always |
+| $s^{start}(t)$ | `startup` | Startup indicator | Startup effects or constraints |
+| $s^{stop}(t)$ | `shutdown` | Shutdown indicator | Startup effects or constraints |
 
-- $h_\text{min}$ being the minimum total operating hours
-- $h_\text{max}$ being the maximum total operating hours
+## Parameters
 
-**Use cases:**
-- Minimum runtime requirements (contracts, maintenance)
-- Maximum runtime limits (fuel availability, permits, equipment life)
-
----
-
-### Consecutive Operating Hours
-
-**Minimum Consecutive Uptime:**
-
-Enforces minimum runtime once started using duration tracking (see [Duration Tracking](../modeling-patterns/duration-tracking.md#minimum-duration-constraints)):
-
-$$\label{eq:status_min_uptime}
-d^\text{uptime}(t) \geq (s(t-1) - s(t)) \cdot h^\text{uptime}_\text{min} \quad \forall t > 0
-$$
-
-With:
-
-- $d^\text{uptime}(t)$ being the consecutive uptime duration at time $t$
-- $h^\text{uptime}_\text{min}$ being the minimum required uptime
-
-**Behavior:**
-- When shutting down at time $t$: enforces equipment was on for at least $h^\text{uptime}_\text{min}$ prior to the switch
-- Prevents short cycling and frequent startups
-
-**Maximum Consecutive Uptime:**
-
-Limits continuous operation before requiring shutdown:
-
-$$\label{eq:status_max_uptime}
-d^\text{uptime}(t) \leq h^\text{uptime}_\text{max} \quad \forall t
-$$
-
-**Use cases:**
-- Mandatory maintenance intervals
-- Process batch time limits
-- Thermal cycling requirements
-
----
-
-### Consecutive Shutdown Hours
-
-**Minimum Consecutive Downtime:**
-
-Enforces minimum shutdown duration before restarting:
-
-$$\label{eq:status_min_downtime}
-d^\text{downtime}(t) \geq (s(t) - s(t-1)) \cdot h^\text{downtime}_\text{min} \quad \forall t > 0
-$$
-
-With:
-
-- $d^\text{downtime}(t)$ being the consecutive downtime duration at time $t$
-- $h^\text{downtime}_\text{min}$ being the minimum required downtime
-
-**Use cases:**
-- Cooling periods
-- Maintenance requirements
-- Process stabilization
-
-**Maximum Consecutive Downtime:**
-
-Limits shutdown duration before mandatory restart:
-
-$$\label{eq:status_max_downtime}
-d^\text{downtime}(t) \leq h^\text{downtime}_\text{max} \quad \forall t
-$$
-
-**Use cases:**
-- Equipment preservation requirements
-- Process stability needs
-- Contractual minimum activity levels
-
----
-
-## Cycling Limits
-
-Maximum number of startups across the planning horizon:
-
-$$\label{eq:status_max_switches}
-\sum_{t} s^\text{startup}(t) \leq n_\text{max}
-$$
-
-With:
-
-- $n_\text{max}$ being the maximum allowed number of startups
-
-**Use cases:**
-- Preventing excessive equipment wear
-- Grid stability requirements
-- Operational complexity limits
-- Maintenance budget constraints
-
----
-
-## Integration with Flow Bounds
-
-StatusParameters modify flow rate bounds by coupling them to the active/inactive state.
-
-**Without StatusParameters** (continuous operation):
-$$
-P \cdot \text{rel}_\text{lower} \leq p(t) \leq P \cdot \text{rel}_\text{upper}
-$$
-
-**With StatusParameters** (binary operation):
-$$
-s(t) \cdot P \cdot \max(\varepsilon, \text{rel}_\text{lower}) \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}
-$$
-
-Using the **bounds with state** pattern from [Bounds and States](../modeling-patterns/bounds-and-states.md#bounds-with-state).
-
-**Behavior:**
-- When $s(t) = 0$: flow is forced to zero
-- When $s(t) = 1$: flow follows normal bounds
-
----
-
-## Complete Formulation Summary
-
-For equipment with StatusParameters, the complete constraint system includes:
-
-1. **State variable:** $s(t) \in \{0, 1\}$
-2. **Switch tracking:** $s^\text{startup}(t) - s^\text{shutdown}(t) = s(t) - s(t-1)$
-3. **Switch exclusivity:** $s^\text{startup}(t) + s^\text{shutdown}(t) \leq 1$
-4. **Duration tracking:**
-
-    - On-duration: $d^\text{uptime}(t)$ following duration tracking pattern
-    - Off-duration: $d^\text{downtime}(t)$ following duration tracking pattern
-5. **Minimum uptime:** $d^\text{uptime}(t) \geq (s(t-1) - s(t)) \cdot h^\text{uptime}_\text{min}$
-6. **Maximum uptime:** $d^\text{uptime}(t) \leq h^\text{uptime}_\text{max}$
-7. **Minimum downtime:** $d^\text{downtime}(t) \geq (s(t) - s(t-1)) \cdot h^\text{downtime}_\text{min}$
-8. **Maximum downtime:** $d^\text{downtime}(t) \leq h^\text{downtime}_\text{max}$
-9. **Total hours:** $h_\text{min} \leq \sum_t s(t) \cdot \Delta t \leq h_\text{max}$
-10. **Cycling limit:** $\sum_t s^\text{startup}(t) \leq n_\text{max}$
-11. **Flow bounds:** $s(t) \cdot P \cdot \max(\varepsilon, \text{rel}_\text{lower}) \leq p(t) \leq s(t) \cdot P \cdot \text{rel}_\text{upper}$
-
----
-
-## Implementation
-
-**Python Class:** [`StatusParameters`][flixopt.interface.StatusParameters]
-
-**Key Parameters:**
-
-- `effects_per_startup`: Costs per startup event
-- `effects_per_active_hour`: Costs per hour of operation
-- `active_hours_min`, `active_hours_max`: Total runtime bounds
-- `min_uptime`, `max_uptime`: Consecutive runtime bounds
-- `min_downtime`, `max_downtime`: Consecutive shutdown bounds
-- `startup_limit`: Maximum number of startups
-- `force_startup_tracking`: Create switch variables even without limits (for tracking)
-
-See the [`StatusParameters`][flixopt.interface.StatusParameters] API documentation for complete parameter list and usage examples.
-
-**Mathematical Patterns Used:**
-- [State Transitions](../modeling-patterns/state-transitions.md#binary-state-transitions) - Switch tracking
-- [Duration Tracking](../modeling-patterns/duration-tracking.md) - Consecutive time constraints
-- [Bounds with State](../modeling-patterns/bounds-and-states.md#bounds-with-state) - Flow control
-
-**Used in:**
-- [`Flow`][flixopt.elements.Flow] - Active/inactive operation for flows
-- All components supporting discrete operational states
-
----
-
-## Examples
+| Symbol | Python Name | Description | Default |
+|--------|-------------|-------------|---------|
+| $c_{startup}$ | `effects_per_startup` | Effects per startup | None |
+| $c_{active}$ | `effects_per_active_hour` | Effects while active | None |
+| $T_{up}^{min}$ | `min_uptime` | Min consecutive uptime | None |
+| $T_{up}^{max}$ | `max_uptime` | Max consecutive uptime | None |
+| $T_{down}^{min}$ | `min_downtime` | Min consecutive downtime | None |
+| $T_{down}^{max}$ | `max_downtime` | Max consecutive downtime | None |
+| $H^{min}$ | `active_hours_min` | Min total active hours | None |
+| $H^{max}$ | `active_hours_max` | Max total active hours | None |
+| $N_{start}^{max}$ | `startup_limit` | Max startups | None |
+
+## Usage Examples
 
 ### Power Plant with Startup Costs
+
 ```python
-power_plant = StatusParameters(
-    effects_per_startup={'startup_cost': 25000},  # €25k per startup
-    effects_per_active_hour={'fixed_om': 125},  # €125/hour while running
-    min_uptime=8,  # Minimum 8-hour run
-    min_downtime=4,  # 4-hour cooling period
-    active_hours_max=6000,  # Annual limit
+generator = fx.Flow(
+    label='power',
+    bus=elec_bus,
+    size=100,
+    relative_minimum=0.4,  # 40% min when active
+    status_parameters=fx.StatusParameters(
+        effects_per_startup={'costs': 25000},  # €25k startup
+        min_uptime=8,   # Must run 8+ hours
+        min_downtime=4,  # Must stay off 4+ hours
+    ),
 )
 ```
 
-### Batch Process with Cycling Limits
+### Batch Process with Cycle Limits
+
 ```python
-batch_reactor = StatusParameters(
-    effects_per_startup={'setup_cost': 1500},
-    min_uptime=12,  # 12-hour minimum batch
-    max_uptime=24,  # 24-hour maximum batch
-    min_downtime=6,  # Cleaning time
-    startup_limit=200,  # Max 200 batches
+reactor = fx.Flow(
+    label='output',
+    bus=prod_bus,
+    size=50,
+    status_parameters=fx.StatusParameters(
+        effects_per_startup={'costs': 1500},
+        effects_per_active_hour={'costs': 200},
+        min_uptime=12,  # 12h batch
+        startup_limit=20,  # Max 20 batches
+    ),
 )
 ```
 
-### HVAC with Cycle Prevention
+### HVAC with Operating Limits
+
 ```python
-hvac = StatusParameters(
-    effects_per_startup={'compressor_wear': 0.5},
-    min_uptime=1,  # Prevent short cycling
-    min_downtime=0.5,  # 30-min minimum off
-    startup_limit=2000,  # Limit compressor starts
+chiller = fx.Flow(
+    label='cooling',
+    bus=cool_bus,
+    size=500,
+    status_parameters=fx.StatusParameters(
+        active_hours_min=2000,  # Min 2000h/year
+        active_hours_max=5000,  # Max 5000h/year
+        max_uptime=18,  # Max 18h continuous
+    ),
 )
 ```
 
-### Backup Generator with Testing Requirements
-```python
-backup_gen = StatusParameters(
-    effects_per_startup={'fuel_priming': 50},  # L diesel
-    min_uptime=0.5,  # 30-min test duration
-    max_downtime=720,  # Test every 30 days
-    active_hours_min=26,  # Weekly testing requirement
-)
-```
+## Implementation Details
 
----
+- **Feature Class:** [`StatusParameters`][flixopt.interface.StatusParameters]
+- **Model Class:** [`StatusModel`][flixopt.features.StatusModel]
 
-## Notes
+## See Also
 
-**Time Series Boundary:** The final time period constraints for min_uptime/max and min_downtime/max are not enforced at the end of the planning horizon. This allows optimization to end with ongoing campaigns that may be shorter/longer than specified, as they extend beyond the modeled period.
+- [Flow](../elements/Flow.md) — How flows use status
+- [InvestParameters](InvestParameters.md) — Combining with investment
+- [Effects & Objective](../effects-penalty-objective.md) — How effects are tracked
