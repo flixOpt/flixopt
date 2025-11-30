@@ -60,7 +60,7 @@ $$
 Pass a list for time-dependent conversion:
 
 ```python
-cop = [3.0, 3.2, 3.5, 4.0, 3.8, ...]  # Varies with ambient temperature
+cop = np.array([3.0, 3.2, 3.5, 4.0, 3.8, ...])  # Varies with ambient temperature
 
 hp = fx.LinearConverter(
     ...,
@@ -98,7 +98,9 @@ chp = fx.linear_converters.CHP(
 
 ## Adding Features
 
-=== "On/Off Operation"
+=== "Status"
+
+    A component is active when any of its flows is non-zero. Add startup costs, minimum run times:
 
     ```python
     gen = fx.LinearConverter(
