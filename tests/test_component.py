@@ -82,7 +82,7 @@ class TestComponentModel:
             fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.3, relative_maximum=ub_out2, size=300),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, status_parameters=fx.StatusParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -92,18 +92,18 @@ class TestComponentModel:
             {
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|status',
+                'TestComponent(In1)|active_hours',
                 'TestComponent(Out1)|flow_rate',
                 'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|on',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|status',
+                'TestComponent(Out1)|active_hours',
                 'TestComponent(Out2)|flow_rate',
                 'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|on',
-                'TestComponent(Out2)|on_hours_total',
-                'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent(Out2)|status',
+                'TestComponent(Out2)|active_hours',
+                'TestComponent|status',
+                'TestComponent|active_hours',
             },
             msg='Incorrect variables',
         )
@@ -114,18 +114,18 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|flow_rate|lb',
                 'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|on_hours_total',
-                'TestComponent|on|lb',
-                'TestComponent|on|ub',
-                'TestComponent|on_hours_total',
+                'TestComponent(Out2)|active_hours',
+                'TestComponent|status|lb',
+                'TestComponent|status|ub',
+                'TestComponent|active_hours',
             },
             msg='Incorrect constraints',
         )
@@ -138,36 +138,39 @@ class TestComponentModel:
             model['TestComponent(Out2)|flow_rate'],
             model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(
+            model['TestComponent(Out2)|status'], model.add_variables(binary=True, coords=model.get_coords())
+        )
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
-            model.variables['TestComponent(Out2)|flow_rate'] >= model.variables['TestComponent(Out2)|on'] * 0.3 * 300,
+            model.variables['TestComponent(Out2)|flow_rate']
+            >= model.variables['TestComponent(Out2)|status'] * 0.3 * 300,
         )
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
+            <= model.variables['TestComponent(Out2)|status'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on|lb'],
-            model.variables['TestComponent|on']
+            model.constraints['TestComponent|status|lb'],
+            model.variables['TestComponent|status']
             >= (
-                model.variables['TestComponent(In1)|on']
-                + model.variables['TestComponent(Out1)|on']
-                + model.variables['TestComponent(Out2)|on']
+                model.variables['TestComponent(In1)|status']
+                + model.variables['TestComponent(Out1)|status']
+                + model.variables['TestComponent(Out2)|status']
             )
             / (3 + 1e-5),
         )
         assert_conequal(
-            model.constraints['TestComponent|on|ub'],
-            model.variables['TestComponent|on']
+            model.constraints['TestComponent|status|ub'],
+            model.variables['TestComponent|status']
             <= (
-                model.variables['TestComponent(In1)|on']
-                + model.variables['TestComponent(Out1)|on']
-                + model.variables['TestComponent(Out2)|on']
+                model.variables['TestComponent(In1)|status']
+                + model.variables['TestComponent(Out1)|status']
+                + model.variables['TestComponent(Out2)|status']
             )
             + 1e-5,
         )
@@ -180,7 +183,7 @@ class TestComponentModel:
         ]
         outputs = []
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, status_parameters=fx.StatusParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -190,10 +193,10 @@ class TestComponentModel:
             {
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
-                'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent(In1)|status',
+                'TestComponent(In1)|active_hours',
+                'TestComponent|status',
+                'TestComponent|active_hours',
             },
             msg='Incorrect variables',
         )
@@ -204,9 +207,9 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
-                'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent(In1)|active_hours',
+                'TestComponent|status',
+                'TestComponent|active_hours',
             },
             msg='Incorrect constraints',
         )
@@ -214,21 +217,23 @@ class TestComponentModel:
         assert_var_equal(
             model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=model.get_coords())
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(model['TestComponent(In1)|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(
+            model['TestComponent(In1)|status'], model.add_variables(binary=True, coords=model.get_coords())
+        )
 
         assert_conequal(
             model.constraints['TestComponent(In1)|flow_rate|lb'],
-            model.variables['TestComponent(In1)|flow_rate'] >= model.variables['TestComponent(In1)|on'] * 0.1 * 100,
+            model.variables['TestComponent(In1)|flow_rate'] >= model.variables['TestComponent(In1)|status'] * 0.1 * 100,
         )
         assert_conequal(
             model.constraints['TestComponent(In1)|flow_rate|ub'],
-            model.variables['TestComponent(In1)|flow_rate'] <= model.variables['TestComponent(In1)|on'] * 100,
+            model.variables['TestComponent(In1)|flow_rate'] <= model.variables['TestComponent(In1)|status'] * 100,
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on'],
-            model.variables['TestComponent|on'] == model.variables['TestComponent(In1)|on'],
+            model.constraints['TestComponent|status'],
+            model.variables['TestComponent|status'] == model.variables['TestComponent(In1)|status'],
         )
 
     def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
@@ -257,7 +262,7 @@ class TestComponentModel:
             ),
         ]
         comp = flixopt.elements.Component(
-            'TestComponent', inputs=inputs, outputs=outputs, on_off_parameters=fx.OnOffParameters()
+            'TestComponent', inputs=inputs, outputs=outputs, status_parameters=fx.StatusParameters()
         )
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
@@ -267,18 +272,18 @@ class TestComponentModel:
             {
                 'TestComponent(In1)|flow_rate',
                 'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|on',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|status',
+                'TestComponent(In1)|active_hours',
                 'TestComponent(Out1)|flow_rate',
                 'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|on',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|status',
+                'TestComponent(Out1)|active_hours',
                 'TestComponent(Out2)|flow_rate',
                 'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|on',
-                'TestComponent(Out2)|on_hours_total',
-                'TestComponent|on',
-                'TestComponent|on_hours_total',
+                'TestComponent(Out2)|status',
+                'TestComponent(Out2)|active_hours',
+                'TestComponent|status',
+                'TestComponent|active_hours',
             },
             msg='Incorrect variables',
         )
@@ -289,18 +294,18 @@ class TestComponentModel:
                 'TestComponent(In1)|total_flow_hours',
                 'TestComponent(In1)|flow_rate|lb',
                 'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|on_hours_total',
+                'TestComponent(In1)|active_hours',
                 'TestComponent(Out1)|total_flow_hours',
                 'TestComponent(Out1)|flow_rate|lb',
                 'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|on_hours_total',
+                'TestComponent(Out1)|active_hours',
                 'TestComponent(Out2)|total_flow_hours',
                 'TestComponent(Out2)|flow_rate|lb',
                 'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|on_hours_total',
-                'TestComponent|on|lb',
-                'TestComponent|on|ub',
-                'TestComponent|on_hours_total',
+                'TestComponent(Out2)|active_hours',
+                'TestComponent|status|lb',
+                'TestComponent|status|ub',
+                'TestComponent|active_hours',
             },
             msg='Incorrect constraints',
         )
@@ -313,36 +318,39 @@ class TestComponentModel:
             model['TestComponent(Out2)|flow_rate'],
             model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
         )
-        assert_var_equal(model['TestComponent|on'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(model['TestComponent(Out2)|on'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
+        assert_var_equal(
+            model['TestComponent(Out2)|status'], model.add_variables(binary=True, coords=model.get_coords())
+        )
 
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|lb'],
-            model.variables['TestComponent(Out2)|flow_rate'] >= model.variables['TestComponent(Out2)|on'] * 0.3 * 300,
+            model.variables['TestComponent(Out2)|flow_rate']
+            >= model.variables['TestComponent(Out2)|status'] * 0.3 * 300,
         )
         assert_conequal(
             model.constraints['TestComponent(Out2)|flow_rate|ub'],
             model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|on'] * 300 * upper_bound_flow_rate,
+            <= model.variables['TestComponent(Out2)|status'] * 300 * upper_bound_flow_rate,
         )
 
         assert_conequal(
-            model.constraints['TestComponent|on|lb'],
-            model.variables['TestComponent|on']
+            model.constraints['TestComponent|status|lb'],
+            model.variables['TestComponent|status']
             >= (
-                model.variables['TestComponent(In1)|on']
-                + model.variables['TestComponent(Out1)|on']
-                + model.variables['TestComponent(Out2)|on']
+                model.variables['TestComponent(In1)|status']
+                + model.variables['TestComponent(Out1)|status']
+                + model.variables['TestComponent(Out2)|status']
             )
             / (3 + 1e-5),
         )
         assert_conequal(
-            model.constraints['TestComponent|on|ub'],
-            model.variables['TestComponent|on']
+            model.constraints['TestComponent|status|ub'],
+            model.variables['TestComponent|status']
             <= (
-                model.variables['TestComponent(In1)|on']
-                + model.variables['TestComponent(Out1)|on']
-                + model.variables['TestComponent(Out2)|on']
+                model.variables['TestComponent(In1)|status']
+                + model.variables['TestComponent(Out1)|status']
+                + model.variables['TestComponent(Out2)|status']
             )
             + 1e-5,
         )
@@ -377,7 +385,7 @@ class TestComponentModel:
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
                 previous_flow_rate=in1_previous_flow_rate,
-                on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+                status_parameters=fx.StatusParameters(min_uptime=3),
             ),
         ]
         outputs = [
@@ -397,15 +405,15 @@ class TestComponentModel:
             'TestComponent',
             inputs=inputs,
             outputs=outputs,
-            on_off_parameters=fx.OnOffParameters(consecutive_on_hours_min=3),
+            status_parameters=fx.StatusParameters(min_uptime=3),
         )
         flow_system.add_elements(comp)
         create_linopy_model(flow_system)
 
         assert_conequal(
-            comp.submodel.constraints['TestComponent|consecutive_on_hours|initial'],
-            comp.submodel.variables['TestComponent|consecutive_on_hours'].isel(time=0)
-            == comp.submodel.variables['TestComponent|on'].isel(time=0) * (previous_on_hours + 1),
+            comp.submodel.constraints['TestComponent|uptime|initial'],
+            comp.submodel.variables['TestComponent|uptime'].isel(time=0)
+            == comp.submodel.variables['TestComponent|status'].isel(time=0) * (previous_on_hours + 1),
         )
 
 
@@ -438,9 +446,9 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -502,9 +510,9 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
@@ -583,9 +591,9 @@ class TestTransmissionModel:
 
         # Assertions
         assert_almost_equal_numeric(
-            transmission.in1.submodel.on_off.on.solution.values,
+            transmission.in1.submodel.status.status.solution.values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
-            'On does not work properly',
+            'Status does not work properly',
         )
 
         assert_almost_equal_numeric(

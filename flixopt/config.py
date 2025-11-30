@@ -20,7 +20,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'SUCCESS_LEVEL']
+__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -30,7 +30,7 @@ SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
 # Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '5.0.0'
+DEPRECATION_REMOVAL_VERSION = '6.0.0'
 
 
 class MultilineFormatter(logging.Formatter):
@@ -808,23 +808,3 @@ class CONFIG:
             elif hasattr(cls, key) and key != 'logging':
                 # Skip 'logging' as it requires special handling via CONFIG.Logging methods
                 setattr(cls, key, value)
-
-
-def change_logging_level(level_name: str | int) -> None:
-    """Change the logging level for the flixopt logger.
-
-    Args:
-        level_name: The logging level to set (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant).
-
-    Examples:
-        >>> change_logging_level('DEBUG')  # deprecated
-        >>> # Use this instead:
-        >>> CONFIG.Logging.enable_console('DEBUG')
-    """
-    warnings.warn(
-        f'change_logging_level is deprecated and will be removed in version {DEPRECATION_REMOVAL_VERSION} '
-        'Use CONFIG.Logging.enable_console(level) instead.',
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    CONFIG.Logging.enable_console(level_name)

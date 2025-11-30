@@ -102,7 +102,7 @@ Scenarios within a period are **operationally independent**:
 - Each scenario has its own operational variables: $p(\text{t}_i, s_1)$ and $p(\text{t}_i, s_2)$ are independent
 - Scenarios cannot exchange energy, information, or resources
 - Storage states are separate: $c(\text{t}_i, s_1) \neq c(\text{t}_i, s_2)$
-- Binary states (on/off) are independent: $s(\text{t}_i, s_1)$ vs $s(\text{t}_i, s_2)$
+- Binary states (active/inactive) are independent: $s(\text{t}_i, s_1)$ vs $s(\text{t}_i, s_2)$
 
 Scenarios are connected **only through the objective function** via weights:
 

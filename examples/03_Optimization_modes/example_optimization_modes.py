@@ -91,7 +91,7 @@ if __name__ == '__main__':
             size=95,
             relative_minimum=12 / 95,
             previous_flow_rate=20,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=1000),
+            status_parameters=fx.StatusParameters(effects_per_startup=1000),
         ),
     )
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
         'BHKW2',
         thermal_efficiency=0.58,
         electrical_efficiency=0.22,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=24000),
+        status_parameters=fx.StatusParameters(effects_per_startup=24000),
         electrical_flow=fx.Flow('P_el', bus='Strom', size=200),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=200),
         fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288, previous_flow_rate=100),

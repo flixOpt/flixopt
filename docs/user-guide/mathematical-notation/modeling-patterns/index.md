@@ -17,7 +17,7 @@ The modeling patterns are organized into three categories:
 These patterns define how optimization variables are constrained within bounds:
 
 - **Basic Bounds** - Simple upper and lower bounds on variables
-- **Bounds with State** - Binary-controlled bounds (on/off states)
+- **Bounds with State** - Binary-controlled bounds (active/inactive states)
 - **Scaled Bounds** - Bounds dependent on another variable (e.g., size)
 - **Scaled Bounds with State** - Combination of scaling and binary control
 
@@ -43,7 +43,7 @@ These patterns are used throughout FlixOpt components:
 
 - [`Flow`][flixopt.elements.Flow] uses **scaled bounds with state** for flow rate constraints
 - [`Storage`][flixopt.components.Storage] uses **basic bounds** for charge state
-- [`OnOffParameters`](../features/OnOffParameters.md) uses **state transitions** for startup/shutdown
+- [`StatusParameters`](../features/StatusParameters.md) uses **state transitions** for startup/shutdown
 - [`InvestParameters`](../features/InvestParameters.md) uses **bounds with state** for investment decisions
 
 ## Implementation

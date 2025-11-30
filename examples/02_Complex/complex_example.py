@@ -47,12 +47,12 @@ if __name__ == '__main__':
 
     # --- Define Components ---
     # 1. Define Boiler Component
-    # A gas boiler that converts fuel into thermal output, with investment and on-off parameters
+    # A gas boiler that converts fuel into thermal output, with investment and on-inactive parameters
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         thermal_efficiency=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(
-            effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
+        status_parameters=fx.StatusParameters(
+            effects_per_active_hour={Costs.label: 0, CO2.label: 1000}
         ),  # CO2 emissions per hour
         thermal_flow=fx.Flow(
             label='Q_th',  # Thermal output
@@ -69,14 +69,14 @@ if __name__ == '__main__':
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
             flow_hours_max=1e6,  # Total energy flow limit
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_min=0,  # Minimum operating hours
-                on_hours_max=1000,  # Maximum operating hours
-                consecutive_on_hours_max=10,  # Max consecutive operating hours
-                consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
-                consecutive_off_hours_max=10,  # Max consecutive off hours
-                effects_per_switch_on=0.01,  # Cost per switch-on
-                switch_on_max=1000,  # Max number of starts
+            status_parameters=fx.StatusParameters(
+                active_hours_min=0,  # Minimum operating hours
+                active_hours_max=1000,  # Maximum operating hours
+                max_uptime=10,  # Max consecutive operating hours
+                min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
+                max_downtime=10,  # Max consecutive inactive hours
+                effects_per_startup={Costs.label: 0.01},  # Cost per startup
+                startup_limit=1000,  # Max number of starts
             ),
         ),
         fuel_flow=fx.Flow(label='Q_fu', bus='Gas', size=200),
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         'BHKW2',
         thermal_efficiency=0.5,
         electrical_efficiency=0.4,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
         electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
         fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
         piecewise_conversion=piecewise_conversion,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
     )
 
     # 4. Define Storage Component
