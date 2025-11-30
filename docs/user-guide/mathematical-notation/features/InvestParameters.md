@@ -23,16 +23,18 @@ battery = fx.Storage(
 
 ## Investment Modes
 
+By default, investment is **optional** — the optimizer can choose $P = 0$ (don't invest).
+
 === "Continuous"
 
-    Choose size within range:
+    Choose size within range (or zero):
 
     ```python
     fx.InvestParameters(
         minimum_size=10,
         maximum_size=1000,
     )
-    # → 10 ≤ P ≤ 1000
+    # → P = 0  OR  10 ≤ P ≤ 1000
     ```
 
 === "Binary"
@@ -46,20 +48,9 @@ battery = fx.Storage(
     # → P ∈ {0, 100}
     ```
 
-=== "Optional"
-
-    Can choose not to invest ($P = 0$ allowed):
-
-    ```python
-    fx.InvestParameters(
-        minimum_size=0,  # Zero allowed
-        maximum_size=1000,
-    )
-    ```
-
 === "Mandatory"
 
-    Must invest (no binary variable):
+    Force investment with `mandatory=True` — zero not allowed:
 
     ```python
     fx.InvestParameters(
@@ -67,6 +58,7 @@ battery = fx.Storage(
         maximum_size=200,
         mandatory=True,
     )
+    # → 50 ≤ P ≤ 200 (no zero option)
     ```
 
 ---
