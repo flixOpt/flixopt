@@ -393,6 +393,7 @@ $$
 
 Grid import limited to 500 kW at any timestep.
 Where:
+
 - $\mathcal{S}$ is the set of scenarios
 - $w_s$ is the weight for scenario $s$ (typically scenario probability)
 - Periodic effects are **shared across scenarios**: $E_{\Omega,\text{per}}$ and $E_{\Phi,\text{per}}$ (same for all $s$)
@@ -429,6 +430,7 @@ $$
 
 Optimize total costs while respecting €1M investment budget.
 Where:
+
 - $\mathcal{Y}$ is the set of periods (e.g., years)
 - $w_y$ is the weight for period $y$ (typically annual discount factor)
 - Each period $y$ has **independent** periodic and temporal effects (including penalty)
@@ -446,6 +448,7 @@ $$
 
 **Key principle:** Investment decisions (periodic effects) are shared across scenarios within a period, while operational effects are scenario-specific.
 Where:
+
 - $\mathcal{S}$ is the set of scenarios
 - $\mathcal{Y}$ is the set of periods
 - $w_y$ is the period weight (for periodic effects)

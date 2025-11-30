@@ -200,9 +200,9 @@ generator = fx.Flow(
     bus=electricity_bus,
     size=50,
     relative_minimum=0.4,  # 40% min when ON, but can be OFF
-    on_off_parameters=fx.OnOffParameters(
-        effects_per_switch_on={'costs': 500},
-        consecutive_on_hours_min=2,
+    on_off_parameters=fx.StatusParameters(
+        effects_per_startup={'costs': 500},
+        minimum_uptime=2,
     ),
 )
 ```

@@ -11,6 +11,7 @@ $$\label{eq:basic_bounds}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $\text{lower}$ being the lower bound (constant or time-dependent)
 - $\text{upper}$ being the upper bound (constant or time-dependent)
@@ -25,13 +26,14 @@ With:
 
 ## Bounds with State
 
-When a variable should only be non-zero if a binary state variable is active (e.g., on/off operation, investment decisions), the bounds are controlled by the state:
+When a variable should only be non-zero if a binary state variable is active (e.g., active/inactive operation, investment decisions), the bounds are controlled by the state:
 
 $$\label{eq:bounds_with_state}
 s \cdot \max(\varepsilon, \text{lower}) \leq v \leq s \cdot \text{upper}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $s \in \{0, 1\}$ being the binary state variable
 - $\text{lower}$ being the lower bound when active
@@ -45,7 +47,7 @@ With:
 **Implementation:** [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state]
 
 **Used in:**
-- Flow rates with on/off operation (see [OnOffParameters](../features/OnOffParameters.md))
+- Flow rates with active/inactive operation (see [StatusParameters](../features/StatusParameters.md))
 - Investment size decisions (see [InvestParameters](../features/InvestParameters.md))
 
 ---
@@ -59,6 +61,7 @@ v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \t
 $$
 
 With:
+
 - $v$ being the optimization variable (e.g., flow rate)
 - $v_\text{scale}$ being the scaling variable (e.g., component size)
 - $\text{rel}_\text{lower}$ being the relative lower bound factor (typically 0)
@@ -78,7 +81,7 @@ With:
 
 ## Scaled Bounds with State
 
-Combining scaled bounds with binary state control requires a Big-M formulation to handle both the scaling and the on/off behavior:
+Combining scaled bounds with binary state control requires a Big-M formulation to handle both the scaling and the active/inactive behavior:
 
 $$\label{eq:scaled_bounds_with_state_1}
 (s - 1) \cdot M_\text{misc} + v_\text{scale} \cdot \text{rel}_\text{lower} \leq v \leq v_\text{scale} \cdot \text{rel}_\text{upper}
@@ -89,6 +92,7 @@ s \cdot M_\text{lower} \leq v \leq s \cdot M_\text{upper}
 $$
 
 With:
+
 - $v$ being the optimization variable
 - $v_\text{scale}$ being the scaling variable
 - $s \in \{0, 1\}$ being the binary state variable
@@ -107,8 +111,8 @@ Where $v_\text{scale,max}$ and $v_\text{scale,min}$ are the maximum and minimum 
 **Implementation:** [`BoundingPatterns.scaled_bounds_with_state()`][flixopt.modeling.BoundingPatterns.scaled_bounds_with_state]
 
 **Used in:**
-- Flow rates with on/off operation and investment sizing
-- Components combining [OnOffParameters](../features/OnOffParameters.md) and [InvestParameters](../features/InvestParameters.md)
+- Flow rates with active/inactive operation and investment sizing
+- Components combining [StatusParameters](../features/StatusParameters.md) and [InvestParameters](../features/InvestParameters.md)
 
 ---
 
@@ -127,6 +131,7 @@ $$\label{eq:expression_tracking_bounds}
 $$
 
 With:
+
 - $v_\text{tracker}$ being the auxiliary tracking variable
 - $\text{expression}$ being a linear expression of other variables
 - $\text{lower}, \text{upper}$ being optional bounds on the tracker
@@ -149,6 +154,7 @@ $$\label{eq:mutual_exclusivity}
 $$
 
 With:
+
 - $s_i(t) \in \{0, 1\}$ being binary state variables
 - $\text{tolerance}$ being the maximum number of simultaneously active states (typically 1)
 - $t$ being the time index

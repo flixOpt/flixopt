@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: ["*"]
+    branches: ["**"]
   workflow_dispatch:
-  workflow_call:  # Allow release.yaml to call this workflow
+  workflow_call:  # Allow release.yaml to call this workflow.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

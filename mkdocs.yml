@@ -35,7 +35,7 @@ nav:
       - Effects & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
       - Features:
         - Investment: user-guide/mathematical-notation/features/InvestParameters.md
-        - On/Off Operation: user-guide/mathematical-notation/features/OnOffParameters.md
+        - Status: user-guide/mathematical-notation/features/StatusParameters.md
         - Piecewise Linearization: user-guide/mathematical-notation/features/Piecewise.md
       - Dimensions: user-guide/mathematical-notation/dimensions.md
       - Modeling Patterns:
