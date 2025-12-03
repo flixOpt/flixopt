@@ -554,14 +554,23 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - filter by label substring instead::
+            - No filtering parameters - filter using these alternatives::
 
                 # Select specific flows by label
                 ds = results.plot.all_flow_rates
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
                 # Filter by substring in label
-                [v for v in ds.data_vars if 'Boiler' in v]
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
         warnings.warn(
             'results.flow_rates() is deprecated. '
@@ -599,14 +608,23 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - filter by label substring instead::
+            - No filtering parameters - filter using these alternatives::
 
                 # Select specific flows by label
                 ds = results.plot.all_flow_hours
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
                 # Filter by substring in label
-                [v for v in ds.data_vars if 'Boiler' in v]
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
 
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
@@ -656,14 +674,23 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - filter by label substring instead::
+            - No filtering parameters - filter using these alternatives::
 
                 # Select specific flows by label
                 ds = results.plot.all_sizes
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
                 # Filter by substring in label
-                [v for v in ds.data_vars if 'Boiler' in v]
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
         warnings.warn(
             'results.sizes() is deprecated. '
@@ -752,9 +779,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         if include_flows:
             if element not in self.components:
                 raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-            flows = [
-                label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
-            ]
+            flows = self.components[element].inputs + self.components[element].outputs
             return xr.merge(
                 [ds]
                 + [
@@ -831,9 +856,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             if include_flows:
                 if element not in self.components:
                     raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-                flows = [
-                    label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
-                ]
+                flows = self.components[element].inputs + self.components[element].outputs
                 for flow in flows:
                     label = f'{flow}->{target_effect}({mode})'
                     if label in self.solution:
@@ -1244,6 +1267,16 @@ class _NodeResults(_ElementResults):
         # Plot accessor for new plotting API
         self.plot = ElementPlotAccessor(self)
 
+    @property
+    def _input_vars(self) -> list[str]:
+        """Variable names for inputs (flow labels + |flow_rate suffix)."""
+        return [f'{label}|flow_rate' if '|' not in label else label for label in self.inputs]
+
+    @property
+    def _output_vars(self) -> list[str]:
+        """Variable names for outputs (flow labels + |flow_rate suffix)."""
+        return [f'{label}|flow_rate' if '|' not in label else label for label in self.outputs]
+
     def plot_node_balance(
         self,
         save: bool | pathlib.Path = False,
@@ -1477,14 +1510,14 @@ class _NodeResults(_ElementResults):
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         inputs = sanitize_dataset(
-            ds=self.solution[self.inputs] * self._results.hours_per_timestep,
+            ds=self.solution[self._input_vars] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
             drop_suffix='|',
         )
         outputs = sanitize_dataset(
-            ds=self.solution[self.outputs] * self._results.hours_per_timestep,
+            ds=self.solution[self._output_vars] * self._results.hours_per_timestep,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
@@ -1594,18 +1627,18 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
-        ds = self.solution[self.inputs + self.outputs]
+        ds = self.solution[self._input_vars + self._output_vars]
 
         ds = sanitize_dataset(
             ds=ds,
             threshold=threshold,
             timesteps=self._results.timesteps_extra if with_last_timestep else None,
             negate=(
-                self.outputs + self.inputs
+                self._output_vars + self._input_vars
                 if negate_outputs and negate_inputs
-                else self.outputs
+                else self._output_vars
                 if negate_outputs
-                else self.inputs
+                else self._input_vars
                 if negate_inputs
                 else None
             ),
@@ -1862,17 +1895,17 @@ class ComponentResults(_NodeResults):
         """
         if not self.is_storage:
             raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
-        variable_names = self.inputs + self.outputs + [self._charge_state]
+        variable_names = self._input_vars + self._output_vars + [self._charge_state]
         return sanitize_dataset(
             ds=self.solution[variable_names],
             threshold=threshold,
             timesteps=self._results.timesteps_extra,
             negate=(
-                self.outputs + self.inputs
+                self._output_vars + self._input_vars
                 if negate_outputs and negate_inputs
-                else self.outputs
+                else self._output_vars
                 if negate_outputs
-                else self.inputs
+                else self._input_vars
                 if negate_inputs
                 else None
             ),

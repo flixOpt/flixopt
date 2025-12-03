@@ -917,8 +917,9 @@ class BusModel(ElementModel):
             )
 
     def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+        inputs = [flow.label_full for flow in self.element.inputs]
+        outputs = [flow.label_full for flow in self.element.outputs]
+        # Virtual supply/demand are variables, not flows - keep their full variable names
         if self.virtual_supply is not None:
             inputs.append(self.virtual_supply.name)
         if self.virtual_demand is not None:
@@ -996,8 +997,8 @@ class ComponentModel(ElementModel):
     def results_structure(self):
         return {
             **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
+            'inputs': [flow.label_full for flow in self.element.inputs],
+            'outputs': [flow.label_full for flow in self.element.outputs],
             'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }
 

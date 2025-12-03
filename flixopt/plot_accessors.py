@@ -589,33 +589,38 @@ class PlotAccessor:
         # Get node results
         node_results = self._results[node]
 
-        # Get all flow variable names
-        all_flows = node_results.inputs + node_results.outputs
+        # Get all flow labels (inputs/outputs now store flow labels, not variable names)
+        all_flow_labels = node_results.inputs + node_results.outputs
 
-        # Apply include/exclude filtering
-        filtered_flows = _filter_by_pattern(all_flows, include, exclude)
+        # Apply include/exclude filtering on flow labels
+        filtered_labels = _filter_by_pattern(all_flow_labels, include, exclude)
 
-        if not filtered_flows:
+        if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for node {node}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Determine which are inputs/outputs after filtering
-        inputs = [f for f in filtered_flows if f in node_results.inputs]
-        outputs = [f for f in filtered_flows if f in node_results.outputs]
+        # Determine which are inputs after filtering (as flow labels)
+        input_labels = [f for f in filtered_labels if f in node_results.inputs]
+
+        # Convert flow labels to variable names for solution access
+        def label_to_var(label: str) -> str:
+            return f'{label}|flow_rate' if '|' not in label else label
+
+        filtered_vars = [label_to_var(label) for label in filtered_labels]
+        input_vars = [label_to_var(label) for label in input_labels]
 
         # Get the data
-        ds = node_results.solution[filtered_flows]
+        ds = node_results.solution[filtered_vars]
 
         # Apply unit conversion
         if unit == 'flow_hours':
             ds = ds * self._results.hours_per_timestep
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
-            # Update inputs/outputs lists with new names
-            inputs = [i.replace('flow_rate', 'flow_hours') for i in inputs]
-            outputs = [o.replace('flow_rate', 'flow_hours') for o in outputs]
+            # Update input_vars with new names for negation
+            input_vars = [v.replace('flow_rate', 'flow_hours') for v in input_vars]
 
         # Negate inputs (convention: inputs are negative in balance plot)
-        for var in inputs:
+        for var in input_vars:
             if var in ds:
                 ds[var] = -ds[var]
 
