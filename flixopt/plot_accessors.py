@@ -1116,52 +1116,52 @@ class PlotAccessor:
             >>> results.plot.sankey(timestep=100)
             >>> results.plot.sankey(select={'scenario': 'base'})  # Single scenario
         """
-        # Get cached flow hours (energy, not power - appropriate for Sankey)
-        da = self._all_flow_hours
+        # Get cached flow hours (energy, not power - appropriate for Sankey) as Dataset
+        ds = self._all_flow_hours
 
         # Apply weights before selection - this way selection automatically gets correct weighted values
         flow_system = self._results.flow_system
 
         # Apply period weights (duration of each period)
-        if 'period' in da.dims and flow_system.period_weights is not None:
-            da = da * flow_system.period_weights
+        if 'period' in ds.dims and flow_system.period_weights is not None:
+            ds = ds * flow_system.period_weights
 
         # Apply scenario weights (normalized probabilities)
-        if 'scenario' in da.dims and flow_system.scenario_weights is not None:
+        if 'scenario' in ds.dims and flow_system.scenario_weights is not None:
             scenario_weights = flow_system.scenario_weights
             scenario_weights = scenario_weights / scenario_weights.sum()  # Normalize
-            da = da * scenario_weights
+            ds = ds * scenario_weights
 
         # Apply selection
         if select:
-            valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
+            valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
             if valid_select:
-                da = da.sel(valid_select)
+                ds = ds.sel(valid_select)
 
         # Handle timestep or aggregation over time
         if timestep is not None:
             if isinstance(timestep, int):
-                da = da.isel(time=timestep)
+                ds = ds.isel(time=timestep)
             else:
-                da = da.sel(time=timestep)
-        elif 'time' in da.dims:
-            da = getattr(da, aggregate)(dim='time')
+                ds = ds.sel(time=timestep)
+        elif 'time' in ds.dims:
+            ds = getattr(ds, aggregate)(dim='time')
 
         # Sum remaining dimensions (already weighted)
-        if 'period' in da.dims:
-            da = da.sum(dim='period')
-        if 'scenario' in da.dims:
-            da = da.sum(dim='scenario')
+        if 'period' in ds.dims:
+            ds = ds.sum(dim='period')
+        if 'scenario' in ds.dims:
+            ds = ds.sum(dim='scenario')
 
         # Get flow metadata from solution attrs
         flow_attrs = self._results.solution.attrs.get('Flows', {})
 
-        # Build Sankey data
+        # Build Sankey data - iterate over dataset data variables (flow labels)
         nodes = set()
         links = {'source': [], 'target': [], 'value': [], 'label': []}
 
-        for flow_label in da.coords['flow'].values:
-            value = float(da.sel(flow=flow_label).values)
+        for flow_label in ds.data_vars:
+            value = float(ds[flow_label].values)
             if abs(value) < 1e-6:
                 continue
 
