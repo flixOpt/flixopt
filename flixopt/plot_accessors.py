@@ -603,6 +603,198 @@ class PlotAccessor:
 
         return PlotResult(data=combined_ds, figure=fig)
 
+    def charge_states(
+        self,
+        *,
+        # Data selection
+        select: SelectType | None = None,
+        # Filtering
+        include: FilterType | None = None,
+        exclude: FilterType | None = None,
+        # Visual style
+        colors: dict[str, str] | None = None,
+        # Faceting
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
+        # Display
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot charge states of all storage components.
+
+        Returns a Dataset with each storage's charge state as a variable,
+        enabling easy comparison and analysis across all storages.
+
+        Args:
+            select: xarray-style selection dict.
+            include: Only include storages containing these substrings.
+            exclude: Exclude storages containing these substrings.
+            colors: Override colors.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
+            show: Whether to display the plot.
+
+        Returns:
+            PlotResult with .data (Dataset with storage labels as variables).
+
+        Examples:
+            >>> results.plot.charge_states()  # All storage charge states
+            >>> results.plot.charge_states(include='Battery')  # Only batteries
+        """
+        # Get all storage components
+        storages = self._results.storages
+
+        if not storages:
+            logger.warning('No storage components found in results')
+            return PlotResult(data=xr.Dataset())
+
+        # Build list of storage labels
+        storage_labels = [s.label for s in storages]
+
+        # Apply include/exclude filtering
+        filtered_labels = _filter_by_pattern(storage_labels, include, exclude)
+
+        if not filtered_labels:
+            logger.warning('No storages remaining after filtering')
+            return PlotResult(data=xr.Dataset())
+
+        # Build Dataset with charge states
+        ds = xr.Dataset({label: self._results.components[label].charge_state for label in filtered_labels})
+
+        # Apply selection
+        ds = _apply_selection(ds, select)
+
+        # Resolve facets
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
+
+        # Merge colors
+        merged_colors = _merge_colors(self.colors, colors)
+
+        # Create figure
+        fig = _create_line(
+            ds,
+            colors=merged_colors,
+            title='Storage Charge States',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            **plotly_kwargs,
+        )
+
+        # Handle show
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
+    def on_states(
+        self,
+        *,
+        # Data selection
+        select: SelectType | None = None,
+        # Filtering
+        include: FilterType | None = None,
+        exclude: FilterType | None = None,
+        # Visual style
+        colorscale: str = 'viridis',
+        # Reshaping for heatmap
+        reshape: tuple[str, str] = ('D', 'h'),
+        # Faceting
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
+        # Display
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot status of all components with binary operation.
+
+        Returns a Dataset with each component's status variable,
+        displayed as a heatmap for easy pattern visualization.
+
+        Args:
+            select: xarray-style selection dict.
+            include: Only include components containing these substrings.
+            exclude: Exclude components containing these substrings.
+            colorscale: Plotly colorscale for heatmap.
+            reshape: How to reshape time axis for heatmap - (outer, inner) frequency.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
+            show: Whether to display the plot.
+
+        Returns:
+            PlotResult with .data (Dataset with component labels as variables).
+
+        Examples:
+            >>> results.plot.on_states()  # All component on/off states
+            >>> results.plot.on_states(include='Boiler')  # Only boilers
+        """
+        # Find all status variables
+        status_vars = {}
+        for var_name in self._results.solution.data_vars:
+            if var_name.endswith('|status'):
+                component_name = var_name.split('|')[0]
+                status_vars[component_name] = var_name
+
+        if not status_vars:
+            logger.warning('No status variables found in results')
+            return PlotResult(data=xr.Dataset())
+
+        # Apply include/exclude filtering on component names
+        component_names = list(status_vars.keys())
+        filtered_names = _filter_by_pattern(component_names, include, exclude)
+
+        if not filtered_names:
+            logger.warning('No components remaining after filtering')
+            return PlotResult(data=xr.Dataset())
+
+        # Build Dataset with status variables (using component name as key)
+        ds = xr.Dataset({name: self._results.solution[status_vars[name]] for name in filtered_names})
+
+        # Apply selection
+        ds = _apply_selection(ds, select)
+
+        # Convert to DataArray for heatmap
+        variable_names = list(ds.data_vars)
+        dataarrays = [ds[var] for var in variable_names]
+        da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='component'))
+
+        # Resolve facets
+        actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(
+            da.to_dataset(name='value'), facet_col, facet_row, None
+        )
+
+        # Build facet_by list
+        facet_by = []
+        if actual_facet_col:
+            facet_by.append(actual_facet_col)
+        if actual_facet_row:
+            facet_by.append(actual_facet_row)
+        # Always facet by component for heatmap
+        if 'component' not in facet_by:
+            facet_by.append('component')
+        facet_by = facet_by if facet_by else None
+
+        # Reshape data for heatmap
+        reshaped_data = plotting.reshape_data_for_heatmap(da, reshape)
+
+        # Create heatmap figure
+        fig = plotting.heatmap_with_plotly(
+            reshaped_data,
+            colors=colorscale,
+            facet_by=facet_by,
+            reshape_time=None,
+            **plotly_kwargs,
+        )
+
+        # Handle show
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
     def flows(
         self,
         *,
