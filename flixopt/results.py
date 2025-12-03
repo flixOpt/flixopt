@@ -547,8 +547,15 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a DataArray containing the flow rates of each Flow.
 
         .. deprecated::
-            Use `results.plot.all_flow_rates` instead for Dataset format,
-            or access individual flows via `results.flows['FlowLabel'].flow_rate`.
+            Use `results.plot.all_flow_rates` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate` (DataArray) instead.
+
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - use Dataset indexing instead:
+              ``results.plot.all_flow_rates[['Flow1', 'Flow2']]``
 
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
@@ -567,8 +574,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """
         warnings.warn(
             'results.flow_rates() is deprecated. '
-            'Use results.plot.all_flow_rates (Dataset with flow labels as variables) instead, '
-            "or results.flows['FlowLabel'].flow_rate for individual flows. "
+            'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
             f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
@@ -594,8 +601,15 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a DataArray containing the flow hours of each Flow.
 
         .. deprecated::
-            Use `results.plot.all_flow_hours` instead for Dataset format,
-            or access individual flows via `results.flows['FlowLabel'].flow_hours`.
+            Use `results.plot.all_flow_hours` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate * results.hours_per_timestep` instead.
+
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - use Dataset indexing instead:
+              ``results.plot.all_flow_hours[['Flow1', 'Flow2']]``
 
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
@@ -618,8 +632,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """
         warnings.warn(
             'results.flow_hours() is deprecated. '
-            'Use results.plot.all_flow_hours (Dataset with flow labels as variables) instead, '
-            "or results.flows['FlowLabel'].flow_rate * results.hours_per_timestep for individual flows. "
+            'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
             f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
@@ -638,8 +652,15 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a dataset with the sizes of the Flows.
 
         .. deprecated::
-            Use `results.plot.all_sizes` instead for Dataset format,
-            or access individual flows via `results.flows['FlowLabel'].size`.
+            Use `results.plot.all_sizes` (Dataset) or
+            `results.flows['FlowLabel'].size` (DataArray) instead.
+
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - use Dataset indexing instead:
+              ``results.plot.all_sizes[['Flow1', 'Flow2']]``
 
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
@@ -655,8 +676,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """
         warnings.warn(
             'results.sizes() is deprecated. '
-            'Use results.plot.all_sizes (Dataset with flow labels as variables) instead, '
-            "or results.flows['FlowLabel'].size for individual flows. "
+            'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
             f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
