@@ -18,7 +18,7 @@ We believe optimization modeling should be **approachable for beginners** yet **
 ## 🔮 Medium-term (6-12 months)
 
 - **Modeling to Generate Alternatives (MGA)** - Built-in support for exploring near-optimal solution spaces to produce more robust, diverse solutions under uncertainty. See [PyPSA](https://docs.pypsa.org/latest/user-guide/optimization/modelling-to-generate-alternatives/) and [Calliope](https://calliope.readthedocs.io/en/latest/examples/modes/) for reference implementations
-- **Advanced stochastic optimization** - Build sophisticated new `Calculation` classes to perform different stochastic optimization approaches, like PyPSA's [two-stage stochastic programming and risk preferences with Conditional Value-at-Risk (CVaR)](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
+- **Advanced stochastic optimization** - Build sophisticated new `Optimization` classes to perform different stochastic optimization approaches, like PyPSA's [two-stage stochastic programming and risk preferences with Conditional Value-at-Risk (CVaR)](https://docs.pypsa.org/latest/user-guide/optimization/stochastic/)
 - **Enhanced component library** - More pre-built, domain-specific components (sector coupling, hydrogen systems, thermal networks, demand-side management)
 
 ## 🌟 Long-term (12+ months)

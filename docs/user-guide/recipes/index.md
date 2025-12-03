@@ -28,7 +28,7 @@ Unlike full examples, recipes will be focused snippets showing a single concept.
 - **Data Manipulation** - Common xarray operations for parameterization and analysis
 - **Investment Optimization** - Size optimization strategies
 - **Renewable Integration** - Solar, wind capacity optimization
-- **On/Off Constraints** - Minimum runtime, startup costs
+- **Status Constraints** - Minimum runtime, startup costs
 - **Large-Scale Problems** - Segmented and aggregated calculations
 - **Custom Constraints** - Extend models with linopy
 - **Domain-Specific Patterns** - District heating, microgrids, industrial processes

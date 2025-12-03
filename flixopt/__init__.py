@@ -14,10 +14,7 @@ except (PackageNotFoundError, TypeError):
 
 # Import commonly used classes and functions
 from . import linear_converters, plotting, results, solvers
-
-# Import old Calculation classes for backwards compatibility (deprecated)
-from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalculation
-from .clustering import AggregationParameters, ClusteringParameters  # AggregationParameters is deprecated
+from .clustering import ClusteringParameters
 from .components import (
     LinearConverter,
     Sink,
@@ -26,20 +23,17 @@ from .components import (
     Storage,
     Transmission,
 )
-from .config import CONFIG, change_logging_level
+from .config import CONFIG
 from .core import TimeSeriesData
 from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
-
-# Import new Optimization classes
+from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
 
 __all__ = [
     'TimeSeriesData',
     'CONFIG',
-    'change_logging_level',
     'Flow',
     'Bus',
     'Effect',
@@ -51,22 +45,16 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
-    # New Optimization classes (preferred)
     'Optimization',
     'ClusteredOptimization',
     'SegmentedOptimization',
-    # Old Calculation classes (deprecated, for backwards compatibility)
-    'FullCalculation',
-    'AggregatedCalculation',
-    'SegmentedCalculation',
     'InvestParameters',
-    'OnOffParameters',
+    'StatusParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
     'ClusteringParameters',
-    'AggregationParameters',  # Deprecated, use ClusteringParameters
     'plotting',
     'results',
     'linear_converters',

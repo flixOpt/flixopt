@@ -8,3 +8,7 @@ venv/
 .DS_Store
 lib/
 temp-plot.html
+.cache
+site/
+*.egg-info
+uv.lock

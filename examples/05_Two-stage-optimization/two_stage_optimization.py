@@ -57,16 +57,14 @@ if __name__ == '__main__':
                 ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
+                status_parameters=fx.StatusParameters(effects_per_startup=300),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
-            on_off_parameters=fx.OnOffParameters(
-                effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10
-            ),
+            status_parameters=fx.StatusParameters(effects_per_startup=1_000, min_uptime=10, min_downtime=10),
             electrical_flow=fx.Flow('P_el', bus='Strom'),
             thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
             fuel_flow=fx.Flow(

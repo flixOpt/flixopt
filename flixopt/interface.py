@@ -1,19 +1,18 @@
 """
-This module contains classes to collect Parameters for the Investment and OnOff decisions.
+This module contains classes to collect Parameters for the Investment and Status decisions.
 These are tightly connected to features.py
 """
 
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -83,8 +82,14 @@ class Piece(Interface):
 
 @register_class_for_io
 class Piecewise(Interface):
-    """
-    Define a Piecewise, consisting of a list of Pieces.
+    """Define piecewise linear approximations for modeling non-linear relationships.
+
+    Enables modeling of non-linear relationships through piecewise linear segments
+    while maintaining problem linearity. Consists of a collection of Pieces that
+    define valid ranges for variables.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
@@ -414,7 +419,7 @@ class PiecewiseConversion(Interface):
         operate in certain ranges (e.g., minimum loads, unstable regions).
 
         **Discrete Modes**: Use pieces with identical start/end values to model
-        equipment with fixed operating points (e.g., on/off, discrete speeds).
+        equipment with fixed operating points (e.g., on/inactive, discrete speeds).
 
         **Efficiency Changes**: Coordinate input and output pieces to reflect
         changing conversion efficiency across operating ranges.
@@ -707,8 +712,7 @@ class InvestParameters(Interface):
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
@@ -730,18 +734,6 @@ class InvestParameters(Interface):
             Dict: {'effect_name': value}.
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
             For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
-
-    Deprecated Args:
-        fix_effects: **Deprecated**. Use `effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
-            Will be removed in version 5.0.0.
-        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
-            Will be removed in version 5.0.0.
-        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-            Will be removed in version 5.0.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -899,36 +891,7 @@ class InvestParameters(Interface):
         effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: Numeric_PS | tuple[int, int] | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'fix_effects', 'effects_of_investment', effects_of_investment
-        )
-        effects_of_investment_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
-        )
-        effects_of_retirement = self._handle_deprecated_kwarg(
-            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
-        )
-        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
-        )
-        # For mandatory parameter with non-None default, disable conflict checking
-        if 'optional' in kwargs:
-            warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        mandatory = self._handle_deprecated_kwarg(
-            kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
         self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
         self.fixed_size = fixed_size
@@ -1007,74 +970,6 @@ class InvestParameters(Interface):
         self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
 
     @property
-    def optional(self) -> bool:
-        """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
-        import warnings
-
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return not self.mandatory
-
-    @optional.setter
-    def optional(self, value: bool):
-        """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.mandatory = not value
-
-    @property
-    def fix_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment instead."""
-        warnings.warn(
-            f'The fix_effects property is deprecated. Use effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment
-
-    @property
-    def specific_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment_per_size instead."""
-        warnings.warn(
-            f'The specific_effects property is deprecated. Use effects_of_investment_per_size instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment_per_size
-
-    @property
-    def divest_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_retirement instead."""
-        warnings.warn(
-            f'The divest_effects property is deprecated. Use effects_of_retirement instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_retirement
-
-    @property
-    def piecewise_effects(self) -> PiecewiseEffects | None:
-        """Deprecated property. Use piecewise_effects_of_investment instead."""
-        warnings.warn(
-            f'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.piecewise_effects_of_investment
-
-    @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
 
@@ -1116,19 +1011,19 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
-class OnOffParameters(Interface):
-    """Define operational constraints and effects for binary on/off equipment behavior.
+class StatusParameters(Interface):
+    """Define operational constraints and effects for binary status equipment behavior.
 
-    This class models equipment that operates in discrete states (on/off) rather than
+    This class models equipment that operates in discrete states (active/inactive) rather than
     continuous operation, capturing realistic operational constraints and associated
     costs. It handles complex equipment behavior including startup costs, minimum
     run times, cycling limitations, and maintenance scheduling requirements.
 
     Key Modeling Capabilities:
-        **Switching Costs**: One-time costs for starting equipment (fuel, wear, labor)
-        **Runtime Constraints**: Minimum and maximum continuous operation periods
-        **Cycling Limits**: Maximum number of starts to prevent excessive wear
-        **Operating Hours**: Total runtime limits and requirements over time horizon
+        **Startup Costs**: One-time costs for starting equipment (fuel, wear, labor)
+        **Runtime Constraints**: Minimum and maximum continuous operation periods (uptime/downtime)
+        **Cycling Limits**: Maximum number of startups to prevent excessive wear
+        **Operating Hours**: Total active hours limits and requirements over time horizon
 
     Typical Equipment Applications:
         - **Power Plants**: Combined cycle units, steam turbines with startup costs
@@ -1138,46 +1033,45 @@ class OnOffParameters(Interface):
         - **Process Equipment**: Compressors, pumps with operational constraints
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
 
     Args:
-        effects_per_switch_on: Costs or impacts incurred for each transition from
-            off state (var_on=0) to on state (var_on=1). Represents startup costs,
+        effects_per_startup: Costs or impacts incurred for each transition from
+            inactive state (status=0) to active state (status=1). Represents startup costs,
             wear and tear, or other switching impacts. Dictionary mapping effect
             names to values (e.g., {'cost': 500, 'maintenance_hours': 2}).
-        effects_per_running_hour: Ongoing costs or impacts while equipment operates
-            in the on state. Includes fuel costs, labor, consumables, or emissions.
+        effects_per_active_hour: Ongoing costs or impacts while equipment operates
+            in the active state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-        on_hours_min: Minimum total operating hours per period.
+        active_hours_min: Minimum total active hours across the entire time horizon per period.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
-        on_hours_max: Maximum total operating hours per period.
+        active_hours_max: Maximum total active hours across the entire time horizon per period.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
-        consecutive_on_hours_min: Minimum continuous operating duration once started.
+        min_uptime: Minimum continuous operating duration once started (unit commitment term).
             Models minimum run times due to thermal constraints, process stability,
             or efficiency considerations. Can be time-varying to reflect different
             constraints across the planning horizon.
-        consecutive_on_hours_max: Maximum continuous operating duration in one campaign.
+        max_uptime: Maximum continuous operating duration in one campaign (unit commitment term).
             Models mandatory maintenance intervals, process batch sizes, or
             equipment thermal limits requiring periodic shutdowns.
-        consecutive_off_hours_min: Minimum continuous shutdown duration between operations.
+        min_downtime: Minimum continuous shutdown duration between operations (unit commitment term).
             Models cooling periods, maintenance requirements, or process constraints
             that prevent immediate restart after shutdown.
-        consecutive_off_hours_max: Maximum continuous shutdown duration before mandatory
+        max_downtime: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-        switch_on_max: Maximum number of startup operations per period.
+        startup_limit: Maximum number of startup operations across the time horizon per period..
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).
-        force_switch_on: When True, creates switch-on variables even without explicit
-            switch_on_max constraint. Useful for tracking or reporting startup
+        force_startup_tracking: When True, creates startup variables even without explicit
+            startup_limit constraint. Useful for tracking or reporting startup
             events without enforcing limits.
 
     Note:
         **Time Series Boundary Handling**: The final time period constraints for
-        consecutive_on_hours_min/max and consecutive_off_hours_min/max are not
+        min_uptime/max_uptime and min_downtime/max_downtime are not
         enforced, allowing the optimization to end with ongoing campaigns that
         may be shorter than the specified minimums or longer than maximums.
 
@@ -1185,105 +1079,105 @@ class OnOffParameters(Interface):
         Combined cycle power plant with startup costs and minimum run time:
 
         ```python
-        power_plant_operation = OnOffParameters(
-            effects_per_switch_on={
+        power_plant_operation = StatusParameters(
+            effects_per_startup={
                 'startup_cost': 25000,  # €25,000 per startup
                 'startup_fuel': 150,  # GJ natural gas for startup
                 'startup_time': 4,  # Hours to reach full output
                 'maintenance_impact': 0.1,  # Fractional life consumption
             },
-            effects_per_running_hour={
-                'fixed_om': 125,  # Fixed O&M costs while running
+            effects_per_active_hour={
+                'fixed_om': 125,  # Fixed O&M costs while active
                 'auxiliary_power': 2.5,  # MW parasitic loads
             },
-            consecutive_on_hours_min=8,  # Minimum 8-hour run once started
-            consecutive_off_hours_min=4,  # Minimum 4-hour cooling period
-            on_hours_max=6000,  # Annual operating limit
+            min_uptime=8,  # Minimum 8-hour run once started
+            min_downtime=4,  # Minimum 4-hour cooling period
+            active_hours_max=6000,  # Annual operating limit
         )
         ```
 
         Industrial batch process with cycling limits:
 
         ```python
-        batch_reactor = OnOffParameters(
-            effects_per_switch_on={
+        batch_reactor = StatusParameters(
+            effects_per_startup={
                 'setup_cost': 1500,  # Labor and materials for startup
                 'catalyst_consumption': 5,  # kg catalyst per batch
                 'cleaning_chemicals': 200,  # L cleaning solution
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'steam': 2.5,  # t/h process steam
                 'electricity': 150,  # kWh electrical load
                 'cooling_water': 50,  # m³/h cooling water
             },
-            consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
-            consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
-            consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_max=200,  # Maximum 200 batches per period
-            on_hours_max=4000,  # Maximum production time
+            min_uptime=12,  # Minimum batch size (12 hours)
+            max_uptime=24,  # Maximum batch size (24 hours)
+            min_downtime=6,  # Cleaning and setup time
+            startup_limit=200,  # Maximum 200 batches per period
+            active_hours_max=4000,  # Maximum production time
         )
         ```
 
         HVAC system with thermostat control and maintenance:
 
         ```python
-        hvac_operation = OnOffParameters(
-            effects_per_switch_on={
+        hvac_operation = StatusParameters(
+            effects_per_startup={
                 'compressor_wear': 0.5,  # Hours of compressor life per start
                 'inrush_current': 15,  # kW peak demand on startup
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'electricity': 25,  # kW electrical consumption
                 'maintenance': 0.12,  # €/hour maintenance reserve
             },
-            consecutive_on_hours_min=1,  # Minimum 1-hour run to avoid cycling
-            consecutive_off_hours_min=0.5,  # 30-minute minimum off time
-            switch_on_max=2000,  # Limit cycling for compressor life
-            on_hours_min=2000,  # Minimum operation for humidity control
-            on_hours_max=5000,  # Maximum operation for energy budget
+            min_uptime=1,  # Minimum 1-hour run to avoid cycling
+            min_downtime=0.5,  # 30-minute minimum inactive time
+            startup_limit=2000,  # Limit cycling for compressor life
+            active_hours_min=2000,  # Minimum operation for humidity control
+            active_hours_max=5000,  # Maximum operation for energy budget
         )
         ```
 
         Backup generator with testing and maintenance requirements:
 
         ```python
-        backup_generator = OnOffParameters(
-            effects_per_switch_on={
+        backup_generator = StatusParameters(
+            effects_per_startup={
                 'fuel_priming': 50,  # L diesel for system priming
                 'wear_factor': 1.0,  # Start cycles impact on maintenance
                 'testing_labor': 2,  # Hours technician time per test
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'fuel_consumption': 180,  # L/h diesel consumption
                 'emissions_permit': 15,  # € emissions allowance cost
                 'noise_penalty': 25,  # € noise compliance cost
             },
-            consecutive_on_hours_min=0.5,  # Minimum test duration (30 min)
-            consecutive_off_hours_max=720,  # Maximum 30 days between tests
-            switch_on_max=52,  # Weekly testing limit
-            on_hours_min=26,  # Minimum annual testing (0.5h × 52)
-            on_hours_max=200,  # Maximum runtime (emergencies + tests)
+            min_uptime=0.5,  # Minimum test duration (30 min)
+            max_downtime=720,  # Maximum 30 days between tests
+            startup_limit=52,  # Weekly testing limit
+            active_hours_min=26,  # Minimum annual testing (0.5h × 52)
+            active_hours_max=200,  # Maximum runtime (emergencies + tests)
         )
         ```
 
         Peak shaving battery with cycling degradation:
 
         ```python
-        battery_cycling = OnOffParameters(
-            effects_per_switch_on={
+        battery_cycling = StatusParameters(
+            effects_per_startup={
                 'cycle_degradation': 0.01,  # % capacity loss per cycle
                 'inverter_startup': 0.5,  # kWh losses during startup
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'standby_losses': 2,  # kW standby consumption
                 'cooling': 5,  # kW thermal management
                 'inverter_losses': 8,  # kW conversion losses
             },
-            consecutive_on_hours_min=1,  # Minimum discharge duration
-            consecutive_on_hours_max=4,  # Maximum continuous discharge
-            consecutive_off_hours_min=1,  # Minimum rest between cycles
-            switch_on_max=365,  # Daily cycling limit
-            force_switch_on=True,  # Track all cycling events
+            min_uptime=1,  # Minimum discharge duration
+            max_uptime=4,  # Maximum continuous discharge
+            min_downtime=1,  # Minimum rest between cycles
+            startup_limit=365,  # Daily cycling limit
+            force_startup_tracking=True,  # Track all cycling events
         )
         ```
 
@@ -1299,160 +1193,73 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
-        effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_hours_min: Numeric_PS | None = None,
-        on_hours_max: Numeric_PS | None = None,
-        consecutive_on_hours_min: Numeric_TPS | None = None,
-        consecutive_on_hours_max: Numeric_TPS | None = None,
-        consecutive_off_hours_min: Numeric_TPS | None = None,
-        consecutive_off_hours_max: Numeric_TPS | None = None,
-        switch_on_max: Numeric_PS | None = None,
-        force_switch_on: bool = False,
-        **kwargs,
+        effects_per_startup: Effect_TPS | Numeric_TPS | None = None,
+        effects_per_active_hour: Effect_TPS | Numeric_TPS | None = None,
+        active_hours_min: Numeric_PS | None = None,
+        active_hours_max: Numeric_PS | None = None,
+        min_uptime: Numeric_TPS | None = None,
+        max_uptime: Numeric_TPS | None = None,
+        min_downtime: Numeric_TPS | None = None,
+        max_downtime: Numeric_TPS | None = None,
+        startup_limit: Numeric_PS | None = None,
+        force_startup_tracking: bool = False,
     ):
-        # Handle deprecated parameters
-        on_hours_min = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min)
-        on_hours_max = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max)
-        switch_on_max = self._handle_deprecated_kwarg(kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max)
-        self._validate_kwargs(kwargs)
-
-        self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
-        self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_min = on_hours_min
-        self.on_hours_max = on_hours_max
-        self.consecutive_on_hours_min = consecutive_on_hours_min
-        self.consecutive_on_hours_max = consecutive_on_hours_max
-        self.consecutive_off_hours_min = consecutive_off_hours_min
-        self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_max = switch_on_max
-        self.force_switch_on: bool = force_switch_on
+        self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
+        self.effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
+        self.active_hours_min = active_hours_min
+        self.active_hours_max = active_hours_max
+        self.min_uptime = min_uptime
+        self.max_uptime = max_uptime
+        self.min_downtime = min_downtime
+        self.max_downtime = max_downtime
+        self.startup_limit = startup_limit
+        self.force_startup_tracking: bool = force_startup_tracking
 
     def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_per_switch_on = self._fit_effect_coords(
+        self.effects_per_startup = self._fit_effect_coords(
             prefix=name_prefix,
-            effect_values=self.effects_per_switch_on,
-            suffix='per_switch_on',
+            effect_values=self.effects_per_startup,
+            suffix='per_startup',
         )
-        self.effects_per_running_hour = self._fit_effect_coords(
+        self.effects_per_active_hour = self._fit_effect_coords(
             prefix=name_prefix,
-            effect_values=self.effects_per_running_hour,
-            suffix='per_running_hour',
+            effect_values=self.effects_per_active_hour,
+            suffix='per_active_hour',
         )
-        self.consecutive_on_hours_min = self._fit_coords(
-            f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
+        self.min_uptime = self._fit_coords(f'{name_prefix}|min_uptime', self.min_uptime)
+        self.max_uptime = self._fit_coords(f'{name_prefix}|max_uptime', self.max_uptime)
+        self.min_downtime = self._fit_coords(f'{name_prefix}|min_downtime', self.min_downtime)
+        self.max_downtime = self._fit_coords(f'{name_prefix}|max_downtime', self.max_downtime)
+        self.active_hours_max = self._fit_coords(
+            f'{name_prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
         )
-        self.consecutive_on_hours_max = self._fit_coords(
-            f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
+        self.active_hours_min = self._fit_coords(
+            f'{name_prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
         )
-        self.consecutive_off_hours_min = self._fit_coords(
-            f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
-        )
-        self.consecutive_off_hours_max = self._fit_coords(
-            f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
-        )
-        self.on_hours_max = self._fit_coords(
-            f'{name_prefix}|on_hours_max', self.on_hours_max, dims=['period', 'scenario']
-        )
-        self.on_hours_min = self._fit_coords(
-            f'{name_prefix}|on_hours_min', self.on_hours_min, dims=['period', 'scenario']
-        )
-        self.switch_on_max = self._fit_coords(
-            f'{name_prefix}|switch_on_max', self.switch_on_max, dims=['period', 'scenario']
+        self.startup_limit = self._fit_coords(
+            f'{name_prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
         )
 
     @property
-    def use_off(self) -> bool:
-        """Proxy: whether OFF variable is required"""
-        return self.use_consecutive_off_hours
+    def use_uptime_tracking(self) -> bool:
+        """Determines whether a Variable for uptime (consecutive active hours) is needed or not"""
+        return any(param is not None for param in [self.min_uptime, self.max_uptime])
 
     @property
-    def use_consecutive_on_hours(self) -> bool:
-        """Determines whether a Variable for consecutive on hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_on_hours_min, self.consecutive_on_hours_max])
+    def use_downtime_tracking(self) -> bool:
+        """Determines whether a Variable for downtime (consecutive inactive hours) is needed or not"""
+        return any(param is not None for param in [self.min_downtime, self.max_downtime])
 
     @property
-    def use_consecutive_off_hours(self) -> bool:
-        """Determines whether a Variable for consecutive off hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_off_hours_min, self.consecutive_off_hours_max])
-
-    @property
-    def use_switch_on(self) -> bool:
-        """Determines whether a variable for switch_on is needed or not"""
-        if self.force_switch_on:
+    def use_startup_tracking(self) -> bool:
+        """Determines whether a variable for startup is needed or not"""
+        if self.force_startup_tracking:
             return True
 
         return any(
             self._has_value(param)
             for param in [
-                self.effects_per_switch_on,
-                self.switch_on_max,
+                self.effects_per_startup,
+                self.startup_limit,
             ]
         )
-
-    # Backwards compatible properties (deprecated)
-    @property
-    def on_hours_total_min(self):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_min
-
-    @on_hours_total_min.setter
-    def on_hours_total_min(self, value):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_min = value
-
-    @property
-    def on_hours_total_max(self):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_max
-
-    @on_hours_total_max.setter
-    def on_hours_total_max(self, value):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_max = value
-
-    @property
-    def switch_on_total_max(self):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.switch_on_max
-
-    @switch_on_total_max.setter
-    def switch_on_total_max(self, value):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.switch_on_max = value

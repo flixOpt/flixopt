@@ -16,7 +16,7 @@ This contains all commits, PRs, and contributors.
 Therefore, the Changelog should focus on the user-facing changes.
 
 Please remove all irrelevant sections before releasing.
-Please keep the format of the changelog consistent with the other releases, so the extraction for mkdocs works.
+Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 ---
 
 ## [Template] - ????-??-??
@@ -49,37 +49,184 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
-## [Unreleased] - ????-??-??
+Until here -->
 
-**Summary**:
+## [Upcoming]
 
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
-
-### ✨ Added
+**Summary**: Renamed OnOff terminology to Status terminology for better alignment with PyPSA and unit commitment standards. **All deprecated items from v4.x have been removed.**
 
 ### 💥 Breaking Changes
 
+**Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
+
+**Class and Constructor Parameters:**
+
+| Category | Old Name (OnOffParameters) | New Name (StatusParameters) | Notes |
+|----------|---------------------------|----------------------------|-------|
+| **Class** | `OnOffParameters` | `StatusParameters` | Main class renamed |
+| **Constructor** | `on_variable` | `status` | Model variable parameter |
+| **Constructor** | `previous_states` | `previous_status` | Initial state parameter |
+| **Parameter** | `effects_per_switch_on` | `effects_per_startup` | Startup costs/impacts |
+| **Parameter** | `effects_per_running_hour` | `effects_per_active_hour` | Operating costs/impacts |
+| **Parameter** | `on_hours_total_min` | `active_hours_min` | Minimum total operating hours |
+| **Parameter** | `on_hours_total_max` | `active_hours_max` | Maximum total operating hours |
+| **Parameter** | `consecutive_on_hours_min` | `min_uptime` | UC standard terminology |
+| **Parameter** | `consecutive_on_hours_max` | `max_uptime` | UC standard terminology |
+| **Parameter** | `consecutive_off_hours_min` | `min_downtime` | UC standard terminology |
+| **Parameter** | `consecutive_off_hours_max` | `max_downtime` | UC standard terminology |
+| **Parameter** | `switch_on_total_max` | `startup_limit` | Maximum number of startups |
+| **Parameter** | `force_switch_on` | `force_startup_tracking` | Force creation of startup variables |
+
+**Model Classes and Variables:**
+
+| Category | Old Name (OnOffModel) | New Name (StatusModel) | Notes |
+|----------|----------------------|------------------------|-------|
+| **Model Class** | `OnOffModel` | `StatusModel` | Feature model class |
+| **Variable** | `on` | `status` | Main binary state variable |
+| **Variable** | `switch_on` | `startup` | Startup event variable |
+| **Variable** | `switch_off` | `shutdown` | Shutdown event variable |
+| **Variable** | `switch_on_nr` | `startup_count` | Cumulative startup counter |
+| **Variable** | `on_hours_total` | `active_hours` | Total operating hours |
+| **Variable** | `consecutive_on_hours` | `uptime` | Consecutive active hours |
+| **Variable** | `consecutive_off_hours` | `downtime` | Consecutive inactive hours |
+| **Variable** | `off` | `inactive` | Deprecated - use `1 - status` instead |
+
+**Flow and Component API:**
+
+| Category | Old Name | New Name | Location |
+|----------|----------|----------|----------|
+| **Parameter** | `on_off_parameters` | `status_parameters` | `Flow.__init__()` |
+| **Parameter** | `on_off_parameters` | `status_parameters` | `Component.__init__()` |
+| **Property** | `flow.submodel.on_off` | `flow.submodel.status` | Flow submodel access |
+| **Property** | `component.submodel.on_off` | `component.submodel.status` | Component submodel access |
+
+**Internal Properties:**
+
+| Old Name | New Name |
+|----------|----------|
+| `use_switch_on` | `use_startup_tracking` |
+| `use_consecutive_on_hours` | `use_uptime_tracking` |
+| `use_consecutive_off_hours` | `use_downtime_tracking` |
+| `with_on_off` | `with_status` |
+| `previous_states` | `previous_status` |
+
+**Migration Guide**:
+
+Use find-and-replace to update your code with the mappings above. The functionality is identical - only naming has changed.
+
+**Important**: This is a complete renaming with no backwards compatibility. The change affects:
+- Constructor parameter names
+- Model variable names and property access
+- Results access patterns
+
+A partial backwards compatibility wrapper would be misleading, so we opted for a clean breaking change.
+
+- `Bus.imbalance_penalty_per_flow_hour` now defaults to `None` (strict balance) instead of `1e5`
+
 ### ♻️ Changed
+
+- Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
+- Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
+- Renamed `Bus.with_excess` → `allows_imbalance`
 
 ### 🗑️ Deprecated
 
+- `Bus.excess_penalty_per_flow_hour` → use `imbalance_penalty_per_flow_hour`
+
 ### 🔥 Removed
 
-### 🐛 Fixed
+**Modules removed:**
+- `calculation.py` module - Use `optimization.py` instead
 
-### 🔒 Security
+**Classes removed:**
+- `Calculation`, `FullCalculation` → Use `Optimization`
+- `AggregatedCalculation` → Use `ClusteredOptimization`
+- `SegmentedCalculation` → Use `SegmentedOptimization`
+- `Aggregation` → Use `Clustering`
+- `AggregationParameters` → Use `ClusteringParameters`
+- `AggregationModel` → Use `ClusteringModel`
+- `CalculationResults` → Use `Results`
+- `SegmentedCalculationResults` → Use `SegmentedResults`
 
-### 📦 Dependencies
+**Functions removed:**
+- `change_logging_level()` → Use `CONFIG.Logging.enable_console()`
+
+**Methods removed:**
+- `Optimization._perform_aggregation()` → Use `_perform_clustering()`
+- `Optimization.calculate_aggregation_weights()` → Use `calculate_clustering_weights()`
+
+**Parameters removed:**
+- `Optimization.active_timesteps` → Use `flow_system.sel(time=...)` or `flow_system.isel(time=...)`
+- `TimeSeriesData.from_dataarray()`: `aggregation_group` → Use `clustering_group`
+- `TimeSeriesData.from_dataarray()`: `aggregation_weight` → Use `clustering_weight`
+- `FlowSystem.weights` → Use `scenario_weights`
+- `Results.__init__()`: `flow_system` → Use `flow_system_data`
+- `Results` plotting methods: `indexer` → Use `select`
+- `Results.plot_heatmap()`: `heatmap_timeframes`, `heatmap_timesteps_per_frame` → Use `reshape_time`
+- `Results.plot_heatmap()`: `color_map` → Use `colors`
+
+**Properties removed:**
+- `FlowSystem.all_elements` → Use dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`)
+- `FlowSystem.weights` → Use `scenario_weights`
+
+**Features removed:**
+- Passing `Bus` objects directly to `Flow` → Pass bus label string instead and add Bus to FlowSystem
+- Using `Effect` objects in `EffectValues` → Use effect label strings instead
+
+**Deprecated parameters removed** (all were deprecated in v4.0.0 or earlier):
+
+**TimeSeriesData:**
+- `agg_group` → use `aggregation_group`
+- `agg_weight` → use `aggregation_weight`
+- Properties: `agg_group`, `agg_weight`
+
+**Effect:**
+- Constructor parameters: `minimum_operation` → use `minimum_temporal`, `maximum_operation` → use `maximum_temporal`, `minimum_invest` → use `minimum_periodic`, `maximum_invest` → use `maximum_periodic`, `minimum_operation_per_hour` → use `minimum_per_hour`, `maximum_operation_per_hour` → use `maximum_per_hour`
+- Properties: `minimum_operation`, `maximum_operation`, `minimum_invest`, `maximum_invest`, `minimum_operation_per_hour`, `maximum_operation_per_hour`, `minimum_total_per_period`, `maximum_total_per_period`
+
+**Flow:**
+- Constructor parameters: `flow_hours_per_period_max` → use `flow_hours_max`, `flow_hours_per_period_min` → use `flow_hours_min`, `flow_hours_total_max` → use `flow_hours_max`, `flow_hours_total_min` → use `flow_hours_min`, `total_flow_hours_max` → use `flow_hours_max_over_periods`, `total_flow_hours_min` → use `flow_hours_min_over_periods`
+- Properties: `flow_hours_total_max`, `flow_hours_total_min`
+
+**InvestParameters:**
+- Constructor parameters: `fix_effects` → use `effects_of_investment`, `specific_effects` → use `effects_of_investment_per_size`, `divest_effects` → use `effects_of_retirement`, `piecewise_effects` → use `piecewise_effects_of_investment`, `optional` → use `mandatory` (with inverted logic)
+- Properties: `optional`, `fix_effects`, `specific_effects`, `divest_effects`, `piecewise_effects`
+
+**OnOffParameters:**
+- Constructor parameters: `on_hours_total_min` → use `on_hours_min`, `on_hours_total_max` → use `on_hours_max`, `switch_on_total_max` → use `switch_on_max`
+
+**Storage:**
+- `initial_charge_state="lastValueOfSim"` → use `initial_charge_state="equals_final"`
+
+**Source, Sink, SourceAndSink:**
+- Constructor parameters:
+  - Source: `source` → use `outputs`
+  - Sink: `sink` → use `inputs`
+  - SourceAndSink: `source` → use `outputs`, `sink` → use `inputs`, `prevent_simultaneous_sink_and_source` → use `prevent_simultaneous_flow_rates`
+- Properties:
+  - Source: `source` property
+  - Sink: `sink` property
+  - SourceAndSink: `source`, `sink`, `prevent_simultaneous_sink_and_source` properties
+
+**Linear Converters** (Boiler, CHP, HeatPump, etc.):
+- Flow parameters: `Q_fu` → use `fuel_flow`, `P_el` → use `electrical_flow`, `Q_th` → use `thermal_flow`, `Q_ab` → use `heat_source_flow`
+- Efficiency parameters: `eta` → use `thermal_efficiency`, `eta_th` → use `thermal_efficiency`, `eta_el` → use `electrical_efficiency`, `COP` → use `cop`
+
 
 ### 📝 Docs
+- Improve documentation from the ground up
 
-### 👷 Development
-
-### 🚧 Known Issues
+This is not yet publicly released!
 
 ---
 
-Until here -->
+## [4.3.5] - 2025-11-29
+
+**Summary**: Fix zenodo again
+
+If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+
+---
 
 ## [4.3.4] - 2025-11-27
 

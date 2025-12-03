@@ -9,7 +9,7 @@ class TestBusModel:
     def test_bus(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        bus = fx.Bus('TestBus', excess_penalty_per_flow_hour=None)
+        bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
             fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
@@ -28,7 +28,7 @@ class TestBusModel:
     def test_bus_penalty(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        bus = fx.Bus('TestBus')
+        bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=1e5)
         flow_system.add_elements(
             bus,
             fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
@@ -37,26 +37,26 @@ class TestBusModel:
         model = create_linopy_model(flow_system)
 
         assert set(bus.submodel.variables) == {
-            'TestBus|excess_input',
-            'TestBus|excess_output',
+            'TestBus|virtual_supply',
+            'TestBus|virtual_demand',
             'WärmelastTest(Q_th_Last)|flow_rate',
             'GastarifTest(Q_Gas)|flow_rate',
         }
         assert set(bus.submodel.constraints) == {'TestBus|balance'}
 
         assert_var_equal(
-            model.variables['TestBus|excess_input'], model.add_variables(lower=0, coords=model.get_coords())
+            model.variables['TestBus|virtual_supply'], model.add_variables(lower=0, coords=model.get_coords())
         )
         assert_var_equal(
-            model.variables['TestBus|excess_output'], model.add_variables(lower=0, coords=model.get_coords())
+            model.variables['TestBus|virtual_demand'], model.add_variables(lower=0, coords=model.get_coords())
         )
 
         assert_conequal(
             model.constraints['TestBus|balance'],
             model.variables['GastarifTest(Q_Gas)|flow_rate']
             - model.variables['WärmelastTest(Q_th_Last)|flow_rate']
-            + model.variables['TestBus|excess_input']
-            - model.variables['TestBus|excess_output']
+            + model.variables['TestBus|virtual_supply']
+            - model.variables['TestBus|virtual_demand']
             == 0,
         )
 
@@ -65,8 +65,7 @@ class TestBusModel:
         assert 'TestBus->Penalty(temporal)' in model.constraints
         assert 'TestBus->Penalty(temporal)' in model.variables
 
-        # The penalty share should equal the excess times the penalty cost
-        # Note: Each excess (input and output) creates its own share constraint, so we have two
+        # The penalty share should equal the imbalance (virtual_supply + virtual_demand) times the penalty cost
         # Let's verify the total penalty contribution by checking the effect's temporal model
         penalty_effect = flow_system.effects.penalty_effect
         assert penalty_effect.submodel is not None
@@ -75,14 +74,14 @@ class TestBusModel:
         assert_conequal(
             model.constraints['TestBus->Penalty(temporal)'],
             model.variables['TestBus->Penalty(temporal)']
-            == model.variables['TestBus|excess_input'] * 1e5 * model.hours_per_step
-            + model.variables['TestBus|excess_output'] * 1e5 * model.hours_per_step,
+            == model.variables['TestBus|virtual_supply'] * 1e5 * model.hours_per_step
+            + model.variables['TestBus|virtual_demand'] * 1e5 * model.hours_per_step,
         )
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
         """Test bus behavior across different coordinate configurations."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
-        bus = fx.Bus('TestBus', excess_penalty_per_flow_hour=None)
+        bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
             fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
