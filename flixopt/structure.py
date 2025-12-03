@@ -108,6 +108,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Add scenario equality constraints after all elements are modeled
         self._add_scenario_equality_constraints()
 
+        # Populate _variable_names and _constraint_names on each Element
+        self._populate_element_variable_names()
+
     def _add_scenario_equality_for_parameter_type(
         self,
         parameter_type: Literal['flow_rate', 'size'],
@@ -153,6 +156,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         self._add_scenario_equality_for_parameter_type('flow_rate', self.flow_system.scenario_independent_flow_rates)
         self._add_scenario_equality_for_parameter_type('size', self.flow_system.scenario_independent_sizes)
+
+    def _populate_element_variable_names(self):
+        """Populate _variable_names and _constraint_names on each Element from its submodel."""
+        for element in self.flow_system.values():
+            if element.submodel is not None:
+                element._variable_names = list(element.submodel.variables)
+                element._constraint_names = list(element.submodel.constraints)
 
     @property
     def solution(self):
@@ -723,7 +733,21 @@ class Interface:
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
 
                 try:
-                    return nested_class(**resolved_nested_data)
+                    # Get valid constructor parameters for this class
+                    init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
+
+                    # Separate constructor args from extra attributes
+                    constructor_args = {k: v for k, v in resolved_nested_data.items() if k in init_params}
+                    extra_attrs = {k: v for k, v in resolved_nested_data.items() if k not in init_params}
+
+                    # Create instance with constructor args
+                    instance = nested_class(**constructor_args)
+
+                    # Set extra attributes (like _variable_names, _constraint_names)
+                    for attr_name, attr_value in extra_attrs.items():
+                        setattr(instance, attr_name, attr_value)
+
+                    return instance
                 except Exception as e:
                     raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
             else:
@@ -961,16 +985,27 @@ class Element(Interface):
 
     submodel: ElementModel | None
 
-    def __init__(self, label: str, meta_data: dict | None = None):
+    def __init__(
+        self,
+        label: str,
+        meta_data: dict | None = None,
+        _variable_names: list[str] | None = None,
+        _constraint_names: list[str] | None = None,
+    ):
         """
         Args:
             label: The label of the element
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+            _variable_names: Internal. Variable names for this element (populated after modeling).
+            _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
         self.submodel = None
         self._flow_system: FlowSystem | None = None
+        # Variable/constraint names - populated after modeling, serialized for results
+        self._variable_names: list[str] = _variable_names if _variable_names is not None else []
+        self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
@@ -983,6 +1018,40 @@ class Element(Interface):
     @property
     def label_full(self) -> str:
         return self.label
+
+    @property
+    def solution(self) -> xr.Dataset:
+        """Solution data for this element's variables.
+
+        Returns a view into FlowSystem.solution containing only this element's variables.
+
+        Raises:
+            ValueError: If no solution is available (optimization not run or not solved).
+        """
+        if self._flow_system is None:
+            raise ValueError(f'Element "{self.label}" is not linked to a FlowSystem.')
+        if self._flow_system.solution is None:
+            raise ValueError(f'No solution available for "{self.label}". Run optimization first or load results.')
+        if not self._variable_names:
+            raise ValueError(f'No variable names available for "{self.label}". Element may not have been modeled yet.')
+        return self._flow_system.solution[self._variable_names]
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """
+        Override to include _variable_names and _constraint_names in serialization.
+
+        These attributes are defined in Element but may not be in subclass constructors,
+        so we need to add them explicitly.
+        """
+        reference_structure, all_extracted_arrays = super()._create_reference_structure()
+
+        # Always include variable/constraint names for solution access after loading
+        if self._variable_names:
+            reference_structure['_variable_names'] = self._variable_names
+        if self._constraint_names:
+            reference_structure['_constraint_names'] = self._constraint_names
+
+        return reference_structure, all_extracted_arrays
 
     def __repr__(self) -> str:
         """Return string representation."""
