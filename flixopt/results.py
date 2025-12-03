@@ -554,23 +554,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - use Dataset indexing instead:
-              ``results.plot.all_flow_rates[['Flow1', 'Flow2']]``
+            - No filtering parameters - filter by label substring instead::
 
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+                # Select specific flows by label
+                ds = results.plot.all_flow_rates
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.flow_rates().to_pandas()
-            Get the max or min over time:
-            >>>results.flow_rates().max('time')
-            Sum up the flow rates of flows with the same start and end:
-            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
+                # Filter by substring in label
+                [v for v in ds.data_vars if 'Boiler' in v]
         """
         warnings.warn(
             'results.flow_rates() is deprecated. '
@@ -608,8 +599,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - use Dataset indexing instead:
-              ``results.plot.all_flow_hours[['Flow1', 'Flow2']]``
+            - No filtering parameters - filter by label substring instead::
+
+                # Select specific flows by label
+                ds = results.plot.all_flow_hours
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                [v for v in ds.data_vars if 'Boiler' in v]
 
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
@@ -659,20 +656,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
-            - No filtering parameters - use Dataset indexing instead:
-              ``results.plot.all_sizes[['Flow1', 'Flow2']]``
+            - No filtering parameters - filter by label substring instead::
 
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+                # Select specific flows by label
+                ds = results.plot.all_sizes
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.sizes().to_pandas()
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
-
+                # Filter by substring in label
+                [v for v in ds.data_vars if 'Boiler' in v]
         """
         warnings.warn(
             'results.sizes() is deprecated. '
