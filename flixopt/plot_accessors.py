@@ -281,101 +281,44 @@ def _create_line(
 # --- Data building functions (used by PlotAccessor and deprecated Results methods) ---
 
 
-def _filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None) -> xr.DataArray:
-    """Filter a DataArray by coordinate values.
-
-    Args:
-        da: The DataArray to filter
-        **kwargs: Coordinate name to value(s) mapping. Values can be a single string
-                  or a list of strings to match against.
-
-    Returns:
-        Filtered DataArray containing only elements where coordinates match.
-    """
-    for coord_name, values in kwargs.items():
-        if values is None:
-            continue
-        if coord_name not in da.coords:
-            continue
-
-        coord_values = da.coords[coord_name].values
-        if isinstance(values, str):
-            mask = coord_values == values
-        else:
-            mask = np.isin(coord_values, values)
-
-        # Get the dimension this coordinate is attached to
-        coord_dims = da.coords[coord_name].dims
-        if len(coord_dims) == 1:
-            da = da.isel({coord_dims[0]: mask})
-
-    return da
-
-
-def build_flow_rates(results: Results) -> xr.DataArray:
-    """Build a DataArray containing flow rates for all flows.
+def build_flow_rates(results: Results) -> xr.Dataset:
+    """Build a Dataset containing flow rates for all flows.
 
     Args:
         results: Results object containing flow data.
 
     Returns:
-        DataArray with dimensions (time, [scenario], flow) and coordinates
-        start, end, component on the flow dimension.
+        Dataset with flow labels as variable names.
     """
     flows = results.flows
-    da = xr.concat(
-        [flow.flow_rate.rename(flow.label) for flow in flows.values()],
-        dim=pd.Index(flows.keys(), name='flow'),
-    )
-    return _assign_flow_coords(da, results).rename('flow_rates')
+    return xr.Dataset({flow.label: flow.flow_rate for flow in flows.values()})
 
 
-def build_flow_hours(results: Results) -> xr.DataArray:
-    """Build a DataArray containing flow hours for all flows.
+def build_flow_hours(results: Results) -> xr.Dataset:
+    """Build a Dataset containing flow hours for all flows.
 
     Args:
         results: Results object containing flow data.
 
     Returns:
-        DataArray with dimensions (time, [scenario], flow) and coordinates
-        start, end, component on the flow dimension.
-    """
-    flow_rates = build_flow_rates(results)
-    return (flow_rates * results.hours_per_timestep).rename('flow_hours')
-
-
-def build_sizes(results: Results) -> xr.DataArray:
-    """Build a DataArray containing sizes for all flows.
-
-    Args:
-        results: Results object containing flow data.
-
-    Returns:
-        DataArray with dimensions ([scenario], flow) and coordinates
-        start, end, component on the flow dimension.
+        Dataset with flow labels as variable names.
     """
     flows = results.flows
-    da = xr.concat(
-        [flow.size.rename(flow.label) for flow in flows.values()],
-        dim=pd.Index(flows.keys(), name='flow'),
-    )
-    return _assign_flow_coords(da, results).rename('flow_sizes')
+    hours = results.hours_per_timestep
+    return xr.Dataset({flow.label: flow.flow_rate * hours for flow in flows.values()})
 
 
-def _assign_flow_coords(da: xr.DataArray, results: Results) -> xr.DataArray:
-    """Add start, end, component coordinates to flow DataArray."""
-    flows_list = list(results.flows.values())
-    da = da.assign_coords(
-        {
-            'start': ('flow', [flow.start for flow in flows_list]),
-            'end': ('flow', [flow.end for flow in flows_list]),
-            'component': ('flow', [flow.component for flow in flows_list]),
-        }
-    )
-    # Ensure flow is the last dimension
-    existing_dims = [d for d in da.dims if d != 'flow']
-    da = da.transpose(*(existing_dims + ['flow']))
-    return da
+def build_sizes(results: Results) -> xr.Dataset:
+    """Build a Dataset containing sizes for all flows.
+
+    Args:
+        results: Results object containing flow data.
+
+    Returns:
+        Dataset with flow labels as variable names.
+    """
+    flows = results.flows
+    return xr.Dataset({flow.label: flow.size for flow in flows.values()})
 
 
 class PlotAccessor:
@@ -394,9 +337,9 @@ class PlotAccessor:
     def __init__(self, results: Results):
         self._results = results
         # Private backing fields for cached data
-        self.__all_flow_rates: xr.DataArray | None = None
-        self.__all_flow_hours: xr.DataArray | None = None
-        self.__all_sizes: xr.DataArray | None = None
+        self.__all_flow_rates: xr.Dataset | None = None
+        self.__all_flow_hours: xr.Dataset | None = None
+        self.__all_sizes: xr.Dataset | None = None
         self.__all_charge_states: xr.Dataset | None = None
         self.__all_status_vars: xr.Dataset | None = None
 
@@ -406,22 +349,22 @@ class PlotAccessor:
         return self._results.colors
 
     @property
-    def _all_flow_rates(self) -> xr.DataArray:
-        """Lazily compute and cache all flow rates."""
+    def _all_flow_rates(self) -> xr.Dataset:
+        """Lazily compute and cache all flow rates as Dataset."""
         if self.__all_flow_rates is None:
             self.__all_flow_rates = build_flow_rates(self._results)
         return self.__all_flow_rates
 
     @property
-    def _all_flow_hours(self) -> xr.DataArray:
-        """Lazily compute and cache all flow hours."""
+    def _all_flow_hours(self) -> xr.Dataset:
+        """Lazily compute and cache all flow hours as Dataset."""
         if self.__all_flow_hours is None:
             self.__all_flow_hours = build_flow_hours(self._results)
         return self.__all_flow_hours
 
     @property
-    def _all_sizes(self) -> xr.DataArray:
-        """Lazily compute and cache all sizes."""
+    def _all_sizes(self) -> xr.Dataset:
+        """Lazily compute and cache all sizes as Dataset."""
         if self.__all_sizes is None:
             self.__all_sizes = build_sizes(self._results)
         return self.__all_sizes
@@ -987,32 +930,47 @@ class PlotAccessor:
             >>> results.plot.flows(component='Boiler')
             >>> results.plot.flows(unit='flow_hours', aggregate='sum')
         """
-        # Get cached flow data
+        # Get cached flow data as Dataset
         if unit == 'flow_rate':
-            da = self._all_flow_rates
+            ds = self._all_flow_rates
         else:
-            da = self._all_flow_hours
+            ds = self._all_flow_hours
 
-        # Apply flow filtering
-        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        if filters:
-            da = _filter_dataarray_by_coord(da, **filters)
+        # Apply flow filtering by looking up which flows match the criteria
+        if start is not None or end is not None or component is not None:
+            matching_labels = []
+            for flow in self._results.flows.values():
+                if start is not None:
+                    if isinstance(start, str):
+                        if flow.start != start:
+                            continue
+                    elif flow.start not in start:
+                        continue
+                if end is not None:
+                    if isinstance(end, str):
+                        if flow.end != end:
+                            continue
+                    elif flow.end not in end:
+                        continue
+                if component is not None:
+                    if isinstance(component, str):
+                        if flow.component != component:
+                            continue
+                    elif flow.component not in component:
+                        continue
+                matching_labels.append(flow.label)
+            ds = ds[matching_labels]
 
         # Apply selection
         if select:
-            valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
+            valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
             if valid_select:
-                da = da.sel(valid_select)
+                ds = ds.sel(valid_select)
 
         # Apply aggregation
         if aggregate is not None:
-            if 'time' in da.dims:
-                da = getattr(da, aggregate)(dim='time')
-
-        # Convert DataArray to Dataset for plotting (each flow as a variable)
-        # First, unstack the flow dimension into separate variables
-        flow_labels = da.coords['flow'].values.tolist()
-        ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
+            if 'time' in ds.dims:
+                ds = getattr(ds, aggregate)(dim='time')
 
         # Resolve facets (ignore if dimension not present)
         actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)
@@ -1326,29 +1284,49 @@ class PlotAccessor:
         """
         import plotly.express as px
 
-        # Get cached sizes data
-        da = self._all_sizes
+        # Get cached sizes data as Dataset
+        ds = self._all_sizes
 
-        # Apply flow filtering
-        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        if filters:
-            da = _filter_dataarray_by_coord(da, **filters)
+        # Apply flow filtering by looking up which flows match the criteria
+        if start is not None or end is not None or component is not None:
+            matching_labels = []
+            for flow in self._results.flows.values():
+                if start is not None:
+                    if isinstance(start, str):
+                        if flow.start != start:
+                            continue
+                    elif flow.start not in start:
+                        continue
+                if end is not None:
+                    if isinstance(end, str):
+                        if flow.end != end:
+                            continue
+                    elif flow.end not in end:
+                        continue
+                if component is not None:
+                    if isinstance(component, str):
+                        if flow.component != component:
+                            continue
+                    elif flow.component not in component:
+                        continue
+                matching_labels.append(flow.label)
+            ds = ds[matching_labels]
 
         # Apply selection
         if select:
-            valid_select = {k: v for k, v in select.items() if k in da.dims or k in da.coords}
+            valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
             if valid_select:
-                da = da.sel(valid_select)
+                ds = ds.sel(valid_select)
 
         # Filter out large default sizes
-        if max_size is not None and da.size > 0:
-            max_per_flow = da.max(dim=[d for d in da.dims if d != 'flow'])
-            valid_flows = max_per_flow.coords['flow'].values[max_per_flow.values < max_size]
-            da = da.sel(flow=valid_flows)
-
-        # Convert to Dataset
-        flow_labels = da.coords['flow'].values.tolist()
-        ds = xr.Dataset({label: da.sel(flow=label, drop=True) for label in flow_labels})
+        if max_size is not None and ds.data_vars:
+            valid_labels = []
+            for label in ds.data_vars:
+                da = ds[label]
+                max_val = float(da.max())
+                if max_val < max_size:
+                    valid_labels.append(label)
+            ds = ds[valid_labels]
 
         # Resolve facets
         actual_facet_col, actual_facet_row, _ = _resolve_facet_animate(ds, facet_col, facet_row, None)

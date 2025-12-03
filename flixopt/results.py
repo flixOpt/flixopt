@@ -267,10 +267,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self._effect_share_factors = None
         self._flow_system = None
-
-        self._flow_rates = None
-        self._flow_hours = None
-        self._sizes = None
         self._effects_per_component = None
 
         self.colors: dict[str, str] = {}
@@ -566,21 +562,32 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
         warnings.warn(
-            'results.flow_rates() is deprecated. Use results.plot.flows(plot=False).data instead.',
+            'results.flow_rates() is deprecated. Use results.plot._all_flow_rates instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        if not self._has_flow_data:
-            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
-        if self._flow_rates is None:
-            self._flow_rates = self._assign_flow_coords(
-                xr.concat(
-                    [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
-                    dim=pd.Index(self.flows.keys(), name='flow'),
-                )
-            ).rename('flow_rates')
-        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._flow_rates, **filters)
+        # Build DataArray with flow dimension (deprecated format, kept for backwards compatibility)
+        da = xr.concat(
+            [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+            dim=pd.Index(self.flows.keys(), name='flow'),
+        ).rename('flow_rates')
+
+        # Add start, end, component coordinates
+        flows_list = list(self.flows.values())
+        da = da.assign_coords(
+            {
+                'start': ('flow', [flow.start for flow in flows_list]),
+                'end': ('flow', [flow.end for flow in flows_list]),
+                'component': ('flow', [flow.component for flow in flows_list]),
+            }
+        )
+        # Ensure flow is the last dimension
+        existing_dims = [d for d in da.dims if d != 'flow']
+        da = da.transpose(*(existing_dims + ['flow']))
+
+        # Apply filters
+        da = self._filter_dataarray_by_coord(da, start=start, end=end, component=component)
+        return da
 
     def flow_hours(
         self,
@@ -614,17 +621,33 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         """
         warnings.warn(
-            "results.flow_hours() is deprecated. Use results.plot.flows(unit='flow_hours', plot=False).data instead.",
+            'results.flow_hours() is deprecated. Use results.plot._all_flow_hours instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        if self._flow_hours is None:
-            # Suppress nested deprecation warning from flow_rates()
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', DeprecationWarning)
-                self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
-        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._flow_hours, **filters)
+        # Build DataArray with flow dimension (deprecated format, kept for backwards compatibility)
+        da = xr.concat(
+            [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+            dim=pd.Index(self.flows.keys(), name='flow'),
+        )
+        da = (da * self.hours_per_timestep).rename('flow_hours')
+
+        # Add start, end, component coordinates
+        flows_list = list(self.flows.values())
+        da = da.assign_coords(
+            {
+                'start': ('flow', [flow.start for flow in flows_list]),
+                'end': ('flow', [flow.end for flow in flows_list]),
+                'component': ('flow', [flow.component for flow in flows_list]),
+            }
+        )
+        # Ensure flow is the last dimension
+        existing_dims = [d for d in da.dims if d != 'flow']
+        da = da.transpose(*(existing_dims + ['flow']))
+
+        # Apply filters
+        da = self._filter_dataarray_by_coord(da, start=start, end=end, component=component)
+        return da
 
     def sizes(
         self,
@@ -651,24 +674,17 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         """
         warnings.warn(
-            'results.sizes() is deprecated. Use results.plot.sizes(plot=False).data instead.',
+            'results.sizes() is deprecated. Use results.plot._all_sizes instead.',
             DeprecationWarning,
             stacklevel=2,
         )
-        if not self._has_flow_data:
-            raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
-        if self._sizes is None:
-            self._sizes = self._assign_flow_coords(
-                xr.concat(
-                    [flow.size.rename(flow.label) for flow in self.flows.values()],
-                    dim=pd.Index(self.flows.keys(), name='flow'),
-                )
-            ).rename('flow_sizes')
-        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
-        return filter_dataarray_by_coord(self._sizes, **filters)
+        # Build DataArray with flow dimension (deprecated format, kept for backwards compatibility)
+        da = xr.concat(
+            [flow.size.rename(flow.label) for flow in self.flows.values()],
+            dim=pd.Index(self.flows.keys(), name='flow'),
+        ).rename('flow_sizes')
 
-    def _assign_flow_coords(self, da: xr.DataArray):
-        # Add start and end coordinates
+        # Add start, end, component coordinates
         flows_list = list(self.flows.values())
         da = da.assign_coords(
             {
@@ -677,10 +693,30 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
                 'component': ('flow', [flow.component for flow in flows_list]),
             }
         )
-
-        # Ensure flow is the last dimension if needed
+        # Ensure flow is the last dimension
         existing_dims = [d for d in da.dims if d != 'flow']
         da = da.transpose(*(existing_dims + ['flow']))
+
+        # Apply filters
+        da = self._filter_dataarray_by_coord(da, start=start, end=end, component=component)
+        return da
+
+    @staticmethod
+    def _filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None) -> xr.DataArray:
+        """Filter a DataArray by coordinate values (deprecated format helper)."""
+        for coord_name, values in kwargs.items():
+            if values is None:
+                continue
+            if coord_name not in da.coords:
+                continue
+            coord_values = da.coords[coord_name].values
+            if isinstance(values, str):
+                mask = coord_values == values
+            else:
+                mask = np.isin(coord_values, values)
+            coord_dims = da.coords[coord_name].dims
+            if len(coord_dims) == 1:
+                da = da.isel({coord_dims[0]: mask})
         return da
 
     def get_effect_shares(
