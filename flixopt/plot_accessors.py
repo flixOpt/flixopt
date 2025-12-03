@@ -434,11 +434,11 @@ class PlotAccessor:
     def __init__(self, results: Results):
         self._results = results
         # Private backing fields for cached data
-        self.__all_flow_rates: xr.Dataset | None = None
-        self.__all_flow_hours: xr.Dataset | None = None
-        self.__all_sizes: xr.Dataset | None = None
-        self.__all_charge_states: xr.Dataset | None = None
-        self.__all_status_vars: xr.Dataset | None = None
+        self._all_flow_rates: xr.Dataset | None = None
+        self._all_flow_hours: xr.Dataset | None = None
+        self._all_sizes: xr.Dataset | None = None
+        self._all_charge_states: xr.Dataset | None = None
+        self._all_status_vars: xr.Dataset | None = None
 
     @property
     def colors(self) -> dict[str, str]:
@@ -462,9 +462,9 @@ class PlotAccessor:
             >>> flow_rates['Boiler(Q_th)']  # Single flow as DataArray
             >>> flow_rates.to_dataframe()  # Convert to pandas DataFrame
         """
-        if self.__all_flow_rates is None:
-            self.__all_flow_rates = _build_flow_rates(self._results)
-        return self.__all_flow_rates
+        if self._all_flow_rates is None:
+            self._all_flow_rates = _build_flow_rates(self._results)
+        return self._all_flow_rates
 
     @property
     def all_flow_hours(self) -> xr.Dataset:
@@ -480,9 +480,9 @@ class PlotAccessor:
             >>> flow_hours = results.plot.all_flow_hours
             >>> total_energy = flow_hours.sum(dim='time')
         """
-        if self.__all_flow_hours is None:
-            self.__all_flow_hours = _build_flow_hours(self._results)
-        return self.__all_flow_hours
+        if self._all_flow_hours is None:
+            self._all_flow_hours = _build_flow_hours(self._results)
+        return self._all_flow_hours
 
     @property
     def all_sizes(self) -> xr.Dataset:
@@ -499,9 +499,9 @@ class PlotAccessor:
             >>> sizes = results.plot.all_sizes
             >>> sizes['Boiler(Q_th)']  # Boiler thermal capacity
         """
-        if self.__all_sizes is None:
-            self.__all_sizes = _build_sizes(self._results)
-        return self.__all_sizes
+        if self._all_sizes is None:
+            self._all_sizes = _build_sizes(self._results)
+        return self._all_sizes
 
     @property
     def all_charge_states(self) -> xr.Dataset:
@@ -518,15 +518,15 @@ class PlotAccessor:
             >>> charge_states = results.plot.all_charge_states
             >>> charge_states['Battery']  # Battery charge state over time
         """
-        if self.__all_charge_states is None:
+        if self._all_charge_states is None:
             storages = self._results.storages
             if storages:
-                self.__all_charge_states = xr.Dataset(
+                self._all_charge_states = xr.Dataset(
                     {s.label: self._results.components[s.label].charge_state for s in storages}
                 )
             else:
-                self.__all_charge_states = xr.Dataset()
-        return self.__all_charge_states
+                self._all_charge_states = xr.Dataset()
+        return self._all_charge_states
 
     @property
     def all_on_states(self) -> xr.Dataset:
@@ -543,19 +543,19 @@ class PlotAccessor:
             >>> on_states = results.plot.all_on_states
             >>> on_states['Boiler']  # Boiler on/off status over time
         """
-        if self.__all_status_vars is None:
+        if self._all_status_vars is None:
             status_vars = {}
             for var_name in self._results.solution.data_vars:
                 if var_name.endswith('|status'):
                     component_name = var_name.split('|')[0]
                     status_vars[component_name] = var_name
             if status_vars:
-                self.__all_status_vars = xr.Dataset(
+                self._all_status_vars = xr.Dataset(
                     {name: self._results.solution[var_name] for name, var_name in status_vars.items()}
                 )
             else:
-                self.__all_status_vars = xr.Dataset()
-        return self.__all_status_vars
+                self._all_status_vars = xr.Dataset()
+        return self._all_status_vars
 
     def balance(
         self,
