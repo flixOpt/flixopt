@@ -546,6 +546,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
+        .. deprecated::
+            Use `results.plot.flows(plot=False).data` instead for Dataset format,
+            or access individual flows via `results.flows['FlowLabel'].flow_rate`.
+
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
@@ -561,6 +565,11 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
+        warnings.warn(
+            'results.flow_rates() is deprecated. Use results.plot.flows(plot=False).data instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
@@ -581,6 +590,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
+        .. deprecated::
+            Use `results.plot.flows(unit='flow_hours', plot=False).data` instead for Dataset format,
+            or access individual flows via `results.flows['FlowLabel'].flow_hours`.
+
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
 
@@ -600,8 +613,16 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
 
         """
+        warnings.warn(
+            "results.flow_hours() is deprecated. Use results.plot.flows(unit='flow_hours', plot=False).data instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._flow_hours is None:
-            self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
+            # Suppress nested deprecation warning from flow_rates()
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', DeprecationWarning)
+                self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
         return filter_dataarray_by_coord(self._flow_hours, **filters)
 
@@ -612,6 +633,11 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
+
+        .. deprecated::
+            Use `results.plot.sizes(plot=False).data` instead for Dataset format,
+            or access individual flows via `results.flows['FlowLabel'].size`.
+
         Args:
             start: Optional source node(s) to filter by. Can be a single node name or a list of names.
             end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
@@ -624,6 +650,11 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
 
         """
+        warnings.warn(
+            'results.sizes() is deprecated. Use results.plot.sizes(plot=False).data instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:

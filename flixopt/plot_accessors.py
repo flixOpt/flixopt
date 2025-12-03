@@ -278,6 +278,106 @@ def _create_line(
     return fig
 
 
+# --- Data building functions (used by PlotAccessor and deprecated Results methods) ---
+
+
+def _filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None) -> xr.DataArray:
+    """Filter a DataArray by coordinate values.
+
+    Args:
+        da: The DataArray to filter
+        **kwargs: Coordinate name to value(s) mapping. Values can be a single string
+                  or a list of strings to match against.
+
+    Returns:
+        Filtered DataArray containing only elements where coordinates match.
+    """
+    for coord_name, values in kwargs.items():
+        if values is None:
+            continue
+        if coord_name not in da.coords:
+            continue
+
+        coord_values = da.coords[coord_name].values
+        if isinstance(values, str):
+            mask = coord_values == values
+        else:
+            mask = np.isin(coord_values, values)
+
+        # Get the dimension this coordinate is attached to
+        coord_dims = da.coords[coord_name].dims
+        if len(coord_dims) == 1:
+            da = da.isel({coord_dims[0]: mask})
+
+    return da
+
+
+def build_flow_rates(results: Results) -> xr.DataArray:
+    """Build a DataArray containing flow rates for all flows.
+
+    Args:
+        results: Results object containing flow data.
+
+    Returns:
+        DataArray with dimensions (time, [scenario], flow) and coordinates
+        start, end, component on the flow dimension.
+    """
+    flows = results.flows
+    da = xr.concat(
+        [flow.flow_rate.rename(flow.label) for flow in flows.values()],
+        dim=pd.Index(flows.keys(), name='flow'),
+    )
+    return _assign_flow_coords(da, results).rename('flow_rates')
+
+
+def build_flow_hours(results: Results) -> xr.DataArray:
+    """Build a DataArray containing flow hours for all flows.
+
+    Args:
+        results: Results object containing flow data.
+
+    Returns:
+        DataArray with dimensions (time, [scenario], flow) and coordinates
+        start, end, component on the flow dimension.
+    """
+    flow_rates = build_flow_rates(results)
+    return (flow_rates * results.hours_per_timestep).rename('flow_hours')
+
+
+def build_sizes(results: Results) -> xr.DataArray:
+    """Build a DataArray containing sizes for all flows.
+
+    Args:
+        results: Results object containing flow data.
+
+    Returns:
+        DataArray with dimensions ([scenario], flow) and coordinates
+        start, end, component on the flow dimension.
+    """
+    flows = results.flows
+    da = xr.concat(
+        [flow.size.rename(flow.label) for flow in flows.values()],
+        dim=pd.Index(flows.keys(), name='flow'),
+    )
+    return _assign_flow_coords(da, results).rename('flow_sizes')
+
+
+def _assign_flow_coords(da: xr.DataArray, results: Results) -> xr.DataArray:
+    """Add start, end, component coordinates to flow DataArray."""
+    flows_list = list(results.flows.values())
+    da = da.assign_coords(
+        {
+            'start': ('flow', [flow.start for flow in flows_list]),
+            'end': ('flow', [flow.end for flow in flows_list]),
+            'component': ('flow', [flow.component for flow in flows_list]),
+        }
+    )
+    # Ensure flow is the last dimension
+    existing_dims = [d for d in da.dims if d != 'flow']
+    da = da.transpose(*(existing_dims + ['flow']))
+    return da
+
+
 class PlotAccessor:
     """Plot accessor for Results. Access via results.plot.<method>()
 
@@ -838,11 +938,16 @@ class PlotAccessor:
             >>> results.plot.flows(component='Boiler')
             >>> results.plot.flows(unit='flow_hours', aggregate='sum')
         """
-        # Get flow rates using existing method
+        # Build flow data
         if unit == 'flow_rate':
-            da = self._results.flow_rates(start=start, end=end, component=component)
+            da = build_flow_rates(self._results)
         else:
-            da = self._results.flow_hours(start=start, end=end, component=component)
+            da = build_flow_hours(self._results)
+
+        # Apply flow filtering
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        if filters:
+            da = _filter_dataarray_by_coord(da, **filters)
 
         # Apply selection
         if select:
@@ -1005,7 +1110,7 @@ class PlotAccessor:
             >>> results.plot.sankey(select={'scenario': 'base'})  # Single scenario
         """
         # Get all flow hours (energy, not power - appropriate for Sankey)
-        da = self._results.flow_hours()
+        da = build_flow_hours(self._results)
 
         # Apply weights before selection - this way selection automatically gets correct weighted values
         flow_system = self._results.flow_system
@@ -1172,8 +1277,13 @@ class PlotAccessor:
         """
         import plotly.express as px
 
-        # Get flow sizes using existing method
-        da = self._results.sizes(start=start, end=end, component=component)
+        # Build sizes data
+        da = build_sizes(self._results)
+
+        # Apply flow filtering
+        filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
+        if filters:
+            da = _filter_dataarray_by_coord(da, **filters)
 
         # Apply selection
         if select:
