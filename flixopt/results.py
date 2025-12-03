@@ -15,8 +15,9 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
+from .plot_accessors import ElementPlotAccessor, PlotAccessor
 from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
@@ -274,6 +275,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self.colors: dict[str, str] = {}
 
+        # Plot accessor for new plotting API
+        self.plot = PlotAccessor(self)
+
     def _get_container_groups(self) -> dict[str, ResultsContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
@@ -387,7 +391,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         def get_all_variable_names(comp: str) -> list[str]:
             """Collect all variables from the component, including flows and flow_hours."""
             comp_object = self.components[comp]
-            var_names = [comp] + list(comp_object._variable_names)
+            var_names = [comp] + list(comp_object.variable_names)
             for flow in comp_object.flows:
                 var_names.extend([flow, f'{flow}|flow_hours'])
             return var_names
@@ -542,21 +546,40 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+        .. deprecated::
+            Use `results.plot.all_flow_rates` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate` (DataArray) instead.
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.flow_rates().to_pandas()
-            Get the max or min over time:
-            >>>results.flow_rates().max('time')
-            Sum up the flow rates of flows with the same start and end:
-            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_flow_rates
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
+        warnings.warn(
+            'results.flow_rates() is deprecated. '
+            'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
@@ -577,6 +600,32 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
+        .. deprecated::
+            Use `results.plot.all_flow_hours` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate * results.hours_per_timestep` instead.
+
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_flow_hours
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
+
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
 
@@ -596,6 +645,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
 
         """
+        warnings.warn(
+            'results.flow_hours() is deprecated. '
+            'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._flow_hours is None:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
@@ -608,18 +665,41 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.sizes().to_pandas()
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
+        .. deprecated::
+            Use `results.plot.all_sizes` (Dataset) or
+            `results.flows['FlowLabel'].size` (DataArray) instead.
 
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_sizes
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
+        warnings.warn(
+            'results.sizes() is deprecated. '
+            'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:
@@ -1095,10 +1175,10 @@ class _ElementResults:
     def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
         self._results = results
         self.label = label
-        self._variable_names = variables
+        self.variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._results.solution[self._variable_names]
+        self.solution = self._results.solution[self.variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1109,7 +1189,7 @@ class _ElementResults:
         """
         if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._results.model.variables[self._variable_names]
+        return self._results.model.variables[self.variable_names]
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -1187,6 +1267,9 @@ class _NodeResults(_ElementResults):
         self.inputs = inputs
         self.outputs = outputs
         self.flows = flows
+
+        # Plot accessor for new plotting API
+        self.plot = ElementPlotAccessor(self)
 
     def plot_node_balance(
         self,
@@ -1574,7 +1657,7 @@ class ComponentResults(_NodeResults):
 
     @property
     def is_storage(self) -> bool:
-        return self._charge_state in self._variable_names
+        return self._charge_state in self.variable_names
 
     @property
     def _charge_state(self) -> str:
@@ -1835,7 +1918,7 @@ class EffectResults(_ElementResults):
         Returns:
             xr.Dataset: Element shares to this effect.
         """
-        return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+        return self.solution[[name for name in self.variable_names if name.startswith(f'{element}->')]]
 
 
 class FlowResults(_ElementResults):
