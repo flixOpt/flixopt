@@ -281,57 +281,111 @@ def _create_line(
 # --- Data building functions (used by PlotAccessor and deprecated Results methods) ---
 
 
-def build_flow_rates(results: Results) -> xr.Dataset:
-    """Build a Dataset containing flow rates for all flows.
-
-    Args:
-        results: Results object containing flow data.
-
-    Returns:
-        Dataset with flow labels as variable names.
-    """
+def _build_flow_rates(results: Results) -> xr.Dataset:
+    """Build a Dataset containing flow rates for all flows."""
     flows = results.flows
     return xr.Dataset({flow.label: flow.flow_rate for flow in flows.values()})
 
 
-def build_flow_hours(results: Results) -> xr.Dataset:
-    """Build a Dataset containing flow hours for all flows.
-
-    Args:
-        results: Results object containing flow data.
-
-    Returns:
-        Dataset with flow labels as variable names.
-    """
+def _build_flow_hours(results: Results) -> xr.Dataset:
+    """Build a Dataset containing flow hours (energy) for all flows."""
     flows = results.flows
     hours = results.hours_per_timestep
     return xr.Dataset({flow.label: flow.flow_rate * hours for flow in flows.values()})
 
 
-def build_sizes(results: Results) -> xr.Dataset:
-    """Build a Dataset containing sizes for all flows.
-
-    Args:
-        results: Results object containing flow data.
-
-    Returns:
-        Dataset with flow labels as variable names.
-    """
+def _build_sizes(results: Results) -> xr.Dataset:
+    """Build a Dataset containing sizes (capacities) for all flows."""
     flows = results.flows
     return xr.Dataset({flow.label: flow.size for flow in flows.values()})
 
 
 class PlotAccessor:
-    """Plot accessor for Results. Access via results.plot.<method>()
+    """Plot accessor for Results. Access via ``results.plot.<method>()``.
 
-    This accessor provides a unified interface for creating plots from
-    optimization results. All methods return a PlotResult object containing
-    both the prepared data and the Plotly figure.
+    This accessor provides a unified interface for both **data access** and
+    **plotting** of optimization results. All plotting methods return a
+    :class:`PlotResult` object containing both the prepared data (``.data``)
+    and the Plotly figure (``.figure``).
 
-    Example:
-        >>> results.plot.balance('ElectricityBus')
-        >>> results.plot.heatmap('Boiler|on')
-        >>> results.plot.storage('Battery')
+    Data Properties
+    ---------------
+    The following properties provide lazy-cached access to optimization data
+    as :class:`xarray.Dataset` objects, where each variable is named by its
+    label. This enables uniform arithmetic operations between datasets.
+
+    ``all_flow_rates`` : xr.Dataset
+        Flow rates for all flows. Variables are named by flow label
+        (e.g., ``'Boiler(Q_th)'``). Dimensions: ``(time, [scenario], [period])``.
+
+    ``all_flow_hours`` : xr.Dataset
+        Flow hours (energy) for all flows. Same structure as all_flow_rates,
+        multiplied by hours per timestep.
+
+    ``all_sizes`` : xr.Dataset
+        Sizes for all flows. Dimensions: ``([scenario])``.
+
+    ``all_charge_states`` : xr.Dataset
+        Charge states for all storage components. Variables are named by
+        storage label. Dimensions: ``(time, [scenario], [period])``.
+
+    ``all_on_states`` : xr.Dataset
+        Binary status (on/off) for all components with status variables.
+        Variables are named by component label.
+
+    Plotting Methods
+    ----------------
+    All plotting methods accept common parameters for data selection,
+    filtering, faceting, and styling. They return :class:`PlotResult`.
+
+    - :meth:`balance` - Node balance (inputs vs outputs) for a Bus/Component
+    - :meth:`heatmap` - Heatmap of any time series variable
+    - :meth:`storage` - Storage charge state over time
+    - :meth:`flows` - Flow rates filtered by start/end/component
+    - :meth:`sizes` - Flow sizes as bar chart
+    - :meth:`sankey` - Sankey diagram of energy flows
+    - :meth:`duration_curve` - Duration curve of any variable
+    - :meth:`charge_states` - Charge states for all storages
+    - :meth:`on_states` - Binary status heatmaps for all components
+
+    Examples
+    --------
+    **Data Access (for analysis/computation):**
+
+    >>> # Get all flow rates as Dataset
+    >>> flow_rates = results.plot.all_flow_rates
+    >>> flow_rates['Boiler(Q_th)']  # Access individual flow
+
+    >>> # Arithmetic operations work uniformly across datasets
+    >>> efficiency = results.plot.all_flow_hours / results.plot.all_sizes
+
+    >>> # Get charge states for analysis
+    >>> charge_states = results.plot.all_charge_states
+    >>> max_charge = charge_states.max(dim='time')
+
+    **Plotting:**
+
+    >>> # Plot node balance
+    >>> results.plot.balance('ElectricityBus')
+
+    >>> # Heatmap with custom time grouping
+    >>> results.plot.heatmap('Boiler|on', reshape=('W', 'h'))
+
+    >>> # Storage charge state
+    >>> results.plot.storage('Battery')
+
+    >>> # Filter flows by connection
+    >>> results.plot.flows(start='GasBus', unit='flow_hours')
+
+    **Get data without plotting:**
+
+    >>> # Access the data from any plot method
+    >>> result = results.plot.balance('ElectricityBus')
+    >>> df = result.data.to_dataframe()  # Convert to pandas
+
+    See Also
+    --------
+    PlotResult : Container for data and figure returned by plot methods.
     """
 
     def __init__(self, results: Results):
@@ -349,29 +403,96 @@ class PlotAccessor:
         return self._results.colors
 
     @property
-    def _all_flow_rates(self) -> xr.Dataset:
-        """Lazily compute and cache all flow rates as Dataset."""
+    def all_flow_rates(self) -> xr.Dataset:
+        """All flow rates as a Dataset with flow labels as variable names.
+
+        Each variable in the Dataset represents one flow's rate over time.
+        Dimensions are ``(time, [scenario], [period])`` depending on the
+        optimization setup.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset where each data variable is named by flow label
+            (e.g., ``'Boiler(Q_th)'``, ``'CHP(P_el)'``).
+
+        Examples
+        --------
+        >>> flow_rates = results.plot.all_flow_rates
+        >>> flow_rates['Boiler(Q_th)']  # Single flow as DataArray
+        >>> flow_rates.to_dataframe()  # Convert to pandas DataFrame
+        >>> flow_rates.sum(dim='time')  # Aggregate over time
+        """
         if self.__all_flow_rates is None:
-            self.__all_flow_rates = build_flow_rates(self._results)
+            self.__all_flow_rates = _build_flow_rates(self._results)
         return self.__all_flow_rates
 
     @property
-    def _all_flow_hours(self) -> xr.Dataset:
-        """Lazily compute and cache all flow hours as Dataset."""
+    def all_flow_hours(self) -> xr.Dataset:
+        """All flow hours (energy) as a Dataset with flow labels as variable names.
+
+        Flow hours represent the total energy/material transferred, calculated
+        as flow_rate × hours_per_timestep. Same structure as ``all_flow_rates``.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset where each data variable is named by flow label.
+
+        Examples
+        --------
+        >>> flow_hours = results.plot.all_flow_hours
+        >>> total_energy = flow_hours.sum(dim='time')
+        >>> flow_hours['CHP(Q_th)'].sum()  # Total thermal energy from CHP
+        """
         if self.__all_flow_hours is None:
-            self.__all_flow_hours = build_flow_hours(self._results)
+            self.__all_flow_hours = _build_flow_hours(self._results)
         return self.__all_flow_hours
 
     @property
-    def _all_sizes(self) -> xr.Dataset:
-        """Lazily compute and cache all sizes as Dataset."""
+    def all_sizes(self) -> xr.Dataset:
+        """All flow sizes as a Dataset with flow labels as variable names.
+
+        Sizes represent the capacity/nominal size of each flow. For investments,
+        this is the optimized size. Dimensions are ``([scenario])`` - no time
+        dimension since sizes are constant over time.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset where each data variable is named by flow label.
+
+        Examples
+        --------
+        >>> sizes = results.plot.all_sizes
+        >>> sizes['Boiler(Q_th)']  # Boiler thermal capacity
+        >>> # Compute capacity factors
+        >>> capacity_factors = results.plot.all_flow_rates.max(dim='time') / sizes
+        """
         if self.__all_sizes is None:
-            self.__all_sizes = build_sizes(self._results)
+            self.__all_sizes = _build_sizes(self._results)
         return self.__all_sizes
 
     @property
-    def _all_charge_states(self) -> xr.Dataset:
-        """Lazily compute and cache all storage charge states."""
+    def all_charge_states(self) -> xr.Dataset:
+        """All storage charge states as a Dataset with storage labels as variable names.
+
+        Each variable represents a storage component's charge state over time.
+        Only includes components that are storages (have charge state).
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset where each data variable is named by storage label
+            (e.g., ``'Battery'``, ``'HeatStorage'``). Empty Dataset if no
+            storages exist.
+
+        Examples
+        --------
+        >>> charge_states = results.plot.all_charge_states
+        >>> charge_states['Battery']  # Battery charge state over time
+        >>> charge_states.max(dim='time')  # Maximum charge per storage
+        """
         if self.__all_charge_states is None:
             storages = self._results.storages
             if storages:
@@ -383,8 +504,26 @@ class PlotAccessor:
         return self.__all_charge_states
 
     @property
-    def _all_status_vars(self) -> xr.Dataset:
-        """Lazily compute and cache all status variables."""
+    def all_on_states(self) -> xr.Dataset:
+        """All component status variables (on/off) as a Dataset.
+
+        Each variable represents a component's binary operational status over
+        time. Only includes components that have status variables (i.e.,
+        components with ``|status`` in their variable names).
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset where each data variable is named by component label.
+            Values are typically 0 (off) or 1 (on). Empty Dataset if no
+            components have status variables.
+
+        Examples
+        --------
+        >>> on_states = results.plot.all_on_states
+        >>> on_states['Boiler']  # Boiler on/off status over time
+        >>> operating_hours = (on_states * results.hours_per_timestep).sum(dim='time')
+        """
         if self.__all_status_vars is None:
             status_vars = {}
             for var_name in self._results.solution.data_vars:
@@ -742,7 +881,7 @@ class PlotAccessor:
             >>> results.plot.charge_states(include='Battery')  # Only batteries
         """
         # Get cached charge states
-        ds = self._all_charge_states
+        ds = self.all_charge_states
 
         if not ds.data_vars:
             logger.warning('No storage components found in results')
@@ -827,7 +966,7 @@ class PlotAccessor:
             >>> results.plot.on_states(include='Boiler')  # Only boilers
         """
         # Get cached status variables
-        ds = self._all_status_vars
+        ds = self.all_on_states
 
         if not ds.data_vars:
             logger.warning('No status variables found in results')
@@ -932,9 +1071,9 @@ class PlotAccessor:
         """
         # Get cached flow data as Dataset
         if unit == 'flow_rate':
-            ds = self._all_flow_rates
+            ds = self.all_flow_rates
         else:
-            ds = self._all_flow_hours
+            ds = self.all_flow_hours
 
         # Apply flow filtering by looking up which flows match the criteria
         if start is not None or end is not None or component is not None:
@@ -1117,7 +1256,7 @@ class PlotAccessor:
             >>> results.plot.sankey(select={'scenario': 'base'})  # Single scenario
         """
         # Get cached flow hours (energy, not power - appropriate for Sankey) as Dataset
-        ds = self._all_flow_hours
+        ds = self.all_flow_hours
 
         # Apply weights before selection - this way selection automatically gets correct weighted values
         flow_system = self._results.flow_system
@@ -1285,7 +1424,7 @@ class PlotAccessor:
         import plotly.express as px
 
         # Get cached sizes data as Dataset
-        ds = self._all_sizes
+        ds = self.all_sizes
 
         # Apply flow filtering by looking up which flows match the criteria
         if start is not None or end is not None or component is not None:

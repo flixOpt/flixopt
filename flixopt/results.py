@@ -547,7 +547,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a DataArray containing the flow rates of each Flow.
 
         .. deprecated::
-            Use `results.plot.flows(plot=False).data` instead for Dataset format,
+            Use `results.plot.all_flow_rates` instead for Dataset format,
             or access individual flows via `results.flows['FlowLabel'].flow_rate`.
 
         Args:
@@ -566,8 +566,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
         """
         warnings.warn(
-            'results.flow_rates() is deprecated. Use results.plot._all_flow_rates instead.'
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}',
+            'results.flow_rates() is deprecated. '
+            'Use results.plot.all_flow_rates (Dataset with flow labels as variables) instead, '
+            "or results.flows['FlowLabel'].flow_rate for individual flows. "
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -592,7 +594,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a DataArray containing the flow hours of each Flow.
 
         .. deprecated::
-            Use `results.plot.flows(unit='flow_hours', plot=False).data` instead for Dataset format,
+            Use `results.plot.all_flow_hours` instead for Dataset format,
             or access individual flows via `results.flows['FlowLabel'].flow_hours`.
 
         Flow hours represent the total energy/material transferred over time,
@@ -615,8 +617,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         """
         warnings.warn(
-            'results.flow_hours() is deprecated. Use results.plot._all_flow_hours instead.',
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}',
+            'results.flow_hours() is deprecated. '
+            'Use results.plot.all_flow_hours (Dataset with flow labels as variables) instead, '
+            "or results.flows['FlowLabel'].flow_rate * results.hours_per_timestep for individual flows. "
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -634,7 +638,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         """Returns a dataset with the sizes of the Flows.
 
         .. deprecated::
-            Use `results.plot.sizes(plot=False).data` instead for Dataset format,
+            Use `results.plot.all_sizes` instead for Dataset format,
             or access individual flows via `results.flows['FlowLabel'].size`.
 
         Args:
@@ -650,8 +654,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         """
         warnings.warn(
-            'results.sizes() is deprecated. Use results.plot._all_sizes instead.',
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}',
+            'results.sizes() is deprecated. '
+            'Use results.plot.all_sizes (Dataset with flow labels as variables) instead, '
+            "or results.flows['FlowLabel'].size for individual flows. "
+            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
