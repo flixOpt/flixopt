@@ -202,6 +202,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
 
+        # Solution dataset - populated after optimization or loaded from file
+        self.solution: xr.Dataset | None = None
+
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
         self.scenario_independent_flow_rates = scenario_independent_flow_rates
@@ -529,6 +532,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
 
+        If a solution is present, it will be included in the dataset with variable names
+        prefixed by 'solution|' to avoid conflicts with FlowSystem configuration variables.
+
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
@@ -536,13 +542,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        return super().to_dataset()
+        ds = super().to_dataset()
+
+        # Include solution data if present
+        if self.solution is not None:
+            # Add solution variables with 'solution|' prefix to avoid conflicts
+            solution_vars = {f'solution|{name}': var for name, var in self.solution.data_vars.items()}
+            ds = ds.assign(solution_vars)
+            ds.attrs['has_solution'] = True
+        else:
+            ds.attrs['has_solution'] = False
+
+        return ds
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
         Handles FlowSystem-specific reconstruction logic.
+
+        If the dataset contains solution data (variables prefixed with 'solution|'),
+        the solution will be restored to the FlowSystem.
 
         Args:
             ds: Dataset containing the FlowSystem data
@@ -553,8 +573,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
-        # Create arrays dictionary from dataset variables
-        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+        # Separate solution variables from config variables
+        solution_prefix = 'solution|'
+        solution_vars = {}
+        config_vars = {}
+        for name, array in ds.data_vars.items():
+            if name.startswith(solution_prefix):
+                # Remove prefix for solution dataset
+                original_name = name[len(solution_prefix) :]
+                solution_vars[original_name] = array
+            else:
+                config_vars[name] = array
+
+        # Create arrays dictionary from config variables only
+        arrays_dict = config_vars
 
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
@@ -594,6 +626,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')
             flow_system._add_effects(effect)
+
+        # Restore solution if present
+        if reference_structure.get('has_solution', False) and solution_vars:
+            flow_system.solution = xr.Dataset(solution_vars)
 
         return flow_system
 

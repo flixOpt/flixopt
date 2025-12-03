@@ -260,6 +260,9 @@ class Optimization:
                 f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
 
+        # Store solution on FlowSystem for direct Element access
+        self.flow_system.solution = self.model.solution
+
         self.results = Results.from_optimization(self)
 
         return self
