@@ -15,6 +15,7 @@ import math
 import pathlib
 import sys
 import timeit
+import warnings
 from collections import Counter
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -24,7 +25,7 @@ from tqdm import tqdm
 from . import io as fx_io
 from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
-from .config import CONFIG, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
@@ -170,6 +171,13 @@ class Optimization:
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
+        warnings.warn(
+            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use FlowSystem.optimize(solver) or FlowSystem.build_model() + FlowSystem.solve(solver) instead. '
+            'Access results via FlowSystem.solution.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         _initialize_optimization_common(
             self,
             name=name,
@@ -259,6 +267,9 @@ class Optimization:
                 SUCCESS_LEVEL,
                 f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
+
+        # Store solution on FlowSystem for direct Element access
+        self.flow_system.solution = self.model.solution
 
         self.results = Results.from_optimization(self)
 
@@ -380,11 +391,20 @@ class ClusteredOptimization(Optimization):
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
+        warnings.warn(
+            f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use FlowSystem.transform.cluster(params) followed by FlowSystem.optimize(solver) instead. '
+            'Example: clustered_fs = flow_system.transform.cluster(params); clustered_fs.optimize(solver)',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if flow_system.scenarios is not None:
             raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
         if flow_system.periods is not None:
             raise ValueError('Clustering is not supported for periods yet. Please use Optimization instead.')
-        super().__init__(
+        # Skip parent deprecation warning by calling common init directly
+        _initialize_optimization_common(
+            self,
             name=name,
             flow_system=flow_system,
             folder=folder,
@@ -618,6 +638,12 @@ class SegmentedOptimization:
         nr_of_previous_values: int = 1,
         folder: pathlib.Path | None = None,
     ):
+        warnings.warn(
+            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'A replacement API for segmented optimization will be provided in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         _initialize_optimization_common(
             self,
             name=name,

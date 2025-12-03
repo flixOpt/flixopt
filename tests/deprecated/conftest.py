@@ -2,6 +2,9 @@
 The conftest.py file is used by pytest to define shared fixtures, hooks, and configuration
 that apply to multiple test files without needing explicit imports.
 It helps avoid redundancy and centralizes reusable test logic.
+
+This folder contains tests for the deprecated Optimization/Results API.
+Delete this entire folder when the deprecation cycle ends in v6.0.0.
 """
 
 import os
@@ -545,8 +548,8 @@ def flow_system_long():
     Special fixture with CSV data loading - kept separate for backward compatibility
     Uses library components where possible, but has special elements inline
     """
-    # Load data
-    filename = os.path.join(os.path.dirname(__file__), 'ressources', 'Zeitreihen2020.csv')
+    # Load data - use parent folder's ressources
+    filename = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ressources', 'Zeitreihen2020.csv')
     ts_raw = pd.read_csv(filename, index_col=0).sort_index()
     data = ts_raw['2020-01-01 00:00:00':'2020-12-31 23:45:00']['2020-01-01':'2020-01-03 23:45:00']
 
@@ -848,3 +851,22 @@ def set_test_environment():
     fx.CONFIG.Plotting.default_show = False
 
     yield
+
+
+# ============================================================================
+# DEPRECATED API MARKERS
+# ============================================================================
+
+
+def pytest_collection_modifyitems(items):
+    """Auto-apply markers to all tests in the deprecated folder.
+
+    This hook adds:
+    - deprecated_api marker for filtering
+    - filterwarnings to ignore DeprecationWarning
+    """
+    for item in items:
+        # Only apply to tests in this folder
+        if 'deprecated' in str(item.fspath):
+            item.add_marker(pytest.mark.deprecated_api)
+            item.add_marker(pytest.mark.filterwarnings('ignore::DeprecationWarning'))

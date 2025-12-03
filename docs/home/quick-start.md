@@ -91,16 +91,28 @@ flow_system.add_elements(solar, demand, battery, electricity_bus)
 ### 5. Run Optimization
 
 ```python
-# Create and run optimization
-optimization = fx.Optimization('solar_battery_optimization', flow_system)
-optimization.solve(fx.solvers.HighsSolver())
+# Run optimization directly on the flow system
+flow_system.optimize(fx.solvers.HighsSolver())
 ```
 
-### 6. Save Results
+### 6. Access Results
 
 ```python
-# This includes the modeled FlowSystem. SO you can restore both results and inputs
-optimization.results.to_file()
+# Access results directly from the flow system
+print(flow_system.solution)
+
+# Or access component-specific results
+print(flow_system.components['battery'].solution)
+```
+
+### 7. Save Results (Optional)
+
+```python
+# Save the flow system (includes inputs and solution)
+flow_system.to_netcdf('results/solar_battery.nc')
+
+# Load it back later
+loaded_fs = fx.FlowSystem.from_netcdf('results/solar_battery.nc')
 ```
 
 ## What's Next?
@@ -120,8 +132,8 @@ Most flixOpt projects follow this pattern:
 2. **Create flow system** - Initialize with time series and effects
 3. **Add buses** - Define connection points
 4. **Add components** - Create generators, storage, converters, loads
-5. **Run optimization** - Solve the optimization
-6. **Save Results** - For later analysis. Or only extract needed data
+5. **Run optimization** - Call `flow_system.optimize(solver)`
+6. **Access Results** - Via `flow_system.solution` or component `.solution` attributes
 
 ## Tips
 

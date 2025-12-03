@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
 from .structure import CompositeContainerMixin, ResultsContainer
 
@@ -222,6 +222,13 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             folder: Results storage folder.
             model: Linopy optimization model.
         """
+        warnings.warn(
+            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Access results directly via FlowSystem.solution after optimization, or use the '
+            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)).',
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         self.solution = solution
         self.flow_system_data = flow_system_data
@@ -2033,6 +2040,12 @@ class SegmentedResults:
         name: str,
         folder: pathlib.Path | None = None,
     ):
+        warnings.warn(
+            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'A replacement API for segmented optimization will be provided in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment

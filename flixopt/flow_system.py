@@ -24,7 +24,9 @@ from .core import (
 )
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
+from .optimize_accessor import OptimizeAccessor
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .transform_accessor import TransformAccessor
 
 if TYPE_CHECKING:
     import pathlib
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
+    from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
@@ -201,6 +204,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
+
+        # Solution dataset - populated after optimization or loaded from file
+        self.solution: xr.Dataset | None = None
+
+        # Clustering info - populated by transform.cluster()
+        self._clustering_info: dict | None = None
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -529,6 +538,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
 
+        If a solution is present, it will be included in the dataset with variable names
+        prefixed by 'solution|' to avoid conflicts with FlowSystem configuration variables.
+        Solution time coordinates are renamed to 'solution_time' to preserve them
+        independently of the FlowSystem's time coordinates.
+
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
@@ -536,13 +550,36 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        return super().to_dataset()
+        ds = super().to_dataset()
+
+        # Include solution data if present
+        if self.solution is not None:
+            # Rename 'time' to 'solution_time' in solution variables to preserve full solution
+            # (linopy solution may have extra timesteps, e.g., for final charge states)
+            solution_renamed = (
+                self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
+            )
+            # Add solution variables with 'solution|' prefix to avoid conflicts
+            solution_vars = {f'solution|{name}': var for name, var in solution_renamed.data_vars.items()}
+            ds = ds.assign(solution_vars)
+            # Also add the solution_time coordinate if it exists
+            if 'solution_time' in solution_renamed.coords:
+                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+            ds.attrs['has_solution'] = True
+        else:
+            ds.attrs['has_solution'] = False
+
+        return ds
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
         Handles FlowSystem-specific reconstruction logic.
+
+        If the dataset contains solution data (variables prefixed with 'solution|'),
+        the solution will be restored to the FlowSystem. Solution time coordinates
+        are renamed back from 'solution_time' to 'time'.
 
         Args:
             ds: Dataset containing the FlowSystem data
@@ -553,8 +590,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
-        # Create arrays dictionary from dataset variables
-        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+        # Separate solution variables from config variables
+        solution_prefix = 'solution|'
+        solution_vars = {}
+        config_vars = {}
+        for name, array in ds.data_vars.items():
+            if name.startswith(solution_prefix):
+                # Remove prefix for solution dataset
+                original_name = name[len(solution_prefix) :]
+                solution_vars[original_name] = array
+            else:
+                config_vars[name] = array
+
+        # Create arrays dictionary from config variables only
+        arrays_dict = config_vars
 
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
@@ -594,6 +643,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')
             flow_system._add_effects(effect)
+
+        # Restore solution if present
+        if reference_structure.get('has_solution', False) and solution_vars:
+            solution_ds = xr.Dataset(solution_vars)
+            # Rename 'solution_time' back to 'time' if present
+            if 'solution_time' in solution_ds.dims:
+                solution_ds = solution_ds.rename({'solution_time': 'time'})
+            flow_system.solution = solution_ds
 
         return flow_system
 
@@ -776,6 +833,158 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
+
+    def build_model(self, normalize_weights: bool = True) -> FlowSystem:
+        """
+        Build the optimization model for this FlowSystem.
+
+        This method prepares the FlowSystem for optimization by:
+        1. Connecting and transforming all elements (if not already done)
+        2. Creating the FlowSystemModel with all variables and constraints
+        3. Adding clustering constraints (if this is a clustered FlowSystem)
+
+        After calling this method, `self.model` will be available for inspection
+        before solving.
+
+        Args:
+            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> print(flow_system.model.variables)  # Inspect variables before solving
+            >>> flow_system.solve(solver)
+        """
+        self.connect_and_transform()
+        self.create_model(normalize_weights)
+        self.model.do_modeling()
+
+        # Add clustering constraints if this is a clustered FlowSystem
+        if self._clustering_info is not None:
+            self._add_clustering_constraints()
+
+        return self
+
+    def _add_clustering_constraints(self) -> None:
+        """Add clustering constraints to the model."""
+        from .clustering import ClusteringModel
+
+        info = self._clustering_info
+        clustering_model = ClusteringModel(
+            model=self.model,
+            clustering_parameters=info['parameters'],
+            flow_system=self,
+            clustering_data=info['clustering'],
+            components_to_clusterize=info['components_to_clusterize'],
+        )
+        clustering_model.do_modeling()
+
+    def solve(self, solver: _Solver) -> FlowSystem:
+        """
+        Solve the optimization model and populate the solution.
+
+        This method solves the previously built model using the specified solver.
+        After solving, `self.solution` will contain the optimization results,
+        and each element's `.solution` property will provide access to its
+        specific variables.
+
+        Args:
+            solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the model has not been built yet (call build_model first).
+            RuntimeError: If the model is infeasible.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> flow_system.solve(HighsSolver())
+            >>> print(flow_system.solution)
+        """
+        if self.model is None:
+            raise RuntimeError('Model has not been built. Call build_model() first.')
+
+        self.model.solve(
+            solver_name=solver.name,
+            **solver.options,
+        )
+
+        if self.model.termination_condition == 'infeasible':
+            if CONFIG.Solving.compute_infeasibilities:
+                import io
+                from contextlib import redirect_stdout
+
+                f = io.StringIO()
+
+                # Redirect stdout to our buffer
+                with redirect_stdout(f):
+                    self.model.print_infeasibilities()
+
+                infeasibilities = f.getvalue()
+                logger.error('Sucessfully extracted infeasibilities: \n%s', infeasibilities)
+            raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
+
+        # Store solution on FlowSystem for direct Element access
+        self.solution = self.model.solution
+
+        logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
+
+        return self
+
+    @property
+    def optimize(self) -> OptimizeAccessor:
+        """
+        Access optimization methods for this FlowSystem.
+
+        This property returns an OptimizeAccessor that can be called directly
+        for standard optimization, or used to access specialized optimization modes.
+
+        Returns:
+            An OptimizeAccessor instance.
+
+        Examples:
+            Standard optimization (call directly):
+
+            >>> flow_system.optimize(HighsSolver())
+            >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
+
+            Access element solutions directly:
+
+            >>> flow_system.optimize(solver)
+            >>> boiler = flow_system.components['Boiler']
+            >>> print(boiler.solution)
+
+            Future specialized modes:
+
+            >>> flow_system.optimize.clustered(solver, aggregation=params)
+            >>> flow_system.optimize.mga(solver, alternatives=5)
+        """
+        return OptimizeAccessor(self)
+
+    @property
+    def transform(self) -> TransformAccessor:
+        """
+        Access transformation methods for this FlowSystem.
+
+        This property returns a TransformAccessor that provides methods to create
+        transformed versions of this FlowSystem (e.g., clustered for time aggregation).
+
+        Returns:
+            A TransformAccessor instance.
+
+        Examples:
+            Clustered optimization:
+
+            >>> params = ClusteringParameters(hours_per_period=24, nr_of_periods=8)
+            >>> clustered_fs = flow_system.transform.cluster(params)
+            >>> clustered_fs.optimize(solver)
+            >>> print(clustered_fs.solution)
+        """
+        return TransformAccessor(self)
 
     def plot_network(
         self,
