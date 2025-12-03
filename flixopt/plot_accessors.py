@@ -173,6 +173,49 @@ def _merge_colors(
     return colors
 
 
+def _label_to_var(label: str) -> str:
+    """Convert flow label to variable name by adding |flow_rate suffix if needed."""
+    return f'{label}|flow_rate' if '|' not in label else label
+
+
+def _filter_flows_by_connection(
+    flows: dict,
+    start: str | list[str] | None = None,
+    end: str | list[str] | None = None,
+    component: str | list[str] | None = None,
+) -> list[str]:
+    """Filter flows by start/end nodes or component.
+
+    Args:
+        flows: Dictionary of FlowResults objects.
+        start: Filter by source node(s).
+        end: Filter by destination node(s).
+        component: Filter by parent component(s).
+
+    Returns:
+        List of matching flow labels.
+    """
+    if start is None and end is None and component is None:
+        return list(flows.keys())
+
+    matching_labels = []
+    for flow in flows.values():
+        if start is not None:
+            starts = [start] if isinstance(start, str) else start
+            if flow.start not in starts:
+                continue
+        if end is not None:
+            ends = [end] if isinstance(end, str) else end
+            if flow.end not in ends:
+                continue
+        if component is not None:
+            components = [component] if isinstance(component, str) else component
+            if flow.component not in components:
+                continue
+        matching_labels.append(flow.label)
+    return matching_labels
+
+
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
     """Convert xarray Dataset to long-form DataFrame for plotly express.
 
@@ -410,18 +453,14 @@ class PlotAccessor:
         Dimensions are ``(time, [scenario], [period])`` depending on the
         optimization setup.
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset where each data variable is named by flow label
             (e.g., ``'Boiler(Q_th)'``, ``'CHP(P_el)'``).
 
-        Examples
-        --------
-        >>> flow_rates = results.plot.all_flow_rates
-        >>> flow_rates['Boiler(Q_th)']  # Single flow as DataArray
-        >>> flow_rates.to_dataframe()  # Convert to pandas DataFrame
-        >>> flow_rates.sum(dim='time')  # Aggregate over time
+        Examples:
+            >>> flow_rates = results.plot.all_flow_rates
+            >>> flow_rates['Boiler(Q_th)']  # Single flow as DataArray
+            >>> flow_rates.to_dataframe()  # Convert to pandas DataFrame
         """
         if self.__all_flow_rates is None:
             self.__all_flow_rates = _build_flow_rates(self._results)
@@ -434,16 +473,12 @@ class PlotAccessor:
         Flow hours represent the total energy/material transferred, calculated
         as flow_rate × hours_per_timestep. Same structure as ``all_flow_rates``.
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset where each data variable is named by flow label.
 
-        Examples
-        --------
-        >>> flow_hours = results.plot.all_flow_hours
-        >>> total_energy = flow_hours.sum(dim='time')
-        >>> flow_hours['CHP(Q_th)'].sum()  # Total thermal energy from CHP
+        Examples:
+            >>> flow_hours = results.plot.all_flow_hours
+            >>> total_energy = flow_hours.sum(dim='time')
         """
         if self.__all_flow_hours is None:
             self.__all_flow_hours = _build_flow_hours(self._results)
@@ -457,17 +492,12 @@ class PlotAccessor:
         this is the optimized size. Dimensions are ``([scenario])`` - no time
         dimension since sizes are constant over time.
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset where each data variable is named by flow label.
 
-        Examples
-        --------
-        >>> sizes = results.plot.all_sizes
-        >>> sizes['Boiler(Q_th)']  # Boiler thermal capacity
-        >>> # Compute capacity factors
-        >>> capacity_factors = results.plot.all_flow_rates.max(dim='time') / sizes
+        Examples:
+            >>> sizes = results.plot.all_sizes
+            >>> sizes['Boiler(Q_th)']  # Boiler thermal capacity
         """
         if self.__all_sizes is None:
             self.__all_sizes = _build_sizes(self._results)
@@ -480,18 +510,13 @@ class PlotAccessor:
         Each variable represents a storage component's charge state over time.
         Only includes components that are storages (have charge state).
 
-        Returns
-        -------
-        xr.Dataset
+        Returns:
             Dataset where each data variable is named by storage label
-            (e.g., ``'Battery'``, ``'HeatStorage'``). Empty Dataset if no
-            storages exist.
+            (e.g., ``'Battery'``, ``'HeatStorage'``). Empty if no storages.
 
-        Examples
-        --------
-        >>> charge_states = results.plot.all_charge_states
-        >>> charge_states['Battery']  # Battery charge state over time
-        >>> charge_states.max(dim='time')  # Maximum charge per storage
+        Examples:
+            >>> charge_states = results.plot.all_charge_states
+            >>> charge_states['Battery']  # Battery charge state over time
         """
         if self.__all_charge_states is None:
             storages = self._results.storages
@@ -508,21 +533,15 @@ class PlotAccessor:
         """All component status variables (on/off) as a Dataset.
 
         Each variable represents a component's binary operational status over
-        time. Only includes components that have status variables (i.e.,
-        components with ``|status`` in their variable names).
+        time. Only includes components that have status variables.
 
-        Returns
-        -------
-        xr.Dataset
-            Dataset where each data variable is named by component label.
-            Values are typically 0 (off) or 1 (on). Empty Dataset if no
-            components have status variables.
+        Returns:
+            Dataset where each variable is named by component label.
+            Values are typically 0 (off) or 1 (on). Empty if no status vars.
 
-        Examples
-        --------
-        >>> on_states = results.plot.all_on_states
-        >>> on_states['Boiler']  # Boiler on/off status over time
-        >>> operating_hours = (on_states * results.hours_per_timestep).sum(dim='time')
+        Examples:
+            >>> on_states = results.plot.all_on_states
+            >>> on_states['Boiler']  # Boiler on/off status over time
         """
         if self.__all_status_vars is None:
             status_vars = {}
@@ -603,11 +622,8 @@ class PlotAccessor:
         input_labels = [f for f in filtered_labels if f in node_results.inputs]
 
         # Convert flow labels to variable names for solution access
-        def label_to_var(label: str) -> str:
-            return f'{label}|flow_rate' if '|' not in label else label
-
-        filtered_vars = [label_to_var(label) for label in filtered_labels]
-        input_vars = [label_to_var(label) for label in input_labels]
+        filtered_vars = [_label_to_var(label) for label in filtered_labels]
+        input_vars = [_label_to_var(label) for label in input_labels]
 
         # Get the data
         ds = node_results.solution[filtered_vars]
@@ -1080,29 +1096,9 @@ class PlotAccessor:
         else:
             ds = self.all_flow_hours
 
-        # Apply flow filtering by looking up which flows match the criteria
-        if start is not None or end is not None or component is not None:
-            matching_labels = []
-            for flow in self._results.flows.values():
-                if start is not None:
-                    if isinstance(start, str):
-                        if flow.start != start:
-                            continue
-                    elif flow.start not in start:
-                        continue
-                if end is not None:
-                    if isinstance(end, str):
-                        if flow.end != end:
-                            continue
-                    elif flow.end not in end:
-                        continue
-                if component is not None:
-                    if isinstance(component, str):
-                        if flow.component != component:
-                            continue
-                    elif flow.component not in component:
-                        continue
-                matching_labels.append(flow.label)
+        # Apply flow filtering
+        matching_labels = _filter_flows_by_connection(self._results.flows, start, end, component)
+        if matching_labels != list(self._results.flows.keys()):
             ds = ds[matching_labels]
 
         # Apply selection
@@ -1431,29 +1427,9 @@ class PlotAccessor:
         # Get cached sizes data as Dataset
         ds = self.all_sizes
 
-        # Apply flow filtering by looking up which flows match the criteria
-        if start is not None or end is not None or component is not None:
-            matching_labels = []
-            for flow in self._results.flows.values():
-                if start is not None:
-                    if isinstance(start, str):
-                        if flow.start != start:
-                            continue
-                    elif flow.start not in start:
-                        continue
-                if end is not None:
-                    if isinstance(end, str):
-                        if flow.end != end:
-                            continue
-                    elif flow.end not in end:
-                        continue
-                if component is not None:
-                    if isinstance(component, str):
-                        if flow.component != component:
-                            continue
-                    elif flow.component not in component:
-                        continue
-                matching_labels.append(flow.label)
+        # Apply flow filtering
+        matching_labels = _filter_flows_by_connection(self._results.flows, start, end, component)
+        if matching_labels != list(self._results.flows.keys()):
             ds = ds[matching_labels]
 
         # Apply selection
