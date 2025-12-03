@@ -393,11 +393,68 @@ class PlotAccessor:
 
     def __init__(self, results: Results):
         self._results = results
+        # Private backing fields for cached data
+        self.__all_flow_rates: xr.DataArray | None = None
+        self.__all_flow_hours: xr.DataArray | None = None
+        self.__all_sizes: xr.DataArray | None = None
+        self.__all_charge_states: xr.Dataset | None = None
+        self.__all_status_vars: xr.Dataset | None = None
 
     @property
     def colors(self) -> dict[str, str]:
         """Global colors from Results."""
         return self._results.colors
+
+    @property
+    def _all_flow_rates(self) -> xr.DataArray:
+        """Lazily compute and cache all flow rates."""
+        if self.__all_flow_rates is None:
+            self.__all_flow_rates = build_flow_rates(self._results)
+        return self.__all_flow_rates
+
+    @property
+    def _all_flow_hours(self) -> xr.DataArray:
+        """Lazily compute and cache all flow hours."""
+        if self.__all_flow_hours is None:
+            self.__all_flow_hours = build_flow_hours(self._results)
+        return self.__all_flow_hours
+
+    @property
+    def _all_sizes(self) -> xr.DataArray:
+        """Lazily compute and cache all sizes."""
+        if self.__all_sizes is None:
+            self.__all_sizes = build_sizes(self._results)
+        return self.__all_sizes
+
+    @property
+    def _all_charge_states(self) -> xr.Dataset:
+        """Lazily compute and cache all storage charge states."""
+        if self.__all_charge_states is None:
+            storages = self._results.storages
+            if storages:
+                self.__all_charge_states = xr.Dataset(
+                    {s.label: self._results.components[s.label].charge_state for s in storages}
+                )
+            else:
+                self.__all_charge_states = xr.Dataset()
+        return self.__all_charge_states
+
+    @property
+    def _all_status_vars(self) -> xr.Dataset:
+        """Lazily compute and cache all status variables."""
+        if self.__all_status_vars is None:
+            status_vars = {}
+            for var_name in self._results.solution.data_vars:
+                if var_name.endswith('|status'):
+                    component_name = var_name.split('|')[0]
+                    status_vars[component_name] = var_name
+            if status_vars:
+                self.__all_status_vars = xr.Dataset(
+                    {name: self._results.solution[var_name] for name, var_name in status_vars.items()}
+                )
+            else:
+                self.__all_status_vars = xr.Dataset()
+        return self.__all_status_vars
 
     def balance(
         self,
@@ -741,25 +798,22 @@ class PlotAccessor:
             >>> results.plot.charge_states()  # All storage charge states
             >>> results.plot.charge_states(include='Battery')  # Only batteries
         """
-        # Get all storage components
-        storages = self._results.storages
+        # Get cached charge states
+        ds = self._all_charge_states
 
-        if not storages:
+        if not ds.data_vars:
             logger.warning('No storage components found in results')
             return PlotResult(data=xr.Dataset())
 
-        # Build list of storage labels
-        storage_labels = [s.label for s in storages]
-
         # Apply include/exclude filtering
-        filtered_labels = _filter_by_pattern(storage_labels, include, exclude)
+        filtered_labels = _filter_by_pattern(list(ds.data_vars), include, exclude)
 
         if not filtered_labels:
             logger.warning('No storages remaining after filtering')
             return PlotResult(data=xr.Dataset())
 
-        # Build Dataset with charge states
-        ds = xr.Dataset({label: self._results.components[label].charge_state for label in filtered_labels})
+        # Filter dataset to selected labels
+        ds = ds[filtered_labels]
 
         # Apply selection
         ds = _apply_selection(ds, select)
@@ -829,27 +883,22 @@ class PlotAccessor:
             >>> results.plot.on_states()  # All component on/off states
             >>> results.plot.on_states(include='Boiler')  # Only boilers
         """
-        # Find all status variables
-        status_vars = {}
-        for var_name in self._results.solution.data_vars:
-            if var_name.endswith('|status'):
-                component_name = var_name.split('|')[0]
-                status_vars[component_name] = var_name
+        # Get cached status variables
+        ds = self._all_status_vars
 
-        if not status_vars:
+        if not ds.data_vars:
             logger.warning('No status variables found in results')
             return PlotResult(data=xr.Dataset())
 
         # Apply include/exclude filtering on component names
-        component_names = list(status_vars.keys())
-        filtered_names = _filter_by_pattern(component_names, include, exclude)
+        filtered_names = _filter_by_pattern(list(ds.data_vars), include, exclude)
 
         if not filtered_names:
             logger.warning('No components remaining after filtering')
             return PlotResult(data=xr.Dataset())
 
-        # Build Dataset with status variables (using component name as key)
-        ds = xr.Dataset({name: self._results.solution[status_vars[name]] for name in filtered_names})
+        # Filter dataset to selected components
+        ds = ds[filtered_names]
 
         # Apply selection
         ds = _apply_selection(ds, select)
@@ -938,11 +987,11 @@ class PlotAccessor:
             >>> results.plot.flows(component='Boiler')
             >>> results.plot.flows(unit='flow_hours', aggregate='sum')
         """
-        # Build flow data
+        # Get cached flow data
         if unit == 'flow_rate':
-            da = build_flow_rates(self._results)
+            da = self._all_flow_rates
         else:
-            da = build_flow_hours(self._results)
+            da = self._all_flow_hours
 
         # Apply flow filtering
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
@@ -1109,8 +1158,8 @@ class PlotAccessor:
             >>> results.plot.sankey(timestep=100)
             >>> results.plot.sankey(select={'scenario': 'base'})  # Single scenario
         """
-        # Get all flow hours (energy, not power - appropriate for Sankey)
-        da = build_flow_hours(self._results)
+        # Get cached flow hours (energy, not power - appropriate for Sankey)
+        da = self._all_flow_hours
 
         # Apply weights before selection - this way selection automatically gets correct weighted values
         flow_system = self._results.flow_system
@@ -1277,8 +1326,8 @@ class PlotAccessor:
         """
         import plotly.express as px
 
-        # Build sizes data
-        da = build_sizes(self._results)
+        # Get cached sizes data
+        da = self._all_sizes
 
         # Apply flow filtering
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
