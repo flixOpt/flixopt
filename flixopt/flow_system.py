@@ -935,94 +935,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self
 
-    def map_solution_to(self, target: FlowSystem) -> FlowSystem:
-        """
-        Map the solution from this FlowSystem to another FlowSystem.
-
-        This method is used to transfer solutions from a transformed FlowSystem
-        (e.g., clustered) back to the original FlowSystem with full time resolution.
-        The target FlowSystem will have its `.solution` populated with the mapped values.
-
-        For clustered FlowSystems, this disaggregates the solution by expanding
-        the clustered periods back to the original timesteps.
-
-        Args:
-            target: The FlowSystem to map the solution to (typically the original
-                FlowSystem before transformation).
-
-        Returns:
-            The target FlowSystem with its solution populated.
-
-        Raises:
-            RuntimeError: If this FlowSystem has no solution (not yet solved).
-            RuntimeError: If this is not a transformed FlowSystem (no mapping info).
-
-        Examples:
-            Clustered optimization with solution mapping:
-
-            >>> clustered_fs = flow_system.transform.cluster(params)
-            >>> clustered_fs.optimize(solver)
-            >>> clustered_fs.map_solution_to(flow_system)
-            >>> print(flow_system.solution)  # Full resolution solution
-        """
-        if self.solution is None:
-            raise RuntimeError('No solution to map. Solve the model first.')
-
-        if self._clustering_info is None:
-            raise RuntimeError('Cannot map solution: this is not a transformed FlowSystem.')
-
-        # Map clustered solution to original timesteps
-        target.solution = self._disaggregate_solution(target)
-        return target
-
-    def _disaggregate_solution(self, target: FlowSystem) -> xr.Dataset:
-        """Disaggregate clustered solution to original timesteps."""
-        import numpy as np
-
-        clustering = self._clustering_info['clustering']
-        tsam_obj = clustering.tsam
-
-        # Get the mapping from original timesteps to clustered timesteps
-        period_length = len(tsam_obj.stepIdx)
-        cluster_order = tsam_obj.clusterOrder
-
-        # Build index mapping: for each original timestep, find the corresponding
-        # clustered timestep (the representative period's timestep)
-        original_to_clustered = []
-        for period_idx, cluster_id in enumerate(cluster_order):
-            # Find the first period that belongs to this cluster (the representative)
-            representative_period = None
-            for p_idx, c_id in enumerate(cluster_order):
-                if c_id == cluster_id:
-                    representative_period = p_idx
-                    break
-
-            # Map each timestep in this period to the representative period's timestep
-            for step_in_period in range(period_length):
-                original_idx = period_idx * period_length + step_in_period
-                if original_idx < len(target.timesteps):
-                    clustered_idx = representative_period * period_length + step_in_period
-                    original_to_clustered.append(clustered_idx)
-
-        original_to_clustered = np.array(original_to_clustered)
-
-        # Disaggregate each variable in the solution
-        disaggregated = {}
-        for var_name, var_data in self.solution.data_vars.items():
-            if 'time' in var_data.dims:
-                # Expand using the index mapping
-                disaggregated_data = var_data.isel(time=original_to_clustered)
-                # Assign the target's time coordinates
-                disaggregated_data = disaggregated_data.assign_coords(
-                    time=target.timesteps[: len(original_to_clustered)]
-                )
-                disaggregated[var_name] = disaggregated_data
-            else:
-                # Non-time variables are copied as-is
-                disaggregated[var_name] = var_data
-
-        return xr.Dataset(disaggregated, attrs=self.solution.attrs)
-
     @property
     def optimize(self) -> OptimizeAccessor:
         """
@@ -1070,7 +982,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> params = ClusteringParameters(hours_per_period=24, nr_of_periods=8)
             >>> clustered_fs = flow_system.transform.cluster(params)
             >>> clustered_fs.optimize(solver)
-            >>> clustered_fs.map_solution_to(flow_system)
+            >>> print(clustered_fs.solution)
         """
         return TransformAccessor(self)
 

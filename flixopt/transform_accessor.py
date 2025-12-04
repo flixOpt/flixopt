@@ -29,13 +29,12 @@ class TransformAccessor:
 
         >>> clustered_fs = flow_system.transform.cluster(params)
         >>> clustered_fs.optimize(solver)
-        >>> clustered_fs.map_solution_to(flow_system)
+        >>> print(clustered_fs.solution)
 
         Future MGA:
 
         >>> mga_fs = flow_system.transform.mga(alternatives=5)
         >>> mga_fs.optimize(solver)
-        >>> mga_fs.map_solution_to(flow_system)
     """
 
     def __init__(self, flow_system: FlowSystem) -> None:
@@ -60,9 +59,9 @@ class TransformAccessor:
         complexity by identifying representative time periods.
 
         The returned FlowSystem:
+        - Has the same timesteps as the original (clustering works via constraints, not reduction)
         - Has aggregated time series data (if `aggregate_data_and_fix_non_binary_vars=True`)
         - Will have clustering constraints added during `build_model()`
-        - Can map its solution back to the original FlowSystem
 
         Args:
             parameters: Clustering parameters specifying period duration,
@@ -89,7 +88,7 @@ class TransformAccessor:
             ... )
             >>> clustered_fs = flow_system.transform.cluster(params)
             >>> clustered_fs.optimize(solver)
-            >>> clustered_fs.map_solution_to(flow_system)
+            >>> print(clustered_fs.solution)
 
             With model modifications:
 
@@ -97,7 +96,6 @@ class TransformAccessor:
             >>> clustered_fs.build_model()
             >>> clustered_fs.model.add_constraints(...)
             >>> clustered_fs.solve(solver)
-            >>> clustered_fs.map_solution_to(flow_system)
         """
         import numpy as np
 
