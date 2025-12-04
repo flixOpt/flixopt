@@ -43,6 +43,7 @@ nav:
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
     - Migration & Updates:
+      - Migration Guide v6: user-guide/migration-guide-v6.md
       - Migration Guide v3: user-guide/migration-guide-v3.md
       - Release Notes: changelog.md
       - Roadmap: roadmap.md

@@ -187,6 +187,7 @@ keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer po
 markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
+    "deprecated_api: marks tests using deprecated Optimization/Results API (remove in v6.0.0)",
 ]
 addopts = '-m "not examples"'  # Skip examples by default
 
@@ -196,6 +197,14 @@ addopts = '-m "not examples"'  # Skip examples by default
 filterwarnings = [
     # === Default behavior: show all warnings ===
     "default",
+
+    # === Ignore specific deprecation warnings for backward compatibility tests ===
+    # These are raised by deprecated classes (Optimization, Results) used in tests/deprecated/
+    "ignore:Results is deprecated:DeprecationWarning:flixopt",
+    "ignore:Optimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:SegmentedOptimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
+    "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
 
     # === Treat flixopt warnings as errors (strict mode for our code) ===
     # This ensures we catch deprecations, future changes, and user warnings in our own code

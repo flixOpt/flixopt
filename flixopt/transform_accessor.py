@@ -105,7 +105,7 @@ class TransformAccessor:
         # Validation
         dt_min = float(self._fs.hours_per_timestep.min().item())
         dt_max = float(self._fs.hours_per_timestep.max().item())
-        if not dt_min == dt_max:
+        if dt_min != dt_max:
             raise ValueError(
                 f'Clustering failed due to inconsistent time step sizes: '
                 f'delta_t varies from {dt_min} to {dt_max} hours.'

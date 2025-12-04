@@ -188,7 +188,20 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
-        return solution.reindex(time=self.flow_system.timesteps_extra)
+        # Handle extra timestep from storage charge_state variables.
+        # Storage charge_state uses extra_timestep=True which causes linopy/xarray to
+        # merge all time coordinates to include the extra timestep with NaN for other vars.
+        # We extract the final charge state as separate variables and reindex to regular timesteps.
+        if 'time' in solution.coords and len(solution.coords['time']) > len(self.flow_system.timesteps):
+            # Find charge_state variables and extract final state
+            for var_name in list(solution.data_vars):
+                if var_name.endswith('|charge_state') and 'time' in solution[var_name].dims:
+                    # Extract final charge state as separate variable
+                    final_state = solution[var_name].isel(time=-1)
+                    solution[f'{var_name}|final'] = final_state
+            # Reindex all variables to regular timesteps
+            solution = solution.reindex(time=self.flow_system.timesteps)
+        return solution
 
     @property
     def hours_per_step(self):

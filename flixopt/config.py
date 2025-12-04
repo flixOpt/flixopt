@@ -527,7 +527,7 @@ class CONFIG:
             time_limit_seconds: Default time limit in seconds for solver runs.
             log_to_console: Whether solver should output to console.
             log_main_results: Whether to log main results after solving.
-            compute_infeasibilities: Whether to save model documentation on infeasibility.
+            compute_infeasibilities: Whether to compute infeasibility analysis when the model is infeasible.
 
         Examples:
             ```python
