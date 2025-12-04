@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
+    from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
@@ -827,6 +828,107 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
+
+    def build_model(self, normalize_weights: bool = True) -> FlowSystem:
+        """
+        Build the optimization model for this FlowSystem.
+
+        This method prepares the FlowSystem for optimization by:
+        1. Connecting and transforming all elements (if not already done)
+        2. Creating the FlowSystemModel with all variables and constraints
+
+        After calling this method, `self.model` will be available for inspection
+        before solving.
+
+        Args:
+            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> print(flow_system.model.variables)  # Inspect variables before solving
+            >>> flow_system.solve(solver)
+        """
+        self.connect_and_transform()
+        self.create_model(normalize_weights)
+        self.model.do_modeling()
+        return self
+
+    def solve(self, solver: _Solver) -> FlowSystem:
+        """
+        Solve the optimization model and populate the solution.
+
+        This method solves the previously built model using the specified solver.
+        After solving, `self.solution` will contain the optimization results,
+        and each element's `.solution` property will provide access to its
+        specific variables.
+
+        Args:
+            solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the model has not been built yet (call build_model first).
+            RuntimeError: If the model is infeasible.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> flow_system.solve(HighsSolver())
+            >>> print(flow_system.solution)
+        """
+        if self.model is None:
+            raise RuntimeError('Model has not been built. Call build_model() first.')
+
+        self.model.solve(
+            solver_name=solver.name,
+            **solver.options,
+        )
+
+        if self.model.status == 'warning':
+            raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
+
+        # Store solution on FlowSystem for direct Element access
+        self.solution = self.model.solution
+
+        logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
+
+        return self
+
+    def optimize(self, solver: _Solver, normalize_weights: bool = True) -> FlowSystem:
+        """
+        Build and solve the optimization model in one step.
+
+        This is a convenience method that combines `build_model()` and `solve()`.
+        Use this for simple optimization workflows. For more control (e.g., inspecting
+        the model before solving, or adding custom constraints), use `build_model()`
+        and `solve()` separately.
+
+        Args:
+            solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            Simple optimization:
+
+            >>> flow_system.optimize(HighsSolver())
+            >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
+
+            Access element solutions directly:
+
+            >>> flow_system.optimize(solver)
+            >>> boiler = flow_system.components['Boiler']
+            >>> print(boiler.solution)
+        """
+        self.build_model(normalize_weights)
+        self.solve(solver)
+        return self
 
     def plot_network(
         self,

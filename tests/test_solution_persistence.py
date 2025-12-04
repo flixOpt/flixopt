@@ -436,5 +436,137 @@ class TestEdgeCases:
         assert first_solution_vars == second_solution_vars
 
 
+class TestFlowSystemDirectMethods:
+    """Tests for FlowSystem.build_model(), solve(), and optimize() methods."""
+
+    def test_build_model_creates_model(self, simple_flow_system):
+        """build_model() should create and populate the model."""
+        assert simple_flow_system.model is None
+
+        result = simple_flow_system.build_model()
+
+        # Should return self for method chaining
+        assert result is simple_flow_system
+        # Model should be created
+        assert simple_flow_system.model is not None
+        # Model should have variables
+        assert len(simple_flow_system.model.variables) > 0
+
+    def test_build_model_with_normalize_weights_false(self, simple_flow_system):
+        """build_model() should respect normalize_weights parameter."""
+        simple_flow_system.build_model(normalize_weights=False)
+
+        # Model should be created
+        assert simple_flow_system.model is not None
+
+    def test_solve_without_build_model_raises(self, simple_flow_system, highs_solver):
+        """solve() should raise if model not built."""
+        with pytest.raises(RuntimeError, match='Model has not been built'):
+            simple_flow_system.solve(highs_solver)
+
+    def test_solve_after_build_model(self, simple_flow_system, highs_solver):
+        """solve() should work after build_model()."""
+        simple_flow_system.build_model()
+
+        result = simple_flow_system.solve(highs_solver)
+
+        # Should return self for method chaining
+        assert result is simple_flow_system
+        # Solution should be populated
+        assert simple_flow_system.solution is not None
+        assert isinstance(simple_flow_system.solution, xr.Dataset)
+
+    def test_solve_populates_element_variable_names(self, simple_flow_system, highs_solver):
+        """solve() should have element variable names available."""
+        simple_flow_system.build_model()
+        simple_flow_system.solve(highs_solver)
+
+        # Elements should have variable names populated
+        boiler = simple_flow_system.components['Boiler']
+        assert len(boiler._variable_names) > 0
+
+    def test_optimize_convenience_method(self, simple_flow_system, highs_solver):
+        """optimize() should build and solve in one step."""
+        assert simple_flow_system.model is None
+        assert simple_flow_system.solution is None
+
+        result = simple_flow_system.optimize(highs_solver)
+
+        # Should return self for method chaining
+        assert result is simple_flow_system
+        # Model should be created
+        assert simple_flow_system.model is not None
+        # Solution should be populated
+        assert simple_flow_system.solution is not None
+
+    def test_optimize_method_chaining(self, simple_flow_system, highs_solver):
+        """optimize() should support method chaining to access solution."""
+        solution = simple_flow_system.optimize(highs_solver).solution
+
+        assert solution is not None
+        assert isinstance(solution, xr.Dataset)
+        assert len(solution.data_vars) > 0
+
+    def test_optimize_with_normalize_weights_false(self, simple_flow_system, highs_solver):
+        """optimize() should respect normalize_weights parameter."""
+        simple_flow_system.optimize(highs_solver, normalize_weights=False)
+
+        assert simple_flow_system.solution is not None
+
+    def test_model_accessible_after_build(self, simple_flow_system):
+        """Model should be inspectable after build_model()."""
+        simple_flow_system.build_model()
+
+        # User should be able to inspect model variables
+        model = simple_flow_system.model
+        assert hasattr(model, 'variables')
+        assert hasattr(model, 'constraints')
+
+        # Variables should exist
+        assert len(model.variables) > 0
+
+    def test_element_solution_after_optimize(self, simple_flow_system, highs_solver):
+        """Element.solution should work after optimize()."""
+        simple_flow_system.optimize(highs_solver)
+
+        boiler = simple_flow_system.components['Boiler']
+        boiler_solution = boiler.solution
+
+        assert isinstance(boiler_solution, xr.Dataset)
+        # All variables should belong to boiler
+        for var_name in boiler_solution.data_vars:
+            assert var_name.startswith(boiler.label_full)
+
+    def test_direct_methods_match_optimization_class(self, simple_flow_system, highs_solver):
+        """Direct methods should produce same results as Optimization class."""
+        # Use Optimization class first
+        calc = fx.Optimization('test', flow_system=simple_flow_system)
+        calc.do_modeling()
+        calc.solve(highs_solver)
+        optimization_solution = simple_flow_system.solution.copy(deep=True)
+
+        # Reset for direct methods test
+        simple_flow_system.model = None
+        simple_flow_system.solution = None
+        for element in simple_flow_system.values():
+            element._variable_names = []
+            element._constraint_names = []
+            element.submodel = None
+
+        # Use direct methods
+        simple_flow_system.optimize(highs_solver)
+
+        # Solutions should match
+        assert set(optimization_solution.data_vars.keys()) == set(simple_flow_system.solution.data_vars.keys())
+
+        # Values should be very close (same optimization)
+        for var_name in optimization_solution.data_vars:
+            xr.testing.assert_allclose(
+                optimization_solution[var_name],
+                simple_flow_system.solution[var_name],
+                rtol=1e-5,
+            )
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '--disable-warnings', __file__])
