@@ -1400,8 +1400,13 @@ def heatmap_with_plotly(
     except Exception as e:
         logger.error(f'Error creating imshow plot: {e}. Falling back to basic heatmap.')
         # Fallback: create a simple heatmap without faceting
+        # Squeeze singleton dimensions to get a 2D array
+        squeezed_data = data.squeeze()
+        if squeezed_data.ndim == 1:
+            # If only 1D after squeezing, expand to 2D
+            squeezed_data = squeezed_data.expand_dims({'variable': [data.name or 'value']})
         fallback_args = {
-            'img': data.values,
+            'img': squeezed_data.values,
             'color_continuous_scale': colors,
             'title': title,
         }
