@@ -330,33 +330,6 @@ class StatisticsAccessor:
         return self._effect_share_factors
 
     @property
-    def effects_per_component(self) -> xr.Dataset:
-        """Effect results aggregated by component.
-
-        Returns a dataset with:
-        - 'temporal': temporal effects per component per timestep
-        - 'periodic': periodic (investment) effects per component
-        - 'total': sum of temporal and periodic effects per component
-
-        Each variable has dimensions [time, period, scenario, component, effect]
-        (missing dimensions are omitted).
-
-        Returns:
-            xr.Dataset with effect results aggregated by component.
-        """
-        self._require_solution()
-        if self._effects_per_component is None:
-            self._effects_per_component = xr.Dataset(
-                {
-                    mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
-                    for mode in ['temporal', 'periodic', 'total']
-                }
-            )
-            dim_order = ['time', 'period', 'scenario', 'component', 'effect']
-            self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
-        return self._effects_per_component
-
-    @property
     def temporal_effects(self) -> xr.Dataset:
         """Temporal effects per contributor per timestep.
 
