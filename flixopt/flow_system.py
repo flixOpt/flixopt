@@ -24,6 +24,7 @@ from .core import (
 )
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
+from .optimize_accessor import OptimizeAccessor
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 
 if TYPE_CHECKING:
@@ -898,24 +899,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self
 
-    def optimize(self, solver: _Solver, normalize_weights: bool = True) -> FlowSystem:
+    @property
+    def optimize(self) -> OptimizeAccessor:
         """
-        Build and solve the optimization model in one step.
+        Access optimization methods for this FlowSystem.
 
-        This is a convenience method that combines `build_model()` and `solve()`.
-        Use this for simple optimization workflows. For more control (e.g., inspecting
-        the model before solving, or adding custom constraints), use `build_model()`
-        and `solve()` separately.
-
-        Args:
-            solver: The solver to use (e.g., HighsSolver, GurobiSolver).
-            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+        This property returns an OptimizeAccessor that can be called directly
+        for standard optimization, or used to access specialized optimization modes.
 
         Returns:
-            Self, for method chaining.
+            An OptimizeAccessor instance.
 
         Examples:
-            Simple optimization:
+            Standard optimization (call directly):
 
             >>> flow_system.optimize(HighsSolver())
             >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
@@ -925,10 +921,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.optimize(solver)
             >>> boiler = flow_system.components['Boiler']
             >>> print(boiler.solution)
+
+            Future specialized modes:
+
+            >>> flow_system.optimize.clustered(solver, aggregation=params)
+            >>> flow_system.optimize.mga(solver, alternatives=5)
         """
-        self.build_model(normalize_weights)
-        self.solve(solver)
-        return self
+        return OptimizeAccessor(self)
 
     def plot_network(
         self,
