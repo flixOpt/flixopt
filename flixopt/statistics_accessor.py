@@ -227,8 +227,12 @@ class StatisticsAccessor:
             Sizes for all flows.
         ``charge_states`` : xr.Dataset
             Charge states for all storage components.
-        ``effects_per_component`` : xr.Dataset
-            Effect results aggregated by component.
+        ``temporal_effects`` : xr.Dataset
+            Temporal effects per contributor per timestep.
+        ``periodic_effects`` : xr.Dataset
+            Periodic (investment) effects per contributor.
+        ``total_effects`` : xr.Dataset
+            Total effects (temporal + periodic) per contributor.
         ``effect_share_factors`` : dict
             Conversion factors between effects.
 
@@ -245,9 +249,7 @@ class StatisticsAccessor:
         self._flow_hours: xr.Dataset | None = None
         self._sizes: xr.Dataset | None = None
         self._charge_states: xr.Dataset | None = None
-        self._effects_per_component: xr.Dataset | None = None
         self._effect_share_factors: dict[str, dict] | None = None
-        # New effect properties (cached)
         self._temporal_effects: xr.Dataset | None = None
         self._periodic_effects: xr.Dataset | None = None
         self._total_effects: xr.Dataset | None = None
@@ -632,7 +634,7 @@ class StatisticsAccessor:
                 # Expand scalar NaN arrays to match template dimensions
                 if not arr.dims and np.isnan(arr.item()):
                     arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
-                contributor_arrays.append(arr.expand_dims(component=[contributor]))
+                contributor_arrays.append(arr.expand_dims(contributor=[contributor]))
 
             ds[effect] = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
 
