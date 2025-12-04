@@ -485,7 +485,7 @@ class StatisticsAccessor:
         """Create a template DataArray with the correct dimensions for a given mode."""
         coords = {}
         if mode == 'temporal':
-            coords['time'] = self._fs.timesteps_extra
+            coords['time'] = self._fs.timesteps
         if self._fs.periods is not None:
             coords['period'] = self._fs.periods
         if self._fs.scenarios is not None:

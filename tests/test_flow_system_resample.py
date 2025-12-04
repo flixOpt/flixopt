@@ -186,8 +186,6 @@ def test_invest_resample(complex_fs):
 # === Modeling Integration ===
 
 
-@pytest.mark.deprecated_api
-@pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
 @pytest.mark.parametrize('with_dim', [None, 'periods', 'scenarios'])
 def test_modeling(with_dim):
     """Test resampled FlowSystem can be modeled."""
@@ -208,15 +206,12 @@ def test_modeling(with_dim):
     )
 
     fs_r = fs.resample('4h', method='mean')
-    calc = fx.Optimization('test', fs_r)
-    calc.do_modeling()
+    fs_r.build_model()
 
-    assert calc.model is not None
-    assert len(calc.model.variables) > 0
+    assert fs_r.model is not None
+    assert len(fs_r.model.variables) > 0
 
 
-@pytest.mark.deprecated_api
-@pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
 def test_model_structure_preserved():
     """Test model structure (var/constraint types) preserved."""
     ts = pd.date_range('2023-01-01', periods=48, freq='h')
@@ -229,22 +224,18 @@ def test_model_structure_preserved():
         fx.Source(label='s', outputs=[fx.Flow(label='out', bus='h', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
-    calc_orig = fx.Optimization('orig', fs)
-    calc_orig.do_modeling()
+    fs.build_model()
 
     fs_r = fs.resample('4h', method='mean')
-    calc_r = fx.Optimization('resamp', fs_r)
-    calc_r.do_modeling()
+    fs_r.build_model()
 
     # Same number of variable/constraint types
-    assert len(calc_orig.model.variables) == len(calc_r.model.variables)
-    assert len(calc_orig.model.constraints) == len(calc_r.model.constraints)
+    assert len(fs.model.variables) == len(fs_r.model.variables)
+    assert len(fs.model.constraints) == len(fs_r.model.constraints)
 
     # Same names
-    assert set(calc_orig.model.variables.labels.data_vars.keys()) == set(calc_r.model.variables.labels.data_vars.keys())
-    assert set(calc_orig.model.constraints.labels.data_vars.keys()) == set(
-        calc_r.model.constraints.labels.data_vars.keys()
-    )
+    assert set(fs.model.variables.labels.data_vars.keys()) == set(fs_r.model.variables.labels.data_vars.keys())
+    assert set(fs.model.constraints.labels.data_vars.keys()) == set(fs_r.model.constraints.labels.data_vars.keys())
 
 
 # === Advanced Features ===
