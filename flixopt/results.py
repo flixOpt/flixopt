@@ -222,6 +222,13 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             folder: Results storage folder.
             model: Linopy optimization model.
         """
+        warnings.warn(
+            'Results is deprecated and will be removed in v6. '
+            'Access results directly via FlowSystem.solution after optimization, or use the '
+            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)).',
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         self.solution = solution
         self.flow_system_data = flow_system_data
@@ -2033,6 +2040,12 @@ class SegmentedResults:
         name: str,
         folder: pathlib.Path | None = None,
     ):
+        warnings.warn(
+            'SegmentedResults is deprecated and will be removed in v6. '
+            'A replacement API for segmented optimization will be provided in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment
