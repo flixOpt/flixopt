@@ -2,6 +2,9 @@
 The conftest.py file is used by pytest to define shared fixtures, hooks, and configuration
 that apply to multiple test files without needing explicit imports.
 It helps avoid redundancy and centralizes reusable test logic.
+
+This folder contains tests for the deprecated Optimization/Results API.
+Delete this entire folder when the deprecation cycle ends in v6.0.0.
 """
 
 import os
@@ -848,3 +851,22 @@ def set_test_environment():
     fx.CONFIG.Plotting.default_show = False
 
     yield
+
+
+# ============================================================================
+# DEPRECATED API MARKERS
+# ============================================================================
+
+
+def pytest_collection_modifyitems(items):
+    """Auto-apply markers to all tests in the deprecated folder.
+
+    This hook adds:
+    - deprecated_api marker for filtering
+    - filterwarnings to ignore DeprecationWarning from flixopt
+    """
+    for item in items:
+        # Only apply to tests in this folder
+        if 'deprecated' in str(item.fspath):
+            item.add_marker(pytest.mark.deprecated_api)
+            item.add_marker(pytest.mark.filterwarnings('ignore::DeprecationWarning:flixopt'))
