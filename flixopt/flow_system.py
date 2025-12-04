@@ -534,6 +534,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         If a solution is present, it will be included in the dataset with variable names
         prefixed by 'solution|' to avoid conflicts with FlowSystem configuration variables.
+        Solution time coordinates are renamed to 'solution_time' to preserve them
+        independently of the FlowSystem's time coordinates.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -546,9 +548,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Include solution data if present
         if self.solution is not None:
+            # Rename 'time' to 'solution_time' in solution variables to preserve full solution
+            # (linopy solution may have extra timesteps, e.g., for final charge states)
+            solution_renamed = (
+                self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
+            )
             # Add solution variables with 'solution|' prefix to avoid conflicts
-            solution_vars = {f'solution|{name}': var for name, var in self.solution.data_vars.items()}
+            solution_vars = {f'solution|{name}': var for name, var in solution_renamed.data_vars.items()}
             ds = ds.assign(solution_vars)
+            # Also add the solution_time coordinate if it exists
+            if 'solution_time' in solution_renamed.coords:
+                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
             ds.attrs['has_solution'] = True
         else:
             ds.attrs['has_solution'] = False
@@ -562,7 +572,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Handles FlowSystem-specific reconstruction logic.
 
         If the dataset contains solution data (variables prefixed with 'solution|'),
-        the solution will be restored to the FlowSystem.
+        the solution will be restored to the FlowSystem. Solution time coordinates
+        are renamed back from 'solution_time' to 'time'.
 
         Args:
             ds: Dataset containing the FlowSystem data
@@ -629,7 +640,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Restore solution if present
         if reference_structure.get('has_solution', False) and solution_vars:
-            flow_system.solution = xr.Dataset(solution_vars)
+            solution_ds = xr.Dataset(solution_vars)
+            # Rename 'solution_time' back to 'time' if present
+            if 'solution_time' in solution_ds.dims:
+                solution_ds = solution_ds.rename({'solution_time': 'time'})
+            flow_system.solution = solution_ds
 
         return flow_system
 
