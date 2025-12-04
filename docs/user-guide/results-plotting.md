@@ -1,21 +1,19 @@
 # Plotting Results
 
-After solving an optimization, FlixOpt provides a powerful plotting API to visualize and analyze your results. The API is designed to be intuitive and chainable, giving you quick access to common plots while still allowing deep customization.
+After solving an optimization, flixOpt provides a powerful plotting API to visualize and analyze your results. The API is designed to be intuitive and chainable, giving you quick access to common plots while still allowing deep customization.
 
 ## The Plot Accessor
 
-All plotting is accessed through the `.plot` accessor on your results:
+All plotting is accessed through the `statistics.plot` accessor on your FlowSystem:
 
 ```python
-results = optimization.results
+# Run optimization
+flow_system.optimize(fx.solvers.HighsSolver())
 
-# System-level plots
-results.plot.balance('ElectricityBus')
-results.plot.sankey()
-
-# Element-level plots
-results['Boiler'].plot.balance()
-results['Battery'].plot.storage()
+# Access plotting via statistics
+flow_system.statistics.plot.balance('ElectricityBus')
+flow_system.statistics.plot.sankey()
+flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 ```
 
 ## PlotResult: Data + Figure
@@ -28,7 +26,7 @@ Every plot method returns a [`PlotResult`][flixopt.plot_accessors.PlotResult] ob
 This gives you full access to export data, customize the figure, or use the data for your own visualizations:
 
 ```python
-result = results.plot.balance('Bus')
+result = flow_system.statistics.plot.balance('Bus')
 
 # Access the xarray data
 print(result.data)
@@ -45,7 +43,7 @@ result.figure.show()
 All `PlotResult` methods return `self`, enabling fluent chaining:
 
 ```python
-results.plot.balance('Bus') \
+flow_system.statistics.plot.balance('Bus') \
     .update(title='Custom Title', height=600) \
     .update_traces(opacity=0.8) \
     .to_csv('data.csv') \
@@ -72,9 +70,8 @@ Available methods:
 Plot the energy/material balance at a node (Bus or Component), showing inputs and outputs:
 
 ```python
-results.plot.balance('ElectricityBus')
-results.plot.balance('Boiler', mode='area')
-results['HeatBus'].plot.balance()
+flow_system.statistics.plot.balance('ElectricityBus')
+flow_system.statistics.plot.balance('Boiler', mode='area')
 ```
 
 **Key parameters:**
@@ -94,8 +91,8 @@ results['HeatBus'].plot.balance()
 Visualize storage components with charge state and flow balance:
 
 ```python
-results.plot.storage('Battery')
-results['ThermalStorage'].plot.storage(mode='line')
+flow_system.statistics.plot.storage('Battery')
+flow_system.statistics.plot.storage('ThermalStorage', mode='line')
 ```
 
 **Key parameters:**
@@ -110,8 +107,8 @@ results['ThermalStorage'].plot.storage(mode='line')
 Create heatmaps of time series data, with automatic time reshaping:
 
 ```python
-results.plot.heatmap('Boiler(Q_th)|flow_rate')
-results.plot.heatmap(['CHP|on', 'Boiler|on'], facet_col='variable')
+flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
+flow_system.statistics.plot.heatmap(['CHP|on', 'Boiler|on'], facet_col='variable')
 ```
 
 **Key parameters:**
@@ -133,9 +130,9 @@ Common reshape patterns:
 Plot flow rates filtered by nodes or components:
 
 ```python
-results.plot.flows(component='Boiler')
-results.plot.flows(start='ElectricityBus')
-results.plot.flows(unit='flow_hours', aggregate='sum')
+flow_system.statistics.plot.flows(component='Boiler')
+flow_system.statistics.plot.flows(start='ElectricityBus')
+flow_system.statistics.plot.flows(unit='flow_hours', aggregate='sum')
 ```
 
 **Key parameters:**
@@ -153,8 +150,8 @@ results.plot.flows(unit='flow_hours', aggregate='sum')
 Compare multiple elements side-by-side:
 
 ```python
-results.plot.compare(['Boiler', 'CHP', 'HeatPump'], variable='flow_rate')
-results.plot.compare(['Battery1', 'Battery2'], variable='charge_state')
+flow_system.statistics.plot.compare(['Boiler', 'CHP', 'HeatPump'], variable='flow_rate')
+flow_system.statistics.plot.compare(['Battery1', 'Battery2'], variable='charge_state')
 ```
 
 **Key parameters:**
@@ -170,9 +167,9 @@ results.plot.compare(['Battery1', 'Battery2'], variable='charge_state')
 Visualize energy/material flows as a Sankey diagram:
 
 ```python
-results.plot.sankey()
-results.plot.sankey(timestep=100)
-results.plot.sankey(aggregate='mean')
+flow_system.statistics.plot.sankey()
+flow_system.statistics.plot.sankey(timestep=100)
+flow_system.statistics.plot.sankey(aggregate='mean')
 ```
 
 **Key parameters:**
@@ -187,9 +184,9 @@ results.plot.sankey(aggregate='mean')
 Plot cost, emissions, or other effect breakdowns:
 
 ```python
-results.plot.effects()  # Total of all effects by component
-results.plot.effects(effect='costs', mode='pie')  # Just costs as pie
-results.plot.effects(aspect='temporal', by='time')  # Temporal effects over time
+flow_system.statistics.plot.effects()  # Total of all effects by component
+flow_system.statistics.plot.effects(effect='costs', mode='pie')  # Just costs as pie
+flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Temporal effects over time
 ```
 
 **Key parameters:**
@@ -206,9 +203,9 @@ results.plot.effects(aspect='temporal', by='time')  # Temporal effects over time
 Plot the same variable type across multiple elements for comparison:
 
 ```python
-results.plot.variable('on')  # All binary operation states
-results.plot.variable('flow_rate', include='Boiler')
-results.plot.variable('charge_state')  # All storage charge states
+flow_system.statistics.plot.variable('on')  # All binary operation states
+flow_system.statistics.plot.variable('flow_rate', include='Boiler')
+flow_system.statistics.plot.variable('charge_state')  # All storage charge states
 ```
 
 **Key parameters:**
@@ -226,9 +223,9 @@ results.plot.variable('charge_state')  # All storage charge states
 Plot load duration curves (sorted time series) to understand utilization patterns:
 
 ```python
-results.plot.duration_curve('Boiler(Q_th)|flow_rate')
-results.plot.duration_curve(['CHP|on', 'Boiler|on'])
-results.plot.duration_curve('demand', normalize=True)
+flow_system.statistics.plot.duration_curve('Boiler(Q_th)|flow_rate')
+flow_system.statistics.plot.duration_curve(['CHP|on', 'Boiler|on'])
+flow_system.statistics.plot.duration_curve('demand', normalize=True)
 ```
 
 **Key parameters:**
@@ -249,16 +246,16 @@ Use xarray-style selection to filter data before plotting:
 
 ```python
 # Single value
-results.plot.balance('Bus', select={'scenario': 'base'})
+flow_system.statistics.plot.balance('Bus', select={'scenario': 'base'})
 
 # Multiple values
-results.plot.balance('Bus', select={'scenario': ['base', 'high_demand']})
+flow_system.statistics.plot.balance('Bus', select={'scenario': ['base', 'high_demand']})
 
 # Time slices
-results.plot.balance('Bus', select={'time': slice('2024-01', '2024-06')})
+flow_system.statistics.plot.balance('Bus', select={'time': slice('2024-01', '2024-06')})
 
 # Combined
-results.plot.balance('Bus', select={
+flow_system.statistics.plot.balance('Bus', select={
     'scenario': 'base',
     'time': slice('2024-01-01', '2024-01-07')
 })
@@ -270,13 +267,13 @@ Control how multi-dimensional data is displayed:
 
 ```python
 # Facet by scenario
-results.plot.balance('Bus', facet_col='scenario')
+flow_system.statistics.plot.balance('Bus', facet_col='scenario')
 
 # Animate by period
-results.plot.balance('Bus', animate_by='period')
+flow_system.statistics.plot.balance('Bus', animate_by='period')
 
 # Both
-results.plot.balance('Bus', facet_col='scenario', animate_by='period')
+flow_system.statistics.plot.balance('Bus', facet_col='scenario', animate_by='period')
 ```
 
 !!! note
@@ -288,13 +285,13 @@ Filter flows using simple substring matching:
 
 ```python
 # Only show flows containing 'Q_th'
-results.plot.balance('Bus', include='Q_th')
+flow_system.statistics.plot.balance('Bus', include='Q_th')
 
 # Exclude flows containing 'Gas' or 'Grid'
-results.plot.balance('Bus', exclude=['Gas', 'Grid'])
+flow_system.statistics.plot.balance('Bus', exclude=['Gas', 'Grid'])
 
 # Combine include and exclude
-results.plot.balance('Bus', include='Boiler', exclude='auxiliary')
+flow_system.statistics.plot.balance('Bus', include='Boiler', exclude='auxiliary')
 ```
 
 ### Colors
@@ -302,13 +299,11 @@ results.plot.balance('Bus', include='Boiler', exclude='auxiliary')
 Override colors using a dictionary:
 
 ```python
-results.plot.balance('Bus', colors={
+flow_system.statistics.plot.balance('Bus', colors={
     'Boiler(Q_th)|flow_rate': '#ff6b6b',
     'CHP(Q_th)|flow_rate': '#4ecdc4',
 })
 ```
-
-Global colors can be set on the Results object and will be used across all plots.
 
 ### Display Control
 
@@ -316,7 +311,7 @@ Control whether plots are shown automatically:
 
 ```python
 # Don't show (useful in scripts)
-result = results.plot.balance('Bus', show=False)
+result = flow_system.statistics.plot.balance('Bus', show=False)
 
 # Show later
 result.show()
@@ -324,34 +319,16 @@ result.show()
 
 The default behavior is controlled by `CONFIG.Plotting.default_show`.
 
-## Element-Level Plotting
-
-Access plots directly from element results for convenience:
-
-```python
-# These are equivalent:
-results.plot.balance('Boiler')
-results['Boiler'].plot.balance()
-
-# Storage plotting (only for storage components)
-results['Battery'].plot.storage()
-
-# Element heatmap
-results['Boiler'].plot.heatmap('on')
-```
-
-The element-level accessor automatically passes the element label to the corresponding system-level method.
-
 ## Complete Examples
 
 ### Analyzing a Bus Balance
 
 ```python
 # Quick overview
-results.plot.balance('ElectricityBus')
+flow_system.statistics.plot.balance('ElectricityBus')
 
 # Detailed analysis with exports
-result = results.plot.balance(
+result = flow_system.statistics.plot.balance(
     'ElectricityBus',
     mode='area',
     unit='flow_hours',
@@ -378,7 +355,7 @@ result.update(
 
 ```python
 # Compare charge states
-results.plot.compare(
+flow_system.statistics.plot.compare(
     ['Battery1', 'Battery2', 'ThermalStorage'],
     variable='charge_state',
     mode='overlay'
@@ -390,10 +367,10 @@ results.plot.compare(
 ```python
 # Generate multiple plots for a report
 plots = {
-    'balance': results.plot.balance('HeatBus', show=False),
-    'storage': results.plot.storage('ThermalStorage', show=False),
-    'sankey': results.plot.sankey(show=False),
-    'costs': results.plot.effects('total', mode='pie', show=False),
+    'balance': flow_system.statistics.plot.balance('HeatBus', show=False),
+    'storage': flow_system.statistics.plot.storage('ThermalStorage', show=False),
+    'sankey': flow_system.statistics.plot.sankey(show=False),
+    'costs': flow_system.statistics.plot.effects('total', mode='pie', show=False),
 }
 
 # Export all
@@ -407,7 +384,7 @@ for name, plot in plots.items():
 The `.data` attribute returns xarray objects, giving you full access to xarray's powerful data manipulation capabilities:
 
 ```python
-result = results.plot.balance('Bus', show=False)
+result = flow_system.statistics.plot.balance('Bus', show=False)
 
 # Access the xarray Dataset
 ds = result.data
