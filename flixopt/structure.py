@@ -188,7 +188,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
-        return solution.reindex(time=self.flow_system.timesteps_extra)
+        # Always reindex solution to timesteps_extra for consistent behavior.
+        # Storage charge_state requires the extra timestep for the final state.
+        # Other variables will have NaN for the extra timestep, which is semantically
+        # correct (they have no value at that timestep).
+        if 'time' in solution.coords:
+            solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        return solution
 
     @property
     def hours_per_step(self):
