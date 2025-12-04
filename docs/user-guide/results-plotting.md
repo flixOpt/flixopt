@@ -186,6 +186,7 @@ Plot cost, emissions, or other effect breakdowns:
 ```python
 flow_system.statistics.plot.effects()  # Total of all effects by component
 flow_system.statistics.plot.effects(effect='costs')  # Just costs
+flow_system.statistics.plot.effects(by='contributor')  # By individual flows
 flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 ```
 
@@ -195,7 +196,7 @@ flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 |-----------|------|-------------|
 | `aspect` | `'total'`, `'temporal'`, `'periodic'` | Which aspect to plot (default: `'total'`) |
 | `effect` | str or None | Specific effect to plot (e.g., `'costs'`, `'CO2'`). If None, plots all. |
-| `by` | `'component'`, `'time'` | Grouping dimension |
+| `by` | `'component'`, `'contributor'`, `'time'` | Grouping dimension (default: `'component'`) |
 
 ### Variable Plot
 

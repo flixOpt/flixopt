@@ -1128,3 +1128,144 @@ class StatisticsPlotAccessor:
             fig.show()
 
         return PlotResult(data=result_ds, figure=fig)
+
+    def effects(
+        self,
+        aspect: Literal['total', 'temporal', 'periodic'] = 'total',
+        *,
+        effect: str | None = None,
+        by: Literal['component', 'contributor', 'time'] = 'component',
+        select: SelectType | None = None,
+        colors: dict[str, str] | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot effect (cost, emissions, etc.) breakdown.
+
+        Args:
+            aspect: Which aspect to plot - 'total', 'temporal', or 'periodic'.
+            effect: Specific effect name to plot (e.g., 'costs', 'CO2').
+                    If None, plots all effects.
+            by: Group by 'component', 'contributor' (individual flows), or 'time'.
+            select: xarray-style selection.
+            colors: Override colors.
+            facet_col: Dimension for column facets (ignored if not in data).
+            facet_row: Dimension for row facets (ignored if not in data).
+            show: Whether to display.
+
+        Returns:
+            PlotResult with effect breakdown data.
+
+        Examples:
+            >>> flow_system.statistics.plot.effects()  # Total of all effects by component
+            >>> flow_system.statistics.plot.effects(effect='costs')  # Just costs
+            >>> flow_system.statistics.plot.effects(by='contributor')  # By individual flows
+            >>> flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
+        """
+        import plotly.express as px
+
+        self._stats._require_solution()
+
+        # Get the appropriate effects dataset based on aspect
+        if aspect == 'total':
+            effects_ds = self._stats.total_effects
+        elif aspect == 'temporal':
+            effects_ds = self._stats.temporal_effects
+        elif aspect == 'periodic':
+            effects_ds = self._stats.periodic_effects
+        else:
+            raise ValueError(f"Aspect '{aspect}' not valid. Choose from 'total', 'temporal', 'periodic'.")
+
+        # Get available effects (data variables in the dataset)
+        available_effects = list(effects_ds.data_vars)
+
+        # Filter to specific effect if requested
+        if effect is not None:
+            if effect not in available_effects:
+                raise ValueError(f"Effect '{effect}' not found. Available: {available_effects}")
+            effects_to_plot = [effect]
+        else:
+            effects_to_plot = available_effects
+
+        # Build a combined DataArray with effect dimension
+        effect_arrays = []
+        for eff in effects_to_plot:
+            da = effects_ds[eff]
+            if by == 'contributor':
+                # Keep individual contributors (flows) - no groupby
+                effect_arrays.append(da.expand_dims(effect=[eff]))
+            else:
+                # Group by component (sum over contributor within each component)
+                da_grouped = da.groupby('component').sum()
+                effect_arrays.append(da_grouped.expand_dims(effect=[eff]))
+
+        combined = xr.concat(effect_arrays, dim='effect')
+
+        # Apply selection
+        combined = _apply_selection(combined.to_dataset(name='value'), select)['value']
+
+        # Group by the specified dimension
+        if by == 'component':
+            # Sum over time if present
+            if 'time' in combined.dims:
+                combined = combined.sum(dim='time')
+            x_col = 'component'
+            color_col = 'effect' if len(effects_to_plot) > 1 else 'component'
+        elif by == 'contributor':
+            # Sum over time if present
+            if 'time' in combined.dims:
+                combined = combined.sum(dim='time')
+            x_col = 'contributor'
+            color_col = 'effect' if len(effects_to_plot) > 1 else 'contributor'
+        elif by == 'time':
+            if 'time' not in combined.dims:
+                raise ValueError(f"Cannot plot by 'time' for aspect '{aspect}' - no time dimension.")
+            # Sum over components or contributors
+            if 'component' in combined.dims:
+                combined = combined.sum(dim='component')
+            if 'contributor' in combined.dims:
+                combined = combined.sum(dim='contributor')
+            x_col = 'time'
+            color_col = 'effect' if len(effects_to_plot) > 1 else None
+        else:
+            raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', got {by!r}")
+
+        # Resolve facets
+        actual_facet_col, actual_facet_row = _resolve_facets(combined.to_dataset(name='value'), facet_col, facet_row)
+
+        # Convert to DataFrame for plotly express
+        df = combined.to_dataframe(name='value').reset_index()
+
+        # Build color map
+        if color_col and color_col in df.columns:
+            color_items = df[color_col].unique().tolist()
+            color_map = {item: colors.get(item) for item in color_items if colors and item in colors} or None
+        else:
+            color_map = None
+
+        # Build title
+        effect_label = effect if effect else 'Effects'
+        title = f'{effect_label} ({aspect}) by {by}'
+
+        fig = px.bar(
+            df,
+            x=x_col,
+            y='value',
+            color=color_col,
+            color_discrete_map=color_map,
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            title=title,
+            **plotly_kwargs,
+        )
+        fig.update_layout(bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=combined.to_dataset(name=aspect), figure=fig)
