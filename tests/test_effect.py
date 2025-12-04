@@ -225,9 +225,11 @@ class TestEffectModel:
 
 
 class TestEffectResults:
-    @pytest.mark.filterwarnings('ignore::DeprecationWarning')
+    @pytest.mark.deprecated_api
+    @pytest.mark.filterwarnings('ignore:Results is deprecated:DeprecationWarning:flixopt')
+    @pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
     def test_shares(self, basic_flow_system_linopy_coords, coords_config):
-        flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
+        flow_system = basic_flow_system_linopy_coords
         effect1 = fx.Effect('Effect1', '€', 'Testing Effect', share_from_temporal={'costs': 0.5})
         effect2 = fx.Effect(
             'Effect2',

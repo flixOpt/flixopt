@@ -136,7 +136,7 @@ class TestVariableNamesPopulation:
         boiler = simple_flow_system.components['Boiler']
         assert len(boiler._variable_names) > 0
 
-    def test_constraint_names_populated_after_modeling(self, simple_flow_system, highs_solver):
+    def test_constraint_names_populated_after_modeling(self, simple_flow_system):
         """Element._constraint_names should be populated after modeling."""
         simple_flow_system.build_model()
 
@@ -144,7 +144,7 @@ class TestVariableNamesPopulation:
         # Boiler should have some constraints
         assert len(boiler._constraint_names) >= 0  # Some elements might have no constraints
 
-    def test_all_elements_have_variable_names(self, simple_flow_system, highs_solver):
+    def test_all_elements_have_variable_names(self, simple_flow_system):
         """All elements with submodels should have _variable_names populated."""
         simple_flow_system.build_model()
 
@@ -494,7 +494,3 @@ class TestFlowSystemDirectMethods:
                 simple_flow_system.solution[var_name],
                 rtol=1e-5,
             )
-
-
-if __name__ == '__main__':
-    pytest.main(['-v', '--disable-warnings', __file__])

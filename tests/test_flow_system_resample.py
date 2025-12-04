@@ -186,7 +186,8 @@ def test_invest_resample(complex_fs):
 # === Modeling Integration ===
 
 
-@pytest.mark.filterwarnings('ignore::DeprecationWarning')
+@pytest.mark.deprecated_api
+@pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
 @pytest.mark.parametrize('with_dim', [None, 'periods', 'scenarios'])
 def test_modeling(with_dim):
     """Test resampled FlowSystem can be modeled."""
@@ -214,7 +215,8 @@ def test_modeling(with_dim):
     assert len(calc.model.variables) > 0
 
 
-@pytest.mark.filterwarnings('ignore::DeprecationWarning')
+@pytest.mark.deprecated_api
+@pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
 def test_model_structure_preserved():
     """Test model structure (var/constraint types) preserved."""
     ts = pd.date_range('2023-01-01', periods=48, freq='h')

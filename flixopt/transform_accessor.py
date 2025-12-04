@@ -138,6 +138,10 @@ class TransformAccessor:
 
         # Create new FlowSystem (with aggregated data if requested)
         if parameters.aggregate_data_and_fix_non_binary_vars:
+            # Note: A second to_dataset() call is required here because:
+            # 1. The first 'ds' (line 124) was processed by drop_constant_arrays()
+            # 2. We need the full unprocessed dataset to apply aggregated data modifications
+            # 3. The clustering used 'temporaly_changing_ds' for input, not the full 'ds'
             ds = self._fs.to_dataset()
             for name, series in clustering.aggregated_data.items():
                 da = DataConverter.to_dataarray(series, self._fs.coords).rename(name).assign_attrs(ds[name].attrs)

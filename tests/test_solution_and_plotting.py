@@ -264,6 +264,8 @@ class TestPlottingWithOptimizedData:
         # This should handle scalar data gracefully
         fig, ax = plotting.with_matplotlib(effects_data, mode='stacked_bar')
         assert fig is not None
+        # Verify plot has visual content
+        assert len(ax.patches) > 0 or len(ax.lines) > 0 or len(ax.containers) > 0, 'Plot should contain visual elements'
         plt.close(fig)
 
 
@@ -319,8 +321,15 @@ class TestHeatmapReshaping:
         """Test automatic time reshaping."""
         reshaped = plotting.reshape_data_for_heatmap(long_time_data, reshape_time='auto')
 
-        # Should have timestep and timeframe dimensions
-        assert 'timestep' in reshaped.dims or 'timeframe' in reshaped.dims or reshaped.dims == long_time_data.dims
+        # Auto mode should attempt reshaping; verify it either reshaped or returned original
+        if 'timestep' in reshaped.dims or 'timeframe' in reshaped.dims:
+            # Reshaping occurred - verify 2D structure
+            assert len(reshaped.dims) == 2, 'Reshaped data should have 2 dimensions'
+        else:
+            # Reshaping not possible for this data - verify original structure preserved
+            assert reshaped.dims == long_time_data.dims, (
+                'Original structure should be preserved if reshaping not applied'
+            )
 
     def test_reshape_explicit_daily_hourly(self, long_time_data):
         """Test explicit daily-hourly reshaping."""
@@ -364,7 +373,7 @@ class TestNetworkVisualization:
 
     def test_plot_network_returns_network(self, simple_flow_system):
         """Test that plot_network returns a Network object."""
-        # Only test if pyvis is available
+        pytest.importorskip('pyvis')
         network = simple_flow_system.plot_network(path=False, show=False)
         assert network is not None
 
@@ -436,10 +445,7 @@ class TestVariableNamingConvention:
         simple_flow_system.optimize(highs_solver)
 
         variables = list(simple_flow_system.solution.data_vars)
-        assert len(variables) > 0
-
-        # Print for debugging
-        print(f'Solution contains {len(variables)} variables')
+        assert len(variables) > 0, f'Expected variables in solution, got {len(variables)}'
 
 
 # ============================================================================
@@ -450,15 +456,15 @@ class TestVariableNamingConvention:
 class TestPlottingEdgeCases:
     """Tests for edge cases in plotting."""
 
-    def test_empty_dataset_logs_error(self, caplog):
-        """Test that empty dataset logs an error and returns empty figure."""
+    def test_empty_dataset_returns_empty_figure(self, caplog):
+        """Test that empty dataset returns an empty figure."""
         import logging
 
         empty_data = xr.Dataset()
         with caplog.at_level(logging.ERROR):
             fig = plotting.with_plotly(empty_data)
-        # Should log an error about empty dataset
-        assert 'empty' in caplog.text.lower() or len(fig.data) == 0
+        # Empty dataset should produce figure with no data traces
+        assert len(fig.data) == 0, 'Empty dataset should produce figure with no data traces'
 
     def test_non_numeric_data_raises_error(self):
         """Test that non-numeric data raises appropriate error."""
@@ -483,12 +489,14 @@ class TestPlottingEdgeCases:
         assert fig is not None
 
     def test_nan_values_handled(self):
-        """Test that NaN values are handled gracefully."""
+        """Test that NaN values are handled gracefully (no exceptions raised)."""
         nan_data = xr.Dataset({'var': (['time'], [1.0, np.nan, 3.0, np.nan, 5.0])}, coords={'time': [0, 1, 2, 3, 4]})
 
-        # Should not raise, just warn
+        # Should not raise - NaN values should be handled gracefully
         fig = plotting.with_plotly(nan_data, mode='line')
         assert fig is not None
+        # Verify that plot was created with some data
+        assert len(fig.data) > 0, 'Figure should have data traces even with NaN values'
 
     def test_negative_values_in_stacked_bar(self):
         """Test handling of negative values in stacked bar charts."""
@@ -593,7 +601,3 @@ class TestExportFunctionality:
         plotting.export_figure((fig, ax), default_path=png_path, save=True, show=False)
         assert png_path.exists()
         plt.close(fig)
-
-
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
