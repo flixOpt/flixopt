@@ -207,12 +207,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._flows_cache: ElementContainer[Flow] | None = None
 
         # Solution dataset - populated after optimization or loaded from file
-        self.solution: xr.Dataset | None = None
+        self._solution: xr.Dataset | None = None
 
         # Clustering info - populated by transform.cluster()
         self._clustering_info: dict | None = None
 
-        # Statistics accessor cache - lazily initialized
+        # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
         # Use properties to validate and store scenario dimension settings
@@ -938,6 +938,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
+
+    @property
+    def solution(self) -> xr.Dataset | None:
+        """Get the solution dataset."""
+        return self._solution
+
+    @solution.setter
+    def solution(self, value: xr.Dataset | None) -> None:
+        """Set the solution dataset and invalidate statistics cache."""
+        self._solution = value
+        self._statistics = None  # Invalidate cached statistics
 
     @property
     def optimize(self) -> OptimizeAccessor:
