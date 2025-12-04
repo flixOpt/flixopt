@@ -212,6 +212,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Clustering info - populated by transform.cluster()
         self._clustering_info: dict | None = None
 
+        # Statistics accessor cache - lazily initialized
+        self._statistics: StatisticsAccessor | None = None
+
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
         self.scenario_independent_flow_rates = scenario_independent_flow_rates
@@ -1000,17 +1003,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             most statistics methods can be used.
 
         Returns:
-            A StatisticsAccessor instance.
+            A cached StatisticsAccessor instance.
 
         Examples:
             After optimization:
 
             >>> flow_system.optimize(solver)
-            >>> flow_system.statistics.balance('ElectricityBus')
-            >>> flow_system.statistics.heatmap('Boiler|on')
-            >>> ds = flow_system.statistics.all_flow_rates  # Get data for analysis
+            >>> flow_system.statistics.plot.balance('ElectricityBus')
+            >>> flow_system.statistics.plot.heatmap('Boiler|on')
+            >>> ds = flow_system.statistics.flow_rates  # Get data for analysis
         """
-        return StatisticsAccessor(self)
+        if self._statistics is None:
+            self._statistics = StatisticsAccessor(self)
+        return self._statistics
 
     def plot_network(
         self,
