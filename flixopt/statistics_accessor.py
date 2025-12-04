@@ -737,11 +737,25 @@ class StatisticsPlotAccessor:
             components = [component] if isinstance(component, str) else (component or [])
 
             for flow in self._fs.flows.values():
-                if starts and flow.bus_out.label not in starts:
-                    continue
-                if ends and flow.bus_in.label not in ends:
-                    continue
-                if components and flow.component.label not in components:
+                # Get bus label (could be string or Bus object)
+                bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
+                comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+
+                # start/end filtering based on flow direction
+                if flow.is_input_in_component:
+                    # Flow goes: bus -> component, so start=bus, end=component
+                    if starts and bus_label not in starts:
+                        continue
+                    if ends and comp_label not in ends:
+                        continue
+                else:
+                    # Flow goes: component -> bus, so start=component, end=bus
+                    if starts and comp_label not in starts:
+                        continue
+                    if ends and bus_label not in ends:
+                        continue
+
+                if components and comp_label not in components:
                     continue
                 matching_labels.append(flow.label_full)
 
@@ -825,8 +839,17 @@ class StatisticsPlotAccessor:
             if abs(value) < 1e-6:
                 continue
 
-            source = flow.bus_out.label if flow.bus_out else flow.component.label
-            target = flow.bus_in.label if flow.bus_in else flow.component.label
+            # Determine source/target based on flow direction
+            # is_input_in_component: True means bus -> component, False means component -> bus
+            bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
+            comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+
+            if flow.is_input_in_component:
+                source = bus_label
+                target = comp_label
+            else:
+                source = comp_label
+                target = bus_label
 
             nodes.add(source)
             nodes.add(target)
@@ -951,7 +974,8 @@ class StatisticsPlotAccessor:
         """Plot load duration curves (sorted time series).
 
         Args:
-            variables: Variable name(s) to plot.
+            variables: Flow label(s) to plot (e.g., 'Boiler(Q_th)').
+                Uses flow_rates from statistics.
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color overrides.
@@ -962,12 +986,13 @@ class StatisticsPlotAccessor:
         Returns:
             PlotResult with sorted duration curve data.
         """
-        solution = self._stats._require_solution()
+        self._stats._require_solution()
 
         if isinstance(variables, str):
             variables = [variables]
 
-        ds = solution[variables]
+        # Use flow_rates from statistics (already has clean labels without |flow_rate suffix)
+        ds = self._stats.flow_rates[variables]
         ds = _apply_selection(ds, select)
 
         if 'time' not in ds.dims:
