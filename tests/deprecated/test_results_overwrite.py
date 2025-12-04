@@ -1,9 +1,9 @@
-"""Tests for deprecated Results.to_file() overwrite protection.
+"""Tests for deprecated Results.to_file() overwrite protection - ported from feature/v5.
 
-This module tests the deprecated Results.to_file() overwrite behavior.
-These tests will be removed in v6.0.0.
+This module contains the original overwrite protection tests from feature/v5
+that use the deprecated Optimization/Results API. These tests will be removed in v6.0.0.
 
-For new tests, use FlowSystem.solution.to_netcdf() instead.
+For new tests, use FlowSystem.to_netcdf() instead.
 """
 
 import pathlib

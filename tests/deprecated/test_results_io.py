@@ -1,7 +1,7 @@
-"""Tests for deprecated Results I/O functionality.
+"""Tests for deprecated Results I/O functionality - ported from feature/v5.
 
-This module tests the deprecated Results.to_file() and Results.from_file() API.
-These tests will be removed in v6.0.0.
+This module contains the original test_flow_system_file_io test from feature/v5
+that uses the deprecated Optimization/Results API. This test will be removed in v6.0.0.
 
 For new tests, use FlowSystem.solution.to_netcdf() instead.
 """
@@ -42,7 +42,6 @@ def flow_system(request):
 
 @pytest.mark.slow
 def test_flow_system_file_io(flow_system, highs_solver, request):
-    """Test saving and loading flow system via deprecated Optimization/Results API."""
     # Use UUID to ensure unique names across parallel test workers
     unique_id = uuid.uuid4().hex[:12]
     worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
