@@ -890,6 +890,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
 
         if self.model.status == 'warning':
+            if CONFIG.Solving.document_infeasibility:
+                self._document_infeasibility()
             raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
 
         # Store solution on FlowSystem for direct Element access
@@ -898,6 +900,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
+
+    def _document_infeasibility(self) -> None:
+        """Save model documentation and FlowSystem to help debug infeasibility."""
+        import tempfile
+        from pathlib import Path
+
+        # Create a temporary directory for infeasibility docs
+        infeas_dir = Path(tempfile.gettempdir()) / 'flixopt_infeasibility'
+        infeas_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save model documentation
+        model_doc_path = infeas_dir / 'model_documentation.yaml'
+        fx_io.document_linopy_model(self.model, model_doc_path)
+
+        # Save FlowSystem
+        fs_path = infeas_dir / 'flow_system.nc4'
+        self.to_netcdf(fs_path)
+
+        logger.error(
+            f'Model infeasibility documentation saved to:\n  Model docs: {model_doc_path}\n  FlowSystem: {fs_path}'
+        )
 
     @property
     def optimize(self) -> OptimizeAccessor:
@@ -928,6 +951,115 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.optimize.mga(solver, alternatives=5)
         """
         return OptimizeAccessor(self)
+
+    @property
+    def main_results(self) -> dict[str, Any]:
+        """
+        Get main results summary after optimization.
+
+        Returns a dictionary containing:
+        - Objective value
+        - Penalty breakdown (temporal, periodic, total)
+        - Effects summary with temporal, periodic, and total values
+        - Investment decisions (invested vs not invested)
+        - Buses with excess (if any)
+
+        Returns:
+            Dictionary with main optimization results.
+
+        Raises:
+            RuntimeError: If the model has not been solved yet.
+
+        Examples:
+            >>> flow_system.optimize(solver)
+            >>> print(flow_system.main_results)
+        """
+        from .effects import PENALTY_EFFECT_LABEL
+        from .features import InvestmentModel
+
+        if self.model is None or self.solution is None:
+            raise RuntimeError('FlowSystem has not been solved yet. Call optimize() or solve() first.')
+
+        main_results = {
+            'Objective': self.model.objective.value,
+            'Penalty': {
+                'temporal': self.effects.penalty_effect.submodel.temporal.total.solution.values,
+                'periodic': self.effects.penalty_effect.submodel.periodic.total.solution.values,
+                'total': self.effects.penalty_effect.submodel.total.solution.values,
+            },
+            'Effects': {
+                f'{effect.label} [{effect.unit}]': {
+                    'temporal': effect.submodel.temporal.total.solution.values,
+                    'periodic': effect.submodel.periodic.total.solution.values,
+                    'total': effect.submodel.total.solution.values,
+                }
+                for effect in sorted(self.effects.values(), key=lambda e: e.label_full.upper())
+                if effect.label_full != PENALTY_EFFECT_LABEL
+            },
+            'Sizes': {
+                'Invested': {
+                    model.label_of_element: model.size.solution
+                    for component in self.components.values()
+                    for model in component.submodel.all_submodels
+                    if isinstance(model, InvestmentModel)
+                    and model.size.solution.max().item() >= CONFIG.Modeling.epsilon
+                },
+                'Not invested': {
+                    model.label_of_element: model.size.solution
+                    for component in self.components.values()
+                    for model in component.submodel.all_submodels
+                    if isinstance(model, InvestmentModel) and model.size.solution.max().item() < CONFIG.Modeling.epsilon
+                },
+            },
+            'Buses with imbalance': [
+                {
+                    bus.label_full: {
+                        'virtual_supply': (bus.submodel.virtual_supply.solution * self.hours_per_timestep).sum('time'),
+                        'virtual_demand': (bus.submodel.virtual_demand.solution * self.hours_per_timestep).sum('time'),
+                    }
+                }
+                for bus in self.buses.values()
+                if bus.allows_imbalance
+                and (
+                    bus.submodel.virtual_supply.solution.sum().item() > 1e-3
+                    or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
+                )
+            ],
+        }
+
+        return fx_io.round_nested_floats(main_results)
+
+    @property
+    def summary(self) -> dict[str, Any]:
+        """
+        Get a summary of the FlowSystem and optimization.
+
+        Returns a dictionary containing:
+        - Number of timesteps
+        - Number of constraints and variables (if modeled)
+        - Main results (if solved)
+        - Config settings
+
+        Returns:
+            Dictionary with FlowSystem summary.
+
+        Raises:
+            RuntimeError: If the model has not been solved yet.
+
+        Examples:
+            >>> flow_system.optimize(solver)
+            >>> print(flow_system.summary)
+        """
+        if self.model is None or self.solution is None:
+            raise RuntimeError('FlowSystem has not been solved yet. Call optimize() or solve() first.')
+
+        return {
+            'Number of timesteps': len(self.timesteps),
+            'Constraints': self.model.constraints.ncons,
+            'Variables': self.model.variables.nvars,
+            'Main Results': self.main_results,
+            'Config': CONFIG.to_dict(),
+        }
 
     def plot_network(
         self,

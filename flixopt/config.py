@@ -171,6 +171,7 @@ _DEFAULTS = MappingProxyType(
                 'time_limit_seconds': 300,
                 'log_to_console': True,
                 'log_main_results': True,
+                'document_infeasibility': True,
             }
         ),
     }
@@ -526,6 +527,7 @@ class CONFIG:
             time_limit_seconds: Default time limit in seconds for solver runs.
             log_to_console: Whether solver should output to console.
             log_main_results: Whether to log main results after solving.
+            document_infeasibility: Whether to save model documentation on infeasibility.
 
         Examples:
             ```python
@@ -540,6 +542,7 @@ class CONFIG:
         time_limit_seconds: int = _DEFAULTS['solving']['time_limit_seconds']
         log_to_console: bool = _DEFAULTS['solving']['log_to_console']
         log_main_results: bool = _DEFAULTS['solving']['log_main_results']
+        document_infeasibility: bool = _DEFAULTS['solving']['document_infeasibility']
 
     class Plotting:
         """Plotting configuration.
@@ -622,6 +625,7 @@ class CONFIG:
                 'time_limit_seconds': cls.Solving.time_limit_seconds,
                 'log_to_console': cls.Solving.log_to_console,
                 'log_main_results': cls.Solving.log_main_results,
+                'document_infeasibility': cls.Solving.document_infeasibility,
             },
             'plotting': {
                 'default_show': cls.Plotting.default_show,
