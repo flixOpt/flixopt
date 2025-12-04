@@ -227,6 +227,10 @@ class StatisticsAccessor:
             Sizes for all flows.
         ``charge_states`` : xr.Dataset
             Charge states for all storage components.
+        ``effects_per_component`` : xr.Dataset
+            Effect results aggregated by component.
+        ``effect_share_factors`` : dict
+            Conversion factors between effects.
 
     Examples:
         >>> flow_system.optimize(solver)
@@ -241,6 +245,8 @@ class StatisticsAccessor:
         self._flow_hours: xr.Dataset | None = None
         self._sizes: xr.Dataset | None = None
         self._charge_states: xr.Dataset | None = None
+        self._effects_per_component: xr.Dataset | None = None
+        self._effect_share_factors: dict[str, dict] | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -302,6 +308,236 @@ class StatisticsAccessor:
                 {v.replace('|charge_state', ''): self._fs.solution[v] for v in charge_vars}
             )
         return self._charge_states
+
+    @property
+    def effect_share_factors(self) -> dict[str, dict]:
+        """Effect share factors for temporal and periodic modes.
+
+        Returns:
+            Dict with 'temporal' and 'periodic' keys, each containing
+            conversion factors between effects.
+        """
+        self._require_solution()
+        if self._effect_share_factors is None:
+            factors = self._fs.effects.calculate_effect_share_factors()
+            self._effect_share_factors = {'temporal': factors[0], 'periodic': factors[1]}
+        return self._effect_share_factors
+
+    @property
+    def effects_per_component(self) -> xr.Dataset:
+        """Effect results aggregated by component.
+
+        Returns a dataset with:
+        - 'temporal': temporal effects per component per timestep
+        - 'periodic': periodic (investment) effects per component
+        - 'total': sum of temporal and periodic effects per component
+
+        Each variable has dimensions [time, period, scenario, component, effect]
+        (missing dimensions are omitted).
+
+        Returns:
+            xr.Dataset with effect results aggregated by component.
+        """
+        self._require_solution()
+        if self._effects_per_component is None:
+            self._effects_per_component = xr.Dataset(
+                {
+                    mode: self._create_effects_dataset(mode).to_dataarray('effect', name=mode)
+                    for mode in ['temporal', 'periodic', 'total']
+                }
+            )
+            dim_order = ['time', 'period', 'scenario', 'component', 'effect']
+            self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
+        return self._effects_per_component
+
+    def get_effect_shares(
+        self,
+        element: str,
+        effect: str,
+        mode: Literal['temporal', 'periodic'] | None = None,
+        include_flows: bool = False,
+    ) -> xr.Dataset:
+        """Retrieve individual effect shares for a specific element and effect.
+
+        Args:
+            element: The element identifier (component or flow label).
+            effect: The effect identifier.
+            mode: 'temporal', 'periodic', or None for both.
+            include_flows: Whether to include effects from flows connected to this element.
+
+        Returns:
+            xr.Dataset containing the requested effect shares.
+
+        Raises:
+            ValueError: If the effect is not available or mode is invalid.
+        """
+        self._require_solution()
+
+        if effect not in self._fs.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode is None:
+            return xr.merge(
+                [
+                    self.get_effect_shares(
+                        element=element, effect=effect, mode='temporal', include_flows=include_flows
+                    ),
+                    self.get_effect_shares(
+                        element=element, effect=effect, mode='periodic', include_flows=include_flows
+                    ),
+                ]
+            )
+
+        if mode not in ['temporal', 'periodic']:
+            raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "periodic".')
+
+        ds = xr.Dataset()
+        label = f'{element}->{effect}({mode})'
+        if label in self._fs.solution:
+            ds = xr.Dataset({label: self._fs.solution[label]})
+
+        if include_flows:
+            if element not in self._fs.components:
+                raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+            comp = self._fs.components[element]
+            flows = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
+            return xr.merge(
+                [ds]
+                + [
+                    self.get_effect_shares(element=flow, effect=effect, mode=mode, include_flows=False)
+                    for flow in flows
+                ]
+            )
+
+        return ds
+
+    def _compute_effect_total(
+        self,
+        element: str,
+        effect: str,
+        mode: Literal['temporal', 'periodic', 'total'] = 'total',
+        include_flows: bool = False,
+    ) -> xr.DataArray:
+        """Calculate total effect for a specific element and effect.
+
+        Computes total direct and indirect effects considering conversion factors.
+
+        Args:
+            element: The element identifier.
+            effect: The effect identifier.
+            mode: 'temporal', 'periodic', or 'total'.
+            include_flows: Whether to include effects from flows connected to this element.
+
+        Returns:
+            xr.DataArray with total effects.
+        """
+        if effect not in self._fs.effects:
+            raise ValueError(f'Effect {effect} is not available.')
+
+        if mode == 'total':
+            temporal = self._compute_effect_total(
+                element=element, effect=effect, mode='temporal', include_flows=include_flows
+            )
+            periodic = self._compute_effect_total(
+                element=element, effect=effect, mode='periodic', include_flows=include_flows
+            )
+            if periodic.isnull().all() and temporal.isnull().all():
+                return xr.DataArray(np.nan)
+            if temporal.isnull().all():
+                return periodic.rename(f'{element}->{effect}')
+            temporal = temporal.sum('time')
+            if periodic.isnull().all():
+                return temporal.rename(f'{element}->{effect}')
+            return periodic + temporal
+
+        total = xr.DataArray(0)
+        share_exists = False
+
+        relevant_conversion_factors = {
+            key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
+        }
+        relevant_conversion_factors[effect] = 1  # Share to itself is 1
+
+        for target_effect, conversion_factor in relevant_conversion_factors.items():
+            label = f'{element}->{target_effect}({mode})'
+            if label in self._fs.solution:
+                share_exists = True
+                da = self._fs.solution[label]
+                total = da * conversion_factor + total
+
+            if include_flows:
+                if element not in self._fs.components:
+                    raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+                comp = self._fs.components[element]
+                flows = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
+                for flow in flows:
+                    label = f'{flow}->{target_effect}({mode})'
+                    if label in self._fs.solution:
+                        share_exists = True
+                        da = self._fs.solution[label]
+                        total = da * conversion_factor + total
+
+        if not share_exists:
+            total = xr.DataArray(np.nan)
+        return total.rename(f'{element}->{effect}({mode})')
+
+    def _create_template_for_mode(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.DataArray:
+        """Create a template DataArray with the correct dimensions for a given mode."""
+        coords = {}
+        if mode == 'temporal':
+            coords['time'] = self._fs.timesteps_extra
+        if self._fs.periods is not None:
+            coords['period'] = self._fs.periods
+        if self._fs.scenarios is not None:
+            coords['scenario'] = self._fs.scenarios
+
+        if coords:
+            shape = tuple(len(coords[dim]) for dim in coords)
+            return xr.DataArray(np.full(shape, np.nan, dtype=float), coords=coords, dims=list(coords.keys()))
+        else:
+            return xr.DataArray(np.nan)
+
+    def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
+        """Create dataset containing effect totals for all components (including their flows)."""
+        template = self._create_template_for_mode(mode)
+        ds = xr.Dataset()
+        all_arrays: dict[str, list] = {}
+        components_list = list(self._fs.components.keys())
+
+        # Collect arrays for all effects and components
+        for effect in self._fs.effects:
+            effect_arrays = []
+            for component in components_list:
+                da = self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+                effect_arrays.append(da)
+            all_arrays[effect] = effect_arrays
+
+        # Process all effects: expand scalar NaN arrays to match template dimensions
+        for effect in self._fs.effects:
+            dataarrays = all_arrays[effect]
+            component_arrays = []
+
+            for component, arr in zip(components_list, dataarrays, strict=False):
+                # Expand scalar NaN arrays to match template dimensions
+                if not arr.dims and np.isnan(arr.item()):
+                    arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
+                component_arrays.append(arr.expand_dims(component=[component]))
+
+            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal', join='outer').rename(effect)
+
+        # Validation test
+        suffix = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
+        for effect in self._fs.effects:
+            label = f'{effect}{suffix[mode]}'
+            if label in self._fs.solution:
+                computed = ds[effect].sum('component')
+                found = self._fs.solution[label]
+                if not np.allclose(computed.values, found.fillna(0).values):
+                    logger.critical(
+                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
+                    )
+
+        return ds
 
 
 # --- Statistics Plot Accessor ---
