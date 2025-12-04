@@ -51,9 +51,8 @@ This guide follows a sequential learning path:
 | 2 | [Building Models](building-models/index.md) | How to construct models step by step |
 | 3 | [Running Optimizations](optimization/index.md) | Solver configuration and execution |
 | 4 | [Analyzing Results](results/index.md) | Extracting and visualizing outcomes |
-| 5 | [FlowSystem Accessors](flow-system-accessors.md) | Optimize, transform, statistics, and topology APIs |
-| 6 | [Mathematical Notation](mathematical-notation/index.md) | Deep dive into the math behind each element |
-| 7 | [Recipes](recipes/index.md) | Common patterns and solutions |
+| 5 | [Mathematical Notation](mathematical-notation/index.md) | Deep dive into the math behind each element |
+| 6 | [Recipes](recipes/index.md) | Common patterns and solutions |
 
 ## Quick Links
 
@@ -65,7 +64,6 @@ This guide follows a sequential learning path:
 
 ### Reference
 
-- [FlowSystem Accessors](flow-system-accessors.md) - Optimize, transform, statistics, topology APIs
 - [Mathematical Notation](mathematical-notation/index.md) - Detailed specifications
 - [API Reference](../api-reference/index.md) - Complete class documentation
 - [Examples](../examples/index.md) - Working code to learn from

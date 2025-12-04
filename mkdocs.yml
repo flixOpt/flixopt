@@ -26,7 +26,6 @@ nav:
     - Building Models: user-guide/building-models/index.md
     - Running Optimizations: user-guide/optimization/index.md
     - Analyzing Results: user-guide/results/index.md
-    - FlowSystem Accessors: user-guide/flow-system-accessors.md
     - Plotting Results: user-guide/results-plotting.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md

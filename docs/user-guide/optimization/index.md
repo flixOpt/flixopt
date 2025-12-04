@@ -2,6 +2,21 @@
 
 This section covers how to run optimizations in flixOpt, including different optimization modes and solver configuration.
 
+## Verifying Your Model
+
+Before running an optimization, it's helpful to visualize your system structure:
+
+```python
+# Generate an interactive network diagram
+flow_system.topology.plot(path='my_system.html')
+
+# Or get structure info programmatically
+nodes, edges = flow_system.topology.infos()
+print(f"Components: {[n for n, d in nodes.items() if d['class'] == 'Component']}")
+print(f"Buses: {[n for n, d in nodes.items() if d['class'] == 'Bus']}")
+print(f"Flows: {list(edges.keys())}")
+```
+
 ## Standard Optimization
 
 The recommended way to run an optimization is directly on the `FlowSystem`:
