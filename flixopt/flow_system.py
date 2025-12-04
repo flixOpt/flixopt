@@ -15,7 +15,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
     DataConverter,
@@ -1073,7 +1073,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Visualizes the network structure of a FlowSystem using PyVis.
         """
         warnings.warn(
-            'plot_network() is deprecated. Use flow_system.topology.plot() instead.',
+            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.plot() instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1086,7 +1087,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Visualizes the network structure using Dash and Cytoscape.
         """
         warnings.warn(
-            'start_network_app() is deprecated. Use flow_system.topology.start_app() instead.',
+            f'start_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.start_app() instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1099,7 +1101,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Stop the network visualization server.
         """
         warnings.warn(
-            'stop_network_app() is deprecated. Use flow_system.topology.stop_app() instead.',
+            f'stop_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.stop_app() instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1112,7 +1115,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Get network topology information as dictionaries.
         """
         warnings.warn(
-            'network_infos() is deprecated. Use flow_system.topology.infos() instead.',
+            f'network_infos() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.infos() instead.',
             DeprecationWarning,
             stacklevel=2,
         )

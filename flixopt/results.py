@@ -583,7 +583,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.flow_rates() is deprecated. '
             'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -656,7 +656,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.flow_hours() is deprecated. '
             'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -703,7 +703,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.sizes() is deprecated. '
             'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in {DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
             DeprecationWarning,
             stacklevel=2,
         )
