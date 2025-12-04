@@ -162,7 +162,7 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
 
 The new API uses a consistent naming pattern:
 
-```
+```text
 ComponentLabel(FlowLabel)|variable_name
 ```
 
@@ -330,9 +330,9 @@ The new API also applies to advanced optimization modes:
 | v5.x | `Optimization` class deprecated with warning |
 | v6.0.0 | `Optimization` class removed |
 
-!!! warning "Update before v6.0.0"
-    The `Optimization` and `Results` classes will be removed in v6.0.0.
-    Update your code to the new API now to avoid breaking changes.
+!!! warning "Update your code"
+    The `Optimization` and `Results` classes are deprecated and will be removed in a future version.
+    Update your code to the new API to avoid breaking changes when upgrading.
 
 ---
 
