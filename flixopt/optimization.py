@@ -25,7 +25,7 @@ from tqdm import tqdm
 from . import io as fx_io
 from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
-from .config import CONFIG, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
@@ -172,7 +172,7 @@ class Optimization:
         normalize_weights: bool = True,
     ):
         warnings.warn(
-            'Optimization is deprecated and will be removed in v6. '
+            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
             'Use FlowSystem.optimize(solver) or FlowSystem.build_model() + FlowSystem.solve(solver) instead. '
             'Access results via FlowSystem.solution.',
             DeprecationWarning,
@@ -392,7 +392,7 @@ class ClusteredOptimization(Optimization):
         normalize_weights: bool = True,
     ):
         warnings.warn(
-            'ClusteredOptimization is deprecated and will be removed in v6. '
+            f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
             'Use FlowSystem.transform.cluster(params) followed by FlowSystem.optimize(solver) instead. '
             'Example: clustered_fs = flow_system.transform.cluster(params); clustered_fs.optimize(solver)',
             DeprecationWarning,
@@ -639,7 +639,7 @@ class SegmentedOptimization:
         folder: pathlib.Path | None = None,
     ):
         warnings.warn(
-            'SegmentedOptimization is deprecated and will be removed in v6. '
+            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
             'A replacement API for segmented optimization will be provided in a future release.',
             DeprecationWarning,
             stacklevel=2,
