@@ -56,7 +56,10 @@ stats = flow_system.statistics
 | `flow_hours` | Flow hours (flow_rate × hours_per_timestep) |
 | `sizes` | All size variables (fixed and optimized) |
 | `charge_states` | Storage charge state variables |
-| `effects_per_component` | Effect totals broken down by component |
+| `temporal_effects` | Temporal effects per contributor per timestep |
+| `periodic_effects` | Periodic (investment) effects per contributor |
+| `total_effects` | Total effects (temporal + periodic) per contributor |
+| `effect_share_factors` | Conversion factors between effects |
 
 ### Examples
 
@@ -67,18 +70,21 @@ print(flow_rates)
 
 # Get flow hours (energy)
 flow_hours = flow_system.statistics.flow_hours
-total_heat = flow_hours['Boiler(Q_th)|flow_rate'].sum()
+total_heat = flow_hours['Boiler(Q_th)'].sum()
 
 # Get sizes (capacities)
 sizes = flow_system.statistics.sizes
-print(f"Boiler size: {sizes['Boiler(Q_th)|size'].values}")
+print(f"Boiler size: {sizes['Boiler(Q_th)'].values}")
 
 # Get storage charge states
 charge_states = flow_system.statistics.charge_states
 
-# Get effect breakdown by component
-effects = flow_system.statistics.effects_per_component
-print(effects)
+# Get effect breakdown by contributor
+temporal = flow_system.statistics.temporal_effects
+print(temporal['costs'])  # Costs per contributor per timestep
+
+# Group by component
+temporal['costs'].groupby('component').sum()
 ```
 
 ### Effect Analysis
@@ -86,13 +92,22 @@ print(effects)
 Analyze how effects (costs, emissions, etc.) are distributed:
 
 ```python
-# Get effect shares for a specific element
-shares = flow_system.statistics.get_effect_shares(
-    element='Boiler',
-    effect='costs',
-    mode='temporal',
-    include_flows=True
-)
+# Access effects via the new properties
+stats = flow_system.statistics
+
+# Temporal effects per timestep (costs, CO2, etc. per contributor)
+stats.temporal_effects['costs']  # DataArray with dims [time, contributor]
+stats.temporal_effects['costs'].sum('contributor')  # Total per timestep
+
+# Periodic effects (investment costs, etc.)
+stats.periodic_effects['costs']  # DataArray with dim [contributor]
+
+# Total effects (temporal + periodic combined)
+stats.total_effects['costs'].sum('contributor')  # Grand total
+
+# Group by component or component type
+stats.total_effects['costs'].groupby('component').sum()
+stats.total_effects['costs'].groupby('component_type').sum()
 ```
 
 ## Plotting Results
@@ -102,14 +117,16 @@ The `statistics.plot` accessor provides visualization methods:
 ```python
 # Balance plots
 flow_system.statistics.plot.balance('HeatBus')
-flow_system.statistics.plot.balance('Boiler', mode='area')
+flow_system.statistics.plot.balance('Boiler')
 
 # Heatmaps
 flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 
-# Line and bar charts
-flow_system.statistics.plot.line('Battery|charge_state')
-flow_system.statistics.plot.bar('costs', by='component')
+# Duration curves
+flow_system.statistics.plot.duration_curve('Boiler(Q_th)')
+
+# Sankey diagrams
+flow_system.statistics.plot.sankey()
 ```
 
 See [Plotting Results](../results-plotting.md) for comprehensive plotting documentation.
@@ -237,7 +254,7 @@ print("=== Flow Statistics ===")
 print(flow_system.statistics.flow_hours)
 
 print("\n=== Effect Breakdown ===")
-print(flow_system.statistics.effects_per_component)
+print(flow_system.statistics.total_effects)
 
 # Create plots
 flow_system.statistics.plot.balance('HeatBus')

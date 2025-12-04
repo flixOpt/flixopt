@@ -185,8 +185,8 @@ Plot cost, emissions, or other effect breakdowns:
 
 ```python
 flow_system.statistics.plot.effects()  # Total of all effects by component
-flow_system.statistics.plot.effects(effect='costs', mode='pie')  # Just costs as pie
-flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Temporal effects over time
+flow_system.statistics.plot.effects(effect='costs')  # Just costs
+flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 ```
 
 **Key parameters:**
@@ -196,7 +196,6 @@ flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Temporal ef
 | `aspect` | `'total'`, `'temporal'`, `'periodic'` | Which aspect to plot (default: `'total'`) |
 | `effect` | str or None | Specific effect to plot (e.g., `'costs'`, `'CO2'`). If None, plots all. |
 | `by` | `'component'`, `'time'` | Grouping dimension |
-| `mode` | `'bar'`, `'pie'`, `'treemap'` | Chart type |
 
 ### Variable Plot
 
@@ -223,9 +222,9 @@ flow_system.statistics.plot.variable('charge_state')  # All storage charge state
 Plot load duration curves (sorted time series) to understand utilization patterns:
 
 ```python
-flow_system.statistics.plot.duration_curve('Boiler(Q_th)|flow_rate')
-flow_system.statistics.plot.duration_curve(['CHP|on', 'Boiler|on'])
-flow_system.statistics.plot.duration_curve('demand', normalize=True)
+flow_system.statistics.plot.duration_curve('Boiler(Q_th)')
+flow_system.statistics.plot.duration_curve(['CHP(Q_th)', 'HeatPump(Q_th)'])
+flow_system.statistics.plot.duration_curve('Demand(in)', normalize=True)
 ```
 
 **Key parameters:**
@@ -300,8 +299,8 @@ Override colors using a dictionary:
 
 ```python
 flow_system.statistics.plot.balance('Bus', colors={
-    'Boiler(Q_th)|flow_rate': '#ff6b6b',
-    'CHP(Q_th)|flow_rate': '#4ecdc4',
+    'Boiler(Q_th)': '#ff6b6b',
+    'CHP(Q_th)': '#4ecdc4',
 })
 ```
 
@@ -370,7 +369,7 @@ plots = {
     'balance': flow_system.statistics.plot.balance('HeatBus', show=False),
     'storage': flow_system.statistics.plot.storage('ThermalStorage', show=False),
     'sankey': flow_system.statistics.plot.sankey(show=False),
-    'costs': flow_system.statistics.plot.effects('total', mode='pie', show=False),
+    'costs': flow_system.statistics.plot.effects(effect='costs', show=False),
 }
 
 # Export all
