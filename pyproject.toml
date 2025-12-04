@@ -203,6 +203,7 @@ filterwarnings = [
     "ignore:Results is deprecated:DeprecationWarning:flixopt",
     "ignore:Optimization is deprecated:DeprecationWarning:flixopt",
     "ignore:SegmentedOptimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
     "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
 
     # === Treat flixopt warnings as errors (strict mode for our code) ===

@@ -514,16 +514,12 @@ class TestTransmissionModel:
             'Status does not work properly',
         )
 
-        assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
-            'Flow rate of Rohr__Rohr1b is not correct',
-        )
-
+        # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
         in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow]),
             flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            expected_out1_flow,
             'Losses are not computed correctly',
         )
 
@@ -595,16 +591,12 @@ class TestTransmissionModel:
             'Status does not work properly',
         )
 
-        assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
-            'Flow rate of Rohr__Rohr1b is not correct',
-        )
-
+        # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
         in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow]),
             flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            expected_out1_flow,
             'Losses are not computed correctly',
         )
 

@@ -7,14 +7,11 @@ This module provides the OptimizeAccessor class that enables the
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
     from .solvers import _Solver
-
-logger = logging.getLogger('flixopt')
 
 
 class OptimizeAccessor:
