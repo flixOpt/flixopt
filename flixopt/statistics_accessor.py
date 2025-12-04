@@ -10,8 +10,8 @@ Structure:
 Example:
     >>> flow_system.optimize(solver)
     >>> # Data access
-    >>> flow_system.statistics.all_flow_rates
-    >>> flow_system.statistics.all_flow_hours
+    >>> flow_system.statistics.flow_rates
+    >>> flow_system.statistics.flow_hours
     >>> # Plotting
     >>> flow_system.statistics.plot.balance('ElectricityBus')
     >>> flow_system.statistics.plot.heatmap('Boiler|on')
@@ -219,28 +219,28 @@ class StatisticsAccessor:
     Use ``.plot`` for visualization methods.
 
     Data Properties:
-        ``all_flow_rates`` : xr.Dataset
+        ``flow_rates`` : xr.Dataset
             Flow rates for all flows.
-        ``all_flow_hours`` : xr.Dataset
+        ``flow_hours`` : xr.Dataset
             Flow hours (energy) for all flows.
-        ``all_sizes`` : xr.Dataset
+        ``sizes`` : xr.Dataset
             Sizes for all flows.
-        ``all_charge_states`` : xr.Dataset
+        ``charge_states`` : xr.Dataset
             Charge states for all storage components.
 
     Examples:
         >>> flow_system.optimize(solver)
-        >>> flow_system.statistics.all_flow_rates  # Get data
+        >>> flow_system.statistics.flow_rates  # Get data
         >>> flow_system.statistics.plot.balance('Bus')  # Plot
     """
 
     def __init__(self, flow_system: FlowSystem) -> None:
         self._fs = flow_system
         # Cached data
-        self._all_flow_rates: xr.Dataset | None = None
-        self._all_flow_hours: xr.Dataset | None = None
-        self._all_sizes: xr.Dataset | None = None
-        self._all_charge_states: xr.Dataset | None = None
+        self._flow_rates: xr.Dataset | None = None
+        self._flow_hours: xr.Dataset | None = None
+        self._sizes: xr.Dataset | None = None
+        self._charge_states: xr.Dataset | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -266,44 +266,42 @@ class StatisticsAccessor:
         return self._plot
 
     @property
-    def all_flow_rates(self) -> xr.Dataset:
+    def flow_rates(self) -> xr.Dataset:
         """All flow rates as a Dataset with flow labels as variable names."""
         self._require_solution()
-        if self._all_flow_rates is None:
+        if self._flow_rates is None:
             flow_rate_vars = [v for v in self._fs.solution.data_vars if v.endswith('|flow_rate')]
-            self._all_flow_rates = xr.Dataset(
-                {v.replace('|flow_rate', ''): self._fs.solution[v] for v in flow_rate_vars}
-            )
-        return self._all_flow_rates
+            self._flow_rates = xr.Dataset({v.replace('|flow_rate', ''): self._fs.solution[v] for v in flow_rate_vars})
+        return self._flow_rates
 
     @property
-    def all_flow_hours(self) -> xr.Dataset:
+    def flow_hours(self) -> xr.Dataset:
         """All flow hours (energy) as a Dataset with flow labels as variable names."""
         self._require_solution()
-        if self._all_flow_hours is None:
+        if self._flow_hours is None:
             hours = self._fs.hours_per_timestep
-            self._all_flow_hours = self.all_flow_rates * hours
-        return self._all_flow_hours
+            self._flow_hours = self.flow_rates * hours
+        return self._flow_hours
 
     @property
-    def all_sizes(self) -> xr.Dataset:
+    def sizes(self) -> xr.Dataset:
         """All flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
-        if self._all_sizes is None:
+        if self._sizes is None:
             size_vars = [v for v in self._fs.solution.data_vars if v.endswith('|size')]
-            self._all_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
-        return self._all_sizes
+            self._sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+        return self._sizes
 
     @property
-    def all_charge_states(self) -> xr.Dataset:
+    def charge_states(self) -> xr.Dataset:
         """All storage charge states as a Dataset with storage labels as variable names."""
         self._require_solution()
-        if self._all_charge_states is None:
+        if self._charge_states is None:
             charge_vars = [v for v in self._fs.solution.data_vars if v.endswith('|charge_state')]
-            self._all_charge_states = xr.Dataset(
+            self._charge_states = xr.Dataset(
                 {v.replace('|charge_state', ''): self._fs.solution[v] for v in charge_vars}
             )
-        return self._all_charge_states
+        return self._charge_states
 
 
 # --- Statistics Plot Accessor ---
@@ -370,9 +368,9 @@ class StatisticsPlotAccessor:
 
         # Get data from statistics
         if unit == 'flow_rate':
-            ds = self._stats.all_flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.all_flow_rates]]
+            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
         else:
-            ds = self._stats.all_flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.all_flow_hours]]
+            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
 
         # Negate inputs
         for label in input_labels:
@@ -493,7 +491,7 @@ class StatisticsPlotAccessor:
         """
         self._stats._require_solution()
 
-        ds = self._stats.all_flow_rates if unit == 'flow_rate' else self._stats.all_flow_hours
+        ds = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
 
         # Filter by connection
         if start is not None or end is not None or component is not None:
@@ -556,7 +554,7 @@ class StatisticsPlotAccessor:
         """
         self._stats._require_solution()
 
-        ds = self._stats.all_flow_hours.copy()
+        ds = self._stats.flow_hours.copy()
 
         # Apply weights
         if 'period' in ds.dims and self._fs.period_weights is not None:
@@ -666,7 +664,7 @@ class StatisticsPlotAccessor:
         import plotly.express as px
 
         self._stats._require_solution()
-        ds = self._stats.all_sizes
+        ds = self._stats.sizes
 
         ds = _apply_selection(ds, select)
 
