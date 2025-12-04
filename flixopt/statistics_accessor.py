@@ -247,6 +247,10 @@ class StatisticsAccessor:
         self._charge_states: xr.Dataset | None = None
         self._effects_per_component: xr.Dataset | None = None
         self._effect_share_factors: dict[str, dict] | None = None
+        # New effect properties (cached)
+        self._temporal_effects: xr.Dataset | None = None
+        self._periodic_effects: xr.Dataset | None = None
+        self._total_effects: xr.Dataset | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -349,6 +353,98 @@ class StatisticsAccessor:
             dim_order = ['time', 'period', 'scenario', 'component', 'effect']
             self._effects_per_component = self._effects_per_component.transpose(*dim_order, missing_dims='ignore')
         return self._effects_per_component
+
+    @property
+    def temporal_effects(self) -> xr.Dataset:
+        """Temporal effects per contributor per timestep.
+
+        Returns a Dataset where each effect is a data variable with dimensions
+        [time, contributor] (plus period/scenario if present).
+
+        Coordinates:
+            - contributor: Individual contributor labels
+            - component: Parent component label for groupby operations
+            - component_type: Component type (e.g., 'Boiler', 'Source', 'Sink')
+
+        Examples:
+            >>> # Get costs per contributor per timestep
+            >>> statistics.temporal_effects['costs']
+            >>> # Sum over all contributors to get total costs per timestep
+            >>> statistics.temporal_effects['costs'].sum('contributor')
+            >>> # Group by component
+            >>> statistics.temporal_effects['costs'].groupby('component').sum()
+
+        Returns:
+            xr.Dataset with effects as variables and contributor dimension.
+        """
+        self._require_solution()
+        if self._temporal_effects is None:
+            ds = self._create_effects_dataset('temporal')
+            dim_order = ['time', 'period', 'scenario', 'contributor']
+            self._temporal_effects = ds.transpose(*dim_order, missing_dims='ignore')
+        return self._temporal_effects
+
+    @property
+    def periodic_effects(self) -> xr.Dataset:
+        """Periodic (investment) effects per contributor.
+
+        Returns a Dataset where each effect is a data variable with dimensions
+        [contributor] (plus period/scenario if present).
+
+        Coordinates:
+            - contributor: Individual contributor labels
+            - component: Parent component label for groupby operations
+            - component_type: Component type (e.g., 'Boiler', 'Source', 'Sink')
+
+        Examples:
+            >>> # Get investment costs per contributor
+            >>> statistics.periodic_effects['costs']
+            >>> # Sum over all contributors to get total investment costs
+            >>> statistics.periodic_effects['costs'].sum('contributor')
+            >>> # Group by component
+            >>> statistics.periodic_effects['costs'].groupby('component').sum()
+
+        Returns:
+            xr.Dataset with effects as variables and contributor dimension.
+        """
+        self._require_solution()
+        if self._periodic_effects is None:
+            ds = self._create_effects_dataset('periodic')
+            dim_order = ['period', 'scenario', 'contributor']
+            self._periodic_effects = ds.transpose(*dim_order, missing_dims='ignore')
+        return self._periodic_effects
+
+    @property
+    def total_effects(self) -> xr.Dataset:
+        """Total effects (temporal + periodic) per contributor.
+
+        Returns a Dataset where each effect is a data variable with dimensions
+        [contributor] (plus period/scenario if present).
+
+        Coordinates:
+            - contributor: Individual contributor labels
+            - component: Parent component label for groupby operations
+            - component_type: Component type (e.g., 'Boiler', 'Source', 'Sink')
+
+        Examples:
+            >>> # Get total costs per contributor
+            >>> statistics.total_effects['costs']
+            >>> # Sum over all contributors to get total system costs
+            >>> statistics.total_effects['costs'].sum('contributor')
+            >>> # Group by component
+            >>> statistics.total_effects['costs'].groupby('component').sum()
+            >>> # Group by component type
+            >>> statistics.total_effects['costs'].groupby('component_type').sum()
+
+        Returns:
+            xr.Dataset with effects as variables and contributor dimension.
+        """
+        self._require_solution()
+        if self._total_effects is None:
+            ds = self._create_effects_dataset('total')
+            dim_order = ['period', 'scenario', 'contributor']
+            self._total_effects = ds.transpose(*dim_order, missing_dims='ignore')
+        return self._total_effects
 
     def get_effect_shares(
         self,
@@ -498,39 +594,60 @@ class StatisticsAccessor:
             return xr.DataArray(np.nan)
 
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
-        """Create dataset containing effect totals for all components (including their flows)."""
+        """Create dataset containing effect totals for all flows (individual contributors).
+
+        Unlike the previous implementation that aggregated by component, this exposes
+        individual flows as contributors, enabling more flexible groupby operations.
+        """
         template = self._create_template_for_mode(mode)
         ds = xr.Dataset()
-        all_arrays: dict[str, list] = {}
-        components_list = list(self._fs.components.keys())
 
-        # Collect arrays for all effects and components
+        # Build list of all contributors (flows) with their metadata
+        contributors: list[str] = []
+        parents: list[str] = []
+        contributor_types: list[str] = []
+
+        for flow_label, flow in self._fs.flows.items():
+            contributors.append(flow_label)
+            parent = flow.component  # Component label (string)
+            parents.append(parent)
+            contributor_types.append(type(self._fs.components[parent]).__name__)
+
+        # Collect effect values for each contributor
+        all_arrays: dict[str, list] = {}
         for effect in self._fs.effects:
             effect_arrays = []
-            for component in components_list:
-                da = self._compute_effect_total(element=component, effect=effect, mode=mode, include_flows=True)
+            for contributor in contributors:
+                # Get effect for this specific flow (not aggregated)
+                da = self._compute_effect_total(element=contributor, effect=effect, mode=mode, include_flows=False)
                 effect_arrays.append(da)
             all_arrays[effect] = effect_arrays
 
         # Process all effects: expand scalar NaN arrays to match template dimensions
         for effect in self._fs.effects:
             dataarrays = all_arrays[effect]
-            component_arrays = []
+            contributor_arrays = []
 
-            for component, arr in zip(components_list, dataarrays, strict=False):
+            for contributor, arr in zip(contributors, dataarrays, strict=False):
                 # Expand scalar NaN arrays to match template dimensions
                 if not arr.dims and np.isnan(arr.item()):
                     arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
-                component_arrays.append(arr.expand_dims(component=[component]))
+                contributor_arrays.append(arr.expand_dims(component=[contributor]))
 
-            ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal', join='outer').rename(effect)
+            ds[effect] = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
+
+        # Add groupby coordinates for contributor dimension
+        ds = ds.assign_coords(
+            component=('contributor', parents),
+            component_type=('contributor', contributor_types),
+        )
 
         # Validation test
         suffix = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
         for effect in self._fs.effects:
             label = f'{effect}{suffix[mode]}'
             if label in self._fs.solution:
-                computed = ds[effect].sum('component')
+                computed = ds[effect].sum('contributor')
                 found = self._fs.solution[label]
                 if not np.allclose(computed.values, found.fillna(0).values):
                     logger.critical(
