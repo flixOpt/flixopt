@@ -25,6 +25,7 @@ from .core import (
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
+from .statistics_accessor import StatisticsAccessor
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 from .transform_accessor import TransformAccessor
 
@@ -985,6 +986,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> print(clustered_fs.solution)
         """
         return TransformAccessor(self)
+
+    @property
+    def statistics(self) -> StatisticsAccessor:
+        """
+        Access statistics and plotting methods for optimization results.
+
+        This property returns a StatisticsAccessor that provides methods to analyze
+        and visualize optimization results stored in this FlowSystem's solution.
+
+        Note:
+            The FlowSystem must have a solution (from optimize() or solve()) before
+            most statistics methods can be used.
+
+        Returns:
+            A StatisticsAccessor instance.
+
+        Examples:
+            After optimization:
+
+            >>> flow_system.optimize(solver)
+            >>> flow_system.statistics.balance('ElectricityBus')
+            >>> flow_system.statistics.heatmap('Boiler|on')
+            >>> ds = flow_system.statistics.all_flow_rates  # Get data for analysis
+        """
+        return StatisticsAccessor(self)
 
     def plot_network(
         self,
