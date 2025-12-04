@@ -27,6 +27,7 @@ from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
 if TYPE_CHECKING:
@@ -1028,6 +1029,35 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._statistics = StatisticsAccessor(self)
         return self._statistics
 
+    @property
+    def topology(self) -> TopologyAccessor:
+        """
+        Access network topology inspection and visualization methods.
+
+        This property returns a TopologyAccessor that provides methods to inspect
+        the network structure and visualize it.
+
+        Returns:
+            A TopologyAccessor instance.
+
+        Examples:
+            Visualize the network:
+
+            >>> flow_system.topology.plot()
+            >>> flow_system.topology.plot(path='my_network.html', show=True)
+
+            Interactive visualization:
+
+            >>> flow_system.topology.start_app()
+            >>> # ... interact with the visualization ...
+            >>> flow_system.topology.stop_app()
+
+            Get network structure info:
+
+            >>> nodes, edges = flow_system.topology.infos()
+        """
+        return TopologyAccessor(self)
+
     def plot_network(
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
@@ -1038,114 +1068,55 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """
-        Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
+        Deprecated: Use `flow_system.topology.plot()` instead.
 
-        Args:
-            path: Path to save the HTML visualization.
-                - `False`: Visualization is created but not saved.
-                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
-            controls: UI controls to add to the visualization.
-                - `True`: Enables all available controls.
-                - `List`: Specify controls, e.g., ['nodes', 'layout'].
-                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-            show: Whether to open the visualization in the web browser.
-
-        Returns:
-        - 'pyvis.network.Network' | None: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
-
-        Examples:
-            >>> flow_system.plot_network()
-            >>> flow_system.plot_network(show=False)
-            >>> flow_system.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
-
-        Notes:
-        - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
-        - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
+        Visualizes the network structure of a FlowSystem using PyVis.
         """
-        from . import plotting
-
-        node_infos, edge_infos = self.network_infos()
-        return plotting.plot_network(
-            node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
-        )
-
-    def start_network_app(self):
-        """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
-        Requires optional dependencies: dash, dash-cytoscape, dash-daq, networkx, flask, werkzeug.
-        """
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
-
         warnings.warn(
-            'The network visualization is still experimental and might change in the future.',
+            'plot_network() is deprecated. Use flow_system.topology.plot() instead.',
+            DeprecationWarning,
             stacklevel=2,
-            category=UserWarning,
         )
+        return self.topology.plot(path=path, controls=controls, show=show)
 
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
+    def start_network_app(self) -> None:
+        """
+        Deprecated: Use `flow_system.topology.start_app()` instead.
 
-        if not self._connected_and_transformed:
-            self._connect_network()
+        Visualizes the network structure using Dash and Cytoscape.
+        """
+        warnings.warn(
+            'start_network_app() is deprecated. Use flow_system.topology.start_app() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.topology.start_app()
 
-        if self._network_app is not None:
-            logger.warning('The network app is already running. Restarting it.')
-            self.stop_network_app()
+    def stop_network_app(self) -> None:
+        """
+        Deprecated: Use `flow_system.topology.stop_app()` instead.
 
-        self._network_app = shownetwork(flow_graph(self))
-
-    def stop_network_app(self):
-        """Stop the network visualization server."""
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
-
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
-
-        if self._network_app is None:
-            logger.warning("No network app is currently running. Can't stop it")
-            return
-
-        try:
-            logger.info('Stopping network visualization server...')
-            self._network_app.server_instance.shutdown()
-            logger.info('Network visualization stopped.')
-        except Exception as e:
-            logger.error(f'Failed to stop the network visualization app: {e}')
-        finally:
-            self._network_app = None
+        Stop the network visualization server.
+        """
+        warnings.warn(
+            'stop_network_app() is deprecated. Use flow_system.topology.stop_app() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.topology.stop_app()
 
     def network_infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-        nodes = {
-            node.label_full: {
-                'label': node.label,
-                'class': 'Bus' if isinstance(node, Bus) else 'Component',
-                'infos': node.__str__(),
-            }
-            for node in chain(self.components.values(), self.buses.values())
-        }
+        """
+        Deprecated: Use `flow_system.topology.infos()` instead.
 
-        edges = {
-            flow.label_full: {
-                'label': flow.label,
-                'start': flow.bus if flow.is_input_in_component else flow.component,
-                'end': flow.component if flow.is_input_in_component else flow.bus,
-                'infos': flow.__str__(),
-            }
-            for flow in self.flows.values()
-        }
-
-        return nodes, edges
+        Get network topology information as dictionaries.
+        """
+        warnings.warn(
+            'network_infos() is deprecated. Use flow_system.topology.infos() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.topology.infos()
 
     def _check_if_element_is_unique(self, element: Element) -> None:
         """
