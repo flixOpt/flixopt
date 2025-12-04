@@ -111,6 +111,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Populate _variable_names and _constraint_names on each Element
         self._populate_element_variable_names()
 
+    def _populate_element_variable_names(self):
+        """Populate _variable_names and _constraint_names on each Element from its submodel."""
+        for element in self.flow_system.values():
+            if element.submodel is not None:
+                element._variable_names = list(element.submodel.variables)
+                element._constraint_names = list(element.submodel.constraints)
+
     def _add_scenario_equality_for_parameter_type(
         self,
         parameter_type: Literal['flow_rate', 'size'],
@@ -156,13 +163,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         self._add_scenario_equality_for_parameter_type('flow_rate', self.flow_system.scenario_independent_flow_rates)
         self._add_scenario_equality_for_parameter_type('size', self.flow_system.scenario_independent_sizes)
-
-    def _populate_element_variable_names(self):
-        """Populate _variable_names and _constraint_names on each Element from its submodel."""
-        for element in self.flow_system.values():
-            if element.submodel is not None:
-                element._variable_names = list(element.submodel.variables)
-                element._constraint_names = list(element.submodel.constraints)
 
     @property
     def solution(self):

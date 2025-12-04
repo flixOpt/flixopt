@@ -2,19 +2,32 @@
 
 This section covers how to run optimizations in flixOpt, including different optimization modes and solver configuration.
 
-## Optimization Modes
+## Standard Optimization
 
-flixOpt provides three optimization modes to handle different problem sizes and requirements:
-
-### Optimization (Full)
-
-[`Optimization`][flixopt.optimization.Optimization] solves the entire problem at once.
+The recommended way to run an optimization is directly on the `FlowSystem`:
 
 ```python
 import flixopt as fx
 
-optimization = fx.Optimization('my_model', flow_system)
-optimization.solve(fx.solvers.HighsSolver())
+# Simple one-liner
+flow_system.optimize(fx.solvers.HighsSolver())
+
+# Access results directly
+print(flow_system.solution['Boiler(Q_th)|flow_rate'])
+print(flow_system.components['Boiler'].solution)
+```
+
+For more control over the optimization process, you can split model building and solving:
+
+```python
+# Build the model first
+flow_system.build_model()
+
+# Optionally inspect or modify the model
+print(flow_system.model.constraints)
+
+# Then solve
+flow_system.solve(fx.solvers.HighsSolver())
 ```
 
 **Best for:**
@@ -23,48 +36,27 @@ optimization.solve(fx.solvers.HighsSolver())
 - When you need the globally optimal solution
 - Problems without time-coupling simplifications
 
-### SegmentedOptimization
+## Clustered Optimization
 
-[`SegmentedOptimization`][flixopt.optimization.SegmentedOptimization] splits the time horizon into segments and solves them sequentially.
-
-```python
-optimization = fx.SegmentedOptimization(
-    'segmented_model',
-    flow_system,
-    segment_length=24,  # Hours per segment
-    overlap_length=4    # Hours of overlap between segments
-)
-optimization.solve(fx.solvers.HighsSolver())
-```
-
-**Best for:**
-
-- Large problems that don't fit in memory
-- Long time horizons (weeks, months)
-- Problems where decisions are mostly local in time
-
-**Trade-offs:**
-
-- Faster solve times
-- May miss globally optimal solutions
-- Overlap helps maintain solution quality at segment boundaries
-
-### ClusteredOptimization
-
-[`ClusteredOptimization`][flixopt.optimization.ClusteredOptimization] uses time series aggregation to reduce problem size by identifying representative periods.
+For large problems, use time series clustering to reduce computational complexity:
 
 ```python
-clustering_params = fx.ClusteringParameters(
-    n_periods=8,           # Number of typical periods
-    hours_per_period=24    # Hours per typical period
+# Define clustering parameters
+params = fx.ClusteringParameters(
+    hours_per_period=24,     # Hours per typical period
+    nr_of_periods=8,         # Number of typical periods
+    fix_storage_flows=True,
+    aggregate_data_and_fix_non_binary_vars=True,
 )
 
-optimization = fx.ClusteredOptimization(
-    'clustered_model',
-    flow_system,
-    clustering_params
-)
-optimization.solve(fx.solvers.HighsSolver())
+# Create clustered FlowSystem
+clustered_fs = flow_system.transform.cluster(params)
+
+# Optimize the clustered system
+clustered_fs.optimize(fx.solvers.HighsSolver())
+
+# Access results - same structure as original
+print(clustered_fs.solution)
 ```
 
 **Best for:**
@@ -83,9 +75,8 @@ optimization.solve(fx.solvers.HighsSolver())
 
 | Mode | Problem Size | Solve Time | Solution Quality |
 |------|-------------|------------|------------------|
-| `Optimization` | Small-Medium | Slow | Optimal |
-| `SegmentedOptimization` | Large | Medium | Near-optimal |
-| `ClusteredOptimization` | Very Large | Fast | Approximate |
+| Standard | Small-Medium | Slow | Optimal |
+| Clustered | Very Large | Fast | Approximate |
 
 ## Solver Configuration
 
@@ -104,10 +95,10 @@ optimization.solve(fx.solvers.HighsSolver())
 
 ```python
 # Basic usage with defaults
-optimization.solve(fx.solvers.HighsSolver())
+flow_system.optimize(fx.solvers.HighsSolver())
 
 # With custom options
-optimization.solve(
+flow_system.optimize(
     fx.solvers.GurobiSolver(
         time_limit_seconds=3600,
         mip_gap=0.01,
@@ -166,7 +157,7 @@ If your model has no feasible solution:
 2. **Use Gurobi for infeasibility analysis** - When using GurobiSolver and the model is infeasible, flixOpt automatically extracts and logs the Irreducible Inconsistent Subsystem (IIS):
    ```python
    # Gurobi provides detailed infeasibility analysis
-   optimization.solve(fx.solvers.GurobiSolver())
+   flow_system.optimize(fx.solvers.GurobiSolver())
    # If infeasible, check the model documentation file for IIS details
    ```
    The infeasible constraints are saved to the model documentation file in the results folder.
