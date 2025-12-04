@@ -17,7 +17,6 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
-from .plot_accessors import ElementPlotAccessor, PlotAccessor
 from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
@@ -281,9 +280,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         self._effects_per_component = None
 
         self.colors: dict[str, str] = {}
-
-        # Plot accessor for new plotting API
-        self.plot = PlotAccessor(self)
 
     def _get_container_groups(self) -> dict[str, ResultsContainer]:
         """Return ordered container groups for CompositeContainerMixin."""
@@ -1274,9 +1270,6 @@ class _NodeResults(_ElementResults):
         self.inputs = inputs
         self.outputs = outputs
         self.flows = flows
-
-        # Plot accessor for new plotting API
-        self.plot = ElementPlotAccessor(self)
 
     def plot_node_balance(
         self,
