@@ -724,11 +724,10 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
         flow_system: The FlowSystem to build the model from.
 
     Returns:
-        FlowSystemModel: The built model from Optimization.do_modeling().
+        FlowSystemModel: The built model from FlowSystem.build_model().
     """
-    optimization = fx.Optimization('GenericName', flow_system)
-    optimization.do_modeling()
-    return optimization.model
+    flow_system.build_model()
+    return flow_system.model
 
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):

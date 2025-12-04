@@ -93,11 +93,10 @@ def flow_system_minimal(timesteps) -> fx.FlowSystem:
     return flow_system
 
 
-def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.results.Results:
-    optimization = fx.Optimization('Calculation', flow_system)
-    optimization.do_modeling()
-    optimization.solve(solver)
-    return optimization.results
+def solve_and_load(flow_system: fx.FlowSystem, solver) -> fx.FlowSystem:
+    """Optimize the flow system and return it with the solution."""
+    flow_system.optimize(solver)
+    return flow_system
 
 
 @pytest.fixture
@@ -106,30 +105,31 @@ def time_steps_fixture(request):
 
 
 def test_solve_and_load(solver_fixture, time_steps_fixture):
-    results = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
-    assert results is not None
+    flow_system = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
+    assert flow_system.solution is not None
 
 
 def test_minimal_model(solver_fixture, time_steps_fixture):
-    results = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
-    assert_allclose(results.model.variables['costs'].solution.values, 80, rtol=1e-5, atol=1e-10)
+    flow_system = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
+
+    assert_allclose(flow_system.solution['costs'].values, 80, rtol=1e-5, atol=1e-10)
 
     assert_allclose(
-        results.model.variables['Boiler(Q_th)|flow_rate'].solution.values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
         [-0.0, 10.0, 20.0, -0.0, 10.0],
         rtol=1e-5,
         atol=1e-10,
     )
 
     assert_allclose(
-        results.model.variables['costs(temporal)|per_timestep'].solution.values,
+        flow_system.solution['costs(temporal)|per_timestep'].values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,
     )
 
     assert_allclose(
-        results.model.variables['Gastarif(Gas)->costs(temporal)'].solution.values,
+        flow_system.solution['Gastarif(Gas)->costs(temporal)'].values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,

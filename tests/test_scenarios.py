@@ -1,5 +1,3 @@
-import tempfile
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,7 +9,7 @@ from flixopt import Effect, InvestParameters, Sink, Source, Storage
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
-from .conftest import create_linopy_model, create_optimization_and_solve
+from .conftest import create_linopy_model
 
 
 @pytest.fixture
@@ -296,47 +294,39 @@ def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
-    calc = create_optimization_and_solve(
-        flow_system_piecewise_conversion_scenarios,
-        solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
-        name='test_full_scenario',
-    )
-    calc.results.to_file()
 
-    res = fx.results.Results.from_file('results', 'test_full_scenario')
-    fx.FlowSystem.from_dataset(res.flow_system_data)
-    _ = create_optimization_and_solve(
-        flow_system_piecewise_conversion_scenarios,
-        solver=fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
-        name='test_full_scenario_2',
-    )
+    # Optimize using new API
+    flow_system_piecewise_conversion_scenarios.optimize(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
+
+    # Verify solution exists and has scenario dimension
+    assert flow_system_piecewise_conversion_scenarios.solution is not None
+    assert 'scenario' in flow_system_piecewise_conversion_scenarios.solution.dims
 
 
 @pytest.mark.skip(reason='This test is taking too long with highs and is too big for gurobipy free')
-def test_io_persistence(flow_system_piecewise_conversion_scenarios):
+def test_io_persistence(flow_system_piecewise_conversion_scenarios, tmp_path):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
     weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_piecewise_conversion_scenarios.scenario_weights = weights
-    calc = create_optimization_and_solve(
-        flow_system_piecewise_conversion_scenarios,
-        solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
-        name='test_io_persistence',
-    )
-    calc.results.to_file()
 
-    res = fx.results.Results.from_file('results', 'test_io_persistence')
-    flow_system_2 = fx.FlowSystem.from_dataset(res.flow_system_data)
-    calc_2 = create_optimization_and_solve(
-        flow_system_2,
-        solver=fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60),
-        name='test_io_persistence_2',
-    )
+    # Optimize using new API
+    flow_system_piecewise_conversion_scenarios.optimize(fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60))
+    original_objective = flow_system_piecewise_conversion_scenarios.solution['objective'].item()
 
-    np.testing.assert_allclose(calc.results.objective, calc_2.results.objective, rtol=0.001)
+    # Save and restore
+    filepath = tmp_path / 'flow_system_scenarios.nc4'
+    flow_system_piecewise_conversion_scenarios.to_netcdf(filepath)
+    flow_system_2 = fx.FlowSystem.from_netcdf(filepath)
+
+    # Re-optimize restored flow system
+    flow_system_2.optimize(fx.solvers.HighsSolver(mip_gap=0.001, time_limit_seconds=60))
+
+    np.testing.assert_allclose(original_objective, flow_system_2.solution['objective'].item(), rtol=0.001)
 
 
 def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
+    """Test scenario selection/subsetting functionality."""
     flow_system_full = flow_system_piecewise_conversion_scenarios
     scenarios = flow_system_full.scenarios
     scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
@@ -347,22 +337,22 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
 
-    calc = fx.Optimization(flow_system=flow_system, name='test_scenarios_selection', normalize_weights=False)
-    calc.do_modeling()
-    calc.solve(fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60))
-
-    calc.results.to_file()
+    # Optimize using new API with normalize_weights=False
+    flow_system.optimize(
+        fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
+        normalize_weights=False,
+    )
 
     # Penalty has same structure as other effects: 'Penalty' is the total, 'Penalty(temporal)' and 'Penalty(periodic)' are components
     np.testing.assert_allclose(
-        calc.results.objective,
+        flow_system.solution['objective'].item(),
         (
-            (calc.results.solution['costs'] * flow_system.scenario_weights).sum()
-            + (calc.results.solution['Penalty'] * flow_system.scenario_weights).sum()
+            (flow_system.solution['costs'] * flow_system.scenario_weights).sum()
+            + (flow_system.solution['Penalty'] * flow_system.scenario_weights).sum()
         ).item(),
     )  ## Account for rounding errors
 
-    assert calc.results.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])
+    assert flow_system.solution.indexes['scenario'].equals(flow_system_full.scenarios[0:2])
 
 
 def test_sizes_per_scenario_default():
@@ -496,11 +486,10 @@ def test_size_equality_constraints():
 
     fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.Optimization('test', fs)
-    calc.do_modeling()
+    fs.build_model()
 
     # Check that size equality constraint exists
-    constraint_names = [str(c) for c in calc.model.constraints]
+    constraint_names = [str(c) for c in fs.model.constraints]
     size_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'size' in c]
 
     assert len(size_constraints) > 0, 'Size equality constraint should exist'
@@ -536,11 +525,10 @@ def test_flow_rate_equality_constraints():
 
     fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.Optimization('test', fs)
-    calc.do_modeling()
+    fs.build_model()
 
     # Check that flow_rate equality constraint exists
-    constraint_names = [str(c) for c in calc.model.constraints]
+    constraint_names = [str(c) for c in fs.model.constraints]
     flow_rate_constraints = [c for c in constraint_names if 'scenario_independent' in c and 'flow_rate' in c]
 
     assert len(flow_rate_constraints) > 0, 'Flow rate equality constraint should exist'
@@ -578,10 +566,9 @@ def test_selective_scenario_independence():
 
     fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    calc = fx.Optimization('test', fs)
-    calc.do_modeling()
+    fs.build_model()
 
-    constraint_names = [str(c) for c in calc.model.constraints]
+    constraint_names = [str(c) for c in fs.model.constraints]
 
     # Solar SHOULD have size constraints (it's in the list, so equalized)
     solar_size_constraints = [c for c in constraint_names if 'solar(out)|size' in c and 'scenario_independent' in c]
@@ -646,10 +633,8 @@ def test_scenario_parameters_io_persistence():
     assert fs_loaded.scenario_independent_flow_rates == fs_original.scenario_independent_flow_rates
 
 
-def test_scenario_parameters_io_with_calculation():
+def test_scenario_parameters_io_with_calculation(tmp_path):
     """Test that scenario parameters persist through full calculation IO."""
-    import shutil
-
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'high'], name='scenario')
 
@@ -680,39 +665,29 @@ def test_scenario_parameters_io_with_calculation():
 
     fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
-    # Create temp directory for results
-    temp_dir = tempfile.mkdtemp()
+    # Solve using new API
+    fs.optimize(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
+    original_model = fs.model
 
-    try:
-        # Solve and save
-        calc = fx.Optimization('test_io', fs, folder=temp_dir)
-        calc.do_modeling()
-        calc.solve(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
-        calc.results.to_file()
+    # Save and restore
+    filepath = tmp_path / 'flow_system_scenarios.nc4'
+    fs.to_netcdf(filepath)
+    fs_loaded = fx.FlowSystem.from_netcdf(filepath)
 
-        # Load results
-        results = fx.results.Results.from_file(temp_dir, 'test_io')
-        fs_loaded = fx.FlowSystem.from_dataset(results.flow_system_data)
+    # Verify parameters persisted
+    assert fs_loaded.scenario_independent_sizes == fs.scenario_independent_sizes
+    assert fs_loaded.scenario_independent_flow_rates == fs.scenario_independent_flow_rates
 
-        # Verify parameters persisted
-        assert fs_loaded.scenario_independent_sizes == fs.scenario_independent_sizes
-        assert fs_loaded.scenario_independent_flow_rates == fs.scenario_independent_flow_rates
+    # Verify constraints are recreated correctly when building model
+    fs_loaded.build_model()
 
-        # Verify constraints are recreated correctly
-        calc2 = fx.Optimization('test_io_2', fs_loaded, folder=temp_dir)
-        calc2.do_modeling()
+    constraint_names1 = [str(c) for c in original_model.constraints]
+    constraint_names2 = [str(c) for c in fs_loaded.model.constraints]
 
-        constraint_names1 = [str(c) for c in calc.model.constraints]
-        constraint_names2 = [str(c) for c in calc2.model.constraints]
+    size_constraints1 = [c for c in constraint_names1 if 'scenario_independent' in c and 'size' in c]
+    size_constraints2 = [c for c in constraint_names2 if 'scenario_independent' in c and 'size' in c]
 
-        size_constraints1 = [c for c in constraint_names1 if 'scenario_independent' in c and 'size' in c]
-        size_constraints2 = [c for c in constraint_names2 if 'scenario_independent' in c and 'size' in c]
-
-        assert len(size_constraints1) == len(size_constraints2)
-
-    finally:
-        # Clean up
-        shutil.rmtree(temp_dir)
+    assert len(size_constraints1) == len(size_constraints2)
 
 
 def test_weights_io_persistence():

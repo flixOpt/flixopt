@@ -7,8 +7,6 @@ This module tests the direct solution storage on FlowSystem and Element classes:
 - Serialization/deserialization of solution with FlowSystem
 """
 
-import uuid
-
 import pytest
 import xarray as xr
 
@@ -50,18 +48,14 @@ class TestSolutionOnFlowSystem:
 
     def test_solution_set_after_solve(self, simple_flow_system, highs_solver):
         """FlowSystem.solution should be set after solve()."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         assert simple_flow_system.solution is not None
         assert isinstance(simple_flow_system.solution, xr.Dataset)
 
     def test_solution_contains_all_variables(self, simple_flow_system, highs_solver):
         """FlowSystem.solution should contain all model variables."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         # Solution should have variables
         assert len(simple_flow_system.solution.data_vars) > 0
@@ -71,23 +65,6 @@ class TestSolutionOnFlowSystem:
         # Should have flow rates, costs, etc.
         assert any('flow_rate' in v for v in solution_vars)
         assert any('costs' in v for v in solution_vars)
-
-    def test_solution_matches_results(self, simple_flow_system, highs_solver):
-        """FlowSystem.solution should match results.solution."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
-
-        # The solution on flow_system should be the same as from results
-        fs_solution = simple_flow_system.solution
-        results_solution = calc.results.solution
-
-        # Check they have the same variables
-        assert set(fs_solution.data_vars.keys()) == set(results_solution.data_vars.keys())
-
-        # Check values match
-        for var_name in fs_solution.data_vars:
-            xr.testing.assert_equal(fs_solution[var_name], results_solution[var_name])
 
 
 class TestSolutionOnElement:
@@ -108,10 +85,7 @@ class TestSolutionOnElement:
 
     def test_element_solution_raises_before_modeling(self, simple_flow_system, highs_solver):
         """Element.solution should work after modeling and solve."""
-        # We need to add a new element after modeling to test this edge case
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         # Create a new element not in the flow system - this is a special case
         # The actual elements in the flow system should work fine
@@ -122,9 +96,7 @@ class TestSolutionOnElement:
 
     def test_element_solution_contains_element_variables(self, simple_flow_system, highs_solver):
         """Element.solution should contain only that element's variables."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         boiler_solution = boiler.solution
@@ -135,9 +107,7 @@ class TestSolutionOnElement:
 
     def test_different_elements_have_different_solutions(self, simple_flow_system, highs_solver):
         """Different elements should have different solution subsets."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         chp = simple_flow_system.components['CHP_unit']
@@ -161,16 +131,14 @@ class TestVariableNamesPopulation:
 
     def test_variable_names_populated_after_modeling(self, simple_flow_system, highs_solver):
         """Element._variable_names should be populated after modeling."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
+        simple_flow_system.build_model()
 
         boiler = simple_flow_system.components['Boiler']
         assert len(boiler._variable_names) > 0
 
     def test_constraint_names_populated_after_modeling(self, simple_flow_system, highs_solver):
         """Element._constraint_names should be populated after modeling."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
+        simple_flow_system.build_model()
 
         boiler = simple_flow_system.components['Boiler']
         # Boiler should have some constraints
@@ -178,8 +146,7 @@ class TestVariableNamesPopulation:
 
     def test_all_elements_have_variable_names(self, simple_flow_system, highs_solver):
         """All elements with submodels should have _variable_names populated."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
+        simple_flow_system.build_model()
 
         for element in simple_flow_system.values():
             if element.submodel is not None:
@@ -191,14 +158,9 @@ class TestSolutionPersistence:
     """Tests for solution serialization/deserialization with FlowSystem."""
 
     @pytest.mark.slow
-    def test_solution_persisted_in_dataset(self, flow_system, highs_solver, request):
+    def test_solution_persisted_in_dataset(self, flow_system, highs_solver):
         """Solution should be included when saving FlowSystem to dataset."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'persist-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         # Save to dataset
         ds = flow_system.to_dataset()
@@ -211,14 +173,9 @@ class TestSolutionPersistence:
         assert ds.attrs.get('has_solution', False) is True
 
     @pytest.mark.slow
-    def test_solution_restored_from_dataset(self, flow_system, highs_solver, request):
+    def test_solution_restored_from_dataset(self, flow_system, highs_solver):
         """Solution should be restored when loading FlowSystem from dataset."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'restore-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         # Save and restore
         ds = flow_system.to_dataset()
@@ -232,14 +189,9 @@ class TestSolutionPersistence:
         assert len(restored_fs.solution.data_vars) == len(flow_system.solution.data_vars)
 
     @pytest.mark.slow
-    def test_solution_values_match_after_restore(self, flow_system, highs_solver, request):
+    def test_solution_values_match_after_restore(self, flow_system, highs_solver):
         """Solution values should match after save/restore cycle."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'values-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         original_solution = flow_system.solution.copy(deep=True)
 
@@ -255,14 +207,9 @@ class TestSolutionPersistence:
             )
 
     @pytest.mark.slow
-    def test_element_solution_works_after_restore(self, flow_system, highs_solver, request):
+    def test_element_solution_works_after_restore(self, flow_system, highs_solver):
         """Element.solution should work on restored FlowSystem."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'element-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         # Get an element and its solution
         element_label = list(flow_system.components.keys())[0]
@@ -287,14 +234,9 @@ class TestSolutionPersistence:
             )
 
     @pytest.mark.slow
-    def test_variable_names_persisted(self, flow_system, highs_solver, request):
+    def test_variable_names_persisted(self, flow_system, highs_solver):
         """Element._variable_names should be persisted and restored."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'varnames-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         # Get original variable names
         element_label = list(flow_system.components.keys())[0]
@@ -316,14 +258,9 @@ class TestFlowSystemFileIO:
     """Tests for file-based persistence of FlowSystem with solution."""
 
     @pytest.mark.slow
-    def test_netcdf_roundtrip_with_solution(self, flow_system, highs_solver, tmp_path, request):
+    def test_netcdf_roundtrip_with_solution(self, flow_system, highs_solver, tmp_path):
         """FlowSystem with solution should survive netCDF roundtrip."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'netcdf-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        flow_system.optimize(highs_solver)
 
         original_solution = flow_system.solution.copy(deep=True)
 
@@ -345,15 +282,10 @@ class TestFlowSystemFileIO:
             )
 
     @pytest.mark.slow
-    def test_loaded_flow_system_can_be_reoptimized(self, flow_system, highs_solver, tmp_path, request):
+    def test_loaded_flow_system_can_be_reoptimized(self, flow_system, highs_solver, tmp_path):
         """Loaded FlowSystem should be able to run new optimization."""
-        unique_id = uuid.uuid4().hex[:12]
-        worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-
-        calc = fx.Optimization(f'reopt-{worker_id}-{unique_id}', flow_system=flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
-        original_objective = calc.results.model.objective.value
+        flow_system.optimize(highs_solver)
+        original_objective = flow_system.solution['objective'].item()
 
         # Save and load
         filepath = tmp_path / 'flow_system_for_reopt.nc4'
@@ -361,14 +293,12 @@ class TestFlowSystemFileIO:
         restored_fs = fx.FlowSystem.from_netcdf(filepath)
 
         # Run new optimization
-        calc2 = fx.Optimization(f'reopt2-{worker_id}-{unique_id}', flow_system=restored_fs)
-        calc2.do_modeling()
-        calc2.solve(highs_solver)
+        restored_fs.optimize(highs_solver)
 
         # Should get same objective value
         assert_almost_equal_numeric(
             original_objective,
-            calc2.results.model.objective.value,
+            restored_fs.solution['objective'].item(),
             'Objective mismatch after reload',
         )
 
@@ -393,9 +323,7 @@ class TestNoSolutionPersistence:
         ds = simple_flow_system.to_dataset()
         restored_fs = fx.FlowSystem.from_dataset(ds)
 
-        calc = fx.Optimization('test', flow_system=restored_fs)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        restored_fs.optimize(highs_solver)
 
         # Should have solution now
         assert restored_fs.solution is not None
@@ -406,9 +334,7 @@ class TestEdgeCases:
 
     def test_empty_variable_names_handled(self, simple_flow_system, highs_solver):
         """Elements with no variables should be handled gracefully."""
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         # Buses typically have no variables of their own in some configurations
         for bus in simple_flow_system.buses.values():
@@ -419,16 +345,20 @@ class TestEdgeCases:
 
     def test_solution_cleared_on_new_optimization(self, simple_flow_system, highs_solver):
         """New optimization should update solution, not accumulate."""
-        calc1 = fx.Optimization('test1', flow_system=simple_flow_system)
-        calc1.do_modeling()
-        calc1.solve(highs_solver)
+        simple_flow_system.optimize(highs_solver)
 
         first_solution_vars = set(simple_flow_system.solution.data_vars.keys())
 
-        # Re-optimize (same system)
-        calc2 = fx.Optimization('test2', flow_system=simple_flow_system)
-        calc2.do_modeling()
-        calc2.solve(highs_solver)
+        # Reset for re-optimization
+        simple_flow_system.model = None
+        simple_flow_system.solution = None
+        for element in simple_flow_system.values():
+            element._variable_names = []
+            element._constraint_names = []
+            element.submodel = None
+
+        # Re-optimize
+        simple_flow_system.optimize(highs_solver)
 
         second_solution_vars = set(simple_flow_system.solution.data_vars.keys())
 
@@ -537,15 +467,13 @@ class TestFlowSystemDirectMethods:
         for var_name in boiler_solution.data_vars:
             assert var_name.startswith(boiler.label_full)
 
-    def test_direct_methods_match_optimization_class(self, simple_flow_system, highs_solver):
-        """Direct methods should produce same results as Optimization class."""
-        # Use Optimization class first
-        calc = fx.Optimization('test', flow_system=simple_flow_system)
-        calc.do_modeling()
-        calc.solve(highs_solver)
-        optimization_solution = simple_flow_system.solution.copy(deep=True)
+    def test_repeated_optimization_produces_consistent_results(self, simple_flow_system, highs_solver):
+        """Repeated optimization should produce consistent results."""
+        # First optimization
+        simple_flow_system.optimize(highs_solver)
+        first_solution = simple_flow_system.solution.copy(deep=True)
 
-        # Reset for direct methods test
+        # Reset for re-optimization
         simple_flow_system.model = None
         simple_flow_system.solution = None
         for element in simple_flow_system.values():
@@ -553,16 +481,16 @@ class TestFlowSystemDirectMethods:
             element._constraint_names = []
             element.submodel = None
 
-        # Use direct methods
+        # Second optimization
         simple_flow_system.optimize(highs_solver)
 
         # Solutions should match
-        assert set(optimization_solution.data_vars.keys()) == set(simple_flow_system.solution.data_vars.keys())
+        assert set(first_solution.data_vars.keys()) == set(simple_flow_system.solution.data_vars.keys())
 
-        # Values should be very close (same optimization)
-        for var_name in optimization_solution.data_vars:
+        # Values should be very close (same optimization problem)
+        for var_name in first_solution.data_vars:
             xr.testing.assert_allclose(
-                optimization_solution[var_name],
+                first_solution[var_name],
                 simple_flow_system.solution[var_name],
                 rtol=1e-5,
             )

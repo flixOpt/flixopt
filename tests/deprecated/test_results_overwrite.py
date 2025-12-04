@@ -1,4 +1,10 @@
-"""Tests for Results.to_file() overwrite protection."""
+"""Tests for deprecated Results.to_file() overwrite protection.
+
+This module tests the deprecated Results.to_file() overwrite behavior.
+These tests will be removed in v6.0.0.
+
+For new tests, use FlowSystem.solution.to_netcdf() instead.
+"""
 
 import pathlib
 import tempfile

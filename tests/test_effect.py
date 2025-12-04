@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import xarray as xr
 
 import flixopt as fx
@@ -224,6 +225,7 @@ class TestEffectModel:
 
 
 class TestEffectResults:
+    @pytest.mark.filterwarnings('ignore::DeprecationWarning')
     def test_shares(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         effect1 = fx.Effect('Effect1', '€', 'Testing Effect', share_from_temporal={'costs': 0.5})
