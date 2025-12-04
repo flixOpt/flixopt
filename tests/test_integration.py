@@ -12,16 +12,14 @@ class TestFlowSystem:
         """
         simple_flow_system.optimize(highs_solver)
 
-        effects = simple_flow_system.effects
-
-        # Cost assertions
+        # Cost assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            effects['costs'].submodel.total.solution.item(), 81.88394666666667, 'costs doesnt match expected value'
+            simple_flow_system.solution['costs'].item(), 81.88394666666667, 'costs doesnt match expected value'
         )
 
         # CO2 assertions
         assert_almost_equal_numeric(
-            effects['CO2'].submodel.total.solution.item(), 255.09184, 'CO2 doesnt match expected value'
+            simple_flow_system.solution['CO2'].item(), 255.09184, 'CO2 doesnt match expected value'
         )
 
     def test_model_components(self, simple_flow_system, highs_solver):
@@ -29,18 +27,17 @@ class TestFlowSystem:
         Test the component flows of the simple energy system model
         """
         simple_flow_system.optimize(highs_solver)
-        comps = simple_flow_system.components
 
-        # Boiler assertions
+        # Boiler assertions using new API
         assert_almost_equal_numeric(
-            comps['Boiler'].thermal_flow.submodel.flow_rate.solution.values,
+            simple_flow_system.solution['Boiler(Q_th)|flow_rate'].values,
             [0, 0, 0, 28.4864, 35, 0, 0, 0, 0],
             'Q_th doesnt match expected value',
         )
 
-        # CHP unit assertions
+        # CHP unit assertions using new API
         assert_almost_equal_numeric(
-            comps['CHP_unit'].thermal_flow.submodel.flow_rate.solution.values,
+            simple_flow_system.solution['CHP_unit(Q_th)|flow_rate'].values,
             [30.0, 26.66666667, 75.0, 75.0, 75.0, 20.0, 20.0, 20.0, 20.0],
             'Q_th doesnt match expected value',
         )

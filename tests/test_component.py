@@ -443,16 +443,16 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1)|status'].values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
             'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8 - 20,
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1)|flow_rate'].values * 0.8 - 20,
+            flow_system.solution['Rohr(Rohr2)|flow_rate'].values,
             'Losses are not computed correctly',
         )
 
@@ -507,29 +507,29 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1a)|status'].values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
-            flow_system.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )
 
+        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
         assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
-            transmission.out1.submodel.flow_rate.solution.values,
+            in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow]),
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
             'Losses are not computed correctly',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.submodel._investment.size.solution.item(),
-            transmission.in2.submodel._investment.size.solution.item(),
+            flow_system.solution['Rohr(Rohr1a)|size'].item(),
+            flow_system.solution['Rohr(Rohr2a)|size'].item(),
             'The Investments are not equated correctly',
         )
 
@@ -588,30 +588,30 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1a)|status'].values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
-            flow_system.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
             'Flow rate of Rohr__Rohr1b is not correct',
         )
 
+        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
         assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
-            transmission.out1.submodel.flow_rate.solution.values,
+            in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow]),
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
             'Losses are not computed correctly',
         )
 
-        assert transmission.in1.submodel._investment.size.solution.item() > 11
+        assert flow_system.solution['Rohr(Rohr1a)|size'].item() > 11
 
         assert_almost_equal_numeric(
-            transmission.in2.submodel._investment.size.solution.item(),
+            flow_system.solution['Rohr(Rohr2a)|size'].item(),
             10,
             'Sizing does not work properly',
         )
