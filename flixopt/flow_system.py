@@ -889,9 +889,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             **solver.options,
         )
 
-        if self.model.status == 'warning':
-            if CONFIG.Solving.document_infeasibility:
-                self._document_infeasibility()
+        if self.model.termination_condition == 'infeasible':
+            if CONFIG.Solving.compute_infeasibilities:
+                import io
+                from contextlib import redirect_stdout
+
+                f = io.StringIO()
+
+                # Redirect stdout to our buffer
+                with redirect_stdout(f):
+                    self.model.print_infeasibilities()
+
+                infeasibilities = f.getvalue()
+                logger.error('Sucessfully extracted infeasibilities: \n%s', infeasibilities)
             raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
 
         # Store solution on FlowSystem for direct Element access
@@ -900,27 +910,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
-
-    def _document_infeasibility(self) -> None:
-        """Save model documentation and FlowSystem to help debug infeasibility."""
-        import tempfile
-        from pathlib import Path
-
-        # Create a temporary directory for infeasibility docs
-        infeas_dir = Path(tempfile.gettempdir()) / 'flixopt_infeasibility'
-        infeas_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save model documentation
-        model_doc_path = infeas_dir / 'model_documentation.yaml'
-        fx_io.document_linopy_model(self.model, model_doc_path)
-
-        # Save FlowSystem
-        fs_path = infeas_dir / 'flow_system.nc4'
-        self.to_netcdf(fs_path)
-
-        logger.error(
-            f'Model infeasibility documentation saved to:\n  Model docs: {model_doc_path}\n  FlowSystem: {fs_path}'
-        )
 
     @property
     def optimize(self) -> OptimizeAccessor:
