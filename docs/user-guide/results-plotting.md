@@ -181,12 +181,12 @@ flow_system.statistics.plot.sankey(aggregate='mean')
 
 ### Effects Plot
 
-Plot cost, emissions, or other effect breakdowns:
+Plot cost, emissions, or other effect breakdowns. Effects can be grouped by component, individual contributor (flows), or time.
 
 ```python
 flow_system.statistics.plot.effects()  # Total of all effects by component
 flow_system.statistics.plot.effects(effect='costs')  # Just costs
-flow_system.statistics.plot.effects(by='contributor')  # By individual flows
+flow_system.statistics.plot.effects(by='contributor')  # By individual flows/components
 flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 ```
 
@@ -197,6 +197,19 @@ flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 | `aspect` | `'total'`, `'temporal'`, `'periodic'` | Which aspect to plot (default: `'total'`) |
 | `effect` | str or None | Specific effect to plot (e.g., `'costs'`, `'CO2'`). If None, plots all. |
 | `by` | `'component'`, `'contributor'`, `'time'` | Grouping dimension (default: `'component'`) |
+| `select` | dict | xarray-style data selection |
+| `colors` | dict | Color overrides for categories |
+| `facet_col` | str | Dimension for column facets (default: `'scenario'`) |
+| `facet_row` | str | Dimension for row facets (default: `'period'`) |
+
+**Grouping options:**
+
+- **`by='component'`**: Groups effects by parent component (e.g., all flows from a Boiler are summed together)
+- **`by='contributor'`**: Shows individual contributors - flows and components that directly contribute to effects
+- **`by='time'`**: Shows effects over time (only valid for `aspect='temporal'`)
+
+!!! note "Contributors vs Components"
+    Contributors include not just flows, but also components that directly contribute to effects (e.g., via `effects_per_active_hour`). The system automatically detects all contributors from the optimization solution.
 
 ### Variable Plot
 

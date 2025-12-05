@@ -110,6 +110,14 @@ stats.total_effects['costs'].groupby('component').sum()
 stats.total_effects['costs'].groupby('component_type').sum()
 ```
 
+!!! tip "Contributors"
+    Contributors are automatically detected from the optimization solution and include:
+
+    - **Flows**: Individual flows with `effects_per_flow_hour`
+    - **Components**: Components with `effects_per_active_hour` or similar direct effects
+
+    Each contributor has associated metadata (`component` and `component_type` coordinates) for flexible groupby operations.
+
 ## Plotting Results
 
 The `statistics.plot` accessor provides visualization methods:
@@ -127,6 +135,11 @@ flow_system.statistics.plot.duration_curve('Boiler(Q_th)')
 
 # Sankey diagrams
 flow_system.statistics.plot.sankey()
+
+# Effects breakdown
+flow_system.statistics.plot.effects()  # Total costs by component
+flow_system.statistics.plot.effects(effect='costs', by='contributor')  # By individual flows
+flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
 ```
 
 See [Plotting Results](../results-plotting.md) for comprehensive plotting documentation.
