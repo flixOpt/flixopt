@@ -5,6 +5,7 @@ This module contains the FlowSystem class, which is used to collect instances of
 from __future__ import annotations
 
 import logging
+import pathlib
 import warnings
 from collections import defaultdict
 from itertools import chain
@@ -31,7 +32,6 @@ from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import Collection
 
     import pyvis
@@ -168,6 +168,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_weights: Numeric_S | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
+        name: str | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -219,6 +220,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
         self.scenario_independent_flow_rates = scenario_independent_flow_rates
+
+        # Optional name for identification (derived from filename on load)
+        self.name = name
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -659,21 +663,52 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, overwrite: bool = True):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
 
+        The FlowSystem's name is automatically set from the filename
+        (without extension) when saving.
+
         Args:
-            path: The path to the netCDF file.
-            compression: The compression level to use when saving the file.
+            path: The path to the netCDF file. Parent directories are created if they don't exist.
+            compression: The compression level to use when saving the file (0-9).
+            overwrite: If True (default), overwrite existing file. If False, raise error if file exists.
+
+        Raises:
+            FileExistsError: If overwrite=False and file already exists.
         """
         if not self.connected_and_transformed:
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
-        super().to_netcdf(path, compression)
+        path = pathlib.Path(path)
+        # Set name from filename (without extension)
+        self.name = path.stem
+
+        super().to_netcdf(path, compression, overwrite)
         logger.info(f'Saved FlowSystem to {path}')
+
+    @classmethod
+    def from_netcdf(cls, path: str | pathlib.Path) -> FlowSystem:
+        """
+        Load a FlowSystem from a NetCDF file.
+
+        The FlowSystem's name is automatically derived from the filename
+        (without extension), overriding any name that may have been stored.
+
+        Args:
+            path: Path to the NetCDF file
+
+        Returns:
+            FlowSystem instance with name set from filename
+        """
+        path = pathlib.Path(path)
+        flow_system = super().from_netcdf(path)
+        # Derive name from filename (without extension)
+        flow_system.name = path.stem
+        return flow_system
 
     def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
         """

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import pathlib
 import re
 from dataclasses import dataclass
 from difflib import get_close_matches
@@ -28,7 +29,6 @@ from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    import pathlib
     from collections.abc import Collection, ItemsView, Iterator
 
     from .effects import EffectCollectionModel
@@ -838,18 +838,29 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, overwrite: bool = True):
         """
         Save the object to a NetCDF file.
 
         Args:
-            path: Path to save the NetCDF file
+            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
             compression: Compression level (0-9)
+            overwrite: If True (default), overwrite existing file. If False, raise error if file exists.
 
         Raises:
+            FileExistsError: If overwrite=False and file already exists.
             ValueError: If serialization fails
             IOError: If file cannot be written
         """
+        path = pathlib.Path(path)
+
+        # Check if file exists (unless overwrite is True)
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             ds = self.to_dataset()
             fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
