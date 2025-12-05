@@ -53,7 +53,7 @@ if __name__ == '__main__':
                 label='Q_fu',
                 bus='Gas',
                 size=fx.InvestParameters(
-                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500
+                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=600
                 ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
@@ -87,8 +87,8 @@ if __name__ == '__main__':
             eta_discharge=1,
             relative_loss_per_hour=0.001,
             prevent_simultaneous_charge_and_discharge=True,
-            charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
-            discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
+            charging=fx.Flow('Q_th_load', size=200, bus='Fernwärme'),
+            discharging=fx.Flow('Q_th_unload', size=200, bus='Fernwärme'),
         ),
         fx.Sink(
             'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)]

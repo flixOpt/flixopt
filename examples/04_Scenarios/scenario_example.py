@@ -120,7 +120,7 @@ if __name__ == '__main__':
         thermal_flow=fx.Flow(
             label='Q_th',
             bus='Fernwärme',
-            size=50,
+            size=100,
             relative_minimum=0.1,
             relative_maximum=1,
             status_parameters=fx.StatusParameters(),
@@ -135,7 +135,7 @@ if __name__ == '__main__':
         thermal_efficiency=0.48,  # Realistic thermal efficiency (48%)
         electrical_efficiency=0.40,  # Realistic electrical efficiency (40%)
         electrical_flow=fx.Flow(
-            'P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
+            'P_el', bus='Strom', size=80, relative_minimum=5 / 80, status_parameters=fx.StatusParameters()
         ),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
         fuel_flow=fx.Flow('Q_fu', bus='Gas'),
