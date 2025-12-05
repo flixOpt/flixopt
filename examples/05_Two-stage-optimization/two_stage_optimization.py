@@ -122,34 +122,39 @@ if __name__ == '__main__':
     )
 
     # Separate optimization of flow sizes and dispatch
+    # Stage 1: Optimize sizes using downsampled (2h) data
     start = timeit.default_timer()
     calculation_sizing = fx.Optimization('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
+    # Stage 2: Optimize dispatch with fixed sizes from Stage 1
     start = timeit.default_timer()
     calculation_dispatch = fx.Optimization('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
-    calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
+    calculation_dispatch.fix_sizes(calculation_sizing.flow_system.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_dispatch = timeit.default_timer() - start
 
-    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
+    # Verify sizes were correctly fixed
+    dispatch_sizes = calculation_dispatch.flow_system.statistics.sizes
+    sizing_sizes = calculation_sizing.flow_system.statistics.sizes
+    if (dispatch_sizes.round(5).to_dataarray() == sizing_sizes.round(5).to_dataarray()).all().item():
         logger.info('Sizes were correctly equalized')
     else:
         raise RuntimeError('Sizes were not correctly equalized')
 
-    # Optimization of both flow sizes and dispatch together
+    # Combined optimization: optimize both sizes and dispatch together
     start = timeit.default_timer()
     calculation_combined = fx.Optimization('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
 
-    # Comparison of results
+    # Comparison of results - access solutions from flow_system
     comparison = xr.concat(
-        [calculation_combined.results.solution, calculation_dispatch.results.solution], dim='mode'
+        [calculation_combined.flow_system.solution, calculation_dispatch.flow_system.solution], dim='mode'
     ).assign_coords(mode=['Combined', 'Two-stage'])
     comparison['Duration [s]'] = xr.DataArray([timer_combined, timer_sizing + timer_dispatch], dims='mode')
 

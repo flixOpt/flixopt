@@ -16,9 +16,11 @@ def get_solutions(optimizations: list, variable: str) -> xr.Dataset:
     dataarrays = []
     for optimization in optimizations:
         if optimization.name == 'Segmented':
+            # SegmentedOptimization requires special handling to remove overlaps
             dataarrays.append(optimization.results.solution_without_overlap(variable).rename(optimization.name))
         else:
-            dataarrays.append(optimization.results.solution[variable].rename(optimization.name))
+            # For Full and Clustered, access solution from the flow_system
+            dataarrays.append(optimization.flow_system.solution[variable].rename(optimization.name))
     return xr.merge(dataarrays, join='outer')
 
 
@@ -176,7 +178,7 @@ if __name__ == '__main__':
         a_kwk,
         a_speicher,
     )
-    flow_system.plot_network()
+    flow_system.topology.plot()
 
     # Optimizations
     optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []

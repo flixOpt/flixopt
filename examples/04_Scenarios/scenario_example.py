@@ -192,35 +192,18 @@ if __name__ == '__main__':
     flow_system.add_elements(costs, CO2, boiler, storage, chp, heat_sink, gas_source, power_sink)
 
     # Visualize the flow system for validation purposes
-    flow_system.plot_network()
+    flow_system.topology.plot()
 
-    # --- Define and Run Calculation ---
-    # Create a calculation object to model the Flow System
-    optimization = fx.Optimization(name='Sim1', flow_system=flow_system)
-    optimization.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
-
-    # --- Solve the Calculation and Save Results ---
-    optimization.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
-
-    optimization.results.setup_colors(
-        {
-            'CHP': 'red',
-            'Greys': ['Gastarif', 'Einspeisung', 'Heat Demand'],
-            'Storage': 'blue',
-            'Boiler': 'orange',
-        }
-    )
-
-    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    # --- Define and Solve Optimization ---
+    flow_system.optimize(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
-    optimization.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
-    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
-    optimization.results['Storage'].plot_charge_state()
-    optimization.results['Fernwärme'].plot_node_balance_pie(select={'period': 2020, 'scenario': 'Base Case'})
+    # Plotting through statistics accessor - returns PlotResult with .data and .figure
+    flow_system.statistics.plot.heatmap('CHP(Q_th)|flow_rate')
+    flow_system.statistics.plot.balance('Fernwärme')
+    flow_system.statistics.plot.balance('Storage')
+    flow_system.statistics.plot.heatmap('Storage|charge_state')
 
-    # Convert the results for the storage component to a dataframe and display
-    df = optimization.results['Storage'].node_balance_with_charge_state()
-
-    # Save results to file for later usage
-    optimization.results.to_file()
+    # Access data as xarray Datasets
+    print(flow_system.statistics.flow_rates)
+    print(flow_system.statistics.charge_states)
