@@ -20,6 +20,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -483,79 +484,6 @@ class StatisticsAccessor:
 
         return ds
 
-    def _compute_effect_total(
-        self,
-        element: str,
-        effect: str,
-        mode: Literal['temporal', 'periodic', 'total'] = 'total',
-        include_flows: bool = False,
-    ) -> xr.DataArray:
-        """Calculate total effect for a specific element and effect.
-
-        Computes total direct and indirect effects considering conversion factors.
-
-        Args:
-            element: The element identifier.
-            effect: The effect identifier.
-            mode: 'temporal', 'periodic', or 'total'.
-            include_flows: Whether to include effects from flows connected to this element.
-
-        Returns:
-            xr.DataArray with total effects.
-        """
-        if effect not in self._fs.effects:
-            raise ValueError(f'Effect {effect} is not available.')
-
-        if mode == 'total':
-            temporal = self._compute_effect_total(
-                element=element, effect=effect, mode='temporal', include_flows=include_flows
-            )
-            periodic = self._compute_effect_total(
-                element=element, effect=effect, mode='periodic', include_flows=include_flows
-            )
-            if periodic.isnull().all() and temporal.isnull().all():
-                return xr.DataArray(np.nan)
-            if temporal.isnull().all():
-                return periodic.rename(f'{element}->{effect}')
-            temporal = temporal.sum('time')
-            if periodic.isnull().all():
-                return temporal.rename(f'{element}->{effect}')
-            return periodic + temporal
-
-        total = xr.DataArray(0)
-        share_exists = False
-
-        relevant_conversion_factors = {
-            key[0]: value for key, value in self.effect_share_factors[mode].items() if key[1] == effect
-        }
-        relevant_conversion_factors[effect] = 1  # Share to itself is 1
-
-        # Pre-compute flows if needed (avoids repeated lookup inside loop)
-        flows_to_check: list[str] = []
-        if include_flows:
-            if element not in self._fs.components:
-                raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-            comp = self._fs.components[element]
-            flows_to_check = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
-
-        for target_effect, conversion_factor in relevant_conversion_factors.items():
-            label = f'{element}->{target_effect}({mode})'
-            if label in self._fs.solution:
-                share_exists = True
-                da = self._fs.solution[label]
-                total = da * conversion_factor + total
-
-            for flow in flows_to_check:
-                label = f'{flow}->{target_effect}({mode})'
-                if label in self._fs.solution:
-                    share_exists = True
-                    da = self._fs.solution[label]
-                    total = da * conversion_factor + total
-
-        if not share_exists:
-            total = xr.DataArray(np.nan)
-        return total.rename(f'{element}->{effect}({mode})')
-
     def _create_template_for_mode(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.DataArray:
         """Create a template DataArray with the correct dimensions for a given mode."""
         coords = {}
@@ -573,46 +501,92 @@ class StatisticsAccessor:
             return xr.DataArray(np.nan)
 
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
-        """Create dataset containing effect totals for all flows (individual contributors).
+        """Create dataset containing effect totals for all contributors.
 
-        Unlike the previous implementation that aggregated by component, this exposes
-        individual flows as contributors, enabling more flexible groupby operations.
+        Detects contributors (flows, components, etc.) from solution data variables.
+        Excludes effect-to-effect shares which are intermediate conversions.
+        Provides component and component_type coordinates for flexible groupby operations.
         """
+        solution = self._fs.solution
         template = self._create_template_for_mode(mode)
+
+        # Detect contributors from solution data variables
+        # Pattern: {contributor}->{effect}(temporal) or {contributor}->{effect}(periodic)
+        contributor_pattern = re.compile(r'^(.+)->(.+)\((temporal|periodic)\)$')
+        effect_labels = set(self._fs.effects.keys())
+
+        detected_contributors: set[str] = set()
+        for var in solution.data_vars:
+            match = contributor_pattern.match(str(var))
+            if match:
+                contributor = match.group(1)
+                # Exclude effect-to-effect shares (e.g., costs(temporal) -> Effect1(temporal))
+                base_name = contributor.split('(')[0] if '(' in contributor else contributor
+                if base_name not in effect_labels:
+                    detected_contributors.add(contributor)
+
+        contributors = sorted(detected_contributors)
+
+        # Build metadata for each contributor
+        def get_parent_component(contributor: str) -> str:
+            if contributor in self._fs.flows:
+                return self._fs.flows[contributor].component
+            elif contributor in self._fs.components:
+                return contributor
+            return contributor
+
+        def get_contributor_type(contributor: str) -> str:
+            if contributor in self._fs.flows:
+                parent = self._fs.flows[contributor].component
+                return type(self._fs.components[parent]).__name__
+            elif contributor in self._fs.components:
+                return type(self._fs.components[contributor]).__name__
+            elif contributor in self._fs.buses:
+                return type(self._fs.buses[contributor]).__name__
+            return 'Unknown'
+
+        parents = [get_parent_component(c) for c in contributors]
+        contributor_types = [get_contributor_type(c) for c in contributors]
+
+        # Determine modes to process
+        modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
+
         ds = xr.Dataset()
 
-        # Build list of all contributors (flows) with their metadata
-        contributors: list[str] = []
-        parents: list[str] = []
-        contributor_types: list[str] = []
-
-        for flow_label, flow in self._fs.flows.items():
-            contributors.append(flow_label)
-            parent = flow.component  # Component label (string)
-            parents.append(parent)
-            contributor_types.append(type(self._fs.components[parent]).__name__)
-
-        # Collect effect values for each contributor
-        all_arrays: dict[str, list] = {}
         for effect in self._fs.effects:
-            effect_arrays = []
-            for contributor in contributors:
-                # Get effect for this specific flow (not aggregated)
-                da = self._compute_effect_total(element=contributor, effect=effect, mode=mode, include_flows=False)
-                effect_arrays.append(da)
-            all_arrays[effect] = effect_arrays
-
-        # Process all effects: expand scalar NaN arrays to match template dimensions
-        for effect in self._fs.effects:
-            dataarrays = all_arrays[effect]
             contributor_arrays = []
 
-            for contributor, arr in zip(contributors, dataarrays, strict=False):
-                # Expand scalar NaN arrays to match template dimensions
-                if not arr.dims and np.isnan(arr.item()):
-                    arr = xr.full_like(template, np.nan, dtype=float).rename(arr.name)
-                contributor_arrays.append(arr.expand_dims(contributor=[contributor]))
+            for contributor in contributors:
+                share_total: xr.DataArray | None = None
 
+                for current_mode in modes_to_process:
+                    # Get conversion factors: which source effects contribute to this target effect
+                    conversion_factors = {
+                        key[0]: value
+                        for key, value in self.effect_share_factors[current_mode].items()
+                        if key[1] == effect
+                    }
+                    conversion_factors[effect] = 1  # Direct contribution
+
+                    for source_effect, factor in conversion_factors.items():
+                        label = f'{contributor}->{source_effect}({current_mode})'
+                        if label in solution:
+                            da = solution[label] * factor
+                            # For total mode, sum temporal over time
+                            if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
+                                da = da.sum('time')
+                            if share_total is None:
+                                share_total = da
+                            else:
+                                share_total = share_total + da
+
+                # If no share found, use NaN template
+                if share_total is None:
+                    share_total = xr.full_like(template, np.nan, dtype=float)
+
+                contributor_arrays.append(share_total.expand_dims(contributor=[contributor]))
+
+            # Concatenate all contributors for this effect
             ds[effect] = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
 
         # Add groupby coordinates for contributor dimension
@@ -621,13 +595,13 @@ class StatisticsAccessor:
             component_type=('contributor', contributor_types),
         )
 
-        # Validation test
-        suffix = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
+        # Validation: check totals match solution
+        suffix_map = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
         for effect in self._fs.effects:
-            label = f'{effect}{suffix[mode]}'
-            if label in self._fs.solution:
+            label = f'{effect}{suffix_map[mode]}'
+            if label in solution:
                 computed = ds[effect].sum('contributor')
-                found = self._fs.solution[label]
+                found = solution[label]
                 if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
                     logger.critical(
                         f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
