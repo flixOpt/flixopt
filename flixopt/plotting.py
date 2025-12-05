@@ -1404,7 +1404,7 @@ def heatmap_with_plotly(
         squeezed_data = data.squeeze()
         if squeezed_data.ndim == 1:
             # If only 1D after squeezing, expand to 2D
-            squeezed_data = squeezed_data.expand_dims({'variable': [data.name or 'value']})
+            squeezed_data = squeezed_data.expand_dims({'variable': [squeezed_data.name or 'value']})
         fallback_args = {
             'img': squeezed_data.values,
             'color_continuous_scale': colors,

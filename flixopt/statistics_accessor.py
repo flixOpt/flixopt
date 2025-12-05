@@ -142,7 +142,8 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
         rows = [{var_name: var, value_name: float(ds[var].values)} for var in ds.data_vars]
         return pd.DataFrame(rows)
     df = ds.to_dataframe().reset_index()
-    coord_cols = list(ds.coords.keys())
+    # Only use coordinates that are actually present as columns after reset_index
+    coord_cols = [c for c in ds.coords.keys() if c in df.columns]
     return df.melt(id_vars=coord_cols, var_name=var_name, value_name=value_name)
 
 
@@ -529,6 +530,14 @@ class StatisticsAccessor:
         }
         relevant_conversion_factors[effect] = 1  # Share to itself is 1
 
+        # Pre-compute flows if needed (avoids repeated lookup inside loop)
+        flows_to_check: list[str] = []
+        if include_flows:
+            if element not in self._fs.components:
+                raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
+            comp = self._fs.components[element]
+            flows_to_check = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
+
         for target_effect, conversion_factor in relevant_conversion_factors.items():
             label = f'{element}->{target_effect}({mode})'
             if label in self._fs.solution:
@@ -536,17 +545,12 @@ class StatisticsAccessor:
                 da = self._fs.solution[label]
                 total = da * conversion_factor + total
 
-            if include_flows:
-                if element not in self._fs.components:
-                    raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
-                comp = self._fs.components[element]
-                flows = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
-                for flow in flows:
-                    label = f'{flow}->{target_effect}({mode})'
-                    if label in self._fs.solution:
-                        share_exists = True
-                        da = self._fs.solution[label]
-                        total = da * conversion_factor + total
+            for flow in flows_to_check:
+                label = f'{flow}->{target_effect}({mode})'
+                if label in self._fs.solution:
+                    share_exists = True
+                    da = self._fs.solution[label]
+                    total = da * conversion_factor + total
 
         if not share_exists:
             total = xr.DataArray(np.nan)
@@ -624,7 +628,7 @@ class StatisticsAccessor:
             if label in self._fs.solution:
                 computed = ds[effect].sum('contributor')
                 found = self._fs.solution[label]
-                if not np.allclose(computed.values, found.fillna(0).values):
+                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
                     logger.critical(
                         f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
                     )
