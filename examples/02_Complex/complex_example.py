@@ -156,6 +156,18 @@ if __name__ == '__main__':
             )
         ],
     )
+    # 5.b) Electricity demand profile
+    electricity_load = fx.Sink(
+            'electricity_load',
+            inputs=[
+                fx.Flow(
+                    'P_el_Last',  # Electricity load
+                    bus='Strom',  # Linked bus
+                    size=1,
+                    fixed_relative_profile=electricity_demand,  # Fixed demand profile
+                )
+            ],
+        )
 
     # 5.b) Gas tariff
     Gasbezug = fx.Source(
@@ -184,7 +196,7 @@ if __name__ == '__main__':
 
     # --- Build FlowSystem ---
     # Select components to be included in the flow system
-    flow_system.add_elements(Costs, CO2, PE, Gaskessel, Waermelast, Gasbezug, Stromverkauf, speicher)
+    flow_system.add_elements(Costs, CO2, PE, Gaskessel, Waermelast, electricity_load, Gasbezug, Stromverkauf, speicher)
     flow_system.add_elements(bhkw_2) if use_chp_with_piecewise_conversion else flow_system.add_elements(bhkw)
 
     print(flow_system)  # Get a string representation of the FlowSystem
