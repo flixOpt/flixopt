@@ -953,7 +953,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             **solver.options,
         )
 
-        if self.model.termination_condition == 'infeasible':
+        if 'infeasible' in self.model.termination_condition:
             if CONFIG.Solving.compute_infeasibilities:
                 import io
                 from contextlib import redirect_stdout
