@@ -632,8 +632,8 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: dict[str, str] | None = None,
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -707,26 +707,33 @@ class StatisticsPlotAccessor:
         variables: str | list[str],
         *,
         select: SelectType | None = None,
-        reshape: tuple[str, str] = ('D', 'h'),
+        reshape: tuple[str, str] | None = ('D', 'h'),
         colorscale: str = 'viridis',
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        animation_frame: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot heatmap of time series data with time reshaping.
+        """Plot heatmap of time series data.
+
+        Time is reshaped into 2D (e.g., days × hours) when possible. Multiple variables
+        are shown as facets. If too many dimensions exist to display without data loss,
+        reshaping is skipped and variables are shown on the y-axis with time on x-axis.
 
         Args:
             variables: Variable name(s) from solution.
-            select: xarray-style selection.
-            reshape: How to reshape time axis - (outer, inner) frequency.
+            select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
+            reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
+                    days × hours. Set to None to disable reshaping.
             colorscale: Plotly colorscale name.
-            facet_col: Dimension for column facets.
-            facet_row: Dimension for row facets.
-            show: Whether to display.
+            facet_col: Dimension for subplot columns (default: 'period').
+                      With multiple variables, 'variable' is used instead.
+            animation_frame: Dimension for animation slider (default: 'scenario').
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to px.imshow.
 
         Returns:
-            PlotResult with reshaped data.
+            PlotResult with processed data and figure.
         """
         solution = self._stats._require_solution()
 
@@ -736,22 +743,65 @@ class StatisticsPlotAccessor:
         ds = solution[variables]
         ds = _apply_selection(ds, select)
 
+        # Stack variables into single DataArray
         variable_names = list(ds.data_vars)
         dataarrays = [ds[var] for var in variable_names]
         da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
 
-        actual_facet_col, actual_facet_row = _resolve_facets(da.to_dataset(name='value'), facet_col, facet_row)
-        if len(variables) > 1 and actual_facet_col is None:
-            actual_facet_col = 'variable'
+        # Determine facet and animation from available dims
+        has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
-        facet_by = [d for d in [actual_facet_col, actual_facet_row] if d] or None
+        if has_multiple_vars:
+            actual_facet = 'variable'
+            actual_animation = (
+                animation_frame
+                if animation_frame in da.dims
+                else (facet_col if facet_col in da.dims and da.sizes.get(facet_col, 1) > 1 else None)
+            )
+        else:
+            actual_facet = facet_col if facet_col in da.dims and da.sizes.get(facet_col, 0) > 1 else None
+            actual_animation = (
+                animation_frame if animation_frame in da.dims and da.sizes.get(animation_frame, 0) > 1 else None
+            )
 
-        reshaped_data = plotting.reshape_data_for_heatmap(da, reshape)
-        fig = plotting.heatmap_with_plotly(
-            reshaped_data,
+        # Count non-time dims with size > 1 (these need facet/animation slots)
+        extra_dims = [d for d in da.dims if d != 'time' and da.sizes[d] > 1]
+        used_slots = len([d for d in [actual_facet, actual_animation] if d])
+        would_drop = len(extra_dims) > used_slots
+
+        # Reshape time only if we wouldn't lose data (all extra dims fit in facet + animation)
+        if reshape and 'time' in da.dims and not would_drop:
+            da = plotting.reshape_data_for_heatmap(da, reshape)
+            heatmap_dims = ['timestep', 'timeframe']
+        elif has_multiple_vars:
+            # Can't reshape but have multiple vars: use variable + time as heatmap axes
+            heatmap_dims = ['variable', 'time']
+            # variable is now a heatmap dim, use period/scenario for facet/animation
+            actual_facet = facet_col if facet_col in da.dims and da.sizes.get(facet_col, 0) > 1 else None
+            actual_animation = (
+                animation_frame if animation_frame in da.dims and da.sizes.get(animation_frame, 0) > 1 else None
+            )
+        else:
+            heatmap_dims = ['time'] if 'time' in da.dims else list(da.dims)[:1]
+
+        # Keep only dims we need
+        keep_dims = set(heatmap_dims) | {actual_facet, actual_animation} - {None}
+        for dim in [d for d in da.dims if d not in keep_dims]:
+            da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
+
+        # Transpose to expected order
+        dim_order = heatmap_dims + [d for d in [actual_facet, actual_animation] if d]
+        da = da.transpose(*dim_order)
+
+        # Clear name for multiple variables (colorbar would show first var's name)
+        if has_multiple_vars:
+            da = da.rename('')
+
+        fig = plotting.heatmap_with_plotly_v2(
+            da,
             colors=colorscale,
-            facet_by=facet_by,
-            reshape_time=None,
+            facet_col=actual_facet,
+            animation_frame=actual_animation,
             **plotly_kwargs,
         )
 
@@ -760,9 +810,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        reshaped_ds = (
-            reshaped_data.to_dataset(name='value') if isinstance(reshaped_data, xr.DataArray) else reshaped_data
-        )
+        reshaped_ds = da.to_dataset(name='value') if isinstance(da, xr.DataArray) else da
         return PlotResult(data=reshaped_ds, figure=fig)
 
     def flows(
@@ -774,8 +822,8 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: dict[str, str] | None = None,
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -972,8 +1020,8 @@ class StatisticsPlotAccessor:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: dict[str, str] | None = None,
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1036,8 +1084,8 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: dict[str, str] | None = None,
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1115,8 +1163,8 @@ class StatisticsPlotAccessor:
         by: Literal['component', 'contributor', 'time'] = 'component',
         select: SelectType | None = None,
         colors: dict[str, str] | None = None,
-        facet_col: str | None = 'scenario',
-        facet_row: str | None = 'period',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:

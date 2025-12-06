@@ -1192,6 +1192,57 @@ def dual_pie_with_matplotlib(
     return fig, axes
 
 
+def heatmap_with_plotly_v2(
+    data: xr.DataArray,
+    colors: ColorType | None = None,
+    title: str = '',
+    facet_col: str | None = None,
+    animation_frame: str | None = None,
+    facet_col_wrap: int | None = None,
+    **imshow_kwargs: Any,
+) -> go.Figure:
+    """
+    Plot a heatmap using Plotly's imshow.
+
+    Data should be prepared with dims in order: (y_axis, x_axis, [facet_col], [animation_frame]).
+    Use reshape_data_for_heatmap() to prepare time-series data before calling this.
+
+    Args:
+        data: DataArray with 2-4 dimensions. First two are heatmap axes.
+        colors: Colorscale name ('viridis', 'plasma', etc.).
+        title: Plot title.
+        facet_col: Dimension name for subplot columns (3rd dim).
+        animation_frame: Dimension name for animation (4th dim).
+        facet_col_wrap: Max columns before wrapping (only if < n_facets).
+        **imshow_kwargs: Additional args for px.imshow.
+
+    Returns:
+        Plotly Figure object.
+    """
+    if data.size == 0:
+        return go.Figure()
+
+    colors = colors or CONFIG.Plotting.default_sequential_colorscale
+    facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+
+    imshow_args: dict[str, Any] = {
+        'img': data,
+        'color_continuous_scale': colors,
+        'title': title,
+        **imshow_kwargs,
+    }
+
+    if facet_col and facet_col in data.dims:
+        imshow_args['facet_col'] = facet_col
+        if facet_col_wrap < data.sizes[facet_col]:
+            imshow_args['facet_col_wrap'] = facet_col_wrap
+
+    if animation_frame and animation_frame in data.dims:
+        imshow_args['animation_frame'] = animation_frame
+
+    return px.imshow(**imshow_args)
+
+
 def heatmap_with_plotly(
     data: xr.DataArray,
     colors: ColorType | None = None,
@@ -1400,13 +1451,8 @@ def heatmap_with_plotly(
     except Exception as e:
         logger.error(f'Error creating imshow plot: {e}. Falling back to basic heatmap.')
         # Fallback: create a simple heatmap without faceting
-        # Squeeze singleton dimensions to get a 2D array
-        squeezed_data = data.squeeze()
-        if squeezed_data.ndim == 1:
-            # If only 1D after squeezing, expand to 2D
-            squeezed_data = squeezed_data.expand_dims({'variable': [squeezed_data.name or 'value']})
         fallback_args = {
-            'img': squeezed_data.values,
+            'img': data.values,
             'color_continuous_scale': colors,
             'title': title,
         }

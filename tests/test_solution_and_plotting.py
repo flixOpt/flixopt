@@ -347,12 +347,12 @@ class TestHeatmapReshaping:
         assert 'time' in reshaped.dims
         xr.testing.assert_equal(reshaped, long_time_data)
 
-    def test_heatmap_with_plotly(self, long_time_data):
+    def test_heatmap_with_plotly_v2(self, long_time_data):
         """Test heatmap plotting with Plotly."""
         # Convert to Dataset for plotting
         data = long_time_data.to_dataset(name='power')
 
-        fig = plotting.heatmap_with_plotly(data['power'], reshape_time=('D', 'h'))
+        fig = plotting.heatmap_with_plotly_v2(data['power'], reshape_time=('D', 'h'))
         assert fig is not None
 
     def test_heatmap_with_matplotlib(self, long_time_data):
