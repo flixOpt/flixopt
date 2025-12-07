@@ -760,6 +760,9 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+                If None, uses FlowSystem.colors for context-aware coloring:
+                - Bus balance: colors by component
+                - Component balance: colors by bus/carrier
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display the plot.
@@ -799,6 +802,10 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+
+        # Use ColorAccessor for context-aware coloring if no colors specified
+        if colors is None:
+            colors = self._fs.colors.get_color_map_for_balance(node, list(ds.data_vars))
 
         fig = _create_stacked_bar(
             ds,
@@ -1029,6 +1036,7 @@ class StatisticsPlotAccessor:
             aggregate: How to aggregate if timestep is None.
             select: xarray-style selection.
             colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
+                If None, uses FlowSystem.colors with bus carrier colors.
             show: Whether to display.
 
         Returns:
@@ -1093,7 +1101,11 @@ class StatisticsPlotAccessor:
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
-        color_map = process_colors(colors, node_list)
+        # Use ColorAccessor for bus-based coloring if no colors specified
+        if colors is None:
+            color_map = self._fs.colors.get_color_map_for_sankey(node_list)
+        else:
+            color_map = process_colors(colors, node_list)
         node_colors = [color_map[node] for node in node_list]
 
         fig = go.Figure(

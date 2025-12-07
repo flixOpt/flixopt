@@ -174,6 +174,16 @@ _DEFAULTS = MappingProxyType(
                 'compute_infeasibilities': True,
             }
         ),
+        'carriers': MappingProxyType(
+            {
+                'electricity': {'color': '#FFD700', 'unit': 'kW'},
+                'heat': {'color': '#FF6B6B', 'unit': 'kW_th'},
+                'gas': {'color': '#4ECDC4', 'unit': 'kW'},
+                'hydrogen': {'color': '#00CED1', 'unit': 'kW'},
+                'water': {'color': '#3498DB', 'unit': 'm³/h'},
+                'fuel': {'color': '#8B4513', 'unit': 'kW'},
+            }
+        ),
     }
 )
 
@@ -575,6 +585,72 @@ class CONFIG:
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
+    class Carriers:
+        """Default carrier configurations for colors and units.
+
+        Carriers represent energy or material types (electricity, heat, gas, etc.)
+        that flow through buses. Each carrier has default color and unit settings
+        used for plotting when not overridden at the FlowSystem level.
+
+        Attributes:
+            defaults: Dictionary mapping carrier names to their properties (color, unit).
+
+        Examples:
+            ```python
+            # View default carriers
+            CONFIG.Carriers.defaults
+            # {'electricity': {'color': '#FFD700', 'unit': 'kW'}, ...}
+
+            # Add a custom carrier
+            CONFIG.Carriers.add('biogas', '#228B22', 'kW')
+
+            # Get color for a carrier
+            CONFIG.Carriers.get_color('electricity')  # '#FFD700'
+
+            # Modify existing carrier
+            CONFIG.Carriers.defaults['electricity']['color'] = '#FFC300'
+            ```
+        """
+
+        defaults: dict[str, dict] = dict(_DEFAULTS['carriers'])
+
+        @classmethod
+        def add(cls, name: str, color: str, unit: str = 'kW') -> None:
+            """Add or update a carrier configuration.
+
+            Args:
+                name: Carrier name (e.g., 'biogas', 'steam').
+                color: Hex color string (e.g., '#228B22').
+                unit: Unit string (e.g., 'kW', 'kg/h'). Defaults to 'kW'.
+            """
+            cls.defaults[name] = {'color': color, 'unit': unit}
+
+        @classmethod
+        def get_color(cls, name: str) -> str | None:
+            """Get the default color for a carrier.
+
+            Args:
+                name: Carrier name.
+
+            Returns:
+                Hex color string or None if carrier not found.
+            """
+            carrier = cls.defaults.get(name)
+            return carrier['color'] if carrier else None
+
+        @classmethod
+        def get_unit(cls, name: str) -> str | None:
+            """Get the default unit for a carrier.
+
+            Args:
+                name: Carrier name.
+
+            Returns:
+                Unit string or None if carrier not found.
+            """
+            carrier = cls.defaults.get(name)
+            return carrier['unit'] if carrier else None
+
     config_name: str = _DEFAULTS['config_name']
 
     @classmethod
@@ -600,6 +676,8 @@ class CONFIG:
 
         for key, value in _DEFAULTS['plotting'].items():
             setattr(cls.Plotting, key, value)
+
+        cls.Carriers.defaults = dict(_DEFAULTS['carriers'])
 
         cls.config_name = _DEFAULTS['config_name']
 

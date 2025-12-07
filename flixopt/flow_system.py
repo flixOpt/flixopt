@@ -16,6 +16,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
+from .color_accessor import ColorAccessor
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
@@ -216,6 +217,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
+
+        # Color accessor cache - lazily initialized, persists across operations
+        self._colors: ColorAccessor | None = None
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -578,6 +582,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         else:
             ds.attrs['has_solution'] = False
 
+        # Include color configuration if any colors are configured
+        if self._colors is not None:
+            color_config = self._colors.to_dict()
+            # Only store if there are actual colors configured
+            if any(color_config.values()):
+                ds.attrs['color_config'] = fx_io.dump_json(color_config)
+
         return ds
 
     @classmethod
@@ -660,6 +671,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if 'solution_time' in solution_ds.dims:
                 solution_ds = solution_ds.rename({'solution_time': 'time'})
             flow_system.solution = solution_ds
+
+        # Restore color configuration if present
+        if 'color_config' in reference_structure:
+            color_config = fx_io.load_json(reference_structure['color_config'])
+            flow_system._colors = ColorAccessor.from_dict(color_config, flow_system)
 
         return flow_system
 
@@ -1063,6 +1079,43 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self._statistics is None:
             self._statistics = StatisticsAccessor(self)
         return self._statistics
+
+    @property
+    def colors(self) -> ColorAccessor:
+        """Access centralized color management for plots.
+
+        ColorAccessor provides a unified interface for managing colors across all
+        visualization methods with context-aware logic:
+        - Bus balance plots: colors based on components
+        - Component balance plots: colors based on bus carriers
+        - Sankey diagrams: colors based on bus carriers
+
+        Returns:
+            A cached ColorAccessor instance.
+
+        Examples:
+            Configure colors for the system:
+
+            >>> flow_system.colors.setup(
+            ...     {
+            ...         'Boiler': '#D35400',
+            ...         'CHP': '#8E44AD',
+            ...         'electricity': '#FFD700',
+            ...     }
+            ... )
+
+            Colors are automatically used in plots:
+
+            >>> flow_system.statistics.plot.balance('Electricity')  # Colors by component
+            >>> flow_system.statistics.plot.sankey()  # Buses use carrier colors
+
+            Override carrier defaults:
+
+            >>> flow_system.colors.set_carrier_color('heat', '#FF0000')
+        """
+        if self._colors is None:
+            self._colors = ColorAccessor(self)
+        return self._colors
 
     @property
     def topology(self) -> TopologyAccessor:
