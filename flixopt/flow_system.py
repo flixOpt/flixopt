@@ -855,6 +855,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return
 
         self._connect_network()
+        self._register_missing_carriers()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
@@ -862,6 +863,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._validate_system_integrity()
 
         self._connected_and_transformed = True
+
+    def _register_missing_carriers(self) -> None:
+        """Auto-register carriers from CONFIG for buses that reference unregistered carriers."""
+        for bus in self.buses.values():
+            if bus.carrier and bus.carrier not in self._carriers:
+                # Try to get from CONFIG defaults
+                default_carrier = getattr(CONFIG.Carriers, bus.carrier, None)
+                if default_carrier is not None:
+                    self._carriers[bus.carrier] = default_carrier
+                    logger.debug(f"Auto-registered carrier '{bus.carrier}' from CONFIG")
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -934,9 +945,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def get_carrier(self, name: str) -> Carrier | None:
         """Get a carrier by name.
 
-        Looks up carriers in this order:
-        1. Carriers registered on this FlowSystem via add_carrier()
-        2. Global carriers in CONFIG.Carriers
+        Returns carriers registered on this FlowSystem. After connect_and_transform(),
+        this includes carriers auto-registered from CONFIG.Carriers for buses that
+        reference them.
 
         Args:
             name: Carrier name (case-insensitive).
@@ -944,12 +955,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             Carrier object or None if not found.
         """
-        name_lower = name.lower()
-        # Check local registry first
-        if name_lower in self._carriers:
-            return self._carriers[name_lower]
-        # Fall back to CONFIG
-        return CONFIG.Carriers.get(name_lower)
+        return self._carriers.get(name.lower())
 
     @property
     def carriers(self) -> CarrierContainer:

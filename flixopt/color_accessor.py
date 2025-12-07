@@ -104,8 +104,8 @@ class ColorAccessor:
             config = fx_io.load_yaml(Path(config))
 
         for label, color in config.items():
-            # Check if it's a known carrier (in CONFIG.Carriers or lowercase convention)
-            if label in CONFIG.Carriers.defaults or label.islower():
+            # Check if it's a known carrier (has attribute on CONFIG.Carriers or lowercase)
+            if hasattr(CONFIG.Carriers, label) or label.islower():
                 self._carrier_colors[label] = color
             # Check if it's a component
             elif label in self._fs.components:

@@ -174,17 +174,6 @@ _DEFAULTS = MappingProxyType(
                 'compute_infeasibilities': True,
             }
         ),
-        # Default carriers - colors from D3/Plotly palettes
-        'carriers': MappingProxyType(
-            {
-                'electricity': '#FECB52',  # Yellow - lightning
-                'heat': '#D62728',  # Red - warmth/fire
-                'gas': '#1F77B4',  # Blue - natural gas
-                'hydrogen': '#9467BD',  # Purple - clean/future
-                'fuel': '#8C564B',  # Brown - fossil/oil
-                'biomass': '#2CA02C',  # Green - organic/renewable
-            }
-        ),
     }
 )
 
@@ -608,13 +597,13 @@ class CONFIG:
 
         from .carrier import Carrier
 
-        # Default carriers - created from _DEFAULTS
-        electricity: Carrier = Carrier('electricity', _DEFAULTS['carriers']['electricity'])
-        heat: Carrier = Carrier('heat', _DEFAULTS['carriers']['heat'])
-        gas: Carrier = Carrier('gas', _DEFAULTS['carriers']['gas'])
-        hydrogen: Carrier = Carrier('hydrogen', _DEFAULTS['carriers']['hydrogen'])
-        fuel: Carrier = Carrier('fuel', _DEFAULTS['carriers']['fuel'])
-        biomass: Carrier = Carrier('biomass', _DEFAULTS['carriers']['biomass'])
+        # Default carriers - colors from D3/Plotly palettes
+        electricity: Carrier = Carrier('electricity', '#FECB52')  # Yellow
+        heat: Carrier = Carrier('heat', '#D62728')  # Red
+        gas: Carrier = Carrier('gas', '#1F77B4')  # Blue
+        hydrogen: Carrier = Carrier('hydrogen', '#9467BD')  # Purple
+        fuel: Carrier = Carrier('fuel', '#8C564B')  # Brown
+        biomass: Carrier = Carrier('biomass', '#2CA02C')  # Green
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -645,12 +634,12 @@ class CONFIG:
         # Reset Carriers to defaults
         from .carrier import Carrier
 
-        cls.Carriers.electricity = Carrier('electricity', _DEFAULTS['carriers']['electricity'])
-        cls.Carriers.heat = Carrier('heat', _DEFAULTS['carriers']['heat'])
-        cls.Carriers.gas = Carrier('gas', _DEFAULTS['carriers']['gas'])
-        cls.Carriers.hydrogen = Carrier('hydrogen', _DEFAULTS['carriers']['hydrogen'])
-        cls.Carriers.fuel = Carrier('fuel', _DEFAULTS['carriers']['fuel'])
-        cls.Carriers.biomass = Carrier('biomass', _DEFAULTS['carriers']['biomass'])
+        cls.Carriers.electricity = Carrier('electricity', '#FECB52')
+        cls.Carriers.heat = Carrier('heat', '#D62728')
+        cls.Carriers.gas = Carrier('gas', '#1F77B4')
+        cls.Carriers.hydrogen = Carrier('hydrogen', '#9467BD')
+        cls.Carriers.fuel = Carrier('fuel', '#8C564B')
+        cls.Carriers.biomass = Carrier('biomass', '#2CA02C')
 
         cls.config_name = _DEFAULTS['config_name']
 
