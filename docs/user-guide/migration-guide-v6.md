@@ -343,8 +343,38 @@ stats.total_effects['costs'].groupby('component_type').sum()
 | **Replace Optimization class** | Use `flow_system.optimize(solver)` instead |
 | **Update results access** | Use `flow_system.solution['var_name']` pattern |
 | **Update I/O code** | Use `to_netcdf()` / `from_netcdf()` |
+| **Update transform methods** | Use `flow_system.transform.sel/isel/resample()` instead |
 | **Test thoroughly** | Verify results match v5.x outputs |
 | **Remove deprecated imports** | Remove `fx.Optimization`, `fx.Results` |
+
+---
+
+## Transform Methods Moved to Accessor
+
+The `sel()`, `isel()`, and `resample()` methods have been moved from `FlowSystem` to the `TransformAccessor`:
+
+=== "Old (deprecated)"
+    ```python
+    # These still work but emit deprecation warnings
+    fs_subset = flow_system.sel(time=slice('2023-01-01', '2023-06-30'))
+    fs_indexed = flow_system.isel(time=slice(0, 24))
+    fs_resampled = flow_system.resample(time='4h', method='mean')
+    ```
+
+=== "New (recommended)"
+    ```python
+    # Use the transform accessor
+    fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
+    fs_indexed = flow_system.transform.isel(time=slice(0, 24))
+    fs_resampled = flow_system.transform.resample(time='4h', method='mean')
+    ```
+
+!!! info "Solution is dropped"
+    All transform methods return a **new FlowSystem without a solution**. You must re-optimize the transformed system:
+    ```python
+    fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-01-31'))
+    fs_subset.optimize(solver)  # Re-optimize the subset
+    ```
 
 ---
 
@@ -353,10 +383,12 @@ stats.total_effects['costs'].groupby('component_type').sum()
 | Version | Status |
 |---------|--------|
 | v5.x | `Optimization` class deprecated with warning |
-| v6.0.0 | `Optimization` class removed |
+| v6.0.0 | `Optimization` class removed, `sel/isel/resample` methods deprecated |
 
 !!! warning "Update your code"
     The `Optimization` and `Results` classes are deprecated and will be removed in a future version.
+    The `flow_system.sel()`, `flow_system.isel()`, and `flow_system.resample()` methods are deprecated
+    in favor of `flow_system.transform.sel/isel/resample()`.
     Update your code to the new API to avoid breaking changes when upgrading.
 
 ---
