@@ -30,7 +30,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import xarray as xr
 
-from .color_processing import process_colors
+from .color_processing import ColorType, process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -46,9 +46,6 @@ SelectType = dict[str, Any]
 
 FilterType = str | list[str]
 """For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
-
-ColorType = str | list[str] | dict[str, str] | None
-"""Flexible color input: colorscale name, color list, label-to-color dict, or None for default."""
 
 
 def _reshape_time_for_heatmap(
