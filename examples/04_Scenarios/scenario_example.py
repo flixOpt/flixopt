@@ -204,10 +204,10 @@ if __name__ == '__main__':
 
     # --- Analyze Results ---
     # Plotting through statistics accessor - returns PlotResult with .data and .figure
-    flow_system.statistics.plot.heatmap('CHP(Q_th)|flow_rate')
+    flow_system.statistics.plot.heatmap('CHP(Q_th)')  # Flow label - auto-resolves to flow_rate
     flow_system.statistics.plot.balance('Fernwärme')
     flow_system.statistics.plot.balance('Storage')
-    flow_system.statistics.plot.heatmap('Storage|charge_state')
+    flow_system.statistics.plot.heatmap('Storage|charge_state')  # Full variable name for non-flow data
 
     # Access data as xarray Datasets
     print(flow_system.statistics.flow_rates)

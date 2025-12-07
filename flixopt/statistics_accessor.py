@@ -738,6 +738,36 @@ class StatisticsPlotAccessor:
         self._stats = statistics
         self._fs = statistics._fs
 
+    def _resolve_variable_names(self, variables: list[str], solution: xr.Dataset) -> list[str]:
+        """Resolve flow labels to variable names with fallback.
+
+        For each variable:
+        1. If it's a flow label (e.g., 'Boiler(Q_th)'), try to find 'Boiler(Q_th)|flow_rate'
+        2. If not found or already a full variable name, use as-is
+
+        Args:
+            variables: List of flow labels or variable names.
+            solution: The solution dataset to check variable existence.
+
+        Returns:
+            List of resolved variable names.
+        """
+        resolved = []
+        for var in variables:
+            if '|' not in var:
+                # Try as flow label first
+                flow_rate_var = f'{var}|flow_rate'
+                if flow_rate_var in solution:
+                    resolved.append(flow_rate_var)
+                elif var in solution:
+                    resolved.append(var)
+                else:
+                    # Let it fail with the original name for clear error message
+                    resolved.append(var)
+            else:
+                resolved.append(var)
+        return resolved
+
     def balance(
         self,
         node: str,
@@ -840,7 +870,9 @@ class StatisticsPlotAccessor:
         reshaping is skipped and variables are shown on the y-axis with time on x-axis.
 
         Args:
-            variables: Variable name(s) from solution.
+            variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
+                are automatically resolved to 'Boiler(Q_th)|flow_rate'. Full variable
+                names like 'Storage|charge_state' are used as-is.
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
                     days × hours. Set to None to disable reshaping.
@@ -860,7 +892,10 @@ class StatisticsPlotAccessor:
         if isinstance(variables, str):
             variables = [variables]
 
-        ds = solution[variables]
+        # Resolve flow labels to variable names
+        resolved_variables = self._resolve_variable_names(variables, solution)
+
+        ds = solution[resolved_variables]
         ds = _apply_selection(ds, select)
 
         # Stack variables into single DataArray
@@ -1207,8 +1242,10 @@ class StatisticsPlotAccessor:
         """Plot load duration curves (sorted time series).
 
         Args:
-            variables: Flow label(s) to plot (e.g., 'Boiler(Q_th)').
-                Uses flow_rates from statistics.
+            variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
+                are looked up in flow_rates. Full variable names like 'Boiler(Q_th)|flow_rate'
+                are stripped to their flow label. Other variables (e.g., 'Storage|charge_state')
+                are looked up in the solution directly.
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
@@ -1219,13 +1256,36 @@ class StatisticsPlotAccessor:
         Returns:
             PlotResult with sorted duration curve data.
         """
-        self._stats._require_solution()
+        solution = self._stats._require_solution()
 
         if isinstance(variables, str):
             variables = [variables]
 
-        # Use flow_rates from statistics (already has clean labels without |flow_rate suffix)
-        ds = self._stats.flow_rates[variables]
+        # Normalize variable names: strip |flow_rate suffix for flow_rates lookup
+        flow_rates = self._stats.flow_rates
+        normalized_vars = []
+        for var in variables:
+            # Strip |flow_rate suffix if present
+            if var.endswith('|flow_rate'):
+                var = var[: -len('|flow_rate')]
+            normalized_vars.append(var)
+
+        # Try to get from flow_rates first, fall back to solution for non-flow variables
+        ds_parts = []
+        for var in normalized_vars:
+            if var in flow_rates:
+                ds_parts.append(flow_rates[[var]])
+            elif var in solution:
+                ds_parts.append(solution[[var]])
+            else:
+                # Try with |flow_rate suffix as last resort
+                flow_rate_var = f'{var}|flow_rate'
+                if flow_rate_var in solution:
+                    ds_parts.append(solution[[flow_rate_var]].rename({flow_rate_var: var}))
+                else:
+                    raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
+
+        ds = xr.merge(ds_parts)
         ds = _apply_selection(ds, select)
 
         if 'time' not in ds.dims:
