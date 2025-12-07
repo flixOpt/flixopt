@@ -120,7 +120,7 @@ def _reshape_time_for_heatmap(
 
 def _heatmap_figure(
     data: xr.DataArray,
-    colors: ColorType = None,
+    colors: str | list[str] | None = None,
     title: str = '',
     facet_col: str | None = None,
     animation_frame: str | None = None,
@@ -131,7 +131,8 @@ def _heatmap_figure(
 
     Args:
         data: DataArray with 2-4 dimensions. First two are heatmap axes.
-        colors: Colorscale name.
+        colors: Colorscale name (str) or list of colors. Dicts are not supported
+            for heatmaps as color_continuous_scale requires a colorscale specification.
         title: Plot title.
         facet_col: Dimension for subplot columns.
         animation_frame: Dimension for animation slider.
@@ -280,7 +281,7 @@ def _create_stacked_bar(
         return go.Figure()
     x_col = 'time' if 'time' in df.columns else df.columns[0]
     variables = df['variable'].unique().tolist()
-    color_map = process_colors(colors, variables)
+    color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
     fig = px.bar(
         df,
         x=x_col,
@@ -311,7 +312,7 @@ def _create_line(
         return go.Figure()
     x_col = 'time' if 'time' in df.columns else df.columns[0]
     variables = df['variable'].unique().tolist()
-    color_map = process_colors(colors, variables)
+    color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
     return px.line(
         df,
         x=x_col,
@@ -760,9 +761,6 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-                If None, uses FlowSystem.colors for context-aware coloring:
-                - Bus balance: colors by component
-                - Component balance: colors by bus/carrier
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display the plot.
@@ -829,7 +827,7 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         reshape: tuple[str, str] | None = ('D', 'h'),
-        colors: ColorType | None = None,
+        colors: str | list[str] | None = None,
         facet_col: str | None = 'period',
         animation_frame: str | None = 'scenario',
         show: bool | None = None,
@@ -846,7 +844,8 @@ class StatisticsPlotAccessor:
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
                     days × hours. Set to None to disable reshaping.
-            colors: Colorscale name (e.g., 'viridis', 'plasma') for heatmap coloring.
+            colors: Colorscale name (str) or list of colors for heatmap coloring.
+                Dicts are not supported for heatmaps (use str or list[str]).
             facet_col: Dimension for subplot columns (default: 'period').
                       With multiple variables, 'variable' is used instead.
             animation_frame: Dimension for animation slider (default: 'scenario').
@@ -1036,7 +1035,6 @@ class StatisticsPlotAccessor:
             aggregate: How to aggregate if timestep is None.
             select: xarray-style selection.
             colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
-                If None, uses FlowSystem.colors with bus carrier colors.
             show: Whether to display.
 
         Returns:
@@ -1101,11 +1099,7 @@ class StatisticsPlotAccessor:
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
-        # Use ColorAccessor for bus-based coloring if no colors specified
-        if colors is None:
-            color_map = self._fs.colors.get_color_map_for_sankey(node_list)
-        else:
-            color_map = process_colors(colors, node_list)
+        color_map = process_colors(colors, node_list)
         node_colors = [color_map[node] for node in node_list]
 
         fig = go.Figure(
