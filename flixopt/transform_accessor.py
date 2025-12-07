@@ -2,15 +2,21 @@
 Transform accessor for FlowSystem.
 
 This module provides the TransformAccessor class that enables
-transformations on FlowSystem like clustering and MGA.
+transformations on FlowSystem like clustering, selection, and resampling.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Literal
+
+import pandas as pd
+import xarray as xr
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from .clustering import ClusteringParameters
     from .flow_system import FlowSystem
 
@@ -192,6 +198,332 @@ class TransformAccessor:
             logger.info('All Clustering weights were set to 1')
 
         return weights
+
+    def sel(
+        self,
+        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
+        period: int | slice | list[int] | pd.Index | None = None,
+        scenario: str | slice | list[str] | pd.Index | None = None,
+    ) -> FlowSystem:
+        """
+        Select a subset of the FlowSystem by label.
+
+        Creates a new FlowSystem with data selected along the specified dimensions.
+        The returned FlowSystem has no solution (it must be re-optimized).
+
+        Args:
+            time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15')
+            period: Period selection (e.g., slice(2023, 2024), or list of periods)
+            scenario: Scenario selection (e.g., 'scenario1', or list of scenarios)
+
+        Returns:
+            FlowSystem: New FlowSystem with selected data (no solution).
+
+        Examples:
+            >>> # Select specific time range
+            >>> fs_jan = flow_system.transform.sel(time=slice('2023-01-01', '2023-01-31'))
+            >>> fs_jan.optimize(solver)
+
+            >>> # Select single scenario
+            >>> fs_base = flow_system.transform.sel(scenario='Base Case')
+        """
+        from .flow_system import FlowSystem
+
+        if time is None and period is None and scenario is None:
+            result = self._fs.copy()
+            result.solution = None
+            return result
+
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        ds = self._fs.to_dataset()
+        ds = self._dataset_sel(ds, time=time, period=period, scenario=scenario)
+        return FlowSystem.from_dataset(ds)  # from_dataset doesn't include solution
+
+    def isel(
+        self,
+        time: int | slice | list[int] | None = None,
+        period: int | slice | list[int] | None = None,
+        scenario: int | slice | list[int] | None = None,
+    ) -> FlowSystem:
+        """
+        Select a subset of the FlowSystem by integer indices.
+
+        Creates a new FlowSystem with data selected along the specified dimensions.
+        The returned FlowSystem has no solution (it must be re-optimized).
+
+        Args:
+            time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
+            period: Period selection by integer index
+            scenario: Scenario selection by integer index
+
+        Returns:
+            FlowSystem: New FlowSystem with selected data (no solution).
+
+        Examples:
+            >>> # Select first 24 timesteps
+            >>> fs_day1 = flow_system.transform.isel(time=slice(0, 24))
+            >>> fs_day1.optimize(solver)
+
+            >>> # Select first scenario
+            >>> fs_first = flow_system.transform.isel(scenario=0)
+        """
+        from .flow_system import FlowSystem
+
+        if time is None and period is None and scenario is None:
+            result = self._fs.copy()
+            result.solution = None
+            return result
+
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        ds = self._fs.to_dataset()
+        ds = self._dataset_isel(ds, time=time, period=period, scenario=scenario)
+        return FlowSystem.from_dataset(ds)  # from_dataset doesn't include solution
+
+    def resample(
+        self,
+        time: str,
+        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        **kwargs: Any,
+    ) -> FlowSystem:
+        """
+        Create a resampled FlowSystem by resampling data along the time dimension.
+
+        Creates a new FlowSystem with resampled time series data.
+        The returned FlowSystem has no solution (it must be re-optimized).
+
+        Args:
+            time: Resampling frequency (e.g., '3h', '2D', '1M')
+            method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
+            hours_of_last_timestep: Duration of the last timestep after resampling.
+                If None, computed from the last time interval.
+            hours_of_previous_timesteps: Duration of previous timesteps after resampling.
+                If None, computed from the first time interval. Can be a scalar or array.
+            **kwargs: Additional arguments passed to xarray.resample()
+
+        Returns:
+            FlowSystem: New resampled FlowSystem (no solution).
+
+        Examples:
+            >>> # Resample to 4-hour intervals
+            >>> fs_4h = flow_system.transform.resample(time='4h', method='mean')
+            >>> fs_4h.optimize(solver)
+
+            >>> # Resample to daily with max values
+            >>> fs_daily = flow_system.transform.resample(time='1D', method='max')
+        """
+        from .flow_system import FlowSystem
+
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        ds = self._fs.to_dataset()
+        ds = self._dataset_resample(
+            ds,
+            freq=time,
+            method=method,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+            **kwargs,
+        )
+        return FlowSystem.from_dataset(ds)  # from_dataset doesn't include solution
+
+    # --- Helper methods for dataset operations ---
+
+    def _dataset_sel(
+        self,
+        dataset: xr.Dataset,
+        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
+        period: int | slice | list[int] | pd.Index | None = None,
+        scenario: str | slice | list[str] | pd.Index | None = None,
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+    ) -> xr.Dataset:
+        """
+        Select subset of dataset by label.
+
+        Args:
+            dataset: xarray Dataset from FlowSystem.to_dataset()
+            time: Time selection (e.g., '2020-01', slice('2020-01-01', '2020-06-30'))
+            period: Period selection (e.g., 2020, slice(2020, 2022))
+            scenario: Scenario selection (e.g., 'Base Case', ['Base Case', 'High Demand'])
+            hours_of_last_timestep: Duration of the last timestep.
+            hours_of_previous_timesteps: Duration of previous timesteps.
+
+        Returns:
+            xr.Dataset: Selected dataset
+        """
+        from .flow_system import FlowSystem
+
+        indexers = {}
+        if time is not None:
+            indexers['time'] = time
+        if period is not None:
+            indexers['period'] = period
+        if scenario is not None:
+            indexers['scenario'] = scenario
+
+        if not indexers:
+            return dataset
+
+        result = dataset.sel(**indexers)
+
+        if 'time' in indexers:
+            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
+        if 'period' in indexers:
+            result = FlowSystem._update_period_metadata(result)
+
+        return result
+
+    def _dataset_isel(
+        self,
+        dataset: xr.Dataset,
+        time: int | slice | list[int] | None = None,
+        period: int | slice | list[int] | None = None,
+        scenario: int | slice | list[int] | None = None,
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+    ) -> xr.Dataset:
+        """
+        Select subset of dataset by integer index.
+
+        Args:
+            dataset: xarray Dataset from FlowSystem.to_dataset()
+            time: Time selection by index
+            period: Period selection by index
+            scenario: Scenario selection by index
+            hours_of_last_timestep: Duration of the last timestep.
+            hours_of_previous_timesteps: Duration of previous timesteps.
+
+        Returns:
+            xr.Dataset: Selected dataset
+        """
+        from .flow_system import FlowSystem
+
+        indexers = {}
+        if time is not None:
+            indexers['time'] = time
+        if period is not None:
+            indexers['period'] = period
+        if scenario is not None:
+            indexers['scenario'] = scenario
+
+        if not indexers:
+            return dataset
+
+        result = dataset.isel(**indexers)
+
+        if 'time' in indexers:
+            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
+        if 'period' in indexers:
+            result = FlowSystem._update_period_metadata(result)
+
+        return result
+
+    def _dataset_resample(
+        self,
+        dataset: xr.Dataset,
+        freq: str,
+        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
+        hours_of_last_timestep: int | float | None = None,
+        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        **kwargs: Any,
+    ) -> xr.Dataset:
+        """
+        Resample dataset along time dimension.
+
+        Args:
+            dataset: xarray Dataset from FlowSystem.to_dataset()
+            freq: Resampling frequency (e.g., '2h', '1D', '1M')
+            method: Resampling method (e.g., 'mean', 'sum', 'first')
+            hours_of_last_timestep: Duration of the last timestep after resampling.
+            hours_of_previous_timesteps: Duration of previous timesteps after resampling.
+            **kwargs: Additional arguments passed to xarray.resample()
+
+        Returns:
+            xr.Dataset: Resampled dataset
+        """
+        from .flow_system import FlowSystem
+
+        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
+        if method not in available_methods:
+            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
+
+        original_attrs = dict(dataset.attrs)
+
+        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
+        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+
+        time_dataset = dataset[time_var_names]
+        resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
+
+        if non_time_var_names:
+            non_time_dataset = dataset[non_time_var_names]
+            result = xr.merge([resampled_time_dataset, non_time_dataset])
+        else:
+            result = resampled_time_dataset
+
+        result.attrs.update(original_attrs)
+        return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
+    @staticmethod
+    def _resample_by_dimension_groups(
+        time_dataset: xr.Dataset,
+        time: str,
+        method: str,
+        **kwargs: Any,
+    ) -> xr.Dataset:
+        """
+        Resample variables grouped by their dimension structure to avoid broadcasting.
+
+        Groups variables by their non-time dimensions before resampling for performance
+        and to prevent xarray from broadcasting variables with different dimensions.
+
+        Args:
+            time_dataset: Dataset containing only variables with time dimension
+            time: Resampling frequency (e.g., '2h', '1D', '1M')
+            method: Resampling method name (e.g., 'mean', 'sum', 'first')
+            **kwargs: Additional arguments passed to xarray.resample()
+
+        Returns:
+            Resampled dataset with original dimension structure preserved
+        """
+        dim_groups = defaultdict(list)
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+            dim_groups[dims_key].append(var_name)
+
+        if not dim_groups:
+            return getattr(time_dataset.resample(time=time, **kwargs), method)()
+
+        resampled_groups = []
+        for var_names in dim_groups.values():
+            if not var_names:
+                continue
+
+            stacked = xr.concat(
+                [time_dataset[name] for name in var_names],
+                dim=pd.Index(var_names, name='variable'),
+                combine_attrs='drop_conflicts',
+            )
+            resampled = getattr(stacked.resample(time=time, **kwargs), method)()
+            resampled_dataset = resampled.to_dataset(dim='variable')
+            resampled_groups.append(resampled_dataset)
+
+        if not resampled_groups:
+            return time_dataset
+
+        if len(resampled_groups) == 1:
+            return resampled_groups[0]
+
+        return xr.merge(resampled_groups, combine_attrs='drop_conflicts')
 
     # Future methods can be added here:
     #
