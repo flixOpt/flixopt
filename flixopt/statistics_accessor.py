@@ -26,10 +26,10 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import xarray as xr
 
-from . import plotting
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -45,6 +45,126 @@ SelectType = dict[str, Any]
 
 FilterType = str | list[str]
 """For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
+
+ColorType = str | list[str] | None
+"""Colorscale type for plots."""
+
+
+def _reshape_time_for_heatmap(
+    data: xr.DataArray,
+    reshape: tuple[str, str],
+    fill: Literal['ffill', 'bfill'] | None = 'ffill',
+) -> xr.DataArray:
+    """Reshape time dimension into 2D (timeframe × timestep) for heatmap display.
+
+    Args:
+        data: DataArray with 'time' dimension.
+        reshape: Tuple of (outer_freq, inner_freq), e.g. ('D', 'h') for days × hours.
+        fill: Method to fill missing values after resampling.
+
+    Returns:
+        DataArray with 'time' replaced by 'timestep' and 'timeframe' dimensions.
+    """
+    if 'time' not in data.dims:
+        return data
+
+    timeframes, timesteps_per_frame = reshape
+
+    # Define formats for different combinations
+    formats = {
+        ('YS', 'W'): ('%Y', '%W'),
+        ('YS', 'D'): ('%Y', '%j'),
+        ('YS', 'h'): ('%Y', '%j %H:00'),
+        ('MS', 'D'): ('%Y-%m', '%d'),
+        ('MS', 'h'): ('%Y-%m', '%d %H:00'),
+        ('W', 'D'): ('%Y-w%W', '%w_%A'),
+        ('W', 'h'): ('%Y-w%W', '%w_%A %H:00'),
+        ('D', 'h'): ('%Y-%m-%d', '%H:00'),
+        ('D', '15min'): ('%Y-%m-%d', '%H:%M'),
+        ('h', '15min'): ('%Y-%m-%d %H:00', '%M'),
+        ('h', 'min'): ('%Y-%m-%d %H:00', '%M'),
+    }
+
+    format_pair = (timeframes, timesteps_per_frame)
+    if format_pair not in formats:
+        raise ValueError(f'{format_pair} is not a valid format. Choose from {list(formats.keys())}')
+    period_format, step_format = formats[format_pair]
+
+    # Resample along time dimension
+    resampled = data.resample(time=timesteps_per_frame).mean()
+
+    # Apply fill if specified
+    if fill == 'ffill':
+        resampled = resampled.ffill(dim='time')
+    elif fill == 'bfill':
+        resampled = resampled.bfill(dim='time')
+
+    # Create period and step labels
+    time_values = pd.to_datetime(resampled.coords['time'].values)
+    period_labels = time_values.strftime(period_format)
+    step_labels = time_values.strftime(step_format)
+
+    # Handle special case for weekly day format
+    if '%w_%A' in step_format:
+        step_labels = pd.Series(step_labels).replace('0_Sunday', '7_Sunday').values
+
+    # Add period and step as coordinates
+    resampled = resampled.assign_coords({'timeframe': ('time', period_labels), 'timestep': ('time', step_labels)})
+
+    # Convert to multi-index and unstack
+    resampled = resampled.set_index(time=['timeframe', 'timestep'])
+    result = resampled.unstack('time')
+
+    # Reorder: timestep, timeframe, then other dimensions
+    other_dims = [d for d in result.dims if d not in ['timestep', 'timeframe']]
+    return result.transpose('timestep', 'timeframe', *other_dims)
+
+
+def _heatmap_figure(
+    data: xr.DataArray,
+    colors: ColorType = None,
+    title: str = '',
+    facet_col: str | None = None,
+    animation_frame: str | None = None,
+    facet_col_wrap: int | None = None,
+    **imshow_kwargs: Any,
+) -> go.Figure:
+    """Create heatmap figure using px.imshow.
+
+    Args:
+        data: DataArray with 2-4 dimensions. First two are heatmap axes.
+        colors: Colorscale name.
+        title: Plot title.
+        facet_col: Dimension for subplot columns.
+        animation_frame: Dimension for animation slider.
+        facet_col_wrap: Max columns before wrapping.
+        **imshow_kwargs: Additional args for px.imshow.
+
+    Returns:
+        Plotly Figure.
+    """
+    if data.size == 0:
+        return go.Figure()
+
+    colors = colors or CONFIG.Plotting.default_sequential_colorscale
+    facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+
+    imshow_args: dict[str, Any] = {
+        'img': data,
+        'color_continuous_scale': colors,
+        'title': title,
+        **imshow_kwargs,
+    }
+
+    if facet_col and facet_col in data.dims:
+        imshow_args['facet_col'] = facet_col
+        if facet_col_wrap < data.sizes[facet_col]:
+            imshow_args['facet_col_wrap'] = facet_col_wrap
+
+    if animation_frame and animation_frame in data.dims:
+        imshow_args['animation_frame'] = animation_frame
+
+    return px.imshow(**imshow_args)
 
 
 @dataclass
@@ -771,7 +891,7 @@ class StatisticsPlotAccessor:
 
         # Reshape time only if we wouldn't lose data (all extra dims fit in facet + animation)
         if reshape and 'time' in da.dims and not would_drop:
-            da = plotting.reshape_data_for_heatmap(da, reshape)
+            da = _reshape_time_for_heatmap(da, reshape)
             heatmap_dims = ['timestep', 'timeframe']
         elif has_multiple_vars:
             # Can't reshape but have multiple vars: use variable + time as heatmap axes
@@ -797,7 +917,7 @@ class StatisticsPlotAccessor:
         if has_multiple_vars:
             da = da.rename('')
 
-        fig = plotting.heatmap_with_plotly_v2(
+        fig = _heatmap_figure(
             da,
             colors=colorscale,
             facet_col=actual_facet,

@@ -8,18 +8,95 @@ This module provides the TopologyAccessor class that enables the
 from __future__ import annotations
 
 import logging
+import pathlib
 import warnings
 from itertools import chain
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    import pathlib
-
     import pyvis
 
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
+
+
+def _plot_network(
+    node_infos: dict,
+    edge_infos: dict,
+    path: str | pathlib.Path | None = None,
+    controls: bool
+    | list[
+        Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
+    ] = True,
+    show: bool = False,
+) -> pyvis.network.Network | None:
+    """Visualize network structure using PyVis.
+
+    Args:
+        node_infos: Dictionary of node information.
+        edge_infos: Dictionary of edge information.
+        path: Path to save HTML visualization.
+        controls: UI controls to add. True for all, or list of specific controls.
+        show: Whether to open in browser.
+
+    Returns:
+        Network instance, or None if pyvis not installed.
+    """
+    try:
+        from pyvis.network import Network
+    except ImportError:
+        logger.critical("Plotting the flow system network was not possible. Please install pyvis: 'pip install pyvis'")
+        return None
+
+    net = Network(directed=True, height='100%' if controls is False else '800px', font_color='white')
+
+    for node_id, node in node_infos.items():
+        net.add_node(
+            node_id,
+            label=node['label'],
+            shape={'Bus': 'circle', 'Component': 'box'}[node['class']],
+            color={'Bus': '#393E46', 'Component': '#00ADB5'}[node['class']],
+            title=node['infos'].replace(')', '\n)'),
+            font={'size': 14},
+        )
+
+    for edge in edge_infos.values():
+        net.add_edge(
+            edge['start'],
+            edge['end'],
+            label=edge['label'],
+            title=edge['infos'].replace(')', '\n)'),
+            font={'color': '#4D4D4D', 'size': 14},
+            color='#222831',
+        )
+
+    net.barnes_hut(central_gravity=0.8, spring_length=50, spring_strength=0.05, gravity=-10000)
+
+    if controls:
+        net.show_buttons(filter_=controls)
+    if not show and not path:
+        return net
+    elif path:
+        path = pathlib.Path(path) if isinstance(path, str) else path
+        net.write_html(path.as_posix())
+    elif show:
+        path = pathlib.Path('network.html')
+        net.write_html(path.as_posix())
+
+    if show:
+        try:
+            import webbrowser
+
+            worked = webbrowser.open(f'file://{path.resolve()}', 2)
+            if not worked:
+                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
+        except Exception as e:
+            logger.error(
+                f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
+            )
+
+    return net
 
 
 class TopologyAccessor:
@@ -136,11 +213,10 @@ class TopologyAccessor:
             Nodes are styled based on type (circles for buses, boxes for components)
             and annotated with node information.
         """
-        from . import plotting
         from .config import CONFIG
 
         node_infos, edge_infos = self.infos()
-        return plotting.plot_network(
+        return _plot_network(
             node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
         )
 
