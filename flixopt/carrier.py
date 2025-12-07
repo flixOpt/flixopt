@@ -156,13 +156,3 @@ class CarrierContainer(ContainerMixin['Carrier']):
     def _get_label(self, carrier: Carrier) -> str:
         """Extract name from Carrier for keying."""
         return carrier.name
-
-
-# Predefined carriers for common energy types
-# Colors from D3/Plotly palettes for professional consistency
-ELECTRICITY = Carrier(name='electricity', color='#FECB52')  # Plotly yellow - lightning
-HEAT = Carrier(name='heat', color='#D62728')  # D3 red - warmth/fire
-GAS = Carrier(name='gas', color='#1F77B4')  # D3 blue - natural gas
-HYDROGEN = Carrier(name='hydrogen', color='#9467BD')  # D3 purple - clean/future
-FUEL = Carrier(name='fuel', color='#8C564B')  # D3 brown - fossil/oil
-BIOMASS = Carrier(name='biomass', color='#2CA02C')  # D3 green - organic/renewable

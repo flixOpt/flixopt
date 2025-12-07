@@ -174,6 +174,17 @@ _DEFAULTS = MappingProxyType(
                 'compute_infeasibilities': True,
             }
         ),
+        # Default carriers - colors from D3/Plotly palettes
+        'carriers': MappingProxyType(
+            {
+                'electricity': '#FECB52',  # Yellow - lightning
+                'heat': '#D62728',  # Red - warmth/fire
+                'gas': '#1F77B4',  # Blue - natural gas
+                'hydrogen': '#9467BD',  # Purple - clean/future
+                'fuel': '#8C564B',  # Brown - fossil/oil
+                'biomass': '#2CA02C',  # Green - organic/renewable
+            }
+        ),
     }
 )
 
@@ -576,143 +587,34 @@ class CONFIG:
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
     class Carriers:
-        """Default carrier configurations for colors and units.
+        """Default carrier definitions for common energy types.
 
-        Carriers represent energy or material types (electricity, heat, gas, etc.)
-        that flow through buses. Each carrier has default color and unit settings
-        used for plotting when not overridden at the FlowSystem level.
+        Provides convenient defaults for carriers. Colors are from D3/Plotly palettes.
 
-        Predefined carriers are accessible as attributes:
-        - electricity, heat, gas, hydrogen, water, fuel, cooling, steam
+        Predefined: electricity, heat, gas, hydrogen, fuel, biomass
 
         Examples:
             ```python
             import flixopt as fx
 
             # Access predefined carriers
-            elec = fx.CONFIG.Carriers.electricity
-            heat = fx.CONFIG.Carriers.heat
+            fx.CONFIG.Carriers.electricity  # Carrier with color '#FECB52'
+            fx.CONFIG.Carriers.heat.color  # '#D62728'
 
             # Use with buses
-            bus = fx.Bus('Grid', carrier=fx.CONFIG.Carriers.electricity)
-
-            # Add a custom carrier
-            fx.CONFIG.Carriers.add(fx.Carrier('biogas', '#228B22', 'kW'))
-
-            # Access custom carrier
-            biogas = fx.CONFIG.Carriers.biogas
-
-            # Get color by name
-            fx.CONFIG.Carriers.get_color('electricity')  # '#FFCC00'
+            bus = fx.Bus('Grid', carrier='electricity')
             ```
         """
 
-        # Import here to avoid circular imports
-        from .carrier import (
-            BIOMASS,
-            ELECTRICITY,
-            FUEL,
-            GAS,
-            HEAT,
-            HYDROGEN,
-            Carrier,
-        )
+        from .carrier import Carrier
 
-        # Registry of all carriers (name -> Carrier)
-        _registry: dict[str, Carrier] = {
-            'electricity': ELECTRICITY,
-            'heat': HEAT,
-            'gas': GAS,
-            'hydrogen': HYDROGEN,
-            'fuel': FUEL,
-            'biomass': BIOMASS,
-        }
-
-        # Expose predefined carriers as class attributes
-        electricity = ELECTRICITY
-        heat = HEAT
-        gas = GAS
-        hydrogen = HYDROGEN
-        fuel = FUEL
-        biomass = BIOMASS
-
-        @classmethod
-        def add(cls, carrier: Carrier | str, color: str = '', unit: str = '') -> None:
-            """Add or update a carrier configuration.
-
-            Args:
-                carrier: Either a Carrier object or a carrier name string.
-                color: Hex color string (required if carrier is a string).
-                unit: Unit string. Defaults to 'kW'.
-
-            Examples:
-                ```python
-                # Add using Carrier object
-                fx.CONFIG.Carriers.add(fx.Carrier('biogas', '#228B22', 'kW'))
-
-                # Add using name and color (backward compatible)
-                fx.CONFIG.Carriers.add('biogas', '#228B22', 'kW')
-                ```
-            """
-            from .carrier import Carrier as CarrierClass
-
-            if isinstance(carrier, CarrierClass):
-                cls._registry[carrier.name] = carrier
-                setattr(cls, carrier.name, carrier)
-            else:
-                # Backward compatible: name, color, unit
-                if color is None:
-                    raise ValueError('color is required when adding carrier by name')
-                new_carrier = CarrierClass(carrier, color, unit)
-                cls._registry[carrier] = new_carrier
-                setattr(cls, carrier, new_carrier)
-
-        @classmethod
-        def get(cls, name: str) -> Carrier | None:
-            """Get a Carrier object by name.
-
-            Args:
-                name: Carrier name.
-
-            Returns:
-                Carrier object or None if not found.
-            """
-            return cls._registry.get(name.lower())
-
-        @classmethod
-        def get_color(cls, name: str) -> str | None:
-            """Get the default color for a carrier.
-
-            Args:
-                name: Carrier name.
-
-            Returns:
-                Hex color string or None if carrier not found.
-            """
-            carrier = cls._registry.get(name.lower())
-            return carrier.color if carrier else None
-
-        @classmethod
-        def get_unit(cls, name: str) -> str | None:
-            """Get the default unit for a carrier.
-
-            Args:
-                name: Carrier name.
-
-            Returns:
-                Unit string or None if carrier not found.
-            """
-            carrier = cls._registry.get(name.lower())
-            return carrier.unit if carrier else None
-
-        @classmethod
-        def all(cls) -> dict[str, Carrier]:
-            """Get all registered carriers.
-
-            Returns:
-                Dictionary mapping carrier names to Carrier objects.
-            """
-            return cls._registry.copy()
+        # Default carriers - created from _DEFAULTS
+        electricity: Carrier = Carrier('electricity', _DEFAULTS['carriers']['electricity'])
+        heat: Carrier = Carrier('heat', _DEFAULTS['carriers']['heat'])
+        gas: Carrier = Carrier('gas', _DEFAULTS['carriers']['gas'])
+        hydrogen: Carrier = Carrier('hydrogen', _DEFAULTS['carriers']['hydrogen'])
+        fuel: Carrier = Carrier('fuel', _DEFAULTS['carriers']['fuel'])
+        biomass: Carrier = Carrier('biomass', _DEFAULTS['carriers']['biomass'])
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -740,23 +642,15 @@ class CONFIG:
         for key, value in _DEFAULTS['plotting'].items():
             setattr(cls.Plotting, key, value)
 
-        # Reset Carriers to default predefined carriers (from carrier.py - single source of truth)
-        from .carrier import BIOMASS, ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN
+        # Reset Carriers to defaults
+        from .carrier import Carrier
 
-        cls.Carriers._registry = {
-            'electricity': ELECTRICITY,
-            'heat': HEAT,
-            'gas': GAS,
-            'hydrogen': HYDROGEN,
-            'fuel': FUEL,
-            'biomass': BIOMASS,
-        }
-        cls.Carriers.electricity = ELECTRICITY
-        cls.Carriers.heat = HEAT
-        cls.Carriers.gas = GAS
-        cls.Carriers.hydrogen = HYDROGEN
-        cls.Carriers.fuel = FUEL
-        cls.Carriers.biomass = BIOMASS
+        cls.Carriers.electricity = Carrier('electricity', _DEFAULTS['carriers']['electricity'])
+        cls.Carriers.heat = Carrier('heat', _DEFAULTS['carriers']['heat'])
+        cls.Carriers.gas = Carrier('gas', _DEFAULTS['carriers']['gas'])
+        cls.Carriers.hydrogen = Carrier('hydrogen', _DEFAULTS['carriers']['hydrogen'])
+        cls.Carriers.fuel = Carrier('fuel', _DEFAULTS['carriers']['fuel'])
+        cls.Carriers.biomass = Carrier('biomass', _DEFAULTS['carriers']['biomass'])
 
         cls.config_name = _DEFAULTS['config_name']
 
