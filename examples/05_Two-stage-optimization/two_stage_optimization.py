@@ -37,11 +37,12 @@ if __name__ == '__main__':
     gas_price = filtered_data['Gaspr.€/MWh'].to_numpy()
 
     flow_system = fx.FlowSystem(timesteps)
+    # Carriers provide automatic color assignment in plots
     flow_system.add_elements(
-        fx.Bus('Strom'),
-        fx.Bus('Fernwärme'),
-        fx.Bus('Gas'),
-        fx.Bus('Kohle'),
+        fx.Bus('Strom', carrier='electricity'),
+        fx.Bus('Fernwärme', carrier='heat'),
+        fx.Bus('Gas', carrier='gas'),
+        fx.Bus('Kohle', carrier='fuel'),
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),

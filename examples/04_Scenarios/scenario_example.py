@@ -89,7 +89,12 @@ if __name__ == '__main__':
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
-    flow_system.add_elements(fx.Bus(label='Strom'), fx.Bus(label='Fernwärme'), fx.Bus(label='Gas'))
+    # Carriers provide automatic color assignment in plots (yellow for electricity, red for heat, blue for gas)
+    flow_system.add_elements(
+        fx.Bus(label='Strom', carrier='electricity'),
+        fx.Bus(label='Fernwärme', carrier='heat'),
+        fx.Bus(label='Gas', carrier='gas'),
+    )
 
     # --- Define Effects (Objective and CO2 Emissions) ---
     # Cost effect: used as the optimization objective --> minimizing costs
