@@ -30,6 +30,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import xarray as xr
 
+from .color_processing import process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -46,8 +47,8 @@ SelectType = dict[str, Any]
 FilterType = str | list[str]
 """For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
 
-ColorType = str | list[str] | None
-"""Colorscale type for plots."""
+ColorType = str | list[str] | dict[str, str] | None
+"""Flexible color input: colorscale name, color list, label-to-color dict, or None for default."""
 
 
 def _reshape_time_for_heatmap(
@@ -270,21 +271,19 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
 
 def _create_stacked_bar(
     ds: xr.Dataset,
-    colors: dict[str, str] | None,
+    colors: ColorType,
     title: str,
     facet_col: str | None,
     facet_row: str | None,
     **plotly_kwargs: Any,
 ) -> go.Figure:
     """Create a stacked bar chart from xarray Dataset."""
-    import plotly.express as px
-
     df = _dataset_to_long_df(ds)
     if df.empty:
         return go.Figure()
     x_col = 'time' if 'time' in df.columns else df.columns[0]
     variables = df['variable'].unique().tolist()
-    color_map = {var: colors.get(var) for var in variables if colors and var in colors} or None
+    color_map = process_colors(colors, variables)
     fig = px.bar(
         df,
         x=x_col,
@@ -303,21 +302,19 @@ def _create_stacked_bar(
 
 def _create_line(
     ds: xr.Dataset,
-    colors: dict[str, str] | None,
+    colors: ColorType,
     title: str,
     facet_col: str | None,
     facet_row: str | None,
     **plotly_kwargs: Any,
 ) -> go.Figure:
     """Create a line chart from xarray Dataset."""
-    import plotly.express as px
-
     df = _dataset_to_long_df(ds)
     if df.empty:
         return go.Figure()
     x_col = 'time' if 'time' in df.columns else df.columns[0]
     variables = df['variable'].unique().tolist()
-    color_map = {var: colors.get(var) for var in variables if colors and var in colors} or None
+    color_map = process_colors(colors, variables)
     return px.line(
         df,
         x=x_col,
@@ -751,7 +748,7 @@ class StatisticsPlotAccessor:
         include: FilterType | None = None,
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         facet_row: str | None = 'scenario',
         show: bool | None = None,
@@ -765,7 +762,7 @@ class StatisticsPlotAccessor:
             include: Only include flows containing these substrings.
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
-            colors: Color overrides for flows.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display the plot.
@@ -828,7 +825,7 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         reshape: tuple[str, str] | None = ('D', 'h'),
-        colorscale: str = 'viridis',
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         animation_frame: str | None = 'scenario',
         show: bool | None = None,
@@ -845,7 +842,7 @@ class StatisticsPlotAccessor:
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
                     days × hours. Set to None to disable reshaping.
-            colorscale: Plotly colorscale name.
+            colors: Colorscale name (e.g., 'viridis', 'plasma') for heatmap coloring.
             facet_col: Dimension for subplot columns (default: 'period').
                       With multiple variables, 'variable' is used instead.
             animation_frame: Dimension for animation slider (default: 'scenario').
@@ -919,7 +916,7 @@ class StatisticsPlotAccessor:
 
         fig = _heatmap_figure(
             da,
-            colors=colorscale,
+            colors=colors,
             facet_col=actual_facet,
             animation_frame=actual_animation,
             **plotly_kwargs,
@@ -941,7 +938,7 @@ class StatisticsPlotAccessor:
         component: str | list[str] | None = None,
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         facet_row: str | None = 'scenario',
         show: bool | None = None,
@@ -955,7 +952,7 @@ class StatisticsPlotAccessor:
             component: Filter by parent component(s).
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
-            colors: Color overrides.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display.
@@ -1024,7 +1021,7 @@ class StatisticsPlotAccessor:
         timestep: int | str | None = None,
         aggregate: Literal['sum', 'mean'] = 'sum',
         select: SelectType | None = None,
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1034,7 +1031,7 @@ class StatisticsPlotAccessor:
             timestep: Specific timestep to show, or None for aggregation.
             aggregate: How to aggregate if timestep is None.
             select: xarray-style selection.
-            colors: Color overrides for flows/nodes.
+            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
             show: Whether to display.
 
         Returns:
@@ -1099,11 +1096,8 @@ class StatisticsPlotAccessor:
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
-        node_colors = [colors.get(node) if colors else None for node in node_list]
-        if any(node_colors):
-            node_colors = [c if c else 'lightgray' for c in node_colors]
-        else:
-            node_colors = None
+        color_map = process_colors(colors, node_list)
+        node_colors = [color_map[node] for node in node_list]
 
         fig = go.Figure(
             data=[
@@ -1139,7 +1133,7 @@ class StatisticsPlotAccessor:
         *,
         max_size: float | None = 1e6,
         select: SelectType | None = None,
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         facet_row: str | None = 'scenario',
         show: bool | None = None,
@@ -1150,7 +1144,7 @@ class StatisticsPlotAccessor:
         Args:
             max_size: Maximum size to include (filters defaults).
             select: xarray-style selection.
-            colors: Color overrides.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display.
@@ -1158,8 +1152,6 @@ class StatisticsPlotAccessor:
         Returns:
             PlotResult with size data.
         """
-        import plotly.express as px
-
         self._stats._require_solution()
         ds = self._stats.sizes
 
@@ -1176,7 +1168,7 @@ class StatisticsPlotAccessor:
             fig = go.Figure()
         else:
             variables = df['variable'].unique().tolist()
-            color_map = {var: colors.get(var) for var in variables if colors and var in colors} or None
+            color_map = process_colors(colors, variables)
             fig = px.bar(
                 df,
                 x='variable',
@@ -1203,7 +1195,7 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         normalize: bool = False,
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         facet_row: str | None = 'scenario',
         show: bool | None = None,
@@ -1216,7 +1208,7 @@ class StatisticsPlotAccessor:
                 Uses flow_rates from statistics.
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
-            colors: Color overrides.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets.
             facet_row: Dimension for row facets.
             show: Whether to display.
@@ -1282,7 +1274,7 @@ class StatisticsPlotAccessor:
         effect: str | None = None,
         by: Literal['component', 'contributor', 'time'] = 'component',
         select: SelectType | None = None,
-        colors: dict[str, str] | None = None,
+        colors: ColorType = None,
         facet_col: str | None = 'period',
         facet_row: str | None = 'scenario',
         show: bool | None = None,
@@ -1296,7 +1288,7 @@ class StatisticsPlotAccessor:
                     If None, plots all effects.
             by: Group by 'component', 'contributor' (individual flows), or 'time'.
             select: xarray-style selection.
-            colors: Override colors.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets (ignored if not in data).
             facet_row: Dimension for row facets (ignored if not in data).
             show: Whether to display.
@@ -1310,8 +1302,6 @@ class StatisticsPlotAccessor:
             >>> flow_system.statistics.plot.effects(by='contributor')  # By individual flows
             >>> flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
         """
-        import plotly.express as px
-
         self._stats._require_solution()
 
         # Get the appropriate effects dataset based on aspect
@@ -1387,7 +1377,7 @@ class StatisticsPlotAccessor:
         # Build color map
         if color_col and color_col in df.columns:
             color_items = df[color_col].unique().tolist()
-            color_map = {item: colors.get(item) for item in color_items if colors and item in colors} or None
+            color_map = process_colors(colors, color_items)
         else:
             color_map = None
 
