@@ -216,8 +216,14 @@ class TopologyAccessor:
         from .config import CONFIG
 
         node_infos, edge_infos = self.infos()
+        # Normalize path=False to None for _plot_network compatibility
+        normalized_path = None if path is False else path
         return _plot_network(
-            node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
+            node_infos,
+            edge_infos,
+            normalized_path,
+            controls,
+            show if show is not None else CONFIG.Plotting.default_show,
         )
 
     def start_app(self) -> None:
