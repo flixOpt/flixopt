@@ -16,7 +16,6 @@ from plotly.exceptions import PlotlyError
 logger = logging.getLogger('flixopt')
 
 # Type alias for flexible color input
-ColorType = str | list[str] | dict[str, str] | None
 ColorType = str | list[str] | dict[str, str]
 """Flexible color specification type supporting multiple input formats for visualization.
 
