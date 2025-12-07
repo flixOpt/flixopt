@@ -219,9 +219,10 @@ class ColorAccessor:
         """Get color for a carrier.
 
         Resolution order:
-        1. FlowSystem-level carrier override
-        2. CONFIG.Carriers default
-        3. None if carrier not found
+        1. Explicit carrier color override from setup()
+        2. FlowSystem-registered carrier (via add_carrier())
+        3. CONFIG.Carriers default
+        4. None if carrier not found
 
         Args:
             carrier: Carrier name.
@@ -229,12 +230,18 @@ class ColorAccessor:
         Returns:
             Color string or None if not configured.
         """
-        # Check FlowSystem override
-        if carrier in self._carrier_colors:
-            return self._carrier_colors[carrier]
+        carrier_lower = carrier.lower()
 
-        # Check CONFIG defaults
-        return CONFIG.Carriers.get_color(carrier)
+        # Check explicit color override
+        if carrier_lower in self._carrier_colors:
+            return self._carrier_colors[carrier_lower]
+
+        # Check FlowSystem-registered carriers
+        carrier_obj = self._fs.get_carrier(carrier_lower)
+        if carrier_obj:
+            return carrier_obj.color
+
+        return None
 
     def for_flow(self, label: str, context: Literal['bus', 'component']) -> str | None:
         """Get color for a flow based on plotting context.

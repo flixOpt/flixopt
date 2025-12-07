@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
+    from .carrier import Carrier
     from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
@@ -221,6 +222,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Color accessor cache - lazily initialized, persists across operations
         self._colors: ColorAccessor | None = None
+
+        # Carrier registry - local carriers override CONFIG.Carriers
+        self._carriers: dict[str, Carrier] = {}
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -875,6 +879,74 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Log registration
             element_type = type(new_element).__name__
             logger.info(f'Registered new {element_type}: {new_element.label_full}')
+
+    def add_carrier(self, carrier: Carrier) -> None:
+        """Register a custom carrier for this FlowSystem.
+
+        Custom carriers registered on the FlowSystem take precedence over
+        CONFIG.Carriers defaults when resolving colors and units for buses.
+
+        Args:
+            carrier: A Carrier object defining the carrier properties.
+
+        Examples:
+            ```python
+            import flixopt as fx
+
+            fs = fx.FlowSystem(timesteps)
+
+            # Define and register custom carriers
+            biogas = fx.Carrier('biogas', '#228B22', 'kW', 'Biogas fuel')
+            fs.add_carrier(biogas)
+
+            # Now buses can reference this carrier by name
+            bus = fx.Bus('BioGasNetwork', carrier='biogas')
+            fs.add_elements(bus)
+
+            # The carrier color will be used in plots automatically
+            ```
+        """
+        from .carrier import Carrier as CarrierClass
+
+        if not isinstance(carrier, CarrierClass):
+            raise TypeError(f'Expected Carrier object, got {type(carrier)}')
+        self._carriers[carrier.name] = carrier
+
+    def get_carrier(self, name: str) -> Carrier | None:
+        """Get a carrier by name.
+
+        Looks up carriers in this order:
+        1. Carriers registered on this FlowSystem via add_carrier()
+        2. Global carriers in CONFIG.Carriers
+
+        Args:
+            name: Carrier name (case-insensitive).
+
+        Returns:
+            Carrier object or None if not found.
+        """
+        name_lower = name.lower()
+        # Check local registry first
+        if name_lower in self._carriers:
+            return self._carriers[name_lower]
+        # Fall back to CONFIG
+        return CONFIG.Carriers.get(name_lower)
+
+    @property
+    def carriers(self) -> dict[str, Carrier]:
+        """Get all carriers available for this FlowSystem.
+
+        Returns a merged dictionary of local carriers (registered via add_carrier())
+        and global carriers from CONFIG.Carriers, with local carriers taking precedence.
+
+        Returns:
+            Dictionary mapping carrier names to Carrier objects.
+        """
+        # Start with CONFIG carriers
+        result = CONFIG.Carriers.all()
+        # Override with local carriers
+        result.update(self._carriers)
+        return result
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """

@@ -174,16 +174,6 @@ _DEFAULTS = MappingProxyType(
                 'compute_infeasibilities': True,
             }
         ),
-        'carriers': MappingProxyType(
-            {
-                'electricity': {'color': '#FFD700', 'unit': 'kW'},
-                'heat': {'color': '#FF6B6B', 'unit': 'kW_th'},
-                'gas': {'color': '#4ECDC4', 'unit': 'kW'},
-                'hydrogen': {'color': '#00CED1', 'unit': 'kW'},
-                'water': {'color': '#3498DB', 'unit': 'm³/h'},
-                'fuel': {'color': '#8B4513', 'unit': 'kW'},
-            }
-        ),
     }
 )
 
@@ -592,38 +582,114 @@ class CONFIG:
         that flow through buses. Each carrier has default color and unit settings
         used for plotting when not overridden at the FlowSystem level.
 
-        Attributes:
-            defaults: Dictionary mapping carrier names to their properties (color, unit).
+        Predefined carriers are accessible as attributes:
+        - electricity, heat, gas, hydrogen, water, fuel, cooling, steam
 
         Examples:
             ```python
-            # View default carriers
-            CONFIG.Carriers.defaults
-            # {'electricity': {'color': '#FFD700', 'unit': 'kW'}, ...}
+            import flixopt as fx
+
+            # Access predefined carriers
+            elec = fx.CONFIG.Carriers.electricity
+            heat = fx.CONFIG.Carriers.heat
+
+            # Use with buses
+            bus = fx.Bus('Grid', carrier=fx.CONFIG.Carriers.electricity)
 
             # Add a custom carrier
-            CONFIG.Carriers.add('biogas', '#228B22', 'kW')
+            fx.CONFIG.Carriers.add(fx.Carrier('biogas', '#228B22', 'kW'))
 
-            # Get color for a carrier
-            CONFIG.Carriers.get_color('electricity')  # '#FFD700'
+            # Access custom carrier
+            biogas = fx.CONFIG.Carriers.biogas
 
-            # Modify existing carrier
-            CONFIG.Carriers.defaults['electricity']['color'] = '#FFC300'
+            # Get color/unit by name
+            fx.CONFIG.Carriers.get_color('electricity')  # '#FFD700'
+            fx.CONFIG.Carriers.get_unit('heat')  # 'kW_th'
             ```
         """
 
-        defaults: dict[str, dict] = dict(_DEFAULTS['carriers'])
+        # Import here to avoid circular imports
+        from .carrier import (
+            COOLING,
+            ELECTRICITY,
+            FUEL,
+            GAS,
+            HEAT,
+            HYDROGEN,
+            STEAM,
+            WATER,
+            Carrier,
+        )
+
+        # Registry of all carriers (name -> Carrier)
+        _registry: dict[str, Carrier] = {
+            'electricity': ELECTRICITY,
+            'heat': HEAT,
+            'gas': GAS,
+            'hydrogen': HYDROGEN,
+            'water': WATER,
+            'fuel': FUEL,
+            'cooling': COOLING,
+            'steam': STEAM,
+        }
+
+        # Keep defaults dict for backward compatibility
+        defaults: dict[str, dict] = {name: {'color': c.color, 'unit': c.unit} for name, c in _registry.items()}
+
+        # Expose predefined carriers as class attributes
+        electricity = ELECTRICITY
+        heat = HEAT
+        gas = GAS
+        hydrogen = HYDROGEN
+        water = WATER
+        fuel = FUEL
+        cooling = COOLING
+        steam = STEAM
 
         @classmethod
-        def add(cls, name: str, color: str, unit: str = 'kW') -> None:
+        def add(cls, carrier: Carrier | str, color: str | None = None, unit: str = 'kW') -> None:
             """Add or update a carrier configuration.
 
             Args:
-                name: Carrier name (e.g., 'biogas', 'steam').
-                color: Hex color string (e.g., '#228B22').
-                unit: Unit string (e.g., 'kW', 'kg/h'). Defaults to 'kW'.
+                carrier: Either a Carrier object or a carrier name string.
+                color: Hex color string (required if carrier is a string).
+                unit: Unit string. Defaults to 'kW'.
+
+            Examples:
+                ```python
+                # Add using Carrier object
+                fx.CONFIG.Carriers.add(fx.Carrier('biogas', '#228B22', 'kW'))
+
+                # Add using name and color (backward compatible)
+                fx.CONFIG.Carriers.add('biogas', '#228B22', 'kW')
+                ```
             """
-            cls.defaults[name] = {'color': color, 'unit': unit}
+            from .carrier import Carrier as CarrierClass
+
+            if isinstance(carrier, CarrierClass):
+                cls._registry[carrier.name] = carrier
+                cls.defaults[carrier.name] = {'color': carrier.color, 'unit': carrier.unit}
+                setattr(cls, carrier.name, carrier)
+            else:
+                # Backward compatible: name, color, unit
+                if color is None:
+                    raise ValueError('color is required when adding carrier by name')
+                new_carrier = CarrierClass(carrier, color, unit)
+                cls._registry[carrier] = new_carrier
+                cls.defaults[carrier] = {'color': color, 'unit': unit}
+                setattr(cls, carrier, new_carrier)
+
+        @classmethod
+        def get(cls, name: str) -> Carrier | None:
+            """Get a Carrier object by name.
+
+            Args:
+                name: Carrier name.
+
+            Returns:
+                Carrier object or None if not found.
+            """
+            return cls._registry.get(name.lower())
 
         @classmethod
         def get_color(cls, name: str) -> str | None:
@@ -635,8 +701,8 @@ class CONFIG:
             Returns:
                 Hex color string or None if carrier not found.
             """
-            carrier = cls.defaults.get(name)
-            return carrier['color'] if carrier else None
+            carrier = cls._registry.get(name.lower())
+            return carrier.color if carrier else None
 
         @classmethod
         def get_unit(cls, name: str) -> str | None:
@@ -648,8 +714,17 @@ class CONFIG:
             Returns:
                 Unit string or None if carrier not found.
             """
-            carrier = cls.defaults.get(name)
-            return carrier['unit'] if carrier else None
+            carrier = cls._registry.get(name.lower())
+            return carrier.unit if carrier else None
+
+        @classmethod
+        def all(cls) -> dict[str, Carrier]:
+            """Get all registered carriers.
+
+            Returns:
+                Dictionary mapping carrier names to Carrier objects.
+            """
+            return cls._registry.copy()
 
     config_name: str = _DEFAULTS['config_name']
 
@@ -677,7 +752,28 @@ class CONFIG:
         for key, value in _DEFAULTS['plotting'].items():
             setattr(cls.Plotting, key, value)
 
-        cls.Carriers.defaults = dict(_DEFAULTS['carriers'])
+        # Reset Carriers to default predefined carriers
+        from .carrier import COOLING, ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN, STEAM, WATER
+
+        cls.Carriers._registry = {
+            'electricity': ELECTRICITY,
+            'heat': HEAT,
+            'gas': GAS,
+            'hydrogen': HYDROGEN,
+            'water': WATER,
+            'fuel': FUEL,
+            'cooling': COOLING,
+            'steam': STEAM,
+        }
+        cls.Carriers.defaults = {name: {'color': c.color, 'unit': c.unit} for name, c in cls.Carriers._registry.items()}
+        cls.Carriers.electricity = ELECTRICITY
+        cls.Carriers.heat = HEAT
+        cls.Carriers.gas = GAS
+        cls.Carriers.hydrogen = HYDROGEN
+        cls.Carriers.water = WATER
+        cls.Carriers.fuel = FUEL
+        cls.Carriers.cooling = COOLING
+        cls.Carriers.steam = STEAM
 
         cls.config_name = _DEFAULTS['config_name']
 
