@@ -17,7 +17,6 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .color_accessor import ColorAccessor
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
@@ -220,9 +219,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
-
-        # Color accessor cache - lazily initialized, persists across operations
-        self._colors: ColorAccessor | None = None
 
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
@@ -588,13 +584,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         else:
             ds.attrs['has_solution'] = False
 
-        # Include color configuration if any colors are configured
-        if self._colors is not None:
-            color_config = self._colors.to_dict()
-            # Only store if there are actual colors configured
-            if any(color_config.values()):
-                ds.attrs['color_config'] = json.dumps(color_config)
-
         # Include carriers if any are registered
         if self._carriers:
             carriers_structure = {}
@@ -686,22 +675,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 solution_ds = solution_ds.rename({'solution_time': 'time'})
             flow_system.solution = solution_ds
 
-        # Restore color configuration if present
-        if 'color_config' in reference_structure:
-            color_config = json.loads(reference_structure['color_config'])
-            flow_system._colors = ColorAccessor.from_dict(color_config, flow_system)
-
         # Restore carriers if present
         if 'carriers' in reference_structure:
             carriers_structure = json.loads(reference_structure['carriers'])
             for carrier_data in carriers_structure.values():
-                carrier = Carrier(
-                    name=carrier_data.get('name', ''),
-                    color=carrier_data.get('color', '#808080'),
-                    unit=carrier_data.get('unit', 'kW'),
-                    description=carrier_data.get('description', ''),
-                )
-                flow_system._carriers.add(carrier)
+                flow_system._carriers.add(Carrier(**carrier_data))
 
         return flow_system
 
@@ -967,31 +945,35 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             raise TypeError(f'Expected Carrier object, got {type(carrier)}')
         self._carriers.add(carrier)
 
-    def get_carrier(self, name: str) -> Carrier | None:
-        """Get a carrier by name.
-
-        Returns carriers registered on this FlowSystem. After connect_and_transform(),
-        this includes carriers auto-registered from CONFIG.Carriers for buses that
-        reference them.
+    def get_carrier(self, label: str) -> Carrier | None:
+        """Get the carrier for a bus or flow.
 
         Args:
-            name: Carrier name (case-insensitive).
+            label: Bus label (e.g., 'Fernwärme') or flow label (e.g., 'Boiler(Q_th)').
 
         Returns:
-            Carrier object or None if not found.
+            Carrier or None if not found.
+
+        Note:
+            To access a carrier directly by name, use ``flow_system.carriers['electricity']``.
         """
-        return self._carriers.get(name.lower())
+        # Try as bus label
+        bus = self.buses.get(label)
+        if bus and bus.carrier:
+            return self._carriers.get(bus.carrier.lower())
+
+        # Try as flow label
+        flow = self.flows.get(label)
+        if flow and flow.bus:
+            bus = self.buses.get(flow.bus)
+            if bus and bus.carrier:
+                return self._carriers.get(bus.carrier.lower())
+
+        return None
 
     @property
     def carriers(self) -> CarrierContainer:
-        """Get carriers registered on this FlowSystem.
-
-        Returns the CarrierContainer with carriers registered via add_carrier().
-        For combined access (local + CONFIG.Carriers), use get_carrier().
-
-        Returns:
-            CarrierContainer with locally registered carriers.
-        """
+        """Carriers registered on this FlowSystem."""
         return self._carriers
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
@@ -1198,43 +1180,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self._statistics is None:
             self._statistics = StatisticsAccessor(self)
         return self._statistics
-
-    @property
-    def colors(self) -> ColorAccessor:
-        """Access centralized color management for plots.
-
-        ColorAccessor provides a unified interface for managing colors across all
-        visualization methods with context-aware logic:
-        - Bus balance plots: colors based on components
-        - Component balance plots: colors based on bus carriers
-        - Sankey diagrams: colors based on bus carriers
-
-        Returns:
-            A cached ColorAccessor instance.
-
-        Examples:
-            Configure colors for the system:
-
-            >>> flow_system.colors.setup(
-            ...     {
-            ...         'Boiler': '#D35400',
-            ...         'CHP': '#8E44AD',
-            ...         'electricity': '#FFD700',
-            ...     }
-            ... )
-
-            Colors are automatically used in plots:
-
-            >>> flow_system.statistics.plot.balance('Electricity')  # Colors by component
-            >>> flow_system.statistics.plot.sankey()  # Buses use carrier colors
-
-            Override carrier defaults:
-
-            >>> flow_system.colors.set_carrier_color('heat', '#FF0000')
-        """
-        if self._colors is None:
-            self._colors = ColorAccessor(self)
-        return self._colors
 
     @property
     def topology(self) -> TopologyAccessor:

@@ -738,6 +738,33 @@ class StatisticsPlotAccessor:
         self._stats = statistics
         self._fs = statistics._fs
 
+    def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
+        """Build color map for balance plot.
+
+        - Bus balance: colors from component.color
+        - Component balance: colors from flow's carrier
+        """
+        is_bus = node in self._fs.buses
+        color_map = {}
+        uncolored = []
+
+        for label in flow_labels:
+            if is_bus:
+                color = self._fs.components[self._fs.flows[label].component].color
+            else:
+                carrier = self._fs.get_carrier(label)  # get_carrier accepts flow labels
+                color = carrier.color if carrier else None
+
+            if color:
+                color_map[label] = color
+            else:
+                uncolored.append(label)
+
+        if uncolored:
+            color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
+
+        return color_map
+
     def _resolve_variable_names(self, variables: list[str], solution: xr.Dataset) -> list[str]:
         """Resolve flow labels to variable names with fallback.
 
@@ -837,9 +864,9 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
 
-        # Use ColorAccessor for context-aware coloring if no colors specified
+        # Build color map from Element.color attributes if no colors specified
         if colors is None:
-            colors = self._fs.colors.get_color_map_for_balance(node, list(ds.data_vars))
+            colors = self._get_color_map_for_balance(node, list(ds.data_vars))
 
         fig = _create_stacked_bar(
             ds,
@@ -1017,8 +1044,8 @@ class StatisticsPlotAccessor:
 
             for flow in self._fs.flows.values():
                 # Get bus label (could be string or Bus object)
-                bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
-                comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+                bus_label = flow.bus
+                comp_label = flow.component.label_full
 
                 # start/end filtering based on flow direction
                 if flow.is_input_in_component:
@@ -1120,8 +1147,8 @@ class StatisticsPlotAccessor:
 
             # Determine source/target based on flow direction
             # is_input_in_component: True means bus -> component, False means component -> bus
-            bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
-            comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+            bus_label = flow.bus
+            comp_label = flow.component.label_full
 
             if flow.is_input_in_component:
                 source = bus_label
