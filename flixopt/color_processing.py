@@ -15,6 +15,57 @@ from plotly.exceptions import PlotlyError
 
 logger = logging.getLogger('flixopt')
 
+# Type alias for flexible color input
+ColorType = str | list[str] | dict[str, str]
+"""Flexible color specification type supporting multiple input formats for visualization.
+
+Color specifications can take several forms to accommodate different use cases:
+
+**Named colorscales** (str):
+    - Standard colorscales: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colorscale for energy systems)
+    - Backend-specific maps available in Plotly and Matplotlib
+
+**Color Lists** (list[str]):
+    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
+    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
+    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
+
+**Label-to-Color Mapping** (dict[str, str]):
+    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
+    - Ensures consistent colors across different plots and datasets
+    - Ideal for energy system components with semantic meaning
+
+Examples:
+    ```python
+    # Named colorscale
+    colors = 'turbo'  # Automatic color generation
+
+    # Explicit color list
+    colors = ['red', 'blue', 'green', '#FFD700']
+
+    # Component-specific mapping
+    colors = {
+        'Wind_Turbine': 'skyblue',
+        'Solar_Panel': 'gold',
+        'Natural_Gas': 'brown',
+        'Battery': 'green',
+        'Electric_Load': 'darkred'
+    }
+    ```
+
+Color Format Support:
+    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
+    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
+    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
+    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
+
+References:
+    - HTML Color Names: https://htmlcolorcodes.com/color-names/
+    - Matplotlib colorscales: https://matplotlib.org/stable/tutorials/colors/colorscales.html
+    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
+"""
+
 
 def _rgb_string_to_hex(color: str) -> str:
     """Convert Plotly RGB/RGBA string format to hex.
