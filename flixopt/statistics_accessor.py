@@ -742,8 +742,8 @@ class StatisticsPlotAccessor:
         """Resolve flow labels to variable names with fallback.
 
         For each variable:
-        1. If it's a flow label (e.g., 'Boiler(Q_th)'), try to find 'Boiler(Q_th)|flow_rate'
-        2. If not found or already a full variable name, use as-is
+        1. First check if it exists in the dataset as-is
+        2. If not found and doesn't contain '|', try adding '|flow_rate' suffix
 
         Args:
             variables: List of flow labels or variable names.
@@ -754,17 +754,19 @@ class StatisticsPlotAccessor:
         """
         resolved = []
         for var in variables:
-            if '|' not in var:
-                # Try as flow label first
+            if var in solution:
+                # Variable exists as-is, use it directly
+                resolved.append(var)
+            elif '|' not in var:
+                # Not found and no '|', try as flow label by adding |flow_rate
                 flow_rate_var = f'{var}|flow_rate'
                 if flow_rate_var in solution:
                     resolved.append(flow_rate_var)
-                elif var in solution:
-                    resolved.append(var)
                 else:
                     # Let it fail with the original name for clear error message
                     resolved.append(var)
             else:
+                # Contains '|' but not in solution - let it fail with original name
                 resolved.append(var)
         return resolved
 
