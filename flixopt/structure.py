@@ -1130,16 +1130,20 @@ class ContainerMixin(dict[str, T]):
         elements: list[T] | dict[str, T] | None = None,
         element_type_name: str = 'elements',
         truncate_repr: int | None = None,
+        item_name: str | None = None,
     ):
         """
         Args:
             elements: Initial elements to add (list or dict)
             element_type_name: Name for display (e.g., 'components', 'buses')
             truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
+            item_name: Singular name for error messages (e.g., 'Component', 'Carrier').
+                If None, inferred from first added item's class name.
         """
         super().__init__()
         self._element_type_name = element_type_name
         self._truncate_repr = truncate_repr
+        self._item_name = item_name
 
         if elements is not None:
             if isinstance(elements, dict):
@@ -1161,13 +1165,28 @@ class ContainerMixin(dict[str, T]):
         """
         raise NotImplementedError('Subclasses must implement _get_label()')
 
+    def _get_item_name(self) -> str:
+        """Get the singular item name for error messages.
+
+        Returns the explicitly set item_name, or infers from the first item's class name.
+        Falls back to 'Item' if container is empty and no name was set.
+        """
+        if self._item_name is not None:
+            return self._item_name
+        # Infer from first item's class name
+        if self:
+            first_item = next(iter(self.values()))
+            return first_item.__class__.__name__
+        return 'Item'
+
     def add(self, element: T) -> None:
         """Add an element to the container."""
         label = self._get_label(element)
         if label in self:
+            item_name = element.__class__.__name__
             raise ValueError(
-                f'Element with label "{label}" already exists in {self._element_type_name}. '
-                f'Each element must have a unique label.'
+                f'{item_name} with label "{label}" already exists in {self._element_type_name}. '
+                f'Each {item_name.lower()} must have a unique label.'
             )
         self[label] = element
 
@@ -1198,8 +1217,9 @@ class ContainerMixin(dict[str, T]):
             return super().__getitem__(label)
         except KeyError:
             # Provide helpful error with close matches suggestions
+            item_name = self._get_item_name()
             suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
-            error_msg = f'Element "{label}" not found in {self._element_type_name}.'
+            error_msg = f'{item_name} "{label}" not found in {self._element_type_name}.'
             if suggestions:
                 error_msg += f' Did you mean: {", ".join(suggestions)}?'
             else:
