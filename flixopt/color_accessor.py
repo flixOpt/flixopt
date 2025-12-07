@@ -164,8 +164,7 @@ class ColorAccessor:
         Resolution order:
         1. Explicit component color from setup()
         2. Component's color attribute (auto-assigned or user-specified)
-        3. Component's meta_data['color'] if present (legacy support)
-        4. None (let caller use default colorscale)
+        3. None (let caller use default colorscale)
 
         Args:
             label: Component label.
@@ -182,10 +181,6 @@ class ColorAccessor:
             component = self._fs.components[label]
             if component.color:
                 return component.color
-
-            # Check meta_data (legacy support)
-            if component.meta_data and 'color' in component.meta_data:
-                return component.meta_data['color']
 
         return None
 
