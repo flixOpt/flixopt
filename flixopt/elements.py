@@ -93,8 +93,9 @@ class Component(Element):
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
-        super().__init__(label, meta_data=meta_data)
+        super().__init__(label, meta_data=meta_data, color=color)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters

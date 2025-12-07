@@ -163,8 +163,9 @@ class ColorAccessor:
 
         Resolution order:
         1. Explicit component color from setup()
-        2. Component's meta_data['color'] if present
-        3. None (let caller use default colorscale)
+        2. Component's color attribute (auto-assigned or user-specified)
+        3. Component's meta_data['color'] if present (legacy support)
+        4. None (let caller use default colorscale)
 
         Args:
             label: Component label.
@@ -172,26 +173,32 @@ class ColorAccessor:
         Returns:
             Color string or None if not configured.
         """
-        # Check explicit color
+        # Check explicit color from setup()
         if label in self._component_colors:
             return self._component_colors[label]
 
-        # Check meta_data
+        # Check component's color attribute
         if label in self._fs.components:
-            meta = self._fs.components[label].meta_data
-            if meta and 'color' in meta:
-                return meta['color']
+            component = self._fs.components[label]
+            if component.color:
+                return component.color
+
+            # Check meta_data (legacy support)
+            if component.meta_data and 'color' in component.meta_data:
+                return component.meta_data['color']
 
         return None
 
     def for_bus(self, label: str) -> str | None:
         """Get color for a bus.
 
+        Buses get their color from their carrier. This provides consistent
+        coloring where all heat buses are red, electricity buses are yellow, etc.
+
         Resolution order:
         1. Explicit bus color from setup()
-        2. Bus's meta_data['color'] if present
-        3. Carrier color (if bus has carrier set)
-        4. None (let caller use default colorscale)
+        2. Carrier color (if bus has carrier set)
+        3. None (let caller use default colorscale)
 
         Args:
             label: Bus label.
@@ -199,17 +206,13 @@ class ColorAccessor:
         Returns:
             Color string or None if not configured.
         """
-        # Check explicit bus color
+        # Check explicit bus color from setup()
         if label in self._bus_colors:
             return self._bus_colors[label]
 
-        # Check meta_data
+        # Check carrier color
         if label in self._fs.buses:
             bus = self._fs.buses[label]
-            if bus.meta_data and 'color' in bus.meta_data:
-                return bus.meta_data['color']
-
-            # Check carrier
             if bus.carrier:
                 return self.for_carrier(bus.carrier)
 

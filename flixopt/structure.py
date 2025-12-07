@@ -1015,6 +1015,7 @@ class Element(Interface):
         self,
         label: str,
         meta_data: dict | None = None,
+        color: str | None = None,
         _variable_names: list[str] | None = None,
         _constraint_names: list[str] | None = None,
     ):
@@ -1022,11 +1023,13 @@ class Element(Interface):
         Args:
             label: The label of the element
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+            color: Optional color for visualizations (e.g., '#FF6B6B'). If not provided, a color will be automatically assigned during FlowSystem.connect_and_transform().
             _variable_names: Internal. Variable names for this element (populated after modeling).
             _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
+        self.color = color
         self.submodel = None
         self._flow_system: FlowSystem | None = None
         # Variable/constraint names - populated after modeling, serialized for results

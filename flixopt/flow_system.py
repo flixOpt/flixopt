@@ -856,6 +856,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self._connect_network()
         self._register_missing_carriers()
+        self._assign_element_colors()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
@@ -873,6 +874,30 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 if default_carrier is not None:
                     self._carriers[bus.carrier] = default_carrier
                     logger.debug(f"Auto-registered carrier '{bus.carrier}' from CONFIG")
+
+    def _assign_element_colors(self) -> None:
+        """Auto-assign colors to elements that don't have explicit colors set.
+
+        Components and buses without explicit colors are assigned colors from the
+        default qualitative colorscale. This ensures zero-config color support
+        while still allowing users to override with explicit colors.
+        """
+        from .color_processing import process_colors
+
+        # Collect elements without colors (components only - buses use carrier colors)
+        elements_without_colors = [comp.label for comp in self.components.values() if comp.color is None]
+
+        if not elements_without_colors:
+            return
+
+        # Generate colors from the default colorscale
+        colorscale = CONFIG.Plotting.default_qualitative_colorscale
+        color_mapping = process_colors(colorscale, elements_without_colors)
+
+        # Assign colors to elements
+        for label, color in color_mapping.items():
+            self.components[label].color = color
+            logger.debug(f"Auto-assigned color '{color}' to component '{label}'")
 
     def add_elements(self, *elements: Element) -> None:
         """
