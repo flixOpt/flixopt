@@ -4,6 +4,7 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
 import warnings
@@ -587,7 +588,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             color_config = self._colors.to_dict()
             # Only store if there are actual colors configured
             if any(color_config.values()):
-                ds.attrs['color_config'] = fx_io.dump_json(color_config)
+                ds.attrs['color_config'] = json.dumps(color_config)
 
         return ds
 
@@ -674,7 +675,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Restore color configuration if present
         if 'color_config' in reference_structure:
-            color_config = fx_io.load_json(reference_structure['color_config'])
+            color_config = json.loads(reference_structure['color_config'])
             flow_system._colors = ColorAccessor.from_dict(color_config, flow_system)
 
         return flow_system
