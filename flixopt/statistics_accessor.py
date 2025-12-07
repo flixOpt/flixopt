@@ -743,7 +743,15 @@ class StatisticsPlotAccessor:
 
         - Bus balance: colors from component.color
         - Component balance: colors from flow's carrier
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
         """
+        if not self._fs.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
         is_bus = node in self._fs.buses
         color_map = {}
         uncolored = []

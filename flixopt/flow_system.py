@@ -915,7 +915,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             element_type = type(new_element).__name__
             logger.info(f'Registered new {element_type}: {new_element.label_full}')
 
-    def add_carrier(self, carrier: Carrier) -> None:
+    def add_carriers(self, *carriers: Carrier) -> None:
         """Register a custom carrier for this FlowSystem.
 
         Custom carriers registered on the FlowSystem take precedence over
@@ -941,9 +941,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # The carrier color will be used in plots automatically
             ```
         """
-        if not isinstance(carrier, Carrier):
-            raise TypeError(f'Expected Carrier object, got {type(carrier)}')
-        self._carriers.add(carrier)
+        if self.connected_and_transformed:
+            warnings.warn(
+                'You are adding a carrier to an already connected FlowSystem. This is not recommended (But it works).',
+                stacklevel=2,
+            )
+            self._connected_and_transformed = False
+
+        for carrier in list(carriers):
+            if not isinstance(carrier, Carrier):
+                raise TypeError(f'Expected Carrier object, got {type(carrier)}')
+            self._carriers.add(carrier)
+            logger.debug(f'Adding carrier {carrier} to FlowSystem')
 
     def get_carrier(self, label: str) -> Carrier | None:
         """Get the carrier for a bus or flow.
@@ -956,7 +965,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Note:
             To access a carrier directly by name, use ``flow_system.carriers['electricity']``.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
         """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
         # Try as bus label
         bus = self.buses.get(label)
         if bus and bus.carrier:
