@@ -324,18 +324,18 @@ flixOpt provides centralized color management through the `flow_system.colors` a
 
 ### Carriers
 
-[`Carriers`][flixopt.carrier.Carrier] define energy or material types with associated colors, units, and descriptions. Built-in carriers are available in `CONFIG.Carriers`:
+[`Carriers`][flixopt.carrier.Carrier] define energy or material types with associated colors. Built-in carriers are available in `CONFIG.Carriers`:
 
-| Carrier | Default Color | Unit |
-|---------|--------------|------|
-| `electricity` | `#FFD700` (gold) | kW |
-| `heat` | `#FF6B6B` (coral) | kW_th |
-| `gas` | `#4ECDC4` (teal) | kW |
-| `hydrogen` | `#00CED1` (cyan) | kW |
-| `water` | `#3498DB` (blue) | m³/h |
-| `cooling` | `#87CEEB` (sky blue) | kW_th |
-| `steam` | `#B0C4DE` (steel) | kg/h |
-| `fuel` | `#8B4513` (brown) | kW |
+| Carrier | Color | Description |
+|---------|-------|-------------|
+| `electricity` | <span class="color-swatch" style="background:#FFCC00"></span>`#FFCC00` | Bright yellow - lightning/energy |
+| `heat` | <span class="color-swatch" style="background:#E74C3C"></span>`#E74C3C` | Red - warmth/fire |
+| `gas` | <span class="color-swatch" style="background:#3498DB"></span>`#3498DB` | Blue - natural gas flame |
+| `hydrogen` | <span class="color-swatch" style="background:#9B59B6"></span>`#9B59B6` | Purple - futuristic/clean |
+| `water` | <span class="color-swatch" style="background:#1ABC9C"></span>`#1ABC9C` | Teal - water/aqua |
+| `cooling` | <span class="color-swatch" style="background:#00BCD4"></span>`#00BCD4` | Cyan - cold/ice |
+| `steam` | <span class="color-swatch" style="background:#90A4AE"></span>`#90A4AE` | Gray-blue - steam/vapor |
+| `fuel` | <span class="color-swatch" style="background:#795548"></span>`#795548` | Brown - oil/fossil fuels |
 
 Assign carriers to buses for automatic coloring:
 

@@ -764,6 +764,26 @@ button:focus-visible {
 }
 
 /* ============================================================================
+   Color Swatches for Carrier Documentation
+   ========================================================================= */
+
+/* Inline color swatch - a small colored square */
+.color-swatch {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 0.3em;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .color-swatch {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================================================
    Footer Alignment Fix
    ========================================================================= */
 

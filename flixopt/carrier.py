@@ -159,11 +159,12 @@ class CarrierContainer(ContainerMixin['Carrier']):
 
 
 # Predefined carriers for common energy types
-ELECTRICITY = Carrier('electricity', '#FFD700', 'kW', 'Electrical power')
-HEAT = Carrier('heat', '#FF6B6B', 'kW_th', 'Thermal heat')
-GAS = Carrier('gas', '#4ECDC4', 'kW', 'Natural gas')
-HYDROGEN = Carrier('hydrogen', '#00CED1', 'kW', 'Hydrogen')
-WATER = Carrier('water', '#3498DB', 'm³/h', 'Water')
-FUEL = Carrier('fuel', '#8B4513', 'kW', 'Generic fuel')
-COOLING = Carrier('cooling', '#87CEEB', 'kW_th', 'Cooling')
-STEAM = Carrier('steam', '#B0C4DE', 'kg/h', 'Steam')
+# Colors chosen for visual distinction and intuitive associations
+ELECTRICITY = Carrier(name='electricity', color='#FFCC00')  # Bright yellow - lightning/energy
+HEAT = Carrier(name='heat', color='#E74C3C')  # Red - warmth/fire
+GAS = Carrier(name='gas', color='#3498DB')  # Blue - natural gas flame
+HYDROGEN = Carrier(name='hydrogen', color='#9B59B6')  # Purple - futuristic/clean
+WATER = Carrier(name='water', color='#1ABC9C')  # Teal - water/aqua
+FUEL = Carrier(name='fuel', color='#795548')  # Brown - oil/fossil fuels
+COOLING = Carrier(name='cooling', color='#00BCD4')  # Cyan - cold/ice
+STEAM = Carrier(name='steam', color='#90A4AE')  # Gray-blue - steam/vapor

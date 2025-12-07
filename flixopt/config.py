@@ -602,9 +602,8 @@ class CONFIG:
             # Access custom carrier
             biogas = fx.CONFIG.Carriers.biogas
 
-            # Get color/unit by name
-            fx.CONFIG.Carriers.get_color('electricity')  # '#FFD700'
-            fx.CONFIG.Carriers.get_unit('heat')  # 'kW_th'
+            # Get color by name
+            fx.CONFIG.Carriers.get_color('electricity')  # '#FFCC00'
             ```
         """
 
