@@ -328,14 +328,14 @@ flixOpt provides centralized color management through the `flow_system.colors` a
 
 | Carrier | Color | Description |
 |---------|-------|-------------|
-| `electricity` | <span class="color-swatch" style="background:#FFCC00"></span>`#FFCC00` | Bright yellow - lightning/energy |
-| `heat` | <span class="color-swatch" style="background:#E74C3C"></span>`#E74C3C` | Red - warmth/fire |
-| `gas` | <span class="color-swatch" style="background:#3498DB"></span>`#3498DB` | Blue - natural gas flame |
-| `hydrogen` | <span class="color-swatch" style="background:#9B59B6"></span>`#9B59B6` | Purple - futuristic/clean |
-| `water` | <span class="color-swatch" style="background:#1ABC9C"></span>`#1ABC9C` | Teal - water/aqua |
-| `cooling` | <span class="color-swatch" style="background:#00BCD4"></span>`#00BCD4` | Cyan - cold/ice |
-| `steam` | <span class="color-swatch" style="background:#90A4AE"></span>`#90A4AE` | Gray-blue - steam/vapor |
-| `fuel` | <span class="color-swatch" style="background:#795548"></span>`#795548` | Brown - oil/fossil fuels |
+| `electricity` | <span class="color-swatch" style="background:#FECB52"></span>`#FECB52` | Yellow - lightning/energy |
+| `heat` | <span class="color-swatch" style="background:#D62728"></span>`#D62728` | Red - warmth/fire |
+| `gas` | <span class="color-swatch" style="background:#1F77B4"></span>`#1F77B4` | Blue - natural gas |
+| `hydrogen` | <span class="color-swatch" style="background:#9467BD"></span>`#9467BD` | Purple - clean/future |
+| `fuel` | <span class="color-swatch" style="background:#8C564B"></span>`#8C564B` | Brown - fossil/oil |
+| `biomass` | <span class="color-swatch" style="background:#2CA02C"></span>`#2CA02C` | Green - organic/renewable |
+
+Colors are from the D3/Plotly palettes for professional consistency.
 
 Assign carriers to buses for automatic coloring:
 
