@@ -159,14 +159,15 @@ class Clustering:
         )
 
         # Create line plot for original data (dashed)
-        df_org_long = df_org.reset_index().melt(id_vars='index', var_name='variable', value_name='value')
-        fig = px.line(df_org_long, x='index', y='value', color='variable', color_discrete_sequence=colors)
+        index_name = df_org.index.name or 'index'
+        df_org_long = df_org.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig.data:
             trace.update(line=dict(dash='dash'))
 
         # Add aggregated data (solid lines)
-        df_agg_long = df_agg.reset_index().melt(id_vars='index', var_name='variable', value_name='value')
-        fig2 = px.line(df_agg_long, x='index', y='value', color='variable', color_discrete_sequence=colors)
+        df_agg_long = df_agg.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig2.data:
             fig.add_trace(trace)
 
