@@ -38,9 +38,10 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .carrier import Carrier
     from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
+
+from .carrier import Carrier, CarrierContainer
 
 logger = logging.getLogger('flixopt')
 
@@ -223,8 +224,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Color accessor cache - lazily initialized, persists across operations
         self._colors: ColorAccessor | None = None
 
-        # Carrier registry - local carriers override CONFIG.Carriers
-        self._carriers: dict[str, Carrier] = {}
+        # Carrier container - local carriers override CONFIG.Carriers
+        self._carriers: CarrierContainer = CarrierContainer()
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -594,6 +595,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if any(color_config.values()):
                 ds.attrs['color_config'] = json.dumps(color_config)
 
+        # Include carriers if any are registered
+        if self._carriers:
+            carriers_structure = {}
+            for name, carrier in self._carriers.items():
+                carrier_ref, _ = carrier._create_reference_structure()
+                carriers_structure[name] = carrier_ref
+            ds.attrs['carriers'] = json.dumps(carriers_structure)
+
         return ds
 
     @classmethod
@@ -681,6 +690,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if 'color_config' in reference_structure:
             color_config = json.loads(reference_structure['color_config'])
             flow_system._colors = ColorAccessor.from_dict(color_config, flow_system)
+
+        # Restore carriers if present
+        if 'carriers' in reference_structure:
+            carriers_structure = json.loads(reference_structure['carriers'])
+            for carrier_data in carriers_structure.values():
+                carrier = Carrier(
+                    name=carrier_data.get('name', ''),
+                    color=carrier_data.get('color', '#808080'),
+                    unit=carrier_data.get('unit', 'kW'),
+                    description=carrier_data.get('description', ''),
+                )
+                flow_system._carriers.add(carrier)
 
         return flow_system
 
@@ -906,11 +927,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # The carrier color will be used in plots automatically
             ```
         """
-        from .carrier import Carrier as CarrierClass
-
-        if not isinstance(carrier, CarrierClass):
+        if not isinstance(carrier, Carrier):
             raise TypeError(f'Expected Carrier object, got {type(carrier)}')
-        self._carriers[carrier.name] = carrier
+        self._carriers.add(carrier)
 
     def get_carrier(self, name: str) -> Carrier | None:
         """Get a carrier by name.
@@ -933,20 +952,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return CONFIG.Carriers.get(name_lower)
 
     @property
-    def carriers(self) -> dict[str, Carrier]:
-        """Get all carriers available for this FlowSystem.
+    def carriers(self) -> CarrierContainer:
+        """Get carriers registered on this FlowSystem.
 
-        Returns a merged dictionary of local carriers (registered via add_carrier())
-        and global carriers from CONFIG.Carriers, with local carriers taking precedence.
+        Returns the CarrierContainer with carriers registered via add_carrier().
+        For combined access (local + CONFIG.Carriers), use get_carrier().
 
         Returns:
-            Dictionary mapping carrier names to Carrier objects.
+            CarrierContainer with locally registered carriers.
         """
-        # Start with CONFIG carriers
-        result = CONFIG.Carriers.all()
-        # Override with local carriers
-        result.update(self._carriers)
-        return result
+        return self._carriers
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
