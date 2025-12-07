@@ -609,14 +609,12 @@ class CONFIG:
 
         # Import here to avoid circular imports
         from .carrier import (
-            COOLING,
+            BIOMASS,
             ELECTRICITY,
             FUEL,
             GAS,
             HEAT,
             HYDROGEN,
-            STEAM,
-            WATER,
             Carrier,
         )
 
@@ -626,27 +624,20 @@ class CONFIG:
             'heat': HEAT,
             'gas': GAS,
             'hydrogen': HYDROGEN,
-            'water': WATER,
             'fuel': FUEL,
-            'cooling': COOLING,
-            'steam': STEAM,
+            'biomass': BIOMASS,
         }
-
-        # Keep defaults dict for backward compatibility
-        defaults: dict[str, dict] = {name: {'color': c.color, 'unit': c.unit} for name, c in _registry.items()}
 
         # Expose predefined carriers as class attributes
         electricity = ELECTRICITY
         heat = HEAT
         gas = GAS
         hydrogen = HYDROGEN
-        water = WATER
         fuel = FUEL
-        cooling = COOLING
-        steam = STEAM
+        biomass = BIOMASS
 
         @classmethod
-        def add(cls, carrier: Carrier | str, color: str | None = None, unit: str = 'kW') -> None:
+        def add(cls, carrier: Carrier | str, color: str = '', unit: str = '') -> None:
             """Add or update a carrier configuration.
 
             Args:
@@ -667,7 +658,6 @@ class CONFIG:
 
             if isinstance(carrier, CarrierClass):
                 cls._registry[carrier.name] = carrier
-                cls.defaults[carrier.name] = {'color': carrier.color, 'unit': carrier.unit}
                 setattr(cls, carrier.name, carrier)
             else:
                 # Backward compatible: name, color, unit
@@ -675,7 +665,6 @@ class CONFIG:
                     raise ValueError('color is required when adding carrier by name')
                 new_carrier = CarrierClass(carrier, color, unit)
                 cls._registry[carrier] = new_carrier
-                cls.defaults[carrier] = {'color': color, 'unit': unit}
                 setattr(cls, carrier, new_carrier)
 
         @classmethod
@@ -752,27 +741,20 @@ class CONFIG:
             setattr(cls.Plotting, key, value)
 
         # Reset Carriers to default predefined carriers
-        from .carrier import COOLING, ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN, STEAM, WATER
+        from .carrier import ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN
 
         cls.Carriers._registry = {
             'electricity': ELECTRICITY,
             'heat': HEAT,
             'gas': GAS,
             'hydrogen': HYDROGEN,
-            'water': WATER,
             'fuel': FUEL,
-            'cooling': COOLING,
-            'steam': STEAM,
         }
-        cls.Carriers.defaults = {name: {'color': c.color, 'unit': c.unit} for name, c in cls.Carriers._registry.items()}
         cls.Carriers.electricity = ELECTRICITY
         cls.Carriers.heat = HEAT
         cls.Carriers.gas = GAS
         cls.Carriers.hydrogen = HYDROGEN
-        cls.Carriers.water = WATER
         cls.Carriers.fuel = FUEL
-        cls.Carriers.cooling = COOLING
-        cls.Carriers.steam = STEAM
 
         cls.config_name = _DEFAULTS['config_name']
 
