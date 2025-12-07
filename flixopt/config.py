@@ -740,8 +740,8 @@ class CONFIG:
         for key, value in _DEFAULTS['plotting'].items():
             setattr(cls.Plotting, key, value)
 
-        # Reset Carriers to default predefined carriers
-        from .carrier import ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN
+        # Reset Carriers to default predefined carriers (from carrier.py - single source of truth)
+        from .carrier import BIOMASS, ELECTRICITY, FUEL, GAS, HEAT, HYDROGEN
 
         cls.Carriers._registry = {
             'electricity': ELECTRICITY,
@@ -749,12 +749,14 @@ class CONFIG:
             'gas': GAS,
             'hydrogen': HYDROGEN,
             'fuel': FUEL,
+            'biomass': BIOMASS,
         }
         cls.Carriers.electricity = ELECTRICITY
         cls.Carriers.heat = HEAT
         cls.Carriers.gas = GAS
         cls.Carriers.hydrogen = HYDROGEN
         cls.Carriers.fuel = FUEL
+        cls.Carriers.biomass = BIOMASS
 
         cls.config_name = _DEFAULTS['config_name']
 
