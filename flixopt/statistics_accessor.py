@@ -744,6 +744,7 @@ class StatisticsPlotAccessor:
         For each variable:
         1. First check if it exists in the dataset as-is
         2. If not found and doesn't contain '|', try adding '|flow_rate' suffix
+        3. If still not found, try '|charge_state' suffix (for storages)
 
         Args:
             variables: List of flow labels or variable names.
@@ -758,10 +759,13 @@ class StatisticsPlotAccessor:
                 # Variable exists as-is, use it directly
                 resolved.append(var)
             elif '|' not in var:
-                # Not found and no '|', try as flow label by adding |flow_rate
+                # Not found and no '|', try common suffixes
                 flow_rate_var = f'{var}|flow_rate'
+                charge_state_var = f'{var}|charge_state'
                 if flow_rate_var in solution:
                     resolved.append(flow_rate_var)
+                elif charge_state_var in solution:
+                    resolved.append(charge_state_var)
                 else:
                     # Let it fail with the original name for clear error message
                     resolved.append(var)

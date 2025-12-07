@@ -203,5 +203,5 @@ if __name__ == '__main__':
     # Plot results using the statistics accessor
     flow_system.statistics.plot.heatmap('BHKW2(Q_th)')  # Flow label - auto-resolves to flow_rate
     flow_system.statistics.plot.balance('BHKW2')
-    flow_system.statistics.plot.heatmap('Speicher|charge_state')  # Full variable name for non-flow data
+    flow_system.statistics.plot.heatmap('Speicher')  # Storage label - auto-resolves to charge_state
     flow_system.statistics.plot.balance('Fernwärme')

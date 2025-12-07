@@ -207,7 +207,7 @@ if __name__ == '__main__':
     flow_system.statistics.plot.heatmap('CHP(Q_th)')  # Flow label - auto-resolves to flow_rate
     flow_system.statistics.plot.balance('Fernwärme')
     flow_system.statistics.plot.balance('Storage')
-    flow_system.statistics.plot.heatmap('Storage|charge_state')  # Full variable name for non-flow data
+    flow_system.statistics.plot.heatmap('Storage')  # Storage label - auto-resolves to charge_state
 
     # Access data as xarray Datasets
     print(flow_system.statistics.flow_rates)
