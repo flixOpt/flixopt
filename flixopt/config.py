@@ -818,7 +818,7 @@ class CONFIG:
         cls.Logging.enable_console('SUCCESS')
 
         # Disable solver console output (too verbose for notebooks)
-        cls.Solving.log_to_console = False
+        cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
 
         return cls
