@@ -7,9 +7,10 @@ and metadata across visualizations.
 
 from __future__ import annotations
 
-from .structure import ContainerMixin, Interface
+from .structure import ContainerMixin, Interface, register_class_for_io
 
 
+@register_class_for_io
 class Carrier(Interface):
     """Definition of an energy or material carrier type.
 

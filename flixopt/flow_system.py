@@ -679,7 +679,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if 'carriers' in reference_structure:
             carriers_structure = json.loads(reference_structure['carriers'])
             for carrier_data in carriers_structure.values():
-                flow_system._carriers.add(Carrier(**carrier_data))
+                carrier = cls._resolve_reference_structure(carrier_data, {})
+                flow_system._carriers.add(carrier)
 
         return flow_system
 
