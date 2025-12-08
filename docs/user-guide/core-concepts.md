@@ -180,6 +180,55 @@ flow_system.statistics.plot.balance('HeatBus')
 | **Effect** | Metric to track/optimize | Costs, emissions, energy use |
 | **FlowSystem** | Complete model | Your entire system |
 
+## FlowSystem API at a Glance
+
+The `FlowSystem` is the central object in flixOpt. After building your model, all operations are accessed through the FlowSystem and its **accessors**:
+
+```python
+flow_system = fx.FlowSystem(timesteps)
+flow_system.add_elements(...)
+
+# Optimize
+flow_system.optimize(solver)
+
+# Access results
+flow_system.solution                    # Raw xarray Dataset
+flow_system.statistics.flow_hours       # Aggregated statistics
+flow_system.statistics.plot.balance()   # Visualization
+
+# Transform (returns new FlowSystem)
+fs_subset = flow_system.transform.sel(time=slice(...))
+
+# Inspect structure
+flow_system.topology.plot()
+```
+
+### Accessor Overview
+
+| Accessor | Purpose | Key Methods |
+|----------|---------|-------------|
+| **`solution`** | Raw optimization results | xarray Dataset with all variables |
+| **`statistics`** | Aggregated data | `flow_rates`, `flow_hours`, `sizes`, `charge_states`, `total_effects` |
+| **`statistics.plot`** | Visualization | `balance()`, `heatmap()`, `sankey()`, `effects()`, `storage()` |
+| **`transform`** | Create modified copies | `sel()`, `isel()`, `resample()`, `cluster()` |
+| **`topology`** | Network structure | `plot()`, `start_app()`, `infos()` |
+
+### Element Access
+
+Access elements directly from the FlowSystem:
+
+```python
+# Access by label
+flow_system.components['Boiler']        # Get a component
+flow_system.buses['Heat']               # Get a bus
+flow_system.flows['Boiler(Q_th)']       # Get a flow
+flow_system.effects['costs']            # Get an effect
+
+# Element-specific solutions
+flow_system.components['Boiler'].solution
+flow_system.flows['Boiler(Q_th)'].solution
+```
+
 ## Beyond Energy Systems
 
 While our example used a heating system, flixOpt works for any flow-based optimization:
