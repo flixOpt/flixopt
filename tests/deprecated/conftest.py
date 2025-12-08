@@ -215,10 +215,10 @@ class Converters:
             """Piecewise converter from flow_system_piecewise_conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -235,10 +235,10 @@ class Converters:
             """Segments converter with time-varying piecewise conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
