@@ -922,7 +922,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         CONFIG.Carriers defaults when resolving colors and units for buses.
 
         Args:
-            carrier: A Carrier object defining the carrier properties.
+            carriers: Carrier objects defining the carrier properties.
 
         Examples:
             ```python
