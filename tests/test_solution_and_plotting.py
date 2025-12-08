@@ -601,3 +601,118 @@ class TestExportFunctionality:
         plotting.export_figure((fig, ax), default_path=png_path, save=True, show=False)
         assert png_path.exists()
         plt.close(fig)
+
+
+# ============================================================================
+# SANKEY DIAGRAM TESTS
+# ============================================================================
+
+
+class TestSankeyDiagram:
+    """Tests for Sankey diagram functionality."""
+
+    def test_sankey_flow_hours_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with flow_hours mode (default)."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        assert 'value' in result.data
+        assert 'source' in result.data.coords
+        assert 'target' in result.data.coords
+        assert len(result.data.link) > 0
+
+    def test_sankey_peak_flow_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with peak_flow mode."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='peak_flow', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        assert len(result.data.link) > 0
+
+    def test_sankey_sizes_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with sizes mode shows fixed sizes."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='sizes', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        # Should have some flows with sizes
+        assert len(result.data.link) > 0
+
+    def test_sankey_sizes_max_size_filter(self, simple_flow_system, highs_solver):
+        """Test that max_size parameter filters large sizes."""
+        simple_flow_system.optimize(highs_solver)
+
+        # Get all sizes (no filter)
+        result_all = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=None, show=False)
+
+        # Get filtered sizes
+        result_filtered = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=100, show=False)
+
+        # Filtered should have fewer or equal links
+        assert len(result_filtered.data.link) <= len(result_all.data.link)
+
+    def test_sankey_effects_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with effects mode."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        # Should have component -> effect links
+        assert len(result.data.link) > 0
+        # Effects should appear in targets with bracket notation
+        targets = list(result.data.target.values)
+        assert any('[' in str(t) for t in targets), 'Effects should appear as [effect_name] in targets'
+
+    def test_sankey_effects_includes_costs_and_co2(self, simple_flow_system, highs_solver):
+        """Test that effects mode includes both costs and CO2."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+
+        targets = [str(t) for t in result.data.target.values]
+        # Should have at least costs effect
+        assert '[costs]' in targets, 'Should include costs effect'
+
+    def test_sankey_with_timestep_selection(self, simple_flow_system, highs_solver):
+        """Test Sankey with specific timestep."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(timestep=0, show=False)
+
+        assert result.figure is not None
+        assert len(result.data.link) > 0
+
+    def test_sankey_with_mean_aggregate(self, simple_flow_system, highs_solver):
+        """Test Sankey with mean aggregation."""
+        simple_flow_system.optimize(highs_solver)
+
+        result_sum = simple_flow_system.statistics.plot.sankey(aggregate='sum', show=False)
+        result_mean = simple_flow_system.statistics.plot.sankey(aggregate='mean', show=False)
+
+        # Both should produce valid results
+        assert result_sum.figure is not None
+        assert result_mean.figure is not None
+        # Mean values should be smaller than sum values
+        sum_total = sum(result_sum.data.value.values)
+        mean_total = sum(result_mean.data.value.values)
+        assert mean_total < sum_total, 'Mean should produce smaller values than sum'
+
+    def test_sankey_returns_plot_result(self, simple_flow_system, highs_solver):
+        """Test that sankey returns PlotResult with figure and data."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(show=False)
+
+        # Check PlotResult structure
+        assert hasattr(result, 'figure')
+        assert hasattr(result, 'data')
+        assert isinstance(result.data, xr.Dataset)
