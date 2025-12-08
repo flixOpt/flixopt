@@ -1271,12 +1271,16 @@ class StatisticsPlotAccessor:
             if abs(value) < min_value:
                 continue
 
+            # flow.bus and flow.component are already strings (bus label, component label_full)
+            bus_label = flow.bus
+            comp_label = flow.component
+
             if flow.is_input_in_component:
-                source = flow.bus
-                target = flow.component
+                source = bus_label
+                target = comp_label
             else:
-                source = flow.component
-                target = flow.bus
+                source = comp_label
+                target = bus_label
 
             nodes.add(source)
             nodes.add(target)
@@ -1379,12 +1383,14 @@ class StatisticsPlotAccessor:
             nodes, links = self._build_sankey_links(ds)
             fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
 
+            n_links = len(links['value'])
             sankey_ds = xr.Dataset(
                 {'value': ('link', links['value'])},
                 coords={
-                    'link': links['label'],
+                    'link': range(n_links),
                     'source': ('link', links['source']),
                     'target': ('link', links['target']),
+                    'label': ('link', links['label']),
                 },
             )
 
