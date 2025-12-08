@@ -1155,45 +1155,96 @@ class StatisticsPlotAccessor:
 
         return ds, title
 
-    def _prepare_effects_sankey_data(
+    def _build_effects_sankey(
         self,
-        effect: str,
         select: SelectType | None,
-    ) -> tuple[xr.Dataset, str]:
-        """Prepare effects data for Sankey diagram.
+        colors: ColorType | None,
+        **plotly_kwargs: Any,
+    ) -> tuple[go.Figure, xr.Dataset]:
+        """Build Sankey diagram showing contributions from components to effects.
+
+        Creates a Sankey with:
+        - Left side: Components (grouped by type)
+        - Right side: Effects (costs, CO2, etc.)
+        - Links: Contributions from each component to each effect
 
         Args:
-            effect: Effect name to display (e.g., 'costs', 'CO2').
             select: xarray-style selection.
+            colors: Color specification for nodes.
+            **plotly_kwargs: Additional Plotly layout arguments.
 
         Returns:
-            Tuple of (Dataset with flow labels as variables, title string).
+            Tuple of (Plotly Figure, Dataset with link data).
         """
         total_effects = self._stats.total_effects
-        if effect not in total_effects:
-            available = list(total_effects.data_vars)
-            raise ValueError(f"Effect '{effect}' not found. Available effects: {available}")
 
-        effect_data = total_effects[effect]
-        effect_data = _apply_selection(effect_data, select)
+        # Collect all links: component -> effect
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
 
-        # Sum over any remaining dimensions (period, scenario)
-        for dim in ['period', 'scenario']:
-            if dim in effect_data.dims:
-                effect_data = effect_data.sum(dim=dim)
+        for effect_name in total_effects.data_vars:
+            effect_data = total_effects[effect_name]
+            effect_data = _apply_selection(effect_data, select)
 
-        # Extract flow-related contributors and create a Dataset with flow labels as variables
-        flow_labels = list(self._fs.flows.keys())
-        contributors = effect_data.coords['contributor'].values
+            # Sum over any remaining dimensions
+            for dim in ['period', 'scenario']:
+                if dim in effect_data.dims:
+                    effect_data = effect_data.sum(dim=dim)
 
-        result = {}
-        for flow_label in flow_labels:
-            if flow_label in contributors:
-                value = float(effect_data.sel(contributor=flow_label).values)
-                if abs(value) > 1e-6:
-                    result[flow_label] = xr.DataArray(value)
+            contributors = effect_data.coords['contributor'].values
+            components = effect_data.coords['component'].values
 
-        return xr.Dataset(result), f'{effect.capitalize()} per Flow'
+            for contributor, component in zip(contributors, components, strict=False):
+                value = float(effect_data.sel(contributor=contributor).values)
+                if not np.isfinite(value) or abs(value) < 1e-6:
+                    continue
+
+                # Use component as source node, effect as target
+                source = str(component)
+                target = f'[{effect_name}]'  # Bracket notation to distinguish effects
+
+                nodes.add(source)
+                nodes.add(target)
+                links['source'].append(source)
+                links['target'].append(target)
+                links['value'].append(abs(value))
+                links['label'].append(f'{contributor} → {effect_name}: {value:.2f}')
+
+        # Create figure
+        node_list = list(nodes)
+        node_indices = {n: i for i, n in enumerate(node_list)}
+
+        color_map = process_colors(colors, node_list)
+        node_colors = [color_map[node] for node in node_list]
+
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=15, thickness=20, line=dict(color='black', width=0.5), label=node_list, color=node_colors
+                    ),
+                    link=dict(
+                        source=[node_indices[s] for s in links['source']],
+                        target=[node_indices[t] for t in links['target']],
+                        value=links['value'],
+                        label=links['label'],
+                    ),
+                )
+            ]
+        )
+        fig.update_layout(title='Effect Contributions by Component', **plotly_kwargs)
+
+        sankey_ds = xr.Dataset(
+            {'value': ('link', links['value'])},
+            coords={
+                'link': range(len(links['value'])),
+                'source': ('link', links['source']),
+                'target': ('link', links['target']),
+                'label': ('link', links['label']),
+            },
+        )
+
+        return fig, sankey_ds
 
     def _build_sankey_links(
         self,
@@ -1283,8 +1334,7 @@ class StatisticsPlotAccessor:
     def sankey(
         self,
         *,
-        mode: Literal['flow_hours', 'sizes', 'peak_flow'] = 'flow_hours',
-        effect: str | None = None,
+        mode: Literal['flow_hours', 'sizes', 'peak_flow', 'effects'] = 'flow_hours',
         timestep: int | str | None = None,
         aggregate: Literal['sum', 'mean'] = 'sum',
         select: SelectType | None = None,
@@ -1299,8 +1349,7 @@ class StatisticsPlotAccessor:
                 - 'flow_hours': Energy/material amounts (default)
                 - 'sizes': Investment capacities
                 - 'peak_flow': Maximum flow rates
-            effect: Effect name to display instead of mode (e.g., 'costs', 'CO2').
-                If provided, shows effect contributions per flow. Overrides mode.
+                - 'effects': Component contributions to all effects (costs, CO2, etc.)
             timestep: Specific timestep to show, or None for aggregation (flow_hours only).
             aggregate: How to aggregate if timestep is None ('sum' or 'mean', flow_hours only).
             select: xarray-style selection.
@@ -1318,25 +1367,26 @@ class StatisticsPlotAccessor:
             >>> flow_system.statistics.plot.sankey(mode='sizes')
             >>> # Show peak flow rates
             >>> flow_system.statistics.plot.sankey(mode='peak_flow')
-            >>> # Show costs per flow
-            >>> flow_system.statistics.plot.sankey(effect='costs')
-            >>> # Show CO2 emissions per flow
-            >>> flow_system.statistics.plot.sankey(effect='CO2')
+            >>> # Show effect contributions (components -> effects like costs, CO2)
+            >>> flow_system.statistics.plot.sankey(mode='effects')
         """
         self._stats._require_solution()
 
-        if effect is not None:
-            ds, title = self._prepare_effects_sankey_data(effect, select)
+        if mode == 'effects':
+            fig, sankey_ds = self._build_effects_sankey(select, colors, **plotly_kwargs)
         else:
             ds, title = self._prepare_sankey_data(mode, timestep, aggregate, select)
+            nodes, links = self._build_sankey_links(ds)
+            fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
 
-        nodes, links = self._build_sankey_links(ds)
-        fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
-
-        sankey_ds = xr.Dataset(
-            {'value': ('link', links['value'])},
-            coords={'link': links['label'], 'source': ('link', links['source']), 'target': ('link', links['target'])},
-        )
+            sankey_ds = xr.Dataset(
+                {'value': ('link', links['value'])},
+                coords={
+                    'link': links['label'],
+                    'source': ('link', links['source']),
+                    'target': ('link', links['target']),
+                },
+            )
 
         if show is None:
             show = CONFIG.Plotting.default_show
