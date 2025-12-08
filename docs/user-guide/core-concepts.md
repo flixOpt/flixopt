@@ -31,6 +31,17 @@ $$\sum inputs = \sum outputs$$
 
 This balance constraint is what makes your model physically meaningful — energy can't appear or disappear.
 
+### Carriers
+
+Buses can be assigned a **carrier** — a type of energy or material (electricity, heat, gas, etc.). Carriers enable automatic coloring in plots and help organize your system semantically:
+
+```python
+heat_bus = fx.Bus('HeatNetwork', carrier='heat')  # Uses default heat color
+elec_bus = fx.Bus('Grid', carrier='electricity')
+```
+
+See [Color Management](results-plotting.md#color-management) for details.
+
 ## Flows: What Moves Between Elements
 
 A [`Flow`][flixopt.elements.Flow] represents the movement of energy or material. Every flow connects a component to a bus, with a defined direction.

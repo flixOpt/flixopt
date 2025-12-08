@@ -4,6 +4,7 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
 import warnings
@@ -38,6 +39,8 @@ if TYPE_CHECKING:
 
     from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
+
+from .carrier import Carrier, CarrierContainer
 
 logger = logging.getLogger('flixopt')
 
@@ -216,6 +219,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
+
+        # Carrier container - local carriers override CONFIG.Carriers
+        self._carriers: CarrierContainer = CarrierContainer()
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -578,6 +584,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         else:
             ds.attrs['has_solution'] = False
 
+        # Include carriers if any are registered
+        if self._carriers:
+            carriers_structure = {}
+            for name, carrier in self._carriers.items():
+                carrier_ref, _ = carrier._create_reference_structure()
+                carriers_structure[name] = carrier_ref
+            ds.attrs['carriers'] = json.dumps(carriers_structure)
+
         return ds
 
     @classmethod
@@ -660,6 +674,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if 'solution_time' in solution_ds.dims:
                 solution_ds = solution_ds.rename({'solution_time': 'time'})
             flow_system.solution = solution_ds
+
+        # Restore carriers if present
+        if 'carriers' in reference_structure:
+            carriers_structure = json.loads(reference_structure['carriers'])
+            for carrier_data in carriers_structure.values():
+                carrier = cls._resolve_reference_structure(carrier_data, {})
+                flow_system._carriers.add(carrier)
 
         return flow_system
 
@@ -813,6 +834,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return
 
         self._connect_network()
+        self._register_missing_carriers()
+        self._assign_element_colors()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
@@ -820,6 +843,40 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._validate_system_integrity()
 
         self._connected_and_transformed = True
+
+    def _register_missing_carriers(self) -> None:
+        """Auto-register carriers from CONFIG for buses that reference unregistered carriers."""
+        for bus in self.buses.values():
+            if bus.carrier and bus.carrier not in self._carriers:
+                # Try to get from CONFIG defaults
+                default_carrier = getattr(CONFIG.Carriers, bus.carrier, None)
+                if default_carrier is not None:
+                    self._carriers[bus.carrier] = default_carrier
+                    logger.debug(f"Auto-registered carrier '{bus.carrier}' from CONFIG")
+
+    def _assign_element_colors(self) -> None:
+        """Auto-assign colors to elements that don't have explicit colors set.
+
+        Components and buses without explicit colors are assigned colors from the
+        default qualitative colorscale. This ensures zero-config color support
+        while still allowing users to override with explicit colors.
+        """
+        from .color_processing import process_colors
+
+        # Collect elements without colors (components only - buses use carrier colors)
+        elements_without_colors = [comp.label for comp in self.components.values() if comp.color is None]
+
+        if not elements_without_colors:
+            return
+
+        # Generate colors from the default colorscale
+        colorscale = CONFIG.Plotting.default_qualitative_colorscale
+        color_mapping = process_colors(colorscale, elements_without_colors)
+
+        # Assign colors to elements
+        for label, color in color_mapping.items():
+            self.components[label].color = color
+            logger.debug(f"Auto-assigned color '{color}' to component '{label}'")
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -858,6 +915,84 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Log registration
             element_type = type(new_element).__name__
             logger.info(f'Registered new {element_type}: {new_element.label_full}')
+
+    def add_carriers(self, *carriers: Carrier) -> None:
+        """Register a custom carrier for this FlowSystem.
+
+        Custom carriers registered on the FlowSystem take precedence over
+        CONFIG.Carriers defaults when resolving colors and units for buses.
+
+        Args:
+            carrier: A Carrier object defining the carrier properties.
+
+        Examples:
+            ```python
+            import flixopt as fx
+
+            fs = fx.FlowSystem(timesteps)
+
+            # Define and register custom carriers
+            biogas = fx.Carrier('biogas', '#228B22', 'kW', 'Biogas fuel')
+            fs.add_carrier(biogas)
+
+            # Now buses can reference this carrier by name
+            bus = fx.Bus('BioGasNetwork', carrier='biogas')
+            fs.add_elements(bus)
+
+            # The carrier color will be used in plots automatically
+            ```
+        """
+        if self.connected_and_transformed:
+            warnings.warn(
+                'You are adding a carrier to an already connected FlowSystem. This is not recommended (But it works).',
+                stacklevel=2,
+            )
+            self._connected_and_transformed = False
+
+        for carrier in list(carriers):
+            if not isinstance(carrier, Carrier):
+                raise TypeError(f'Expected Carrier object, got {type(carrier)}')
+            self._carriers.add(carrier)
+            logger.debug(f'Adding carrier {carrier} to FlowSystem')
+
+    def get_carrier(self, label: str) -> Carrier | None:
+        """Get the carrier for a bus or flow.
+
+        Args:
+            label: Bus label (e.g., 'Fernwärme') or flow label (e.g., 'Boiler(Q_th)').
+
+        Returns:
+            Carrier or None if not found.
+
+        Note:
+            To access a carrier directly by name, use ``flow_system.carriers['electricity']``.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        # Try as bus label
+        bus = self.buses.get(label)
+        if bus and bus.carrier:
+            return self._carriers.get(bus.carrier.lower())
+
+        # Try as flow label
+        flow = self.flows.get(label)
+        if flow and flow.bus:
+            bus = self.buses.get(flow.bus)
+            if bus and bus.carrier:
+                return self._carriers.get(bus.carrier.lower())
+
+        return None
+
+    @property
+    def carriers(self) -> CarrierContainer:
+        """Carriers registered on this FlowSystem."""
+        return self._carriers
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """

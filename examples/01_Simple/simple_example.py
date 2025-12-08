@@ -21,7 +21,12 @@ if __name__ == '__main__':
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
-    flow_system.add_elements(fx.Bus(label='Strom'), fx.Bus(label='Fernwärme'), fx.Bus(label='Gas'))
+    # Carriers provide automatic color assignment in plots (yellow for electricity, red for heat, etc.)
+    flow_system.add_elements(
+        fx.Bus(label='Strom', carrier='electricity'),
+        fx.Bus(label='Fernwärme', carrier='heat'),
+        fx.Bus(label='Gas', carrier='gas'),
+    )
 
     # --- Define Effects (Objective and CO2 Emissions) ---
     # Cost effect: used as the optimization objective --> minimizing costs
@@ -109,13 +114,14 @@ if __name__ == '__main__':
     # Plotting through statistics accessor - returns PlotResult with .data and .figure
     flow_system.statistics.plot.balance('Fernwärme')
     flow_system.statistics.plot.balance('Storage')
-    flow_system.statistics.plot.heatmap('CHP(Q_th)|flow_rate')
-    flow_system.statistics.plot.heatmap('Storage|charge_state')
+    flow_system.statistics.plot.heatmap('CHP(Q_th)')
+    flow_system.statistics.plot.heatmap('Storage')
+    flow_system.statistics.plot.heatmap('Storage')
 
     # Access data as xarray Datasets
     print(flow_system.statistics.flow_rates)
     print(flow_system.statistics.charge_states)
 
     # Duration curve and effects analysis
-    flow_system.statistics.plot.duration_curve('Boiler(Q_th)|flow_rate')
+    flow_system.statistics.plot.duration_curve('Boiler(Q_th)')
     print(flow_system.statistics.temporal_effects)

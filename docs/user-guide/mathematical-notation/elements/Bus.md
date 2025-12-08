@@ -2,6 +2,29 @@
 
 A Bus is where flows meet and must balance — inputs equal outputs at every timestep.
 
+## Carriers
+
+Buses can optionally be assigned a **carrier** — a type of energy or material (e.g., electricity, heat, gas). Carriers enable:
+
+- **Automatic coloring** in plots based on energy type
+- **Unit tracking** for better result visualization
+- **Semantic grouping** of buses by type
+
+```python
+# Assign a carrier by name (uses CONFIG.Carriers defaults)
+heat_bus = fx.Bus('HeatNetwork', carrier='heat')
+elec_bus = fx.Bus('Grid', carrier='electricity')
+
+# Or register custom carriers on the FlowSystem
+biogas = fx.Carrier('biogas', color='#228B22', unit='kW', description='Biogas fuel')
+flow_system.add_carrier(biogas)
+gas_bus = fx.Bus('BiogasNetwork', carrier='biogas')
+```
+
+See [Color Management](../../../user-guide/results-plotting.md#color-management) for more on how carriers affect visualization.
+
+---
+
 ## Basic: Balance Equation
 
 $$

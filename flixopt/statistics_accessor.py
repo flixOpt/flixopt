@@ -738,6 +738,77 @@ class StatisticsPlotAccessor:
         self._stats = statistics
         self._fs = statistics._fs
 
+    def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
+        """Build color map for balance plot.
+
+        - Bus balance: colors from component.color
+        - Component balance: colors from flow's carrier
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self._fs.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        is_bus = node in self._fs.buses
+        color_map = {}
+        uncolored = []
+
+        for label in flow_labels:
+            if is_bus:
+                color = self._fs.components[self._fs.flows[label].component].color
+            else:
+                carrier = self._fs.get_carrier(label)  # get_carrier accepts flow labels
+                color = carrier.color if carrier else None
+
+            if color:
+                color_map[label] = color
+            else:
+                uncolored.append(label)
+
+        if uncolored:
+            color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
+
+        return color_map
+
+    def _resolve_variable_names(self, variables: list[str], solution: xr.Dataset) -> list[str]:
+        """Resolve flow labels to variable names with fallback.
+
+        For each variable:
+        1. First check if it exists in the dataset as-is
+        2. If not found and doesn't contain '|', try adding '|flow_rate' suffix
+        3. If still not found, try '|charge_state' suffix (for storages)
+
+        Args:
+            variables: List of flow labels or variable names.
+            solution: The solution dataset to check variable existence.
+
+        Returns:
+            List of resolved variable names.
+        """
+        resolved = []
+        for var in variables:
+            if var in solution:
+                # Variable exists as-is, use it directly
+                resolved.append(var)
+            elif '|' not in var:
+                # Not found and no '|', try common suffixes
+                flow_rate_var = f'{var}|flow_rate'
+                charge_state_var = f'{var}|charge_state'
+                if flow_rate_var in solution:
+                    resolved.append(flow_rate_var)
+                elif charge_state_var in solution:
+                    resolved.append(charge_state_var)
+                else:
+                    # Let it fail with the original name for clear error message
+                    resolved.append(var)
+            else:
+                # Contains '|' but not in solution - let it fail with original name
+                resolved.append(var)
+        return resolved
+
     def balance(
         self,
         node: str,
@@ -801,6 +872,10 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
 
+        # Build color map from Element.color attributes if no colors specified
+        if colors is None:
+            colors = self._get_color_map_for_balance(node, list(ds.data_vars))
+
         fig = _create_stacked_bar(
             ds,
             colors=colors,
@@ -836,7 +911,9 @@ class StatisticsPlotAccessor:
         reshaping is skipped and variables are shown on the y-axis with time on x-axis.
 
         Args:
-            variables: Variable name(s) from solution.
+            variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
+                are automatically resolved to 'Boiler(Q_th)|flow_rate'. Full variable
+                names like 'Storage|charge_state' are used as-is.
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
                     days × hours. Set to None to disable reshaping.
@@ -856,7 +933,10 @@ class StatisticsPlotAccessor:
         if isinstance(variables, str):
             variables = [variables]
 
-        ds = solution[variables]
+        # Resolve flow labels to variable names
+        resolved_variables = self._resolve_variable_names(variables, solution)
+
+        ds = solution[resolved_variables]
         ds = _apply_selection(ds, select)
 
         # Stack variables into single DataArray
@@ -972,8 +1052,8 @@ class StatisticsPlotAccessor:
 
             for flow in self._fs.flows.values():
                 # Get bus label (could be string or Bus object)
-                bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
-                comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+                bus_label = flow.bus
+                comp_label = flow.component.label_full
 
                 # start/end filtering based on flow direction
                 if flow.is_input_in_component:
@@ -1075,8 +1155,8 @@ class StatisticsPlotAccessor:
 
             # Determine source/target based on flow direction
             # is_input_in_component: True means bus -> component, False means component -> bus
-            bus_label = flow.bus if isinstance(flow.bus, str) else flow.bus.label
-            comp_label = flow.component.label if hasattr(flow.component, 'label') else str(flow.component)
+            bus_label = flow.bus
+            comp_label = flow.component.label_full
 
             if flow.is_input_in_component:
                 source = bus_label
@@ -1203,8 +1283,10 @@ class StatisticsPlotAccessor:
         """Plot load duration curves (sorted time series).
 
         Args:
-            variables: Flow label(s) to plot (e.g., 'Boiler(Q_th)').
-                Uses flow_rates from statistics.
+            variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
+                are looked up in flow_rates. Full variable names like 'Boiler(Q_th)|flow_rate'
+                are stripped to their flow label. Other variables (e.g., 'Storage|charge_state')
+                are looked up in the solution directly.
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
@@ -1215,13 +1297,36 @@ class StatisticsPlotAccessor:
         Returns:
             PlotResult with sorted duration curve data.
         """
-        self._stats._require_solution()
+        solution = self._stats._require_solution()
 
         if isinstance(variables, str):
             variables = [variables]
 
-        # Use flow_rates from statistics (already has clean labels without |flow_rate suffix)
-        ds = self._stats.flow_rates[variables]
+        # Normalize variable names: strip |flow_rate suffix for flow_rates lookup
+        flow_rates = self._stats.flow_rates
+        normalized_vars = []
+        for var in variables:
+            # Strip |flow_rate suffix if present
+            if var.endswith('|flow_rate'):
+                var = var[: -len('|flow_rate')]
+            normalized_vars.append(var)
+
+        # Try to get from flow_rates first, fall back to solution for non-flow variables
+        ds_parts = []
+        for var in normalized_vars:
+            if var in flow_rates:
+                ds_parts.append(flow_rates[[var]])
+            elif var in solution:
+                ds_parts.append(solution[[var]])
+            else:
+                # Try with |flow_rate suffix as last resort
+                flow_rate_var = f'{var}|flow_rate'
+                if flow_rate_var in solution:
+                    ds_parts.append(solution[[flow_rate_var]].rename({flow_rate_var: var}))
+                else:
+                    raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
+
+        ds = xr.merge(ds_parts)
         ds = _apply_selection(ds, select)
 
         if 'time' not in ds.dims:
