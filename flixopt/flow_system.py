@@ -525,7 +525,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         new_scenario_index = dataset.indexes.get('scenario')
         if new_scenario_index is None or len(new_scenario_index) <= 1:
-            dataset['scenario_weights'] = None
+            dataset.attrs.pop('scenario_weights')
 
         return dataset
 
