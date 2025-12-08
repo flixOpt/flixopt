@@ -1220,15 +1220,12 @@ class StatisticsPlotAccessor:
             if abs(value) < min_value:
                 continue
 
-            bus_label = flow.bus
-            comp_label = flow.component.label_full
-
             if flow.is_input_in_component:
-                source = bus_label
-                target = comp_label
+                source = flow.bus
+                target = flow.component
             else:
-                source = comp_label
-                target = bus_label
+                source = flow.component
+                target = flow.bus
 
             nodes.add(source)
             nodes.add(target)
