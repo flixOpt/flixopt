@@ -814,8 +814,8 @@ class CONFIG:
         # Disable default show since notebooks render via _repr_html_
         cls.Plotting.default_show = False
 
-        # Light logging - INFO level without too much noise
-        cls.Logging.enable_console('INFO')
+        # Light logging - SUCCESS level without too much noise
+        cls.Logging.enable_console('SUCCESS')
 
         # Disable solver console output (too verbose for notebooks)
         cls.Solving.log_to_console = False
