@@ -296,6 +296,31 @@ The new API also applies to advanced optimization modes:
 
 ---
 
+## Statistics Accessor
+
+The new `statistics` accessor provides convenient aggregated data:
+
+```python
+stats = flow_system.statistics
+
+# Flow data (clean labels, no |flow_rate suffix)
+stats.flow_rates['Boiler(Q_th)']  # Not 'Boiler(Q_th)|flow_rate'
+stats.flow_hours['Boiler(Q_th)']
+stats.sizes['Boiler(Q_th)']
+stats.charge_states['Battery']
+
+# Effect breakdown by contributor (replaces effects_per_component)
+stats.temporal_effects['costs']  # Per timestep, per contributor
+stats.periodic_effects['costs']  # Investment costs per contributor
+stats.total_effects['costs']     # Total per contributor
+
+# Group by component or component type
+stats.total_effects['costs'].groupby('component').sum()
+stats.total_effects['costs'].groupby('component_type').sum()
+```
+
+---
+
 ## 🔧 Quick Reference
 
 ### Common Conversions

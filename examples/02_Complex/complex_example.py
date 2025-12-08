@@ -15,7 +15,6 @@ if __name__ == '__main__':
     check_penalty = False
     imbalance_penalty = 1e5
     use_chp_with_piecewise_conversion = True
-    time_indices = None  # Define specific time steps for custom optimizations, or use the entire series
 
     # --- Define Demand and Price Profiles ---
     # Input data for electricity and heat demands, as well as electricity price
@@ -189,22 +188,19 @@ if __name__ == '__main__':
 
     print(flow_system)  # Get a string representation of the FlowSystem
     try:
-        flow_system.start_network_app()  # Start the network app
+        flow_system.topology.start_app()  # Start the network app
     except ImportError as e:
         print(f'Network app requires extra dependencies: {e}')
 
     # --- Solve FlowSystem ---
-    optimization = fx.Optimization('complex example', flow_system, time_indices)
-    optimization.do_modeling()
-
-    optimization.solve(fx.solvers.HighsSolver(0.01, 60))
+    flow_system.optimize(fx.solvers.HighsSolver(0.01, 60))
 
     # --- Results ---
-    # You can analyze results directly or save them to file and reload them later.
-    optimization.results.to_file()
+    # Save the flow system with solution to file for later analysis
+    flow_system.to_netcdf('results/complex_example.nc')
 
-    # But let's plot some results anyway
-    optimization.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    optimization.results['BHKW2'].plot_node_balance()
-    optimization.results['Speicher'].plot_charge_state()
-    optimization.results['Fernwärme'].plot_node_balance_pie()
+    # Plot results using the statistics accessor
+    flow_system.statistics.plot.heatmap('BHKW2(Q_th)|flow_rate')
+    flow_system.statistics.plot.balance('BHKW2')
+    flow_system.statistics.plot.heatmap('Speicher|charge_state')
+    flow_system.statistics.plot.balance('Fernwärme')

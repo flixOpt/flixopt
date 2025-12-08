@@ -2,6 +2,21 @@
 
 This section covers how to run optimizations in flixOpt, including different optimization modes and solver configuration.
 
+## Verifying Your Model
+
+Before running an optimization, it's helpful to visualize your system structure:
+
+```python
+# Generate an interactive network diagram
+flow_system.topology.plot(path='my_system.html')
+
+# Or get structure info programmatically
+nodes, edges = flow_system.topology.infos()
+print(f"Components: {[n for n, d in nodes.items() if d['class'] == 'Component']}")
+print(f"Buses: {[n for n, d in nodes.items() if d['class'] == 'Bus']}")
+print(f"Flows: {list(edges.keys())}")
+```
+
 ## Standard Optimization
 
 The recommended way to run an optimization is directly on the `FlowSystem`:
@@ -77,6 +92,107 @@ print(clustered_fs.solution)
 |------|-------------|------------|------------------|
 | Standard | Small-Medium | Slow | Optimal |
 | Clustered | Very Large | Fast | Approximate |
+
+## Custom Constraints
+
+flixOpt is built on [linopy](https://github.com/PyPSA/linopy), allowing you to add custom constraints beyond what's available through the standard API.
+
+### Adding Custom Constraints
+
+To add custom constraints, build the model first, then access the underlying linopy model:
+
+```python
+# Build the model (without solving)
+flow_system.build_model()
+
+# Access the linopy model
+model = flow_system.model
+
+# Access variables from the solution namespace
+# Variables are named: "ElementLabel|variable_name"
+boiler_flow = model.variables['Boiler(Q_th)|flow_rate']
+chp_flow = model.variables['CHP(Q_th)|flow_rate']
+
+# Add a custom constraint: Boiler must produce at least as much as CHP
+model.add_constraints(
+    boiler_flow >= chp_flow,
+    name='boiler_min_chp'
+)
+
+# Solve with the custom constraint
+flow_system.solve(fx.solvers.HighsSolver())
+```
+
+### Common Use Cases
+
+**Minimum runtime constraint:**
+```python
+# Require component to run at least 100 hours total
+on_var = model.variables['CHP|on']  # Binary on/off variable
+hours = flow_system.hours_per_timestep
+model.add_constraints(
+    (on_var * hours).sum() >= 100,
+    name='chp_min_runtime'
+)
+```
+
+**Linking flows across components:**
+```python
+# Heat pump and boiler combined must meet minimum base load
+hp_flow = model.variables['HeatPump(Q_th)|flow_rate']
+boiler_flow = model.variables['Boiler(Q_th)|flow_rate']
+model.add_constraints(
+    hp_flow + boiler_flow >= 50,  # At least 50 kW combined
+    name='min_heat_supply'
+)
+```
+
+**Seasonal constraints:**
+```python
+import pandas as pd
+
+# Different constraints for summer vs winter
+summer_mask = flow_system.timesteps.month.isin([6, 7, 8])
+winter_mask = flow_system.timesteps.month.isin([12, 1, 2])
+
+flow_var = model.variables['Boiler(Q_th)|flow_rate']
+
+# Lower capacity in summer
+model.add_constraints(
+    flow_var.sel(time=flow_system.timesteps[summer_mask]) <= 100,
+    name='summer_limit'
+)
+```
+
+### Inspecting the Model
+
+Before adding constraints, inspect available variables and existing constraints:
+
+```python
+flow_system.build_model()
+model = flow_system.model
+
+# List all variables
+print(model.variables)
+
+# List all constraints
+print(model.constraints)
+
+# Get details about a specific variable
+print(model.variables['Boiler(Q_th)|flow_rate'])
+```
+
+### Variable Naming Convention
+
+Variables follow this naming pattern:
+
+| Element Type | Pattern | Example |
+|--------------|---------|---------|
+| Flow rate | `Component(FlowLabel)\|flow_rate` | `Boiler(Q_th)\|flow_rate` |
+| Flow size | `Component(FlowLabel)\|size` | `Boiler(Q_th)\|size` |
+| On/off status | `Component\|on` | `CHP\|on` |
+| Charge state | `Storage\|charge_state` | `Battery\|charge_state` |
+| Effect totals | `effect_name\|total` | `costs\|total` |
 
 ## Solver Configuration
 
