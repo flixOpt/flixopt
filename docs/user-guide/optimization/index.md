@@ -93,6 +93,56 @@ print(clustered_fs.solution)
 | Standard | Small-Medium | Slow | Optimal |
 | Clustered | Very Large | Fast | Approximate |
 
+## Transform Accessor
+
+The `transform` accessor provides methods to create modified copies of your FlowSystem. All transform methods return a **new FlowSystem without a solution** — you must re-optimize the transformed system.
+
+### Selecting Subsets
+
+Select a subset of your data by label or index:
+
+```python
+# Select by label (like xarray.sel)
+fs_january = flow_system.transform.sel(time=slice('2024-01-01', '2024-01-31'))
+fs_scenario = flow_system.transform.sel(scenario='base')
+
+# Select by integer index (like xarray.isel)
+fs_first_week = flow_system.transform.isel(time=slice(0, 168))
+fs_first_scenario = flow_system.transform.isel(scenario=0)
+
+# Re-optimize the subset
+fs_january.optimize(fx.solvers.HighsSolver())
+```
+
+### Resampling Time Series
+
+Change the temporal resolution of your FlowSystem:
+
+```python
+# Resample to 4-hour intervals
+fs_4h = flow_system.transform.resample(time='4h', method='mean')
+
+# Resample to daily
+fs_daily = flow_system.transform.resample(time='1D', method='mean')
+
+# Re-optimize with new resolution
+fs_4h.optimize(fx.solvers.HighsSolver())
+```
+
+**Available resampling methods:** `'mean'`, `'sum'`, `'max'`, `'min'`, `'first'`, `'last'`
+
+### Clustering
+
+See [Clustered Optimization](#clustered-optimization) above.
+
+### Use Cases
+
+| Method | Use Case |
+|--------|----------|
+| `sel()` / `isel()` | Analyze specific time periods, scenarios, or periods |
+| `resample()` | Reduce problem size, test at lower resolution |
+| `cluster()` | Investment planning with typical periods |
+
 ## Custom Constraints
 
 flixOpt is built on [linopy](https://github.com/PyPSA/linopy), allowing you to add custom constraints beyond what's available through the standard API.

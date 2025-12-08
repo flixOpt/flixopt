@@ -116,7 +116,6 @@ if __name__ == '__main__':
     flow_system.statistics.plot.balance('Storage')
     flow_system.statistics.plot.heatmap('CHP(Q_th)')
     flow_system.statistics.plot.heatmap('Storage')
-    flow_system.statistics.plot.heatmap('Storage')
 
     # Access data as xarray Datasets
     print(flow_system.statistics.flow_rates)
