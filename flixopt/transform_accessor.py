@@ -619,7 +619,7 @@ class TransformAccessor:
             # Parse component and flow from size variable name
             # Format: "Component(Flow)|size" or "Component|size"
             base_name = size_var.replace('|size', '')
-            fixed_value = float(sizes[size_var].item())
+            fixed_value = sizes[size_var]
 
             # Find matching element with InvestParameters
             found = False
