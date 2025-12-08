@@ -49,16 +49,19 @@ nav:
       - Roadmap: roadmap.md
 
   - Examples:
-    - Overview: examples/index.md
-    - Basic Examples:
-      - Minimal Example: examples/00-minimal-example.ipynb
-      - Simple Example: examples/01-simple-example.ipynb
-    - Operational Optimization:
-      - Complex Example: examples/02-complex-example.ipynb
-      - Optimization Modes: examples/03-optimization-modes.ipynb
-    - Planning & Investment:
-      - Scenarios: examples/04-scenarios.ipynb
-      - Two-Stage Optimization: examples/05-two-stage-optimization.ipynb
+    - Overview: examples_new/index.md
+    - Getting Started:
+      - Quickstart: examples_new/01-quickstart.ipynb
+      - Heat System with Storage: examples_new/02-heat-system.ipynb
+    - Investment & Planning:
+      - Investment Optimization: examples_new/03-investment-optimization.ipynb
+      - Operational Constraints: examples_new/04-operational-constraints.ipynb
+    - Advanced Modeling:
+      - Multi-Carrier Systems: examples_new/05-multi-carrier-system.ipynb
+      - Piecewise Efficiency: examples_new/06-piecewise-efficiency.ipynb
+    - Scenarios & Scaling:
+      - Scenarios and Periods: examples_new/07-scenarios-and-periods.ipynb
+      - Large-Scale Optimization: examples_new/08-large-scale-optimization.ipynb
 
   - API Reference: api-reference/
 
