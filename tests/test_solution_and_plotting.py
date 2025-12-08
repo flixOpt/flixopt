@@ -163,6 +163,61 @@ class TestElementSolution:
 
 
 # ============================================================================
+# STATISTICS ACCESSOR TESTS
+# ============================================================================
+
+
+class TestStatisticsAccessor:
+    """Tests for flow_system.statistics accessor."""
+
+    def test_statistics_sizes_includes_all_flows(self, simple_flow_system, highs_solver):
+        """Test that statistics.sizes includes all flow sizes (fixed and investment)."""
+        simple_flow_system.optimize(highs_solver)
+
+        sizes = simple_flow_system.statistics.sizes
+
+        assert isinstance(sizes, xr.Dataset)
+        # Should have sizes for multiple flows
+        assert len(sizes.data_vars) > 0
+
+        # Check that known flows have sizes
+        flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
+        for label in sizes.data_vars:
+            assert label in flow_labels, f'Size label {label} should be a valid flow'
+
+    def test_statistics_sizes_returns_correct_values(self, simple_flow_system, highs_solver):
+        """Test that statistics.sizes returns correct size values."""
+        simple_flow_system.optimize(highs_solver)
+
+        sizes = simple_flow_system.statistics.sizes
+
+        # Check that all values are positive (sizes should be > 0)
+        for label in sizes.data_vars:
+            value = float(sizes[label].values) if sizes[label].dims == () else float(sizes[label].max().values)
+            assert value > 0, f'Size for {label} should be positive'
+
+    def test_statistics_flow_rates(self, simple_flow_system, highs_solver):
+        """Test that statistics.flow_rates returns flow rate data."""
+        simple_flow_system.optimize(highs_solver)
+
+        flow_rates = simple_flow_system.statistics.flow_rates
+
+        assert isinstance(flow_rates, xr.Dataset)
+        assert len(flow_rates.data_vars) > 0
+        # Flow rates should have time dimension
+        assert 'time' in flow_rates.dims
+
+    def test_statistics_flow_hours(self, simple_flow_system, highs_solver):
+        """Test that statistics.flow_hours returns energy data."""
+        simple_flow_system.optimize(highs_solver)
+
+        flow_hours = simple_flow_system.statistics.flow_hours
+
+        assert isinstance(flow_hours, xr.Dataset)
+        assert len(flow_hours.data_vars) > 0
+
+
+# ============================================================================
 # PLOTTING WITH OPTIMIZED DATA TESTS
 # ============================================================================
 
