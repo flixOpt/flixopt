@@ -593,13 +593,7 @@ class TransformAccessor:
 
         # Convert dict to Dataset format
         if isinstance(sizes, dict):
-            # Normalize keys: add '|size' suffix if missing
-            normalized = {}
-            for key, value in sizes.items():
-                if not key.endswith('|size'):
-                    key = f'{key}|size'
-                normalized[key] = value
-            sizes = xr.Dataset({k: xr.DataArray(v) for k, v in normalized.items()})
+            sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
 
         # Apply rounding
         if decimal_rounding is not None:
@@ -613,13 +607,12 @@ class TransformAccessor:
         new_fs = FlowSystem.from_dataset(ds)
 
         # Fix sizes in the new FlowSystem's InvestParameters
-        size_vars = [name for name in sizes.data_vars if name.endswith('|size')]
-
-        for size_var in size_vars:
-            # Parse component and flow from size variable name
-            # Format: "Component(Flow)|size" or "Component|size"
-            base_name = size_var.replace('|size', '')
-            fixed_value = sizes[size_var]
+        # Note: statistics.sizes returns keys without '|size' suffix (e.g., 'Boiler(Q_fu)')
+        # but dicts may have either format
+        for size_var in sizes.data_vars:
+            # Normalize: strip '|size' suffix if present
+            base_name = size_var.replace('|size', '') if size_var.endswith('|size') else size_var
+            fixed_value = float(sizes[size_var].item())
 
             # Find matching element with InvestParameters
             found = False
@@ -648,7 +641,7 @@ class TransformAccessor:
 
             if not found:
                 logger.warning(
-                    f'Size variable "{size_var}" not found as InvestParameters in FlowSystem. '
+                    f'Size variable "{base_name}" not found as InvestParameters in FlowSystem. '
                     f'It may be a fixed-size component or the name may not match.'
                 )
 
