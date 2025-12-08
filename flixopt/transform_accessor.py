@@ -380,6 +380,9 @@ class TransformAccessor:
         if 'period' in indexers:
             result = FlowSystem._update_period_metadata(result)
 
+        if 'scenario' in indexers:
+            result = FlowSystem._update_scenario_metadata(result)
+
         return result
 
     @classmethod
@@ -426,6 +429,9 @@ class TransformAccessor:
 
         if 'period' in indexers:
             result = FlowSystem._update_period_metadata(result)
+
+        if 'scenario' in indexers:
+            result = FlowSystem._update_scenario_metadata(result)
 
         return result
 

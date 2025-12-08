@@ -507,6 +507,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return dataset
 
+    @classmethod
+    def _update_scenario_metadata(cls, dataset: xr.Dataset) -> xr.Dataset:
+        """
+        Update scenario-related attributes and data variables in dataset based on its scenario index.
+
+        Recomputes or removes scenario weights. This ensures scenario metadata stays synchronized with the actual
+        scenarios after operations like selection.
+
+        This is analogous to _update_period_metadata() for time-related metadata.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+
+        Returns:
+            The same dataset with updated scenario-related attributes and data variables
+        """
+        new_scenario_index = dataset.indexes.get('scenario')
+        if new_scenario_index is None or len(new_scenario_index) <= 1:
+            dataset['scenario_weights'] = None
+
+        return dataset
+
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
