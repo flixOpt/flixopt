@@ -212,10 +212,10 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
     flow_system.add_elements(
         fx.LinearConverter(
             'KWK',
-            inputs=[fx.Flow('Q_fu', bus='Gas')],
+            inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
             outputs=[
                 fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                fx.Flow('Q_th', bus='Fernwärme'),
+                fx.Flow('Q_th', bus='Fernwärme', size=100),
             ],
             piecewise_conversion=fx.PiecewiseConversion(
                 {
