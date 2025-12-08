@@ -341,7 +341,7 @@ class Flow(Element):
     Args:
         label: Unique flow identifier within its component.
         bus: Bus label this flow connects to.
-        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
+        size: Flow capacity. Scalar, InvestParameters, or None (unbounded).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
         relative_maximum: Maximum flow rate as fraction of size. Default: 1.
         load_factor_min: Minimum average utilization (0-1). Default: 0.
@@ -442,7 +442,8 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.Modeling.big) is used when size=None
+        - size=None means unbounded (no capacity constraint)
+        - size must be set when using status_parameters or fixed_relative_profile
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -473,7 +474,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.Modeling.big if size is None else size
+        self.size = size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -542,7 +543,7 @@ class Flow(Element):
             self.status_parameters.transform_data(prefix)
         if isinstance(self.size, InvestParameters):
             self.size.transform_data(prefix)
-        else:
+        elif self.size is not None:
             self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
@@ -550,13 +551,17 @@ class Flow(Element):
         if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, InvestParameters) and (
-            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
-        ):  # Default Size --> Most likely by accident
-            logger.warning(
-                f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
-                f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
+        # Size is required when using StatusParameters (for big-M constraints)
+        if self.status_parameters is not None and self.size is None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has status_parameters but no size defined. '
+                f'A size is required when using status_parameters to bound the flow rate.'
+            )
+
+        if self.size is None and self.fixed_relative_profile is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has a fixed_relative_profile but no size defined. '
+                f'A size is required because flow_rate = size * fixed_relative_profile.'
             )
 
         if self.fixed_relative_profile is not None and self.status_parameters is not None:
@@ -822,15 +827,18 @@ class FlowModel(ElementModel):
         if not self.with_status:
             if not self.with_investment:
                 # Basic case without investment and without Status
-                lb = lb_relative * self.element.size
+                if self.element.size is not None:
+                    lb = lb_relative * self.element.size
             elif self.with_investment and self.element.size.mandatory:
                 # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
         if self.with_investment:
             ub = ub_relative * self.element.size.maximum_or_fixed_size
-        else:
+        elif self.element.size is not None:
             ub = ub_relative * self.element.size
+        else:
+            ub = np.inf  # Unbounded when size is None
 
         return lb, ub
 
