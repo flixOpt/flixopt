@@ -333,10 +333,11 @@ class TransformAccessor:
         )
         return FlowSystem.from_dataset(ds)  # from_dataset doesn't include solution
 
-    # --- Helper methods for dataset operations ---
+    # --- Class methods for dataset operations (can be called without instance) ---
 
+    @classmethod
     def _dataset_sel(
-        self,
+        cls,
         dataset: xr.Dataset,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
         period: int | slice | list[int] | pd.Index | None = None,
@@ -381,8 +382,9 @@ class TransformAccessor:
 
         return result
 
+    @classmethod
     def _dataset_isel(
-        self,
+        cls,
         dataset: xr.Dataset,
         time: int | slice | list[int] | None = None,
         period: int | slice | list[int] | None = None,
@@ -427,8 +429,9 @@ class TransformAccessor:
 
         return result
 
+    @classmethod
     def _dataset_resample(
-        self,
+        cls,
         dataset: xr.Dataset,
         freq: str,
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
@@ -462,7 +465,7 @@ class TransformAccessor:
         non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
 
         time_dataset = dataset[time_var_names]
-        resampled_time_dataset = self._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
+        resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
         if non_time_var_names:
             non_time_dataset = dataset[non_time_var_names]
