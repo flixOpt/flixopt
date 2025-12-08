@@ -214,9 +214,11 @@ plugins:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
 
   - mkdocs-jupyter:
-      execute: false  # Don't execute notebooks during build (pre-execute them)
+      execute: true  # Execute notebooks during build
+      allow_errors: false
       include_source: true  # Show download button
       include_requirejs: true  # Required for Plotly charts
+      theme: dark  # Match dark mode if used
 
   - plotly
 
