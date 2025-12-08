@@ -51,14 +51,14 @@ nav:
   - Examples:
     - Overview: examples/index.md
     - Basic Examples:
-      - examples/00-Minimal Example.md
-      - examples/01-Basic Example.md
+      - Minimal Example: examples/00-minimal-example.ipynb
+      - Simple Example: examples/01-simple-example.ipynb
     - Operational Optimization:
-      - examples/02-Complex Example.md
-      - examples/03-Optimization Modes.md
+      - Complex Example: examples/02-complex-example.ipynb
+      - Optimization Modes: examples/03-optimization-modes.ipynb
     - Planning & Investment:
-      - examples/04-Scenarios.md
-      - examples/05-Two-stage-optimization.md
+      - Scenarios: examples/04-scenarios.ipynb
+      - Two-Stage Optimization: examples/05-two-stage-optimization.ipynb
 
   - API Reference: api-reference/
 
@@ -212,6 +212,11 @@ markdown_extensions:
 plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - mkdocs-jupyter:
+      execute: false  # Don't execute notebooks during build (pre-execute them)
+      include_source: true  # Show download button
+      include_requirejs: true  # Required for Plotly charts
 
   - plotly
 
