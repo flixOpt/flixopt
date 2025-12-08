@@ -178,6 +178,10 @@ class PlotResult:
     data: xr.Dataset
     figure: go.Figure
 
+    def _repr_html_(self) -> str:
+        """Return HTML representation for Jupyter notebook display."""
+        return self.figure.to_html(full_html=False, include_plotlyjs='cdn')
+
     def show(self) -> PlotResult:
         """Display the figure. Returns self for chaining."""
         self.figure.show()
