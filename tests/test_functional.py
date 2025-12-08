@@ -185,7 +185,7 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
             thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(effects_of_investment=10, effects_of_investment_per_size=1),
+                size=fx.InvestParameters(effects_of_investment=10, effects_of_investment_per_size=1, maximum_size=100),
             ),
         )
     )
@@ -224,7 +224,9 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
             thermal_flow=fx.Flow(
                 'Q_th',
                 bus='Fernwärme',
-                size=fx.InvestParameters(minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1),
+                size=fx.InvestParameters(
+                    minimum_size=40, maximum_size=100, effects_of_investment=10, effects_of_investment_per_size=1
+                ),
             ),
         )
     )
@@ -264,7 +266,11 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.InvestParameters(
-                    mandatory=False, minimum_size=40, effects_of_investment=10, effects_of_investment_per_size=1
+                    mandatory=False,
+                    minimum_size=40,
+                    maximum_size=100,
+                    effects_of_investment=10,
+                    effects_of_investment_per_size=1,
                 ),
             ),
         ),
@@ -276,7 +282,11 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=fx.InvestParameters(
-                    mandatory=False, minimum_size=50, effects_of_investment=10, effects_of_investment_per_size=1
+                    mandatory=False,
+                    minimum_size=50,
+                    maximum_size=100,
+                    effects_of_investment=10,
+                    effects_of_investment_per_size=1,
                 ),
             ),
         ),

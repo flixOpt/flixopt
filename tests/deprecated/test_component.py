@@ -498,7 +498,7 @@ class TestTransmissionModel:
                 size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1000),
             ),
             out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
-            in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters()),
+            in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters(maximum_size=1000)),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
             balanced=True,
         )
@@ -578,7 +578,9 @@ class TestTransmissionModel:
             in2=fx.Flow(
                 'Rohr2a',
                 'Fernwärme',
-                size=fx.InvestParameters(effects_of_investment_per_size=100, minimum_size=10, mandatory=True),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size=100, minimum_size=10, maximum_size=1000, mandatory=True
+                ),
             ),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
             balanced=False,

@@ -718,7 +718,7 @@ class InvestParameters(Interface):
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
         minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        maximum_size: Upper bound for continuous sizing. Required if fixed_size is not set.
             Ignored if fixed_size is specified.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
@@ -901,7 +901,7 @@ class InvestParameters(Interface):
         )
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
+        self.maximum_size = maximum_size
         self.linked_periods = linked_periods
 
     def _set_flow_system(self, flow_system) -> None:
@@ -911,6 +911,13 @@ class InvestParameters(Interface):
             self.piecewise_effects_of_investment._set_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
+        # Validate that either fixed_size or maximum_size is set
+        if self.fixed_size is None and self.maximum_size is None:
+            raise ValueError(
+                f'InvestParameters in "{name_prefix}" requires either fixed_size or maximum_size to be set. '
+                f'An upper bound is needed to properly scale the optimization model.'
+            )
+
         self.effects_of_investment = self._fit_effect_coords(
             prefix=name_prefix,
             effect_values=self.effects_of_investment,
