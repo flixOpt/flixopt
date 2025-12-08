@@ -9,7 +9,6 @@ from .conftest import (
     assert_sets_equal,
     assert_var_equal,
     create_linopy_model,
-    create_optimization_and_solve,
 )
 
 
@@ -225,10 +224,7 @@ class TestEffectModel:
 
 
 class TestEffectResults:
-    @pytest.mark.deprecated_api
-    @pytest.mark.filterwarnings('ignore:Results is deprecated:DeprecationWarning:flixopt')
-    @pytest.mark.filterwarnings('ignore:Optimization is deprecated:DeprecationWarning:flixopt')
-    def test_shares(self, basic_flow_system_linopy_coords, coords_config):
+    def test_shares(self, basic_flow_system_linopy_coords, coords_config, highs_solver):
         flow_system = basic_flow_system_linopy_coords
         effect1 = fx.Effect('Effect1', '€', 'Testing Effect', share_from_temporal={'costs': 0.5})
         effect2 = fx.Effect(
@@ -261,7 +257,10 @@ class TestEffectResults:
             ),
         )
 
-        results = create_optimization_and_solve(flow_system, fx.solvers.HighsSolver(0.01, 60), 'Sim1').results
+        flow_system.optimize(highs_solver)
+
+        # Use the new statistics accessor
+        statistics = flow_system.statistics
 
         effect_share_factors = {
             'temporal': {
@@ -278,71 +277,72 @@ class TestEffectResults:
             },
         }
         for key, value in effect_share_factors['temporal'].items():
-            np.testing.assert_allclose(results.effect_share_factors['temporal'][key].values, value)
+            np.testing.assert_allclose(statistics.effect_share_factors['temporal'][key].values, value)
 
         for key, value in effect_share_factors['periodic'].items():
-            np.testing.assert_allclose(results.effect_share_factors['periodic'][key].values, value)
+            np.testing.assert_allclose(statistics.effect_share_factors['periodic'][key].values, value)
 
+        # Temporal effects checks using new API
         xr.testing.assert_allclose(
-            results.effects_per_component['temporal'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(temporal)|per_timestep'].fillna(0),
+            statistics.temporal_effects['costs'].sum('contributor'),
+            flow_system.solution['costs(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['temporal'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(temporal)|per_timestep'].fillna(0),
+            statistics.temporal_effects['Effect1'].sum('contributor'),
+            flow_system.solution['Effect1(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['temporal'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(temporal)|per_timestep'].fillna(0),
+            statistics.temporal_effects['Effect2'].sum('contributor'),
+            flow_system.solution['Effect2(temporal)|per_timestep'].fillna(0),
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['temporal'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(temporal)|per_timestep'].fillna(0),
+            statistics.temporal_effects['Effect3'].sum('contributor'),
+            flow_system.solution['Effect3(temporal)|per_timestep'].fillna(0),
         )
 
-        # periodic mode checks
+        # Periodic effects checks using new API
         xr.testing.assert_allclose(
-            results.effects_per_component['periodic'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(periodic)'],
-        )
-
-        xr.testing.assert_allclose(
-            results.effects_per_component['periodic'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(periodic)'],
+            statistics.periodic_effects['costs'].sum('contributor'),
+            flow_system.solution['costs(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['periodic'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(periodic)'],
+            statistics.periodic_effects['Effect1'].sum('contributor'),
+            flow_system.solution['Effect1(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['periodic'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(periodic)'],
-        )
-
-        # Total mode checks
-        xr.testing.assert_allclose(
-            results.effects_per_component['total'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs'],
+            statistics.periodic_effects['Effect2'].sum('contributor'),
+            flow_system.solution['Effect2(periodic)'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['total'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1'],
+            statistics.periodic_effects['Effect3'].sum('contributor'),
+            flow_system.solution['Effect3(periodic)'],
+        )
+
+        # Total effects checks using new API
+        xr.testing.assert_allclose(
+            statistics.total_effects['costs'].sum('contributor'),
+            flow_system.solution['costs'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['total'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2'],
+            statistics.total_effects['Effect1'].sum('contributor'),
+            flow_system.solution['Effect1'],
         )
 
         xr.testing.assert_allclose(
-            results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3'],
+            statistics.total_effects['Effect2'].sum('contributor'),
+            flow_system.solution['Effect2'],
+        )
+
+        xr.testing.assert_allclose(
+            statistics.total_effects['Effect3'].sum('contributor'),
+            flow_system.solution['Effect3'],
         )
 
 
@@ -351,7 +351,6 @@ class TestPenaltyAsObjective:
 
     def test_penalty_cannot_be_created_as_objective(self):
         """Test that creating a Penalty effect with is_objective=True raises ValueError."""
-        import pytest
 
         with pytest.raises(ValueError, match='Penalty.*cannot be set as the objective'):
             fx.Effect('Penalty', '€', 'Test Penalty', is_objective=True)
@@ -359,7 +358,6 @@ class TestPenaltyAsObjective:
     def test_penalty_cannot_be_set_as_objective_via_setter(self):
         """Test that setting Penalty as objective via setter raises ValueError."""
         import pandas as pd
-        import pytest
 
         # Create a fresh flow system without pre-existing objective
         flow_system = fx.FlowSystem(timesteps=pd.date_range('2020-01-01', periods=10, freq='h'))

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import pathlib
 import timeit
 from typing import TYPE_CHECKING
 
@@ -29,6 +28,8 @@ from .structure import (
 )
 
 if TYPE_CHECKING:
+    import pathlib
+
     import linopy
     import pandas as pd
     import plotly.graph_objects as go
@@ -145,7 +146,7 @@ class Clustering:
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
     def plot(self, colormap: str | None = None, show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
-        from . import plotting
+        import plotly.express as px
 
         df_org = self.original_data.copy().rename(
             columns={col: f'Original - {col}' for col in self.original_data.columns}
@@ -156,10 +157,17 @@ class Clustering:
         colors = list(
             process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(df_org.columns)).values()
         )
-        fig = plotting.with_plotly(df_org.to_xarray(), 'line', colors=colors, xlabel='Time in h')
+
+        # Create line plot for original data (dashed)
+        index_name = df_org.index.name or 'index'
+        df_org_long = df_org.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig.data:
-            trace.update(dict(line=dict(dash='dash')))
-        fig2 = plotting.with_plotly(df_agg.to_xarray(), 'line', colors=colors, xlabel='Time in h')
+            trace.update(line=dict(dash='dash'))
+
+        # Add aggregated data (solid lines)
+        df_agg_long = df_agg.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig2.data:
             fig.add_trace(trace)
 
@@ -169,14 +177,10 @@ class Clustering:
             yaxis_title='Value',
         )
 
-        plotting.export_figure(
-            figure_like=fig,
-            default_path=pathlib.Path('aggregated data.html'),
-            default_filetype='.html',
-            user_path=save,
-            show=show,
-            save=save is not None,
-        )
+        if save is not None:
+            fig.write_html(str(save))
+        if show:
+            fig.show()
 
         return fig
 

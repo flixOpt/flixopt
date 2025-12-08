@@ -127,23 +127,29 @@ Define your system structure, parameters, and time series data.
 
 ### 2. Run the Optimization
 
-Create an [`Optimization`][flixopt.optimization.Optimization] and solve it:
+Optimize your FlowSystem with a solver:
 
 ```python
-optimization = fx.Optimization('my_model', flow_system)
-results = optimization.solve(fx.solvers.HighsSolver())
+flow_system.optimize(fx.solvers.HighsSolver())
 ```
 
 ### 3. Analyze Results
 
-The [`Results`][flixopt.results.Results] object contains all solution data:
+Access solution data directly from the FlowSystem:
 
 ```python
-# Access component results
-boiler_output = results['Boiler'].node_balance()
+# Access component solutions
+boiler = flow_system.components['Boiler']
+print(boiler.solution)
 
 # Get total costs
-total_costs = results.solution['Costs']
+total_costs = flow_system.solution['costs|total']
+
+# Use statistics for aggregated data
+print(flow_system.statistics.flow_hours)
+
+# Plot results
+flow_system.statistics.plot.balance('HeatBus')
 ```
 
 <figure markdown>
@@ -185,12 +191,17 @@ While our example used a heating system, flixOpt works for any flow-based optimi
 flixOpt is built on [linopy](https://github.com/PyPSA/linopy). You can access and extend the underlying optimization model for custom constraints:
 
 ```python
-# Access the linopy model after building
-optimization.do_modeling()
-model = optimization.model
+# Build the model (without solving)
+flow_system.build_model()
+
+# Access the linopy model
+model = flow_system.model
 
 # Add custom constraints using linopy API
 model.add_constraints(...)
+
+# Then solve
+flow_system.solve(fx.solvers.HighsSolver())
 ```
 
 This allows advanced users to add domain-specific constraints while keeping flixOpt's convenience for standard modeling.

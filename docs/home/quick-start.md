@@ -88,21 +88,31 @@ battery = fx.Storage(
 flow_system.add_elements(solar, demand, battery, electricity_bus)
 ```
 
-### 5. Run Optimization
+### 5. Visualize and Run Optimization
 
 ```python
-# Run optimization directly on the flow system
+# Optional: visualize your system structure
+flow_system.topology.plot(path='system.html')
+
+# Run optimization
 flow_system.optimize(fx.solvers.HighsSolver())
 ```
 
-### 6. Access Results
+### 6. Access and Visualize Results
 
 ```python
-# Access results directly from the flow system
+# Access raw solution data
 print(flow_system.solution)
 
-# Or access component-specific results
+# Use statistics for aggregated data
+print(flow_system.statistics.flow_hours)
+
+# Access component-specific results
 print(flow_system.components['battery'].solution)
+
+# Visualize results
+flow_system.statistics.plot.balance('electricity')
+flow_system.statistics.plot.storage('battery')
 ```
 
 ### 7. Save Results (Optional)
@@ -132,8 +142,10 @@ Most flixOpt projects follow this pattern:
 2. **Create flow system** - Initialize with time series and effects
 3. **Add buses** - Define connection points
 4. **Add components** - Create generators, storage, converters, loads
-5. **Run optimization** - Call `flow_system.optimize(solver)`
-6. **Access Results** - Via `flow_system.solution` or component `.solution` attributes
+5. **Verify structure** - Use `flow_system.topology.plot()` to visualize
+6. **Run optimization** - Call `flow_system.optimize(solver)`
+7. **Analyze results** - Via `flow_system.statistics` and `.solution`
+8. **Visualize** - Use `flow_system.statistics.plot.*` methods
 
 ## Tips
 
