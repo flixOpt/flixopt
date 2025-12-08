@@ -1094,67 +1094,132 @@ class StatisticsPlotAccessor:
 
         return PlotResult(data=ds, figure=fig)
 
-    def sankey(
+    def _prepare_sankey_data(
         self,
-        *,
-        timestep: int | str | None = None,
-        aggregate: Literal['sum', 'mean'] = 'sum',
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot Sankey diagram of energy/material flow hours.
+        mode: Literal['flow_hours', 'sizes', 'peak_flow'],
+        timestep: int | str | None,
+        aggregate: Literal['sum', 'mean'],
+        select: SelectType | None,
+    ) -> tuple[xr.Dataset, str]:
+        """Prepare data for Sankey diagram based on mode.
 
         Args:
-            timestep: Specific timestep to show, or None for aggregation.
-            aggregate: How to aggregate if timestep is None.
+            mode: What to display - flow_hours, sizes, or peak_flow.
+            timestep: Specific timestep (only for flow_hours mode).
+            aggregate: Aggregation method (only for flow_hours mode).
             select: xarray-style selection.
-            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
-            show: Whether to display.
 
         Returns:
-            PlotResult with Sankey flow data.
+            Tuple of (prepared Dataset, title string).
         """
-        self._stats._require_solution()
+        if mode == 'sizes':
+            ds = self._stats.sizes.copy()
+            title = 'Investment Sizes (Capacities)'
+        elif mode == 'peak_flow':
+            ds = self._stats.flow_rates.copy()
+            ds = _apply_selection(ds, select)
+            if 'time' in ds.dims:
+                ds = ds.max(dim='time')
+            for dim in ['period', 'scenario']:
+                if dim in ds.dims:
+                    ds = ds.max(dim=dim)
+            return ds, 'Peak Flow Rates'
+        else:  # flow_hours
+            ds = self._stats.flow_hours.copy()
+            title = 'Energy Flow'
 
-        ds = self._stats.flow_hours.copy()
-
-        # Apply weights
-        if 'period' in ds.dims and self._fs.period_weights is not None:
-            ds = ds * self._fs.period_weights
-        if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
-            weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
-            ds = ds * weights
+        # Apply weights for flow_hours
+        if mode == 'flow_hours':
+            if 'period' in ds.dims and self._fs.period_weights is not None:
+                ds = ds * self._fs.period_weights
+            if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
+                weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
+                ds = ds * weights
 
         ds = _apply_selection(ds, select)
 
-        if timestep is not None:
-            if isinstance(timestep, int):
-                ds = ds.isel(time=timestep)
-            else:
-                ds = ds.sel(time=timestep)
-        elif 'time' in ds.dims:
-            ds = getattr(ds, aggregate)(dim='time')
+        # Time aggregation (only for flow_hours)
+        if mode == 'flow_hours':
+            if timestep is not None:
+                if isinstance(timestep, int):
+                    ds = ds.isel(time=timestep)
+                else:
+                    ds = ds.sel(time=timestep)
+            elif 'time' in ds.dims:
+                ds = getattr(ds, aggregate)(dim='time')
 
+        # Collapse remaining dimensions
         for dim in ['period', 'scenario']:
             if dim in ds.dims:
-                ds = ds.sum(dim=dim)
+                ds = ds.sum(dim=dim) if mode == 'flow_hours' else ds.max(dim=dim)
 
-        # Build Sankey
-        nodes = set()
-        links = {'source': [], 'target': [], 'value': [], 'label': []}
+        return ds, title
+
+    def _prepare_effects_sankey_data(
+        self,
+        effect: str,
+        select: SelectType | None,
+    ) -> tuple[xr.Dataset, str]:
+        """Prepare effects data for Sankey diagram.
+
+        Args:
+            effect: Effect name to display (e.g., 'costs', 'CO2').
+            select: xarray-style selection.
+
+        Returns:
+            Tuple of (Dataset with flow labels as variables, title string).
+        """
+        total_effects = self._stats.total_effects
+        if effect not in total_effects:
+            available = list(total_effects.data_vars)
+            raise ValueError(f"Effect '{effect}' not found. Available effects: {available}")
+
+        effect_data = total_effects[effect]
+        effect_data = _apply_selection(effect_data, select)
+
+        # Sum over any remaining dimensions (period, scenario)
+        for dim in ['period', 'scenario']:
+            if dim in effect_data.dims:
+                effect_data = effect_data.sum(dim=dim)
+
+        # Extract flow-related contributors and create a Dataset with flow labels as variables
+        flow_labels = list(self._fs.flows.keys())
+        contributors = effect_data.coords['contributor'].values
+
+        result = {}
+        for flow_label in flow_labels:
+            if flow_label in contributors:
+                value = float(effect_data.sel(contributor=flow_label).values)
+                if abs(value) > 1e-6:
+                    result[flow_label] = xr.DataArray(value)
+
+        return xr.Dataset(result), f'{effect.capitalize()} per Flow'
+
+    def _build_sankey_links(
+        self,
+        ds: xr.Dataset,
+        min_value: float = 1e-6,
+    ) -> tuple[set[str], dict[str, list]]:
+        """Build Sankey nodes and links from flow data.
+
+        Args:
+            ds: Dataset with flow values (one variable per flow).
+            min_value: Minimum value threshold to include a link.
+
+        Returns:
+            Tuple of (nodes set, links dict with source/target/value/label).
+        """
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
 
         for flow in self._fs.flows.values():
             label = flow.label_full
             if label not in ds:
                 continue
             value = float(ds[label].values)
-            if abs(value) < 1e-6:
+            if abs(value) < min_value:
                 continue
 
-            # Determine source/target based on flow direction
-            # is_input_in_component: True means bus -> component, False means component -> bus
             bus_label = flow.bus
             comp_label = flow.component.label_full
 
@@ -1172,6 +1237,28 @@ class StatisticsPlotAccessor:
             links['value'].append(abs(value))
             links['label'].append(label)
 
+        return nodes, links
+
+    def _create_sankey_figure(
+        self,
+        nodes: set[str],
+        links: dict[str, list],
+        colors: ColorType | None,
+        title: str,
+        **plotly_kwargs: Any,
+    ) -> go.Figure:
+        """Create Plotly Sankey figure.
+
+        Args:
+            nodes: Set of node labels.
+            links: Dict with source, target, value, label lists.
+            colors: Color specification for nodes.
+            title: Figure title.
+            **plotly_kwargs: Additional Plotly layout arguments.
+
+        Returns:
+            Plotly Figure with Sankey diagram.
+        """
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
@@ -1193,7 +1280,61 @@ class StatisticsPlotAccessor:
                 )
             ]
         )
-        fig.update_layout(title='Energy Flow Sankey', **plotly_kwargs)
+        fig.update_layout(title=title, **plotly_kwargs)
+        return fig
+
+    def sankey(
+        self,
+        *,
+        mode: Literal['flow_hours', 'sizes', 'peak_flow'] = 'flow_hours',
+        effect: str | None = None,
+        timestep: int | str | None = None,
+        aggregate: Literal['sum', 'mean'] = 'sum',
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of the flow system.
+
+        Args:
+            mode: What to display:
+                - 'flow_hours': Energy/material amounts (default)
+                - 'sizes': Investment capacities
+                - 'peak_flow': Maximum flow rates
+            effect: Effect name to display instead of mode (e.g., 'costs', 'CO2').
+                If provided, shows effect contributions per flow. Overrides mode.
+            timestep: Specific timestep to show, or None for aggregation (flow_hours only).
+            aggregate: How to aggregate if timestep is None ('sum' or 'mean', flow_hours only).
+            select: xarray-style selection.
+            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
+            show: Whether to display.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey flow data and figure.
+
+        Examples:
+            >>> # Show energy flows (default)
+            >>> flow_system.statistics.plot.sankey()
+            >>> # Show investment sizes/capacities
+            >>> flow_system.statistics.plot.sankey(mode='sizes')
+            >>> # Show peak flow rates
+            >>> flow_system.statistics.plot.sankey(mode='peak_flow')
+            >>> # Show costs per flow
+            >>> flow_system.statistics.plot.sankey(effect='costs')
+            >>> # Show CO2 emissions per flow
+            >>> flow_system.statistics.plot.sankey(effect='CO2')
+        """
+        self._stats._require_solution()
+
+        if effect is not None:
+            ds, title = self._prepare_effects_sankey_data(effect, select)
+        else:
+            ds, title = self._prepare_sankey_data(mode, timestep, aggregate, select)
+
+        nodes, links = self._build_sankey_links(ds)
+        fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
 
         sankey_ds = xr.Dataset(
             {'value': ('link', links['value'])},
