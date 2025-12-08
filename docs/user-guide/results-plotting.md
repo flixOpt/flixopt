@@ -318,6 +318,113 @@ flow_system.statistics.plot.balance('Bus', colors={
 })
 ```
 
+## Color Management
+
+flixOpt provides centralized color management through the `flow_system.colors` accessor and carriers. This ensures consistent colors across all visualizations.
+
+### Carriers
+
+[`Carriers`][flixopt.carrier.Carrier] define energy or material types with associated colors. Built-in carriers are available in `CONFIG.Carriers`:
+
+| Carrier | Color | Description |
+|---------|-------|-------------|
+| `electricity` | <span class="color-swatch" style="background:#FECB52"></span>`#FECB52` | Yellow - lightning/energy |
+| `heat` | <span class="color-swatch" style="background:#D62728"></span>`#D62728` | Red - warmth/fire |
+| `gas` | <span class="color-swatch" style="background:#1F77B4"></span>`#1F77B4` | Blue - natural gas |
+| `hydrogen` | <span class="color-swatch" style="background:#9467BD"></span>`#9467BD` | Purple - clean/future |
+| `fuel` | <span class="color-swatch" style="background:#8C564B"></span>`#8C564B` | Brown - fossil/oil |
+| `biomass` | <span class="color-swatch" style="background:#2CA02C"></span>`#2CA02C` | Green - organic/renewable |
+
+Colors are from the D3/Plotly palettes for professional consistency.
+
+Assign carriers to buses for automatic coloring:
+
+```python
+# Buses use carrier colors automatically
+heat_bus = fx.Bus('HeatNetwork', carrier='heat')
+elec_bus = fx.Bus('Grid', carrier='electricity')
+
+# Plots automatically use carrier colors for bus-related elements
+flow_system.statistics.plot.sankey()  # Buses colored by carrier
+```
+
+### Custom Carriers
+
+Register custom carriers on your FlowSystem:
+
+```python
+# Create a custom carrier
+biogas = fx.Carrier('biogas', color='#228B22', unit='kW', description='Biogas fuel')
+hydrogen = fx.Carrier('hydrogen', color='#00CED1', unit='kg/h')
+
+# Register with FlowSystem (overrides CONFIG.Carriers defaults)
+flow_system.add_carrier(biogas)
+flow_system.add_carrier(hydrogen)
+
+# Access registered carriers
+flow_system.carriers  # CarrierContainer with locally registered carriers
+flow_system.get_carrier('biogas')  # Returns Carrier object
+```
+
+### Color Accessor
+
+The `flow_system.colors` accessor provides centralized color configuration:
+
+```python
+# Configure colors for components
+flow_system.colors.setup({
+    'Boiler': '#D35400',
+    'CHP': '#8E44AD',
+    'HeatPump': '#27AE60',
+})
+
+# Or set individual colors
+flow_system.colors.set_component_color('Boiler', '#D35400')
+flow_system.colors.set_carrier_color('biogas', '#228B22')
+
+# Load from file
+flow_system.colors.setup('colors.json')  # or .yaml
+```
+
+### Context-Aware Coloring
+
+Plot colors are automatically resolved based on context:
+
+- **Bus balance plots**: Colors based on the connected component
+- **Component balance plots**: Colors based on the connected bus/carrier
+- **Sankey diagrams**: Buses use carrier colors, components use configured colors
+
+```python
+# Plotting a bus balance → flows colored by their parent component
+flow_system.statistics.plot.balance('ElectricityBus')
+
+# Plotting a component balance → flows colored by their connected bus/carrier
+flow_system.statistics.plot.balance('CHP')
+```
+
+### Color Resolution Priority
+
+Colors are resolved in this order:
+
+1. **Explicit colors** passed to plot methods (always override)
+2. **Component/bus colors** set via `flow_system.colors.setup()`
+3. **Element `meta_data['color']`** if present
+4. **Carrier colors** from FlowSystem or CONFIG.Carriers
+5. **Default colorscale** (controlled by `CONFIG.Plotting.default_qualitative_colorscale`)
+
+### Persistence
+
+Color configurations are automatically saved with the FlowSystem:
+
+```python
+# Colors are persisted
+flow_system.to_netcdf('my_system.nc')
+
+# And restored
+loaded = fx.FlowSystem.from_netcdf('my_system.nc')
+loaded.colors  # Configuration restored
+```
+
 ### Display Control
 
 Control whether plots are shown automatically:

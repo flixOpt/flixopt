@@ -32,10 +32,11 @@ if __name__ == '__main__':
 
     # --- Define Energy Buses ---
     # Represent node balances (inputs=outputs) for the different energy carriers (electricity, heat, gas) in the system
+    # Carriers provide automatic color assignment in plots (yellow for electricity, red for heat, blue for gas)
     flow_system.add_elements(
-        fx.Bus('Strom', imbalance_penalty_per_flow_hour=imbalance_penalty),
-        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=imbalance_penalty),
-        fx.Bus('Gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Strom', carrier='electricity', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', carrier='heat', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', carrier='gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
     )
 
     # --- Define Effects ---
@@ -200,7 +201,7 @@ if __name__ == '__main__':
     flow_system.to_netcdf('results/complex_example.nc')
 
     # Plot results using the statistics accessor
-    flow_system.statistics.plot.heatmap('BHKW2(Q_th)|flow_rate')
+    flow_system.statistics.plot.heatmap('BHKW2(Q_th)')  # Flow label - auto-resolves to flow_rate
     flow_system.statistics.plot.balance('BHKW2')
-    flow_system.statistics.plot.heatmap('Speicher|charge_state')
+    flow_system.statistics.plot.heatmap('Speicher')  # Storage label - auto-resolves to charge_state
     flow_system.statistics.plot.balance('Fernwärme')

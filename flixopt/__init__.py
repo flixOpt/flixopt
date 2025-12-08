@@ -14,6 +14,7 @@ except (PackageNotFoundError, TypeError):
 
 # Import commonly used classes and functions
 from . import linear_converters, plotting, results, solvers
+from .carrier import Carrier, CarrierContainer
 from .clustering import ClusteringParameters
 from .components import (
     LinearConverter,
@@ -34,6 +35,8 @@ from .optimization import ClusteredOptimization, Optimization, SegmentedOptimiza
 __all__ = [
     'TimeSeriesData',
     'CONFIG',
+    'Carrier',
+    'CarrierContainer',
     'Flow',
     'Bus',
     'Effect',

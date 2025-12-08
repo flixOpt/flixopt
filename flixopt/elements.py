@@ -93,8 +93,9 @@ class Component(Element):
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
-        super().__init__(label, meta_data=meta_data)
+        super().__init__(label, meta_data=meta_data, color=color)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters
@@ -194,6 +195,9 @@ class Bus(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
+        carrier: Name of the energy/material carrier type (e.g., 'electricity', 'heat', 'gas').
+            Carriers are registered via ``flow_system.add_carrier()`` or available as
+            predefined defaults in CONFIG.Carriers. Used for automatic color assignment in plots.
         imbalance_penalty_per_flow_hour: Penalty costs for bus balance violations.
             When None (default), no imbalance is allowed (hard constraint). When set to a
             value > 0, allows bus imbalances at penalty cost.
@@ -201,30 +205,30 @@ class Bus(Element):
             in results. Only use Python native types.
 
     Examples:
-        Electrical bus with strict balance:
+        Using predefined carrier names:
 
         ```python
-        electricity_bus = Bus(
-            label='main_electrical_bus',
-            imbalance_penalty_per_flow_hour=None,  # No imbalance allowed
-        )
+        electricity_bus = Bus(label='main_grid', carrier='electricity')
+        heat_bus = Bus(label='district_heating', carrier='heat')
+        ```
+
+        Registering custom carriers on FlowSystem:
+
+        ```python
+        import flixopt as fx
+
+        fs = fx.FlowSystem(timesteps)
+        fs.add_carrier(fx.Carrier('biogas', '#228B22', 'kW'))
+        biogas_bus = fx.Bus(label='biogas_network', carrier='biogas')
         ```
 
         Heat network with penalty for imbalances:
 
         ```python
-        heat_network = Bus(
-            label='district_heating_network',
-            imbalance_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
-        )
-        ```
-
-        Material flow with time-varying penalties:
-
-        ```python
-        material_hub = Bus(
-            label='material_processing_hub',
-            imbalance_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+        heat_bus = Bus(
+            label='district_heating',
+            carrier='heat',
+            imbalance_penalty_per_flow_hour=1000,
         )
         ```
 
@@ -245,6 +249,7 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
+        carrier: str | None = None,
         imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
         **kwargs,
@@ -254,6 +259,7 @@ class Bus(Element):
             kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
         )
         self._validate_kwargs(kwargs)
+        self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
