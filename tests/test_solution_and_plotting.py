@@ -171,16 +171,16 @@ class TestStatisticsAccessor:
     """Tests for flow_system.statistics accessor."""
 
     def test_statistics_sizes_includes_all_flows(self, simple_flow_system, highs_solver):
-        """Test that statistics.sizes includes all flow sizes (fixed and investment)."""
+        """Test that statistics.sizes includes all flow sizes (from InvestParameters)."""
         simple_flow_system.optimize(highs_solver)
 
         sizes = simple_flow_system.statistics.sizes
 
         assert isinstance(sizes, xr.Dataset)
-        # Should have sizes for multiple flows
+        # Should have sizes for flows with InvestParameters
         assert len(sizes.data_vars) > 0
 
-        # Check that known flows have sizes
+        # Check that all size labels are valid flow labels
         flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
         for label in sizes.data_vars:
             assert label in flow_labels, f'Size label {label} should be a valid flow'
@@ -690,14 +690,14 @@ class TestSankeyDiagram:
         assert len(result.data.link) > 0
 
     def test_sankey_sizes_mode(self, simple_flow_system, highs_solver):
-        """Test Sankey diagram with sizes mode shows fixed sizes."""
+        """Test Sankey diagram with sizes mode shows investment sizes."""
         simple_flow_system.optimize(highs_solver)
 
         result = simple_flow_system.statistics.plot.sankey(mode='sizes', show=False)
 
         assert result.figure is not None
         assert result.data is not None
-        # Should have some flows with sizes
+        # Should have some flows with investment sizes
         assert len(result.data.link) > 0
 
     def test_sankey_sizes_max_size_filter(self, simple_flow_system, highs_solver):

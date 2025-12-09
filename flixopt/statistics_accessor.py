@@ -417,7 +417,11 @@ class StatisticsAccessor:
         """All flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
         if self._sizes is None:
-            size_vars = [v for v in self._fs.solution.data_vars if v.endswith('|size')]
+            # Get flow labels to filter only flow sizes (not storage capacity sizes)
+            flow_labels = set(self._fs.flows.keys())
+            size_vars = [
+                v for v in self._fs.solution.data_vars if v.endswith('|size') and v.replace('|size', '') in flow_labels
+            ]
             self._sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
         return self._sizes
 
@@ -1342,6 +1346,7 @@ class StatisticsPlotAccessor:
         timestep: int | str | None = None,
         aggregate: Literal['sum', 'mean'] = 'sum',
         select: SelectType | None = None,
+        max_size: float | None = None,
         colors: ColorType | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -1357,6 +1362,7 @@ class StatisticsPlotAccessor:
             timestep: Specific timestep to show, or None for aggregation (flow_hours only).
             aggregate: How to aggregate if timestep is None ('sum' or 'mean', flow_hours only).
             select: xarray-style selection.
+            max_size: Filter flows with sizes exceeding this value (sizes mode only).
             colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
             show: Whether to display.
             **plotly_kwargs: Additional arguments passed to Plotly layout.
@@ -1380,6 +1386,12 @@ class StatisticsPlotAccessor:
             fig, sankey_ds = self._build_effects_sankey(select, colors, **plotly_kwargs)
         else:
             ds, title = self._prepare_sankey_data(mode, timestep, aggregate, select)
+
+            # Apply max_size filter for sizes mode
+            if max_size is not None and mode == 'sizes' and ds.data_vars:
+                valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
+                ds = ds[valid_labels]
+
             nodes, links = self._build_sankey_links(ds)
             fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
 
