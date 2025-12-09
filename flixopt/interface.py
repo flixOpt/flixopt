@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import xarray as xr
 
 from .config import CONFIG
@@ -468,6 +470,93 @@ class PiecewiseConversion(Interface):
         for name, piecewise in self.piecewises.items():
             piecewise.transform_data(f'{name_prefix}|{name}')
 
+    def plot(
+        self,
+        x_flow: str | None = None,
+        title: str = '',
+    ) -> go.Figure:
+        """Plot multi-flow piecewise conversion as X-Y scatter.
+
+        Visualizes the piecewise linear relationships between flows. One flow
+        is plotted on the X-axis, all others on the Y-axis. Each piece is shown
+        as a line segment. For data with periods/scenarios, uses faceting.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            x_flow: Flow label to use for X-axis. Defaults to first flow in dict.
+            title: Plot title.
+
+        Returns:
+            Plotly Figure with X-Y scatter showing piecewise segments.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> chp.piecewise_conversion.plot(x_flow='Gas', title='CHP Curves')
+        """
+        if self._flow_system is None:
+            raise RuntimeError('Component must be part of a FlowSystem to plot.')
+        if not self._flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseConversion')
+            self.flow_system.connect_and_transform()
+
+        flow_labels = list(self.piecewises.keys())
+
+        # Use first flow as X-axis by default, or the specified one
+        x_label = x_flow if x_flow is not None else flow_labels[0]
+        if x_label not in flow_labels:
+            raise ValueError(f"x_flow '{x_label}' not found. Available: {flow_labels}")
+
+        y_flows = [label for label in flow_labels if label != x_label]
+        if not y_flows:
+            raise ValueError('Need at least two flows to plot')
+
+        x_piecewise = self.piecewises[x_label]
+
+        # Build xarray Dataset with all piece data, then convert to DataFrame for plotting
+        datasets = []
+        for y_label in y_flows:
+            y_piecewise = self.piecewises[y_label]
+            for i, (x_piece, y_piece) in enumerate(zip(x_piecewise, y_piecewise, strict=False)):
+                # Create Dataset with start and end points as a 'point' dimension
+                ds = xr.Dataset(
+                    {
+                        x_label: xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'output': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['variable'] = y_label
+                ds['piece'] = i
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+        combined['trace'] = range(len(datasets))
+
+        # Convert to DataFrame for plotting
+        df = combined.to_dataframe().reset_index()
+
+        # Determine faceting based on available dimensions
+        facet_col = 'scenario' if 'scenario' in df.columns and df['scenario'].nunique() > 1 else None
+        facet_row = 'period' if 'period' in df.columns and df['period'].nunique() > 1 else None
+
+        fig = px.line(
+            df,
+            x=x_label,
+            y='output',
+            color='variable',
+            line_group='trace',
+            facet_col=facet_col,
+            facet_row=facet_row,
+            title=title,
+            markers=True,
+        )
+
+        fig.update_layout(yaxis_title='Output' if len(y_flows) > 1 else y_flows[0])
+        return fig
+
 
 @register_class_for_io
 class PiecewiseEffects(Interface):
@@ -687,6 +776,81 @@ class PiecewiseEffects(Interface):
         self.piecewise_origin.transform_data(f'{name_prefix}|PiecewiseEffects|origin')
         for effect, piecewise in self.piecewise_shares.items():
             piecewise.transform_data(f'{name_prefix}|PiecewiseEffects|{effect}')
+
+    def plot(self, title: str = '') -> go.Figure:
+        """Plot origin vs effect shares as X-Y scatter.
+
+        Visualizes the piecewise linear relationships between the origin variable
+        and its effect shares. Origin on X-axis, effect shares on Y-axis.
+        For data with periods/scenarios, uses faceting.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            title: Plot title.
+
+        Returns:
+            Plotly Figure with X-Y scatter showing piecewise segments.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> invest_params.piecewise_effects_of_investment.plot(title='Investment Effects')
+        """
+        if self._flow_system is None:
+            raise RuntimeError('Component must be part of a FlowSystem to plot.')
+        if not self._flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseEffects')
+            self.flow_system.connect_and_transform()
+
+        effect_labels = list(self.piecewise_shares.keys())
+        if not effect_labels:
+            raise ValueError('Need at least one effect share to plot')
+
+        # Build xarray Dataset with all piece data, then convert to DataFrame for plotting
+        datasets = []
+        for effect_label in effect_labels:
+            y_piecewise = self.piecewise_shares[effect_label]
+            for i, (x_piece, y_piece) in enumerate(zip(self.piecewise_origin, y_piecewise, strict=False)):
+                ds = xr.Dataset(
+                    {
+                        'origin': xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'share': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['effect'] = effect_label
+                ds['piece'] = i
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+        combined['trace'] = range(len(datasets))
+
+        # Convert to DataFrame for plotting
+        df = combined.to_dataframe().reset_index()
+
+        # Determine faceting based on available dimensions
+        facet_col = 'scenario' if 'scenario' in df.columns and df['scenario'].nunique() > 1 else None
+        facet_row = 'period' if 'period' in df.columns and df['period'].nunique() > 1 else None
+
+        fig = px.line(
+            df,
+            x='origin',
+            y='share',
+            color='effect',
+            line_group='trace',
+            facet_col=facet_col,
+            facet_row=facet_row,
+            title=title,
+            markers=True,
+        )
+
+        fig.update_layout(
+            xaxis_title='Origin',
+            yaxis_title='Effect Share' if len(effect_labels) > 1 else effect_labels[0],
+        )
+        return fig
 
 
 @register_class_for_io
