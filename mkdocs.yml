@@ -72,6 +72,7 @@ nav:
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
 
   palette:
     # Palette toggle for automatic mode
