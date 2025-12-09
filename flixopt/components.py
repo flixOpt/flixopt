@@ -729,6 +729,7 @@ class TransmissionModel(ComponentModel):
             for flow in element.inputs + element.outputs:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters._set_flow_system(model.flow_system)
 
         super().__init__(model, element)
 

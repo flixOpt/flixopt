@@ -955,11 +955,13 @@ class ComponentModel(ElementModel):
             for flow in all_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters._set_flow_system(self._model.flow_system)
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters._set_flow_system(self._model.flow_system)
 
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
