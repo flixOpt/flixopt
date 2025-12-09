@@ -1513,3 +1513,218 @@ class StatisticsPlotAccessor:
             fig.show()
 
         return PlotResult(data=combined.to_dataset(name=aspect), figure=fig)
+
+    def charge_states(
+        self,
+        storages: str | list[str] | None = None,
+        *,
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot storage charge states over time.
+
+        Args:
+            storages: Storage label(s) to plot. If None, plots all storages.
+            select: xarray-style selection.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
+            facet_col: Dimension for column facets.
+            facet_row: Dimension for row facets.
+            show: Whether to display.
+
+        Returns:
+            PlotResult with charge state data.
+        """
+        self._stats._require_solution()
+        ds = self._stats.charge_states
+
+        if storages is not None:
+            if isinstance(storages, str):
+                storages = [storages]
+            ds = ds[[s for s in storages if s in ds]]
+
+        ds = _apply_selection(ds, select)
+        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+
+        fig = _create_line(
+            ds,
+            colors=colors,
+            title='Storage Charge States',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            **plotly_kwargs,
+        )
+        fig.update_yaxes(title_text='Charge State')
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
+    def storage(
+        self,
+        storage: str,
+        *,
+        select: SelectType | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
+        charge_state_color: str = 'black',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot storage operation: charging/discharging flows with charge state overlay.
+
+        This combines a stacked bar chart showing the storage balance (inputs negative,
+        outputs positive) with a line overlay showing the charge state over time.
+
+        Args:
+            storage: Storage component label.
+            select: xarray-style selection.
+            unit: 'flow_rate' (power) or 'flow_hours' (energy).
+            colors: Color specification for flow bars.
+            charge_state_color: Color for the charge state line overlay.
+            facet_col: Dimension for column facets.
+            facet_row: Dimension for row facets.
+            show: Whether to display.
+
+        Returns:
+            PlotResult with combined balance and charge state data.
+
+        Raises:
+            KeyError: If storage component not found.
+            ValueError: If component is not a storage.
+        """
+        self._stats._require_solution()
+
+        # Get the storage component
+        if storage not in self._fs.components:
+            raise KeyError(f"'{storage}' not found in components")
+
+        component = self._fs.components[storage]
+
+        # Check if it's a storage by looking for charge_state variable
+        charge_state_var = f'{storage}|charge_state'
+        if charge_state_var not in self._fs.solution:
+            raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
+
+        # Get flow data
+        input_labels = [f.label_full for f in component.inputs]
+        output_labels = [f.label_full for f in component.outputs]
+        all_labels = input_labels + output_labels
+
+        if unit == 'flow_rate':
+            ds = self._stats.flow_rates[[lbl for lbl in all_labels if lbl in self._stats.flow_rates]]
+        else:
+            ds = self._stats.flow_hours[[lbl for lbl in all_labels if lbl in self._stats.flow_hours]]
+
+        # Negate inputs for balance view
+        for label in output_labels:
+            if label in ds:
+                ds[label] = -ds[label]
+
+        # Get charge state
+        charge_state = self._fs.solution[charge_state_var]
+
+        # Apply selection to both
+        ds = _apply_selection(ds, select)
+        if select:
+            charge_state = charge_state.sel(**{k: v for k, v in select.items() if k in charge_state.dims})
+
+        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+
+        # Build color map from Element.color attributes if no colors specified
+        if colors is None:
+            colors = self._get_color_map_for_balance(storage, list(ds.data_vars))
+
+        # Create base balance plot
+        fig = _create_stacked_bar(
+            ds,
+            colors=colors,
+            title=f'{storage} Operation ({unit})',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            **plotly_kwargs,
+        )
+
+        # Add charge state line overlay
+        # Convert to DataFrame for easier handling
+        charge_df = charge_state.to_dataframe(name='charge_state').reset_index()
+
+        # Handle faceting - need to add trace to each subplot
+        if actual_facet_col or actual_facet_row:
+            # Get unique facet combinations from the data
+            facet_dims = []
+            if actual_facet_col and actual_facet_col in charge_df.columns:
+                facet_dims.append(actual_facet_col)
+            if actual_facet_row and actual_facet_row in charge_df.columns:
+                facet_dims.append(actual_facet_row)
+
+            if facet_dims:
+                # Group by facet dimensions and add trace to each subplot
+                grouped = charge_df.groupby(facet_dims)
+                for i, (_facet_vals, group) in enumerate(grouped):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=group['time'],
+                            y=group['charge_state'],
+                            mode='lines',
+                            name='Charge State' if i == 0 else None,
+                            showlegend=(i == 0),
+                            line=dict(color=charge_state_color, width=2),
+                            yaxis='y2',
+                        ),
+                        row=(i // max(1, len(fig._grid_ref[0])) + 1) if fig._grid_ref else 1,
+                        col=(i % max(1, len(fig._grid_ref[0])) + 1) if fig._grid_ref else 1,
+                    )
+            else:
+                # No valid facet columns in charge_df
+                fig.add_trace(
+                    go.Scatter(
+                        x=charge_df['time'],
+                        y=charge_df['charge_state'],
+                        mode='lines',
+                        name='Charge State',
+                        line=dict(color=charge_state_color, width=2),
+                        yaxis='y2',
+                    )
+                )
+        else:
+            # No faceting - single trace
+            fig.add_trace(
+                go.Scatter(
+                    x=charge_df['time'],
+                    y=charge_df['charge_state'],
+                    mode='lines',
+                    name='Charge State',
+                    line=dict(color=charge_state_color, width=2),
+                    yaxis='y2',
+                )
+            )
+
+        # Add secondary y-axis for charge state
+        fig.update_layout(
+            yaxis2=dict(
+                title='Charge State',
+                overlaying='y',
+                side='right',
+                showgrid=False,
+            )
+        )
+
+        # Combine data for return
+        combined_ds = ds.copy()
+        combined_ds['charge_state'] = charge_state
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=combined_ds, figure=fig)
