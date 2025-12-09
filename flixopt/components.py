@@ -518,13 +518,13 @@ class Storage(Component):
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
                 )
 
-            if (self.charging.size.minimum_size > self.discharging.size.maximum_size).any() or (
-                self.charging.size.maximum_size < self.discharging.size.minimum_size
+            if (self.charging.size.minimum_or_fixed_size > self.discharging.size.maximum_or_fixed_size).any() or (
+                self.charging.size.maximum_or_fixed_size < self.discharging.size.minimum_or_fixed_size
             ).any():
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
-                    f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
-                    f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
+                    f'Got: {self.charging.size.minimum_or_fixed_size=}, {self.charging.size.maximum_or_fixed_size=} and '
+                    f'{self.discharging.size.minimum_or_fixed_size=}, {self.discharging.size.maximum_or_fixed_size=}.'
                 )
 
     def __repr__(self) -> str:
@@ -705,8 +705,8 @@ class Transmission(Component):
             ).any():
                 raise ValueError(
                     f'Balanced Transmission needs compatible minimum and maximum sizes.'
-                    f'Got: {self.in1.size.minimum_size=}, {self.in1.size.maximum_size=}, {self.in1.size.fixed_size=} and '
-                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.'
+                    f'Got: {self.in1.size.minimum_or_fixed_size=}, {self.in1.size.maximum_or_fixed_size=} and '
+                    f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
                 )
 
     def create_model(self, model) -> TransmissionModel:
@@ -943,8 +943,8 @@ class StorageModel(ComponentModel):
             )
         else:
             return (
-                relative_lower_bound * self.element.capacity_in_flow_hours.minimum_size,
-                relative_upper_bound * self.element.capacity_in_flow_hours.maximum_size,
+                relative_lower_bound * self.element.capacity_in_flow_hours.minimum_or_fixed_size,
+                relative_upper_bound * self.element.capacity_in_flow_hours.maximum_or_fixed_size,
             )
 
     @property
