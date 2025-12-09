@@ -37,7 +37,9 @@ nav:
       - Investment: user-guide/mathematical-notation/features/InvestParameters.md
       - Status: user-guide/mathematical-notation/features/StatusParameters.md
       - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-    - Recipes: user-guide/recipes/index.md
+    - Recipes:
+      - user-guide/recipes/index.md
+      - Plotting Custom Data: user-guide/recipes/plotting-custom-data.md
     - Support:
       - FAQ: user-guide/faq.md
       - Troubleshooting: user-guide/troubleshooting.md

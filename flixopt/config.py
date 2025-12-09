@@ -20,7 +20,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL']
+__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL', 'DEPRECATION_REMOVAL_VERSION']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
