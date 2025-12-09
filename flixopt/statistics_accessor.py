@@ -1057,7 +1057,7 @@ class StatisticsPlotAccessor:
             for flow in self._fs.flows.values():
                 # Get bus label (could be string or Bus object)
                 bus_label = flow.bus
-                comp_label = flow.component.label_full
+                comp_label = flow.component
 
                 # start/end filtering based on flow direction
                 if flow.is_input_in_component:
@@ -1160,7 +1160,7 @@ class StatisticsPlotAccessor:
             # Determine source/target based on flow direction
             # is_input_in_component: True means bus -> component, False means component -> bus
             bus_label = flow.bus
-            comp_label = flow.component.label_full
+            comp_label = flow.component
 
             if flow.is_input_in_component:
                 source = bus_label
