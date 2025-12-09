@@ -237,50 +237,56 @@ class Effect(Element):
         self.minimum_over_periods = minimum_over_periods
         self.maximum_over_periods = maximum_over_periods
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
-        self.maximum_per_hour = self._fit_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Link this effect to a FlowSystem.
+
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
+
+    def transform_data(self) -> None:
+        self.minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.maximum_per_hour = self._fit_coords(f'{self.prefix}|maximum_per_hour', self.maximum_per_hour)
 
         self.share_from_temporal = self._fit_effect_coords(
             prefix=None,
             effect_values=self.share_from_temporal,
-            suffix=f'(temporal)->{prefix}(temporal)',
+            suffix=f'(temporal)->{self.prefix}(temporal)',
             dims=['time', 'period', 'scenario'],
         )
         self.share_from_periodic = self._fit_effect_coords(
             prefix=None,
             effect_values=self.share_from_periodic,
-            suffix=f'(periodic)->{prefix}(periodic)',
+            suffix=f'(periodic)->{self.prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
         self.minimum_temporal = self._fit_coords(
-            f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
         self.maximum_temporal = self._fit_coords(
-            f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
         self.minimum_periodic = self._fit_coords(
-            f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
         self.maximum_periodic = self._fit_coords(
-            f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
         self.minimum_total = self._fit_coords(
-            f'{prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
         )
         self.maximum_total = self._fit_coords(
-            f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
         self.minimum_over_periods = self._fit_coords(
-            f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
+            f'{self.prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
         )
         self.maximum_over_periods = self._fit_coords(
-            f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
+            f'{self.prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
         self.period_weights = self._fit_coords(
-            f'{prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
+            f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -670,7 +676,7 @@ class EffectCollectionModel(Submodel):
             penalty_effect = self.effects._create_penalty_effect()
             # Link to FlowSystem (should already be linked, but ensure it)
             if penalty_effect._flow_system is None:
-                penalty_effect._set_flow_system(self._model.flow_system)
+                penalty_effect.link_to_flow_system(self._model.flow_system)
 
         # Create EffectModel for each effect
         for effect in self.effects.values():

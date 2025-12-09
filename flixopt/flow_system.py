@@ -730,6 +730,50 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         flow_system.name = path.stem
         return flow_system
 
+    def copy(self) -> FlowSystem:
+        """Create a copy of the FlowSystem without optimization state.
+
+        Creates a new FlowSystem with copies of all elements, but without:
+        - The solution dataset
+        - The optimization model
+        - Element submodels and variable/constraint names
+
+        This is useful for creating variations of a FlowSystem for different
+        optimization scenarios without affecting the original.
+
+        Returns:
+            A new FlowSystem instance that can be modified and optimized independently.
+
+        Examples:
+            >>> original = FlowSystem(timesteps)
+            >>> original.add_elements(boiler, bus)
+            >>> original.optimize(solver)  # Original now has solution
+            >>>
+            >>> # Create a copy to try different parameters
+            >>> variant = original.copy()  # No solution, can be modified
+            >>> variant.add_elements(new_component)
+            >>> variant.optimize(solver)
+        """
+        # Temporarily clear solution to use standard serialization without solution data
+        original_solution = self._solution
+        self._solution = None
+        try:
+            ds = self.to_dataset()
+        finally:
+            self._solution = original_solution
+
+        # Create new FlowSystem from dataset (without solution)
+        new_fs = FlowSystem.from_dataset(ds.copy(deep=True))
+        return new_fs
+
+    def __copy__(self):
+        """Support for copy.copy()."""
+        return self.copy()
+
+    def __deepcopy__(self, memo):
+        """Support for copy.deepcopy()."""
+        return self.copy()
+
     def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
         """
         Get FlowSystem structure.
@@ -827,7 +871,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         }
 
     def connect_and_transform(self):
-        """Transform data for all elements using the new simplified approach."""
+        """Connect the network and transform all element data to model coordinates.
+
+        This method performs the following steps:
+
+        1. Connects flows to buses (establishing the network topology)
+        2. Registers any missing carriers from CONFIG defaults
+        3. Assigns colors to elements without explicit colors
+        4. Transforms all element data to xarray DataArrays aligned with
+           FlowSystem coordinates (time, period, scenario)
+        5. Validates system integrity
+
+        This is called automatically by :meth:`build_model` and :meth:`optimize`.
+
+        Warning:
+            After this method runs, element attributes (e.g., ``flow.size``,
+            ``flow.relative_minimum``) contain transformed xarray DataArrays,
+            not the original input values. If you modify element attributes after
+            transformation, call :meth:`invalidate` to ensure the changes take
+            effect on the next optimization.
+
+        Note:
+            This method is idempotent within a single model lifecycle - calling
+            it multiple times has no effect once ``connected_and_transformed``
+            is True. Use :meth:`invalidate` to reset this flag.
+        """
         if self.connected_and_transformed:
             logger.debug('FlowSystem already connected and transformed')
             return
@@ -884,13 +952,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             *elements: childs of  Element like Boiler, HeatPump, Bus,...
                 modeling Elements
+
+        Raises:
+            RuntimeError: If the FlowSystem is locked (has a solution).
+                Call `reset()` to unlock it first.
         """
-        if self.connected_and_transformed:
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot add elements to a FlowSystem that has a solution. '
+                'Call `reset()` first to clear the solution and allow modifications.'
+            )
+
+        if self.model is not None:
             warnings.warn(
-                'You are adding elements to an already connected FlowSystem. This is not recommended (But it works).',
+                'Adding elements to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
-            self._connected_and_transformed = False
+            self._invalidate_model()
 
         for new_element in list(elements):
             # Validate element type first
@@ -924,6 +1002,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             carrier: A Carrier object defining the carrier properties.
 
+        Raises:
+            RuntimeError: If the FlowSystem is locked (has a solution).
+                Call `reset()` to unlock it first.
+
         Examples:
             ```python
             import flixopt as fx
@@ -941,12 +1023,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # The carrier color will be used in plots automatically
             ```
         """
-        if self.connected_and_transformed:
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot add carriers to a FlowSystem that has a solution. '
+                'Call `reset()` first to clear the solution and allow modifications.'
+            )
+
+        if self.model is not None:
             warnings.warn(
-                'You are adding a carrier to an already connected FlowSystem. This is not recommended (But it works).',
+                'Adding carriers to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
-            self._connected_and_transformed = False
+            self._invalidate_model()
 
         for carrier in list(carriers):
             if not isinstance(carrier, Carrier):
@@ -1119,6 +1207,103 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Set the solution dataset and invalidate statistics cache."""
         self._solution = value
         self._statistics = None  # Invalidate cached statistics
+
+    @property
+    def is_locked(self) -> bool:
+        """Check if the FlowSystem is locked (has a solution).
+
+        A locked FlowSystem cannot be modified. Use `reset()` to unlock it.
+        """
+        return self._solution is not None
+
+    def _invalidate_model(self) -> None:
+        """Invalidate the model and element submodels when structure changes.
+
+        This clears the model, resets the ``connected_and_transformed`` flag,
+        and clears all element submodels and variable/constraint names.
+
+        Called internally by :meth:`add_elements`, :meth:`add_carriers`,
+        :meth:`reset`, and :meth:`invalidate`.
+
+        See Also:
+            :meth:`invalidate`: Public method for manual invalidation.
+            :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
+        """
+        self.model = None
+        self._connected_and_transformed = False
+        for element in self.values():
+            element.submodel = None
+            element._variable_names = []
+            element._constraint_names = []
+
+    def reset(self) -> FlowSystem:
+        """Clear optimization state to allow modifications.
+
+        This method unlocks the FlowSystem by clearing:
+        - The solution dataset
+        - The optimization model
+        - All element submodels and variable/constraint names
+        - The connected_and_transformed flag
+
+        After calling reset(), the FlowSystem can be modified again
+        (e.g., adding elements or carriers).
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            >>> flow_system.optimize(solver)  # FlowSystem is now locked
+            >>> flow_system.add_elements(new_bus)  # Raises RuntimeError
+            >>> flow_system.reset()  # Unlock the FlowSystem
+            >>> flow_system.add_elements(new_bus)  # Now works
+        """
+        self.solution = None  # Also clears _statistics via setter
+        self._invalidate_model()
+        return self
+
+    def invalidate(self) -> FlowSystem:
+        """Invalidate the model to allow re-transformation after modifying elements.
+
+        Call this after modifying existing element attributes (e.g., ``flow.size``,
+        ``flow.relative_minimum``) to ensure changes take effect on the next
+        optimization. The next call to :meth:`optimize` or :meth:`build_model`
+        will re-run :meth:`connect_and_transform`.
+
+        Note:
+            Adding new elements via :meth:`add_elements` automatically invalidates
+            the model. This method is only needed when modifying attributes of
+            elements that are already part of the FlowSystem.
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the FlowSystem has a solution. Call :meth:`reset`
+                first to clear the solution.
+
+        Examples:
+            Modify a flow's size and re-optimize:
+
+            >>> flow_system.optimize(solver)
+            >>> flow_system.reset()  # Clear solution first
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Re-runs connect_and_transform
+
+            Modify before first optimization:
+
+            >>> flow_system.connect_and_transform()
+            >>> # Oops, need to change something
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Changes take effect
+        """
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot invalidate a FlowSystem with a solution. Call `reset()` first to clear the solution.'
+            )
+        self._invalidate_model()
+        return self
 
     @property
     def optimize(self) -> OptimizeAccessor:
@@ -1345,12 +1530,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_effects(self, *args: Effect) -> None:
         for effect in args:
-            effect._set_flow_system(self)  # Link element to FlowSystem
+            effect.link_to_flow_system(self)  # Link element to FlowSystem
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            new_component._set_flow_system(self)  # Link element to FlowSystem
+            new_component.link_to_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
         # Invalidate cache once after all additions
         if components:
@@ -1358,7 +1543,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            new_bus._set_flow_system(self)  # Link element to FlowSystem
+            new_bus.link_to_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
         # Invalidate cache once after all additions
         if buses:
