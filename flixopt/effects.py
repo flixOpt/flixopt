@@ -670,7 +670,7 @@ class EffectCollectionModel(Submodel):
             penalty_effect = self.effects._create_penalty_effect()
             # Link to FlowSystem (should already be linked, but ensure it)
             if penalty_effect._flow_system is None:
-                penalty_effect._set_flow_system(self._model.flow_system)
+                penalty_effect.link_to_flow_system(self._model.flow_system)
 
         # Create EffectModel for each effect
         for effect in self.effects.values():

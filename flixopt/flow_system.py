@@ -1454,12 +1454,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_effects(self, *args: Effect) -> None:
         for effect in args:
-            effect._set_flow_system(self)  # Link element to FlowSystem
+            effect.link_to_flow_system(self)  # Link element to FlowSystem
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            new_component._set_flow_system(self)  # Link element to FlowSystem
+            new_component.link_to_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
         # Invalidate cache once after all additions
         if components:
@@ -1467,7 +1467,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            new_bus._set_flow_system(self)  # Link element to FlowSystem
+            new_bus.link_to_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
         # Invalidate cache once after all additions
         if buses:

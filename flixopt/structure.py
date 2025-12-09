@@ -335,18 +335,38 @@ class Interface:
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
-    def _set_flow_system(self, flow_system: FlowSystem) -> None:
-        """Store flow_system reference and propagate to nested Interface objects.
+    def link_to_flow_system(self, flow_system: FlowSystem) -> None:
+        """Link this interface and all nested interfaces to a FlowSystem.
 
         This method is called automatically during element registration to enable
         elements to access FlowSystem properties without passing the reference
         through every method call.
 
         Subclasses with nested Interface objects should override this method
-        to explicitly propagate the reference to their nested interfaces.
+        to propagate the link to their nested interfaces by calling
+        `super().link_to_flow_system(flow_system)` first, then linking nested objects.
 
         Args:
-            flow_system: The FlowSystem that this interface belongs to
+            flow_system: The FlowSystem to link to
+
+        Examples:
+            Override in a subclass with nested interfaces:
+
+            ```python
+            def link_to_flow_system(self, flow_system) -> None:
+                super().link_to_flow_system(flow_system)
+                if self.nested_interface is not None:
+                    self.nested_interface.link_to_flow_system(flow_system)
+            ```
+
+            Creating an Interface dynamically during modeling:
+
+            ```python
+            # In a Model class
+            if flow.status_parameters is None:
+                flow.status_parameters = StatusParameters()
+                flow.status_parameters.link_to_flow_system(self._model.flow_system)
+            ```
         """
         self._flow_system = flow_system
 

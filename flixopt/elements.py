@@ -111,13 +111,13 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Interface objects and flows."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         if self.status_parameters is not None:
-            self.status_parameters._set_flow_system(flow_system)
+            self.status_parameters.link_to_flow_system(flow_system)
         for flow in self.inputs + self.outputs:
-            flow._set_flow_system(flow_system)
+            flow.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -269,11 +269,11 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested flows."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         for flow in self.inputs + self.outputs:
-            flow._set_flow_system(flow_system)
+            flow.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -505,13 +505,13 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Interface objects."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         if self.status_parameters is not None:
-            self.status_parameters._set_flow_system(flow_system)
+            self.status_parameters.link_to_flow_system(flow_system)
         if isinstance(self.size, Interface):
-            self.size._set_flow_system(flow_system)
+            self.size.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -955,13 +955,13 @@ class ComponentModel(ElementModel):
             for flow in all_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters._set_flow_system(self._model.flow_system)
+                    flow.status_parameters.link_to_flow_system(self._model.flow_system)
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters._set_flow_system(self._model.flow_system)
+                    flow.status_parameters.link_to_flow_system(self._model.flow_system)
 
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:

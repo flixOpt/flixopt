@@ -226,11 +226,11 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Piece objects."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         for piece in self.pieces:
-            piece._set_flow_system(flow_system)
+            piece.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         for i, piece in enumerate(self.pieces):
@@ -458,11 +458,11 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         for piecewise in self.piecewises.values():
-            piecewise._set_flow_system(flow_system)
+            piecewise.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         for name, piecewise in self.piecewises.items():
@@ -676,12 +676,12 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
-        self.piecewise_origin._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
+        self.piecewise_origin.link_to_flow_system(flow_system)
         for piecewise in self.piecewise_shares.values():
-            piecewise._set_flow_system(flow_system)
+            piecewise.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         self.piecewise_origin.transform_data(f'{name_prefix}|PiecewiseEffects|origin')
@@ -904,11 +904,11 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
         self.linked_periods = linked_periods
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment._set_flow_system(flow_system)
+            self.piecewise_effects_of_investment.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         self.effects_of_investment = self._fit_effect_coords(

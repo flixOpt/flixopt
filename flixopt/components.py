@@ -180,11 +180,11 @@ class LinearConverter(Component):
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         if self.piecewise_conversion is not None:
-            self.piecewise_conversion._set_flow_system(flow_system)
+            self.piecewise_conversion.link_to_flow_system(flow_system)
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -427,11 +427,11 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system) -> None:
         """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system)
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours._set_flow_system(flow_system)
+            self.capacity_in_flow_hours.link_to_flow_system(flow_system)
 
     def transform_data(self, name_prefix: str = '') -> None:
         prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
@@ -729,7 +729,7 @@ class TransmissionModel(ComponentModel):
             for flow in element.inputs + element.outputs:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters._set_flow_system(model.flow_system)
+                    flow.status_parameters.link_to_flow_system(model.flow_system)
 
         super().__init__(model, element)
 
