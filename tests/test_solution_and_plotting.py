@@ -426,24 +426,28 @@ class TestHeatmapReshaping:
 class TestNetworkVisualization:
     """Tests for network visualization functionality."""
 
-    def test_plot_network_returns_network(self, simple_flow_system):
-        """Test that plot_network returns a Network object."""
-        pytest.importorskip('pyvis')
-        network = simple_flow_system.plot_network(path=False, show=False)
-        assert network is not None
+    def test_topology_plot_returns_figure(self, simple_flow_system):
+        """Test that topology.plot() returns a Plotly Figure."""
+        import plotly.graph_objects as go
 
-    def test_plot_network_creates_html(self, simple_flow_system, tmp_path):
-        """Test that plot_network creates HTML file."""
+        fig = simple_flow_system.topology.plot(show=False)
+        assert fig is not None
+        assert isinstance(fig, go.Figure)
+
+    def test_topology_plot_creates_html(self, simple_flow_system, tmp_path):
+        """Test that topology.plot() figure can be saved to HTML file."""
         html_path = tmp_path / 'network.html'
-        simple_flow_system.plot_network(path=str(html_path), show=False)
+        fig = simple_flow_system.topology.plot(show=False)
+        fig.write_html(str(html_path))
         assert html_path.exists()
 
-    def test_network_contains_all_buses(self, simple_flow_system):
-        """Test that network contains all buses."""
-        network = simple_flow_system.plot_network(path=False, show=False)
+    def test_topology_plot_contains_all_buses(self, simple_flow_system):
+        """Test that topology plot contains all buses in the Sankey diagram."""
+        fig = simple_flow_system.topology.plot(show=False)
 
-        # Get node labels
-        node_labels = [node['label'] for node in network.nodes]
+        # Get node labels from the Sankey diagram
+        sankey_data = fig.data[0]
+        node_labels = list(sankey_data.node.label)
 
         # Check that buses are in network
         for bus_label in simple_flow_system.buses.keys():
