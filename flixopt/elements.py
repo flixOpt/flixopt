@@ -111,21 +111,23 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects and flows."""
-        super().link_to_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested Interface objects and flows.
+
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system)
+            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
         for flow in self.inputs + self.outputs:
             flow.link_to_flow_system(flow_system)
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+    def transform_data(self) -> None:
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(prefix)
+            self.status_parameters.transform_data()
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data()  # Flow doesnt need the name_prefix
+            flow.transform_data()
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -269,16 +271,18 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested flows."""
-        super().link_to_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested flows.
+
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
         for flow in self.inputs + self.outputs:
             flow.link_to_flow_system(flow_system)
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+    def transform_data(self) -> None:
         self.imbalance_penalty_per_flow_hour = self._fit_coords(
-            f'{prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
+            f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
@@ -505,45 +509,49 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects."""
-        super().link_to_flow_system(flow_system)
-        if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system)
-        if isinstance(self.size, Interface):
-            self.size.link_to_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested Interface objects.
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_minimum = self._fit_coords(f'{prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = self._fit_coords(f'{prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = self._fit_coords(f'{prefix}|fixed_relative_profile', self.fixed_relative_profile)
-        self.effects_per_flow_hour = self._fit_effect_coords(prefix, self.effects_per_flow_hour, 'per_flow_hour')
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
+        if self.status_parameters is not None:
+            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
+        if isinstance(self.size, Interface):
+            self.size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
+
+    def transform_data(self) -> None:
+        self.relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = self._fit_coords(f'{self.prefix}|relative_maximum', self.relative_maximum)
+        self.fixed_relative_profile = self._fit_coords(
+            f'{self.prefix}|fixed_relative_profile', self.fixed_relative_profile
+        )
+        self.effects_per_flow_hour = self._fit_effect_coords(self.prefix, self.effects_per_flow_hour, 'per_flow_hour')
         self.flow_hours_max = self._fit_coords(
-            f'{prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
+            f'{self.prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
         )
         self.flow_hours_min = self._fit_coords(
-            f'{prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
+            f'{self.prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
         )
         self.flow_hours_max_over_periods = self._fit_coords(
-            f'{prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
+            f'{self.prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
         )
         self.flow_hours_min_over_periods = self._fit_coords(
-            f'{prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
+            f'{self.prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
         )
         self.load_factor_max = self._fit_coords(
-            f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
+            f'{self.prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
         self.load_factor_min = self._fit_coords(
-            f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
+            f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(prefix)
+            self.status_parameters.transform_data()
         if isinstance(self.size, InvestParameters):
-            self.size.transform_data(prefix)
+            self.size.transform_data()
         else:
-            self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
+            self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -955,13 +963,17 @@ class ComponentModel(ElementModel):
             for flow in all_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(self._model.flow_system)
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(self._model.flow_system)
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:

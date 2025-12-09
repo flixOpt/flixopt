@@ -180,11 +180,11 @@ class LinearConverter(Component):
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
-        super().link_to_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_conversion is not None:
-            self.piecewise_conversion.link_to_flow_system(flow_system)
+            self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -216,14 +216,13 @@ class LinearConverter(Component):
                         f'({flow.label_full}).'
                     )
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
+    def transform_data(self) -> None:
+        super().transform_data()
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors()
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data(f'{prefix}|PiecewiseConversion')
+            self.piecewise_conversion.transform_data()
 
     def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
@@ -427,49 +426,50 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
-        super().link_to_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.link_to_flow_system(flow_system)
+            self.capacity_in_flow_hours.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
+    def transform_data(self) -> None:
+        super().transform_data()
         self.relative_minimum_charge_state = self._fit_coords(
-            f'{prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
+            f'{self.prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
         )
         self.relative_maximum_charge_state = self._fit_coords(
-            f'{prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
+            f'{self.prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
         )
-        self.eta_charge = self._fit_coords(f'{prefix}|eta_charge', self.eta_charge)
-        self.eta_discharge = self._fit_coords(f'{prefix}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = self._fit_coords(f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour)
+        self.eta_charge = self._fit_coords(f'{self.prefix}|eta_charge', self.eta_charge)
+        self.eta_discharge = self._fit_coords(f'{self.prefix}|eta_discharge', self.eta_discharge)
+        self.relative_loss_per_hour = self._fit_coords(
+            f'{self.prefix}|relative_loss_per_hour', self.relative_loss_per_hour
+        )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = self._fit_coords(
-                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
+                f'{self.prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
             )
         self.minimal_final_charge_state = self._fit_coords(
-            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
+            f'{self.prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
         )
         self.maximal_final_charge_state = self._fit_coords(
-            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
+            f'{self.prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
         )
         self.relative_minimum_final_charge_state = self._fit_coords(
-            f'{prefix}|relative_minimum_final_charge_state',
+            f'{self.prefix}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
             dims=['period', 'scenario'],
         )
         self.relative_maximum_final_charge_state = self._fit_coords(
-            f'{prefix}|relative_maximum_final_charge_state',
+            f'{self.prefix}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(f'{prefix}|InvestParameters')
+            self.capacity_in_flow_hours.transform_data()
         else:
             self.capacity_in_flow_hours = self._fit_coords(
-                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
+                f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -714,11 +714,10 @@ class Transmission(Component):
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
-        self.relative_losses = self._fit_coords(f'{prefix}|relative_losses', self.relative_losses)
-        self.absolute_losses = self._fit_coords(f'{prefix}|absolute_losses', self.absolute_losses)
+    def transform_data(self) -> None:
+        super().transform_data()
+        self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
+        self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
@@ -729,7 +728,9 @@ class TransmissionModel(ComponentModel):
             for flow in element.inputs + element.outputs:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(model.flow_system)
+                    flow.status_parameters.link_to_flow_system(
+                        model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         super().__init__(model, element)
 
