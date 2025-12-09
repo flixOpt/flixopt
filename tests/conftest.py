@@ -265,7 +265,11 @@ class Storage:
 
         return fx.Storage(
             'Speicher',
-            charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
+            charging=fx.Flow(
+                'Q_th_load',
+                bus='Fernwärme',
+                size=fx.InvestParameters(fixed_size=1e4, mandatory=True),  # Investment for testing sizes
+            ),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
             capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,

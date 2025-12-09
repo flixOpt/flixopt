@@ -1426,13 +1426,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Visualizes the network structure of a FlowSystem using PyVis.
         """
-        warnings.warn(
-            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.plot() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.topology.plot(path=path, controls=controls, show=show)
+        return self.topology.plot_legacy(path=path, controls=controls, show=show)
 
     def start_network_app(self) -> None:
         """
