@@ -316,14 +316,13 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(name_prefix=''): Transform data to match FlowSystem dimensions
+        transform_data(): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
-        Args:
-            name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
+        Uses `self._prefix` (set during `link_to_flow_system()`) to name transformed data.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses
@@ -335,20 +334,53 @@ class Interface:
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
-    def _set_flow_system(self, flow_system: FlowSystem) -> None:
-        """Store flow_system reference and propagate to nested Interface objects.
+    @property
+    def prefix(self) -> str:
+        """The prefix used for naming transformed data (e.g., 'Boiler(Q_th)|status_parameters')."""
+        return getattr(self, '_prefix', '')
+
+    def _sub_prefix(self, name: str) -> str:
+        """Build a prefix for a nested interface by appending name to current prefix."""
+        return f'{self._prefix}|{name}' if self._prefix else name
+
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
+        """Link this interface and all nested interfaces to a FlowSystem.
 
         This method is called automatically during element registration to enable
         elements to access FlowSystem properties without passing the reference
-        through every method call.
+        through every method call. It also sets the prefix used for naming
+        transformed data.
 
         Subclasses with nested Interface objects should override this method
-        to explicitly propagate the reference to their nested interfaces.
+        to propagate the link to their nested interfaces by calling
+        `super().link_to_flow_system(flow_system, prefix)` first, then linking
+        nested objects with appropriate prefixes.
 
         Args:
-            flow_system: The FlowSystem that this interface belongs to
+            flow_system: The FlowSystem to link to
+            prefix: The prefix for naming transformed data (e.g., 'Boiler(Q_th)')
+
+        Examples:
+            Override in a subclass with nested interfaces:
+
+            ```python
+            def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+                super().link_to_flow_system(flow_system, prefix)
+                if self.nested_interface is not None:
+                    self.nested_interface.link_to_flow_system(flow_system, f'{prefix}|nested' if prefix else 'nested')
+            ```
+
+            Creating an Interface dynamically during modeling:
+
+            ```python
+            # In a Model class
+            if flow.status_parameters is None:
+                flow.status_parameters = StatusParameters()
+                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.label_full}')
+            ```
         """
         self._flow_system = flow_system
+        self._prefix = prefix
 
     @property
     def flow_system(self) -> FlowSystem:
