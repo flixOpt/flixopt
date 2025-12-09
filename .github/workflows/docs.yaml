@@ -69,7 +69,7 @@ jobs:
   deploy:
     name: Deploy documentation
     needs: build
-    if: inputs.deploy == true
+    if: ${{ inputs.deploy == true }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
