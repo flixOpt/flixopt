@@ -20,7 +20,6 @@ from .structure import (
     Element,
     ElementModel,
     FlowSystemModel,
-    Interface,
     register_class_for_io,
 )
 
@@ -517,7 +516,7 @@ class Flow(Element):
         super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        if isinstance(self.size, Interface):
+        if isinstance(self.size, InvestParameters):
             self.size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
 
     def transform_data(self) -> None:
