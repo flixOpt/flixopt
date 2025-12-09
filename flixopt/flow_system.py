@@ -871,7 +871,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         }
 
     def connect_and_transform(self):
-        """Transform data for all elements using the new simplified approach."""
+        """Connect the network and transform all element data to model coordinates.
+
+        This method performs the following steps:
+
+        1. Connects flows to buses (establishing the network topology)
+        2. Registers any missing carriers from CONFIG defaults
+        3. Assigns colors to elements without explicit colors
+        4. Transforms all element data to xarray DataArrays aligned with
+           FlowSystem coordinates (time, period, scenario)
+        5. Validates system integrity
+
+        This is called automatically by :meth:`build_model` and :meth:`optimize`.
+
+        Warning:
+            After this method runs, element attributes (e.g., ``flow.size``,
+            ``flow.relative_minimum``) contain transformed xarray DataArrays,
+            not the original input values. If you modify element attributes after
+            transformation, call :meth:`invalidate` to ensure the changes take
+            effect on the next optimization.
+
+        Note:
+            This method is idempotent within a single model lifecycle - calling
+            it multiple times has no effect once ``connected_and_transformed``
+            is True. Use :meth:`invalidate` to reset this flag.
+        """
         if self.connected_and_transformed:
             logger.debug('FlowSystem already connected and transformed')
             return
@@ -1195,7 +1219,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _invalidate_model(self) -> None:
         """Invalidate the model and element submodels when structure changes.
 
-        Called when elements are added to a FlowSystem that has a model but no solution.
+        This clears the model, resets the ``connected_and_transformed`` flag,
+        and clears all element submodels and variable/constraint names.
+
+        Called internally by :meth:`add_elements`, :meth:`add_carriers`,
+        :meth:`reset`, and :meth:`invalidate`.
+
+        See Also:
+            :meth:`invalidate`: Public method for manual invalidation.
+            :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
         """
         self.model = None
         self._connected_and_transformed = False
@@ -1226,6 +1258,50 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.add_elements(new_bus)  # Now works
         """
         self.solution = None  # Also clears _statistics via setter
+        self._invalidate_model()
+        return self
+
+    def invalidate(self) -> FlowSystem:
+        """Invalidate the model to allow re-transformation after modifying elements.
+
+        Call this after modifying existing element attributes (e.g., ``flow.size``,
+        ``flow.relative_minimum``) to ensure changes take effect on the next
+        optimization. The next call to :meth:`optimize` or :meth:`build_model`
+        will re-run :meth:`connect_and_transform`.
+
+        Note:
+            Adding new elements via :meth:`add_elements` automatically invalidates
+            the model. This method is only needed when modifying attributes of
+            elements that are already part of the FlowSystem.
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the FlowSystem has a solution. Call :meth:`reset`
+                first to clear the solution.
+
+        Examples:
+            Modify a flow's size and re-optimize:
+
+            >>> flow_system.optimize(solver)
+            >>> flow_system.reset()  # Clear solution first
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Re-runs connect_and_transform
+
+            Modify before first optimization:
+
+            >>> flow_system.connect_and_transform()
+            >>> # Oops, need to change something
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Changes take effect
+        """
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot invalidate a FlowSystem with a solution. Call `reset()` first to clear the solution.'
+            )
         self._invalidate_model()
         return self
 

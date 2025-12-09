@@ -280,3 +280,124 @@ class TestLoadedFlowSystem:
         assert loaded_fs.is_locked is False
         new_bus = fx.Bus('NewBus')
         loaded_fs.add_elements(new_bus)  # Should not raise
+
+
+class TestInvalidate:
+    """Test the invalidate method for manual model invalidation."""
+
+    def test_invalidate_resets_connected_and_transformed(self, simple_flow_system):
+        """Invalidate should reset the connected_and_transformed flag."""
+        simple_flow_system.connect_and_transform()
+        assert simple_flow_system.connected_and_transformed is True
+
+        simple_flow_system.invalidate()
+        assert simple_flow_system.connected_and_transformed is False
+
+    def test_invalidate_clears_model(self, simple_flow_system):
+        """Invalidate should clear the model."""
+        simple_flow_system.build_model()
+        assert simple_flow_system.model is not None
+
+        simple_flow_system.invalidate()
+        assert simple_flow_system.model is None
+
+    def test_invalidate_raises_when_locked(self, simple_flow_system, highs_solver):
+        """Invalidate should raise RuntimeError when FlowSystem has a solution."""
+        simple_flow_system.optimize(highs_solver)
+
+        with pytest.raises(RuntimeError, match='Cannot invalidate.*reset\\(\\)'):
+            simple_flow_system.invalidate()
+
+    def test_invalidate_returns_self(self, simple_flow_system):
+        """Invalidate should return self for method chaining."""
+        simple_flow_system.connect_and_transform()
+        result = simple_flow_system.invalidate()
+        assert result is simple_flow_system
+
+    def test_invalidate_allows_retransformation(self, simple_flow_system, highs_solver):
+        """After invalidate, connect_and_transform should run again."""
+        simple_flow_system.connect_and_transform()
+        assert simple_flow_system.connected_and_transformed is True
+
+        simple_flow_system.invalidate()
+        assert simple_flow_system.connected_and_transformed is False
+
+        # Should be able to connect_and_transform again
+        simple_flow_system.connect_and_transform()
+        assert simple_flow_system.connected_and_transformed is True
+
+    def test_modify_element_and_invalidate(self, simple_flow_system, highs_solver):
+        """Test the workflow: optimize -> reset -> modify -> invalidate -> re-optimize."""
+        # First optimization
+        simple_flow_system.optimize(highs_solver)
+        original_cost = simple_flow_system.solution['costs'].item()
+
+        # Reset to unlock
+        simple_flow_system.reset()
+
+        # Modify an element attribute (increase gas price, which should increase costs)
+        gas_tariff = simple_flow_system.components['Gastarif']
+        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
+        # Double the cost effect
+        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+
+        # Invalidate to trigger re-transformation
+        simple_flow_system.invalidate()
+
+        # Re-optimize
+        simple_flow_system.optimize(highs_solver)
+        new_cost = simple_flow_system.solution['costs'].item()
+
+        # Cost should have increased due to higher gas price
+        assert new_cost > original_cost
+
+    def test_invalidate_needed_after_transform_before_optimize(self, simple_flow_system, highs_solver):
+        """Invalidate is needed to apply changes made after connect_and_transform but before optimize."""
+        # Connect and transform (but don't optimize yet)
+        simple_flow_system.connect_and_transform()
+
+        # Modify an attribute - double the gas costs
+        gas_tariff = simple_flow_system.components['Gastarif']
+        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
+        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+
+        # Call invalidate to ensure re-transformation
+        simple_flow_system.invalidate()
+        assert simple_flow_system.connected_and_transformed is False
+
+        # Now optimize - the doubled values should take effect
+        simple_flow_system.optimize(highs_solver)
+        cost_with_doubled = simple_flow_system.solution['costs'].item()
+
+        # Reset and use original values
+        simple_flow_system.reset()
+        gas_tariff.outputs[0].effects_per_flow_hour = {
+            effect: value / 2 for effect, value in gas_tariff.outputs[0].effects_per_flow_hour.items()
+        }
+        simple_flow_system.optimize(highs_solver)
+        cost_with_original = simple_flow_system.solution['costs'].item()
+
+        # The doubled costs should result in higher total cost
+        assert cost_with_doubled > cost_with_original
+
+    def test_reset_already_invalidates(self, simple_flow_system, highs_solver):
+        """Reset already invalidates, so modifications after reset take effect."""
+        # First optimization
+        simple_flow_system.optimize(highs_solver)
+        original_cost = simple_flow_system.solution['costs'].item()
+
+        # Reset - this already calls _invalidate_model()
+        simple_flow_system.reset()
+        assert simple_flow_system.connected_and_transformed is False
+
+        # Modify an element attribute
+        gas_tariff = simple_flow_system.components['Gastarif']
+        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
+        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+
+        # Re-optimize - changes take effect because reset already invalidated
+        simple_flow_system.optimize(highs_solver)
+        new_cost = simple_flow_system.solution['costs'].item()
+
+        # Cost should have increased
+        assert new_cost > original_cost
