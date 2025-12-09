@@ -1579,10 +1579,11 @@ class StatisticsPlotAccessor:
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot storage operation: charging/discharging flows with charge state overlay.
+        """Plot storage operation: balance and charge state in vertically stacked subplots.
 
-        This combines a stacked bar chart showing the storage balance (inputs negative,
-        outputs positive) with a line overlay showing the charge state over time.
+        Creates two subplots sharing the x-axis:
+        - Top: Charging/discharging flows as stacked bars (inputs negative, outputs positive)
+        - Bottom: Charge state over time as a line
 
         Args:
             storage: Storage component label.
@@ -1624,107 +1625,77 @@ class StatisticsPlotAccessor:
         else:
             ds = self._stats.flow_hours[[lbl for lbl in all_labels if lbl in self._stats.flow_hours]]
 
-        # Negate inputs for balance view
+        # Negate outputs for balance view (discharging shown as negative)
         for label in output_labels:
             if label in ds:
                 ds[label] = -ds[label]
 
-        # Get charge state
-        charge_state = self._fs.solution[charge_state_var]
+        # Get charge state and add to dataset
+        charge_state = self._fs.solution[charge_state_var].rename(storage)
+        ds['charge_state'] = charge_state
 
-        # Apply selection to both
+        # Apply selection
         ds = _apply_selection(ds, select)
-        if select:
-            charge_state = charge_state.sel(**{k: v for k, v in select.items() if k in charge_state.dims})
-
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
 
-        # Build color map from Element.color attributes if no colors specified
+        # Build color map
+        flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
         if colors is None:
-            colors = self._get_color_map_for_balance(storage, list(ds.data_vars))
+            colors = self._get_color_map_for_balance(storage, flow_labels)
+        color_map = process_colors(colors, flow_labels)
+        color_map['charge_state'] = 'black'
 
-        # Create base balance plot
-        fig = _create_stacked_bar(
-            ds,
-            colors=colors,
-            title=f'{storage} Operation ({unit})',
+        # Convert to long-form DataFrame
+        df = _dataset_to_long_df(ds)
+
+        # Create figure with facets using px.bar for flows, then add charge_state line
+        flow_df = df[df['variable'] != 'charge_state']
+        charge_df = df[df['variable'] == 'charge_state']
+
+        fig = px.bar(
+            flow_df,
+            x='time',
+            y='value',
+            color='variable',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            color_discrete_map=color_map,
+            title=f'{storage} Operation ({unit})',
             **plotly_kwargs,
         )
+        fig.update_layout(bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
-        # Add charge state line overlay
-        # Convert to DataFrame for easier handling
-        charge_df = charge_state.to_dataframe(name='charge_state').reset_index()
+        # Add charge state as line on secondary y-axis using px.line, then merge traces
+        if not charge_df.empty:
+            line_fig = px.line(
+                charge_df,
+                x='time',
+                y='value',
+                facet_col=actual_facet_col,
+                facet_row=actual_facet_row,
+            )
+            # Update line traces and add to main figure
+            for trace in line_fig.data:
+                trace.name = 'charge_state'
+                trace.line = dict(color=charge_state_color, width=2)
+                trace.yaxis = 'y2'
+                trace.showlegend = True
+                fig.add_trace(trace)
 
-        # Handle faceting - need to add trace to each subplot
-        if actual_facet_col or actual_facet_row:
-            # Get unique facet combinations from the data
-            facet_dims = []
-            if actual_facet_col and actual_facet_col in charge_df.columns:
-                facet_dims.append(actual_facet_col)
-            if actual_facet_row and actual_facet_row in charge_df.columns:
-                facet_dims.append(actual_facet_row)
-
-            if facet_dims:
-                # Group by facet dimensions and add trace to each subplot
-                grouped = charge_df.groupby(facet_dims)
-                for i, (_facet_vals, group) in enumerate(grouped):
-                    fig.add_trace(
-                        go.Scatter(
-                            x=group['time'],
-                            y=group['charge_state'],
-                            mode='lines',
-                            name='Charge State' if i == 0 else None,
-                            showlegend=(i == 0),
-                            line=dict(color=charge_state_color, width=2),
-                            yaxis='y2',
-                        ),
-                        row=(i // max(1, len(fig._grid_ref[0])) + 1) if fig._grid_ref else 1,
-                        col=(i % max(1, len(fig._grid_ref[0])) + 1) if fig._grid_ref else 1,
-                    )
-            else:
-                # No valid facet columns in charge_df
-                fig.add_trace(
-                    go.Scatter(
-                        x=charge_df['time'],
-                        y=charge_df['charge_state'],
-                        mode='lines',
-                        name='Charge State',
-                        line=dict(color=charge_state_color, width=2),
-                        yaxis='y2',
-                    )
-                )
-        else:
-            # No faceting - single trace
-            fig.add_trace(
-                go.Scatter(
-                    x=charge_df['time'],
-                    y=charge_df['charge_state'],
-                    mode='lines',
-                    name='Charge State',
-                    line=dict(color=charge_state_color, width=2),
-                    yaxis='y2',
+            # Add secondary y-axis
+            fig.update_layout(
+                yaxis2=dict(
+                    title='Charge State',
+                    overlaying='y',
+                    side='right',
+                    showgrid=False,
                 )
             )
-
-        # Add secondary y-axis for charge state
-        fig.update_layout(
-            yaxis2=dict(
-                title='Charge State',
-                overlaying='y',
-                side='right',
-                showgrid=False,
-            )
-        )
-
-        # Combine data for return
-        combined_ds = ds.copy()
-        combined_ds['charge_state'] = charge_state
 
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=combined_ds, figure=fig)
+        return PlotResult(data=ds, figure=fig)
