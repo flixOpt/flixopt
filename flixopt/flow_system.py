@@ -16,6 +16,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
+from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
@@ -1662,6 +1663,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
             self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=10)
         return self._flows_cache
+
+    @property
+    def storages(self) -> ElementContainer[Storage]:
+        """All storage components as an ElementContainer.
+
+        Returns:
+            ElementContainer containing all Storage components in the FlowSystem,
+            sorted by label for reproducibility.
+        """
+        storages = [c for c in self.components.values() if isinstance(c, Storage)]
+        storages = sorted(storages, key=lambda s: s.label_full.lower())
+        return ElementContainer(storages, element_type_name='storages', truncate_repr=10)
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
