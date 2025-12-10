@@ -9,7 +9,7 @@ Learn how to construct FlowSystem models step by step:
 - Creating buses and flows
 - Adding components (Sources, Sinks, Converters, Storage)
 - Configuring effects and objectives
-- Using advanced features (Investment, On/Off, Piecewise)
+- Using advanced features (Investment, Status, Piecewise)
 
 ## Getting Started
 

@@ -165,16 +165,11 @@ class TestComplex:
             [-45.0, -69.71111111, 15.0, -10.0, 36.06697198, -55.0, 20.0, 20.0, 20.0],
             'Speicher nettoFlow doesnt match expected value',
         )
-        # charge_state now has len(timesteps) values, with final state in separate variable
+        # charge_state includes extra timestep for final charge state (len = timesteps + 1)
         assert_almost_equal_numeric(
             flow_system_base.solution['Speicher|charge_state'].values,
-            [0.0, 40.5, 100.0, 77.0, 79.84, 37.38582802, 83.89496178, 57.18336484, 32.60869565],
+            [0.0, 40.5, 100.0, 77.0, 79.84, 37.38582802, 83.89496178, 57.18336484, 32.60869565, 10.0],
             'Speicher charge_state doesnt match expected value',
-        )
-        assert_almost_equal_numeric(
-            flow_system_base.solution['Speicher|charge_state|final'].values,
-            10.0,
-            'Speicher final charge_state doesnt match expected value',
         )
 
         assert_almost_equal_numeric(

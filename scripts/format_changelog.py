@@ -46,16 +46,21 @@ def format_version_header(match) -> str:
     # Format the date
     formatted_date = format_date(date_str)
 
+    # Normalise to a Git tag-style version (e.g. "v4.0.0") for URL, display text and id
+    version_tag = version if version.startswith('v') else f'v{version}'
+
     # Create the new header
-    github_url = f'https://github.com/flixOpt/flixopt/releases/tag/v{version}'
-    new_header = f'## [**{version}**]({github_url}) <small>{formatted_date}</small> {{ id="{version}" }}'
+    github_url = f'https://github.com/flixOpt/flixopt/releases/tag/{version_tag}'
+    new_header = f'## [**{version_tag}**]({github_url}) <small>{formatted_date}</small> {{ id="{version_tag}" }}'
 
     return new_header
 
 
 def main():
     """Process the changelog file."""
-    changelog_path = Path('docs/changelog.md')
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent  # assumes this file lives in <repo>/scripts/
+    changelog_path = repo_root / 'docs' / 'changelog.md'
 
     if not changelog_path.exists():
         print(f'❌ {changelog_path} not found')

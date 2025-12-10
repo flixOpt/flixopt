@@ -509,7 +509,8 @@ class TransformAccessor:
             dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
             dim_groups[dims_key].append(var_name)
 
-        if not dim_groups:
+        # Note: defaultdict is always truthy, so we check length explicitly
+        if len(dim_groups) == 0:
             return getattr(time_dataset.resample(time=time, **kwargs), method)()
 
         resampled_groups = []
@@ -527,7 +528,8 @@ class TransformAccessor:
             resampled_groups.append(resampled_dataset)
 
         if not resampled_groups:
-            return time_dataset
+            # No data variables to resample, but still resample coordinates
+            return getattr(time_dataset.resample(time=time, **kwargs), method)()
 
         if len(resampled_groups) == 1:
             return resampled_groups[0]

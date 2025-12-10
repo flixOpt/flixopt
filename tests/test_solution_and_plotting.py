@@ -75,9 +75,8 @@ class TestFlowSystemSolution:
         simple_flow_system.optimize(highs_solver)
         solution = simple_flow_system.solution
 
-        # Check storage charge state
+        # Check storage charge state (includes extra timestep for final state)
         assert 'Speicher|charge_state' in solution
-        assert 'Speicher|charge_state|final' in solution
 
     def test_solution_item_returns_scalar(self, simple_flow_system, highs_solver):
         """Verify .item() returns Python scalar for 0-d arrays."""
