@@ -220,7 +220,7 @@ plugins:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
 
   - mkdocs-jupyter:
-      execute: true  # Execute notebooks during build
+      execute: !ENV [MKDOCS_EXECUTE_NOTEBOOKS, true]
       allow_errors: false
       include_source: true  # Show download button
       include_requirejs: true  # Required for Plotly charts

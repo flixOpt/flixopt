@@ -57,8 +57,14 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs]"
 
+      - name: Execute notebooks in parallel
+        run: |
+          find docs -name "*.ipynb" -print0 | xargs -0 -P 4 -I {} jupyter nbconvert --execute --inplace --to notebook {}
+
       - name: Build docs
         run: mkdocs build --strict
+        env:
+          MKDOCS_EXECUTE_NOTEBOOKS: "false"
 
       - uses: actions/upload-artifact@v4
         with:
