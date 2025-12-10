@@ -784,6 +784,168 @@ button:focus-visible {
 }
 
 /* ============================================================================
+   Jupyter Notebook Styling (syncs with dark/light theme)
+   ========================================================================= */
+
+/* Override Jupyter notebook syntax highlighting to match Material theme */
+/* Use Material's CSS variables for consistent colors */
+.highlight-ipynb { background: var(--md-code-bg-color) !important; color: var(--md-code-fg-color) !important; }
+
+/* Comments */
+.highlight-ipynb .c, .highlight-ipynb .c1, .highlight-ipynb .ch,
+.highlight-ipynb .cm, .highlight-ipynb .cp, .highlight-ipynb .cpf,
+.highlight-ipynb .cs { color: var(--md-code-hl-comment-color, var(--md-default-fg-color--light)) !important; font-style: italic; }
+
+/* Keywords */
+.highlight-ipynb .k, .highlight-ipynb .kc, .highlight-ipynb .kd,
+.highlight-ipynb .kn, .highlight-ipynb .kp, .highlight-ipynb .kr,
+.highlight-ipynb .kt { color: var(--md-code-hl-keyword-color, #3f6ec6) !important; }
+
+/* Strings */
+.highlight-ipynb .s, .highlight-ipynb .s1, .highlight-ipynb .s2,
+.highlight-ipynb .sa, .highlight-ipynb .sb, .highlight-ipynb .sc,
+.highlight-ipynb .sd, .highlight-ipynb .se, .highlight-ipynb .sh,
+.highlight-ipynb .si, .highlight-ipynb .sl, .highlight-ipynb .sr,
+.highlight-ipynb .ss, .highlight-ipynb .sx { color: var(--md-code-hl-string-color, #1c7d4d) !important; }
+
+/* Numbers */
+.highlight-ipynb .m, .highlight-ipynb .mb, .highlight-ipynb .mf,
+.highlight-ipynb .mh, .highlight-ipynb .mi, .highlight-ipynb .mo,
+.highlight-ipynb .il { color: var(--md-code-hl-number-color, #d52a2a) !important; }
+
+/* Functions */
+.highlight-ipynb .nf, .highlight-ipynb .fm { color: var(--md-code-hl-function-color, #a846b9) !important; }
+
+/* Constants/Builtins */
+.highlight-ipynb .nb, .highlight-ipynb .bp,
+.highlight-ipynb .kc { color: var(--md-code-hl-constant-color, #6e59d9) !important; }
+
+/* Special */
+.highlight-ipynb .nc, .highlight-ipynb .ne, .highlight-ipynb .nd,
+.highlight-ipynb .ni { color: var(--md-code-hl-special-color, #db1457) !important; }
+
+/* Names/variables */
+.highlight-ipynb .n, .highlight-ipynb .nn, .highlight-ipynb .na,
+.highlight-ipynb .nv, .highlight-ipynb .no { color: var(--md-code-hl-name-color, var(--md-code-fg-color)) !important; }
+
+/* Operators */
+.highlight-ipynb .o, .highlight-ipynb .ow { color: var(--md-code-hl-operator-color, var(--md-default-fg-color--light)) !important; }
+
+/* Punctuation */
+.highlight-ipynb .p, .highlight-ipynb .pm { color: var(--md-code-hl-punctuation-color, var(--md-default-fg-color--light)) !important; }
+
+/* Errors */
+.highlight-ipynb .err { color: var(--md-code-hl-special-color, #db1457) !important; }
+
+/* Notebook container */
+.jupyter-wrapper {
+  margin: 1rem 0;
+}
+
+/* Code cell styling - clean and modern */
+.jupyter-wrapper .jp-CodeCell {
+  border-radius: 0.4rem;
+  margin: 0.5rem 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  overflow: hidden;
+}
+
+/* Input cells (code) */
+.jupyter-wrapper .jp-CodeCell .jp-InputArea {
+  background-color: var(--md-code-bg-color);
+  border: none;
+}
+
+.jupyter-wrapper .jp-InputArea pre {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+/* Output cells */
+.jupyter-wrapper .jp-OutputArea pre {
+  font-size: 0.7rem;
+  margin: 0;
+}
+
+/* Cell prompts (In [1]:, Out [1]:) - hide for cleaner look */
+.jupyter-wrapper .jp-InputPrompt,
+.jupyter-wrapper .jp-OutputPrompt {
+  display: none;
+}
+
+/* Markdown cells - blend with page, no background */
+.jupyter-wrapper .jp-MarkdownCell {
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+.jupyter-wrapper .jp-RenderedMarkdown {
+  padding: 0.5rem 0;
+}
+
+/* Tables in notebooks */
+.jupyter-wrapper table {
+  font-size: 0.7rem;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.jupyter-wrapper table th,
+.jupyter-wrapper table td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.jupyter-wrapper table th {
+  background-color: var(--md-default-fg-color--lightest);
+  font-weight: 600;
+}
+
+/* Images and plots */
+.jupyter-wrapper .jp-RenderedImage img,
+.jupyter-wrapper .jp-RenderedImage svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-CodeCell {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th,
+[data-md-color-scheme="slate"] .jupyter-wrapper table td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Plotly charts - ensure proper sizing */
+.jupyter-wrapper .plotly-graph-div {
+  margin: 0 auto;
+}
+
+/* Error output styling */
+.jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.05);
+  color: #c7254e;
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.15);
+  color: #ff6b6b;
+}
+
+/* ============================================================================
    Footer Alignment Fix
    ========================================================================= */
 

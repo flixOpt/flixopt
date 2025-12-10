@@ -243,7 +243,7 @@ While our example used a heating system, flixOpt works for any flow-based optimi
 ## Next Steps
 
 - **[Building Models](building-models/index.md)** — Step-by-step guide to constructing models
-- **[Examples](../examples/index.md)** — Working code for common scenarios
+- **[Examples](../notebooks/index.md)** — Working code for common scenarios
 - **[Mathematical Notation](mathematical-notation/index.md)** — Detailed constraint formulations
 
 ## Advanced: Extending with linopy

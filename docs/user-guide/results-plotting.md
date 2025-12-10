@@ -18,7 +18,7 @@ flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 
 ## PlotResult: Data + Figure
 
-Every plot method returns a [`PlotResult`][flixopt.plot_accessors.PlotResult] object containing both:
+Every plot method returns a [`PlotResult`][flixopt.statistics_accessor.PlotResult] object containing both:
 
 - **`data`**: An xarray Dataset with the prepared data
 - **`figure`**: A Plotly Figure object

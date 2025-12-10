@@ -786,6 +786,44 @@ class CONFIG:
         return cls
 
     @classmethod
+    def notebook(cls) -> type[CONFIG]:
+        """Configure for Jupyter notebook environments.
+
+        Optimizes settings for notebook usage:
+        - Sets plotly renderer to 'notebook' for inline display
+        - Disables automatic plot.show() calls (notebooks display via _repr_html_)
+        - Enables INFO-level console logging
+        - Disables solver console output (too verbose for notebooks)
+
+        Examples:
+            ```python
+            # At the start of your notebook
+            import flixopt as fx
+
+            fx.CONFIG.notebook()
+
+            # Now plots display inline automatically
+            flow_system.statistics.plot.balance('Heat')  # Displays inline
+            ```
+        """
+        import plotly.io as pio
+
+        # Set plotly to render inline in notebooks
+        pio.renderers.default = 'notebook'
+
+        # Disable default show since notebooks render via _repr_html_
+        cls.Plotting.default_show = False
+
+        # Light logging - SUCCESS level without too much noise
+        cls.Logging.enable_console('SUCCESS')
+
+        # Disable solver console output (too verbose for notebooks)
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+
+        return cls
+
+    @classmethod
     def load_from_file(cls, config_file: str | Path) -> type[CONFIG]:
         """Load configuration from YAML file and apply it.
 
