@@ -770,14 +770,6 @@ class FlowModel(ElementModel):
         """Total flow hours variable"""
         return self['total_flow_hours']
 
-    def results_structure(self):
-        return {
-            **super().results_structure(),
-            'start': self.element.bus if self.element.is_input_in_component else self.element.component,
-            'end': self.element.component if self.element.is_input_in_component else self.element.bus,
-            'component': self.element.component,
-        }
-
     def _create_shares(self):
         # Effects per flow hour
         if self.element.effects_per_flow_hour:
@@ -928,20 +920,6 @@ class BusModel(ElementModel):
                 expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
                 target='temporal',
             )
-
-    def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
-        if self.virtual_supply is not None:
-            inputs.append(self.virtual_supply.name)
-        if self.virtual_demand is not None:
-            outputs.append(self.virtual_demand.name)
-        return {
-            **super().results_structure(),
-            'inputs': inputs,
-            'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
-        }
 
 
 class ComponentModel(ElementModel):
