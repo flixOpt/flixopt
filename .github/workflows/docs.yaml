@@ -51,8 +51,8 @@ jobs:
 
       - name: Extract changelog
         run: |
-          uv pip install --system packaging
-          python scripts/extract_changelog.py
+          cp CHANGELOG.md docs/changelog.md
+          python scripts/format_changelog.py
 
       - name: Install dependencies
         run: uv pip install --system ".[docs]"
