@@ -990,14 +990,6 @@ class ComponentModel(ElementModel):
                 short_name='prevent_simultaneous_use',
             )
 
-    def results_structure(self):
-        return {
-            **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
-        }
-
     @property
     def previous_status(self) -> xr.DataArray | None:
         """Previous status of the component, derived from its flows"""
