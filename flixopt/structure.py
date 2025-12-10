@@ -188,6 +188,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
+        # Ensure solution is always indexed by timesteps_extra for consistency.
+        # Variables without extra timestep data will have NaN at the final timestep.
+        if 'time' in solution.coords and not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+            solution = solution.reindex(time=self.flow_system.timesteps_extra)
         return solution
 
     @property
