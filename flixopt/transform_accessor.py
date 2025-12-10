@@ -380,6 +380,9 @@ class TransformAccessor:
         if 'period' in indexers:
             result = FlowSystem._update_period_metadata(result)
 
+        if 'scenario' in indexers:
+            result = FlowSystem._update_scenario_metadata(result)
+
         return result
 
     @classmethod
@@ -426,6 +429,9 @@ class TransformAccessor:
 
         if 'period' in indexers:
             result = FlowSystem._update_period_metadata(result)
+
+        if 'scenario' in indexers:
+            result = FlowSystem._update_scenario_metadata(result)
 
         return result
 
@@ -529,6 +535,125 @@ class TransformAccessor:
             return resampled_groups[0]
 
         return xr.merge(resampled_groups, combine_attrs='drop_conflicts')
+
+    def fix_sizes(
+        self,
+        sizes: xr.Dataset | dict[str, float] | None = None,
+        decimal_rounding: int | None = 5,
+    ) -> FlowSystem:
+        """
+        Create a new FlowSystem with investment sizes fixed to specified values.
+
+        This is useful for two-stage optimization workflows:
+        1. Solve a sizing problem (possibly resampled for speed)
+        2. Fix sizes and solve dispatch at full resolution
+
+        The returned FlowSystem has InvestParameters with fixed_size set,
+        making those sizes mandatory rather than decision variables.
+
+        Args:
+            sizes: The sizes to fix. Can be:
+                - None: Uses sizes from this FlowSystem's solution (must be solved)
+                - xr.Dataset: Dataset with size variables (e.g., from statistics.sizes)
+                - dict: Mapping of component names to sizes (e.g., {'Boiler(Q_fu)': 100})
+            decimal_rounding: Number of decimal places to round sizes to.
+                Rounding helps avoid numerical infeasibility. Set to None to disable.
+
+        Returns:
+            FlowSystem: New FlowSystem with fixed sizes (no solution).
+
+        Raises:
+            ValueError: If no sizes provided and FlowSystem has no solution.
+            KeyError: If a specified size doesn't match any InvestParameters.
+
+        Examples:
+            Two-stage optimization:
+
+            >>> # Stage 1: Size with resampled data
+            >>> fs_sizing = flow_system.transform.resample('2h')
+            >>> fs_sizing.optimize(solver)
+            >>>
+            >>> # Stage 2: Fix sizes and optimize at full resolution
+            >>> fs_dispatch = flow_system.transform.fix_sizes(fs_sizing.statistics.sizes)
+            >>> fs_dispatch.optimize(solver)
+
+            Using a dict:
+
+            >>> fs_fixed = flow_system.transform.fix_sizes(
+            ...     {
+            ...         'Boiler(Q_fu)': 100,
+            ...         'Storage': 500,
+            ...     }
+            ... )
+            >>> fs_fixed.optimize(solver)
+        """
+        from .flow_system import FlowSystem
+        from .interface import InvestParameters
+
+        # Get sizes from solution if not provided
+        if sizes is None:
+            if self._fs.solution is None:
+                raise ValueError(
+                    'No sizes provided and FlowSystem has no solution. '
+                    'Either provide sizes or optimize the FlowSystem first.'
+                )
+            sizes = self._fs.statistics.sizes
+
+        # Convert dict to Dataset format
+        if isinstance(sizes, dict):
+            sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
+
+        # Apply rounding
+        if decimal_rounding is not None:
+            sizes = sizes.round(decimal_rounding)
+
+        # Create copy of FlowSystem
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        ds = self._fs.to_dataset()
+        new_fs = FlowSystem.from_dataset(ds)
+
+        # Fix sizes in the new FlowSystem's InvestParameters
+        # Note: statistics.sizes returns keys without '|size' suffix (e.g., 'Boiler(Q_fu)')
+        # but dicts may have either format
+        for size_var in sizes.data_vars:
+            # Normalize: strip '|size' suffix if present
+            base_name = size_var.replace('|size', '') if size_var.endswith('|size') else size_var
+            fixed_value = float(sizes[size_var].item())
+
+            # Find matching element with InvestParameters
+            found = False
+
+            # Check flows
+            for flow in new_fs.flows.values():
+                if flow.label_full == base_name and isinstance(flow.size, InvestParameters):
+                    flow.size.fixed_size = fixed_value
+                    flow.size.mandatory = True
+                    found = True
+                    logger.debug(f'Fixed size of {base_name} to {fixed_value}')
+                    break
+
+            # Check storage capacity
+            if not found:
+                for component in new_fs.components.values():
+                    if hasattr(component, 'capacity_in_flow_hours'):
+                        if component.label == base_name and isinstance(
+                            component.capacity_in_flow_hours, InvestParameters
+                        ):
+                            component.capacity_in_flow_hours.fixed_size = fixed_value
+                            component.capacity_in_flow_hours.mandatory = True
+                            found = True
+                            logger.debug(f'Fixed size of {base_name} to {fixed_value}')
+                            break
+
+            if not found:
+                logger.warning(
+                    f'Size variable "{base_name}" not found as InvestParameters in FlowSystem. '
+                    f'It may be a fixed-size component or the name may not match.'
+                )
+
+        return new_fs
 
     # Future methods can be added here:
     #

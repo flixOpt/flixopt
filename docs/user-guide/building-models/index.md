@@ -16,5 +16,5 @@ Learn how to construct FlowSystem models step by step:
 For now, see:
 
 - **[Core Concepts](../core-concepts.md)** - Understand the fundamental building blocks
-- **[Examples](../../examples/index.md)** - Working code you can learn from
+- **[Examples](../../notebooks/index.md)** - Working code you can learn from
 - **[Mathematical Notation](../mathematical-notation/index.md)** - Detailed specifications of each element
