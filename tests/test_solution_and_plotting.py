@@ -170,7 +170,7 @@ class TestStatisticsAccessor:
     """Tests for flow_system.statistics accessor."""
 
     def test_statistics_sizes_includes_all_flows(self, simple_flow_system, highs_solver):
-        """Test that statistics.sizes includes all flow sizes (from InvestParameters)."""
+        """Test that statistics.sizes includes all flow and storage sizes (from InvestParameters)."""
         simple_flow_system.optimize(highs_solver)
 
         sizes = simple_flow_system.statistics.sizes
@@ -179,10 +179,12 @@ class TestStatisticsAccessor:
         # Should have sizes for flows with InvestParameters
         assert len(sizes.data_vars) > 0
 
-        # Check that all size labels are valid flow labels
+        # Check that all size labels are valid flow or storage labels
         flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
+        storage_labels = [s.label_full for s in simple_flow_system.storages.values()]
+        valid_labels = flow_labels + storage_labels
         for label in sizes.data_vars:
-            assert label in flow_labels, f'Size label {label} should be a valid flow'
+            assert label in valid_labels, f'Size label {label} should be a valid flow or storage'
 
     def test_statistics_sizes_returns_correct_values(self, simple_flow_system, highs_solver):
         """Test that statistics.sizes returns correct size values."""

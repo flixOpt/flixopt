@@ -55,7 +55,7 @@ jobs:
           python scripts/format_changelog.py
 
       - name: Install dependencies
-        run: uv pip install --system ".[docs]"
+        run: uv pip install --system ".[docs,full]"
 
       - name: Build docs
         run: mkdocs build --strict
