@@ -1213,7 +1213,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Example:
             >>> flow_system.optimize(solver)
-            >>> flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1]  # Exclude trailing NaN
+            >>> flow_system.solution.isel(time=slice(None, -1))  # Exclude trailing NaN (and final charge states)
         """
         return self._solution
 
