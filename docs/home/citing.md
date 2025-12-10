@@ -12,7 +12,7 @@ If you've published research using flixOpt, please let us know! We'd love to fea
 
 ### List of Publications
 
-*Coming soon: A list of academic publications that have used flixOpt*
+Coming soon: A list of academic publications that have used flixOpt.
 
 ## Contributing Back
 

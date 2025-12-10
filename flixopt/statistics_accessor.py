@@ -985,7 +985,7 @@ class StatisticsPlotAccessor:
             heatmap_dims = ['time'] if 'time' in da.dims else list(da.dims)[:1]
 
         # Keep only dims we need
-        keep_dims = set(heatmap_dims) | {actual_facet, actual_animation} - {None}
+        keep_dims = set(heatmap_dims) | {d for d in [actual_facet, actual_animation] if d is not None}
         for dim in [d for d in da.dims if d not in keep_dims]:
             da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
 
