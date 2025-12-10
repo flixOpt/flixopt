@@ -166,6 +166,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def solution(self):
+        """Build solution dataset, reindexing to timesteps_extra for consistency."""
         solution = super().solution
         solution['objective'] = self.objective.value
         solution.attrs = {
@@ -188,21 +189,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
             },
         }
-        # Handle extra timestep from storage charge_state variables.
-        # Storage charge_state uses extra_timestep=True which causes linopy/xarray to
-        # merge all time coordinates to include the extra timestep with NaN for other vars.
-        # We extract the final charge state as separate variables and reindex to regular timesteps.
-        if 'time' in solution.coords and len(solution.coords['time']) > len(self.flow_system.timesteps):
-            # Collect final states first to avoid modifying during iteration
-            final_states = {}
-            for var_name in solution.data_vars:
-                if var_name.endswith('|charge_state') and 'time' in solution[var_name].dims:
-                    # Extract final charge state as separate variable
-                    final_states[f'{var_name}|final'] = solution[var_name].isel(time=-1)
-            # Add all final states at once
-            solution = solution.assign(final_states)
-            # Reindex all variables to regular timesteps
-            solution = solution.reindex(time=self.flow_system.timesteps)
+        # Ensure solution is always indexed by timesteps_extra for consistency.
+        # Variables without extra timestep data will have NaN at the final timestep.
+        if 'time' in solution.coords and not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+            solution = solution.reindex(time=self.flow_system.timesteps_extra)
         return solution
 
     @property
