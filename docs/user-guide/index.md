@@ -59,14 +59,14 @@ This guide follows a sequential learning path:
 ### Getting Started
 
 - [Quick Start](../home/quick-start.md) - Build your first model in 5 minutes
-- [Minimal Example](../examples/00-minimal-example.ipynb) - Simplest possible model
+- [Minimal Example](../notebooks/01-quickstart.ipynb) - Simplest possible model
 - [Core Concepts](core-concepts.md) - Understand the fundamentals
 
 ### Reference
 
 - [Mathematical Notation](mathematical-notation/index.md) - Detailed specifications
 - [API Reference](../api-reference/index.md) - Complete class documentation
-- [Examples](../examples/index.md) - Working code to learn from
+- [Examples](../notebooks/index.md) - Working code to learn from
 
 ### Help
 

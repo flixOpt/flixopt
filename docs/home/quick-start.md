@@ -130,7 +130,7 @@ loaded_fs = fx.FlowSystem.from_netcdf('results/solar_battery.nc')
 Now that you've created your first model, you can:
 
 - **Learn the concepts** - Read the [Core Concepts](../user-guide/core-concepts.md) guide
-- **Explore examples** - Check out more [Examples](../examples/index.md)
+- **Explore examples** - Check out more [Examples](../notebooks/index.md)
 - **Deep dive** - Study the [Mathematical Formulation](../user-guide/mathematical-notation/index.md)
 - **Build complex models** - Use [Recipes](../user-guide/recipes/index.md) for common patterns
 

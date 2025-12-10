@@ -347,6 +347,6 @@ If solutions don't match expectations:
 
 ## Next Steps
 
-- See [Examples](../../examples/03-optimization-modes.ipynb) for working code
+- See [Examples](../../notebooks/index.md) for working code
 - Learn about [Mathematical Notation](../mathematical-notation/index.md)
 - Explore [Recipes](../recipes/index.md) for common patterns

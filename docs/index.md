@@ -14,7 +14,7 @@ title: Home
 
 <p class="hero-buttons">
   <a href="home/installation/" class="md-button md-button--primary">🚀 Get Started</a>
-  <a href="examples/" class="md-button">💡 View Examples</a>
+  <a href="notebooks/" class="md-button">💡 View Examples</a>
   <a href="https://github.com/flixOpt/flixopt" class="md-button" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
 </p>
 
@@ -30,7 +30,7 @@ title: Home
 
     New to FlixOpt? Start here with installation and your first model
 
-- :bulb: **[Examples Gallery](examples/)**
+- :bulb: **[Examples Gallery](notebooks/)**
 
     ---
 

@@ -87,5 +87,5 @@ For more details on logging configuration, see the [`CONFIG.Logging`][flixopt.co
 ## Next Steps
 
 - Follow the [Quick Start](quick-start.md) guide
-- Explore the [Minimal Example](../examples/00-minimal-example.ipynb)
+- Explore the [Minimal Example](../notebooks/01-quickstart.ipynb)
 - Read about [Core Concepts](../user-guide/core-concepts.md)
