@@ -864,12 +864,8 @@ button:focus-visible {
 }
 
 /* Dark mode adjustments */
-[data-md-color-scheme="slate"] .jupyter-wrapper .jp-Cell {
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-CodeCell {
   border-color: rgba(255, 255, 255, 0.1);
-}
-
-[data-md-color-scheme="slate"] .jupyter-wrapper .jp-OutputArea {
-  border-top-color: rgba(255, 255, 255, 0.1);
 }
 
 [data-md-color-scheme="slate"] .jupyter-wrapper table th {
