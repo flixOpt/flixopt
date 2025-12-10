@@ -368,6 +368,8 @@ class StatisticsAccessor:
         # Cached data
         self._flow_rates: xr.Dataset | None = None
         self._flow_hours: xr.Dataset | None = None
+        self._flow_sizes: xr.Dataset | None = None
+        self._storage_sizes: xr.Dataset | None = None
         self._sizes: xr.Dataset | None = None
         self._charge_states: xr.Dataset | None = None
         self._effect_share_factors: dict[str, dict] | None = None
@@ -417,16 +419,36 @@ class StatisticsAccessor:
         return self._flow_hours
 
     @property
-    def sizes(self) -> xr.Dataset:
-        """All flow sizes as a Dataset with flow labels as variable names."""
+    def flow_sizes(self) -> xr.Dataset:
+        """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
-        if self._sizes is None:
-            # Get flow labels to filter only flow sizes (not storage capacity sizes)
+        if self._flow_sizes is None:
             flow_labels = set(self._fs.flows.keys())
             size_vars = [
                 v for v in self._fs.solution.data_vars if v.endswith('|size') and v.replace('|size', '') in flow_labels
             ]
-            self._sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            self._flow_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+        return self._flow_sizes
+
+    @property
+    def storage_sizes(self) -> xr.Dataset:
+        """Storage capacity sizes as a Dataset with storage labels as variable names."""
+        self._require_solution()
+        if self._storage_sizes is None:
+            storage_labels = set(self._fs.storages.keys())
+            size_vars = [
+                v
+                for v in self._fs.solution.data_vars
+                if v.endswith('|size') and v.replace('|size', '') in storage_labels
+            ]
+            self._storage_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+        return self._storage_sizes
+
+    @property
+    def sizes(self) -> xr.Dataset:
+        """All investment sizes (flows and storage capacities) as a Dataset."""
+        if self._sizes is None:
+            self._sizes = xr.merge([self.flow_sizes, self.storage_sizes])
         return self._sizes
 
     @property
