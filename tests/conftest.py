@@ -725,19 +725,6 @@ def assert_almost_equal_numeric(
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 
-def create_optimization_and_solve(
-    flow_system: fx.FlowSystem, solver, name: str, allow_infeasible: bool = False
-) -> fx.Optimization:
-    optimization = fx.Optimization(name, flow_system)
-    optimization.do_modeling()
-    try:
-        optimization.solve(solver)
-    except RuntimeError:
-        if not allow_infeasible:
-            raise
-    return optimization
-
-
 def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
     """
     Create a FlowSystemModel from a FlowSystem by performing the modeling phase.
