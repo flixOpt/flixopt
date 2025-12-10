@@ -23,6 +23,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 import flixopt as fx
+from tests.deprecated.conftest import assert_almost_equal_numeric
 
 np.random.seed(45)
 
@@ -114,25 +115,23 @@ def test_minimal_model(solver_fixture, time_steps_fixture):
 
     assert_allclose(flow_system.solution['costs'].values, 80, rtol=1e-5, atol=1e-10)
 
-    assert_allclose(
+    # Use assert_almost_equal_numeric to handle extra timestep with NaN
+    assert_almost_equal_numeric(
         flow_system.solution['Boiler(Q_th)|flow_rate'].values,
         [-0.0, 10.0, 20.0, -0.0, 10.0],
-        rtol=1e-5,
-        atol=1e-10,
+        'Boiler flow_rate doesnt match expected value',
     )
 
-    assert_allclose(
+    assert_almost_equal_numeric(
         flow_system.solution['costs(temporal)|per_timestep'].values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
-        rtol=1e-5,
-        atol=1e-10,
+        'costs per_timestep doesnt match expected value',
     )
 
-    assert_allclose(
+    assert_almost_equal_numeric(
         flow_system.solution['Gastarif(Gas)->costs(temporal)'].values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
-        rtol=1e-5,
-        atol=1e-10,
+        'Gastarif costs doesnt match expected value',
     )
 
 
