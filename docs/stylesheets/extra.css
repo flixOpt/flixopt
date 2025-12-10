@@ -787,6 +787,56 @@ button:focus-visible {
    Jupyter Notebook Styling (syncs with dark/light theme)
    ========================================================================= */
 
+/* Override Jupyter notebook syntax highlighting to match Material theme */
+/* Use Material's CSS variables for consistent colors */
+.highlight-ipynb { background: var(--md-code-bg-color) !important; color: var(--md-code-fg-color) !important; }
+
+/* Comments */
+.highlight-ipynb .c, .highlight-ipynb .c1, .highlight-ipynb .ch,
+.highlight-ipynb .cm, .highlight-ipynb .cp, .highlight-ipynb .cpf,
+.highlight-ipynb .cs { color: var(--md-code-hl-comment-color, var(--md-default-fg-color--light)) !important; font-style: italic; }
+
+/* Keywords */
+.highlight-ipynb .k, .highlight-ipynb .kc, .highlight-ipynb .kd,
+.highlight-ipynb .kn, .highlight-ipynb .kp, .highlight-ipynb .kr,
+.highlight-ipynb .kt { color: var(--md-code-hl-keyword-color, #3f6ec6) !important; }
+
+/* Strings */
+.highlight-ipynb .s, .highlight-ipynb .s1, .highlight-ipynb .s2,
+.highlight-ipynb .sa, .highlight-ipynb .sb, .highlight-ipynb .sc,
+.highlight-ipynb .sd, .highlight-ipynb .se, .highlight-ipynb .sh,
+.highlight-ipynb .si, .highlight-ipynb .sl, .highlight-ipynb .sr,
+.highlight-ipynb .ss, .highlight-ipynb .sx { color: var(--md-code-hl-string-color, #1c7d4d) !important; }
+
+/* Numbers */
+.highlight-ipynb .m, .highlight-ipynb .mb, .highlight-ipynb .mf,
+.highlight-ipynb .mh, .highlight-ipynb .mi, .highlight-ipynb .mo,
+.highlight-ipynb .il { color: var(--md-code-hl-number-color, #d52a2a) !important; }
+
+/* Functions */
+.highlight-ipynb .nf, .highlight-ipynb .fm { color: var(--md-code-hl-function-color, #a846b9) !important; }
+
+/* Constants/Builtins */
+.highlight-ipynb .nb, .highlight-ipynb .bp,
+.highlight-ipynb .kc { color: var(--md-code-hl-constant-color, #6e59d9) !important; }
+
+/* Special */
+.highlight-ipynb .nc, .highlight-ipynb .ne, .highlight-ipynb .nd,
+.highlight-ipynb .ni { color: var(--md-code-hl-special-color, #db1457) !important; }
+
+/* Names/variables */
+.highlight-ipynb .n, .highlight-ipynb .nn, .highlight-ipynb .na,
+.highlight-ipynb .nv, .highlight-ipynb .no { color: var(--md-code-hl-name-color, var(--md-code-fg-color)) !important; }
+
+/* Operators */
+.highlight-ipynb .o, .highlight-ipynb .ow { color: var(--md-code-hl-operator-color, var(--md-default-fg-color--light)) !important; }
+
+/* Punctuation */
+.highlight-ipynb .p, .highlight-ipynb .pm { color: var(--md-code-hl-punctuation-color, var(--md-default-fg-color--light)) !important; }
+
+/* Errors */
+.highlight-ipynb .err { color: var(--md-code-hl-special-color, #db1457) !important; }
+
 /* Notebook container */
 .jupyter-wrapper {
   margin: 1rem 0;
