@@ -784,6 +784,122 @@ button:focus-visible {
 }
 
 /* ============================================================================
+   Jupyter Notebook Styling (syncs with dark/light theme)
+   ========================================================================= */
+
+/* Notebook container */
+.jupyter-wrapper {
+  margin: 1rem 0;
+}
+
+/* Code cell styling - clean and modern */
+.jupyter-wrapper .jp-CodeCell {
+  border-radius: 0.4rem;
+  margin: 0.5rem 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  overflow: hidden;
+}
+
+/* Input cells (code) */
+.jupyter-wrapper .jp-CodeCell .jp-InputArea {
+  background-color: var(--md-code-bg-color);
+  border: none;
+}
+
+.jupyter-wrapper .jp-InputArea pre {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+/* Output cells */
+.jupyter-wrapper .jp-OutputArea pre {
+  font-size: 0.7rem;
+  margin: 0;
+}
+
+/* Cell prompts (In [1]:, Out [1]:) - hide for cleaner look */
+.jupyter-wrapper .jp-InputPrompt,
+.jupyter-wrapper .jp-OutputPrompt {
+  display: none;
+}
+
+/* Markdown cells - blend with page, no background */
+.jupyter-wrapper .jp-MarkdownCell {
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+.jupyter-wrapper .jp-RenderedMarkdown {
+  padding: 0.5rem 0;
+}
+
+/* Tables in notebooks */
+.jupyter-wrapper table {
+  font-size: 0.7rem;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.jupyter-wrapper table th,
+.jupyter-wrapper table td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.jupyter-wrapper table th {
+  background-color: var(--md-default-fg-color--lightest);
+  font-weight: 600;
+}
+
+/* Images and plots */
+.jupyter-wrapper .jp-RenderedImage img,
+.jupyter-wrapper .jp-RenderedImage svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-Cell {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-OutputArea {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th,
+[data-md-color-scheme="slate"] .jupyter-wrapper table td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Plotly charts - ensure proper sizing */
+.jupyter-wrapper .plotly-graph-div {
+  margin: 0 auto;
+}
+
+/* Error output styling */
+.jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.05);
+  color: #c7254e;
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.15);
+  color: #ff6b6b;
+}
+
+/* ============================================================================
    Footer Alignment Fix
    ========================================================================= */
 

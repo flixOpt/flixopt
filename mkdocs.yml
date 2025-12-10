@@ -222,9 +222,8 @@ plugins:
   - mkdocs-jupyter:
       execute: true  # Execute notebooks during build
       allow_errors: false
-      include_source: true  # Show download button
-      include_requirejs: true  # Required for Plotly charts
-      theme: dark  # Match dark mode if used
+      include_source: true
+      include_requirejs: true
 
   - plotly
 
