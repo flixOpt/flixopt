@@ -220,7 +220,7 @@ plugins:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
 
   - mkdocs-jupyter:
-      execute: true  # Execute notebooks during build
+      execute: false  # Execute notebooks during build
       allow_errors: false
       include_source: true
       include_requirejs: true
