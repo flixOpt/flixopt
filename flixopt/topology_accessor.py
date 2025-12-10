@@ -427,16 +427,6 @@ class TopologyAccessor:
         Examples:
             >>> flow_system.topology.stop_app()
         """
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
-
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
-
         if self._fs._network_app is None:
             logger.warning("No network app is currently running. Can't stop it")
             return

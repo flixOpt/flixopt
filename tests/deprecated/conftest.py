@@ -342,13 +342,13 @@ class LoadProfiles:
 
     @staticmethod
     def random_thermal(length=10, seed=42):
-        np.random.seed(seed)
-        return np.array([np.random.random() for _ in range(length)]) * 180
+        rng = np.random.default_rng(seed)
+        return rng.random(length) * 180
 
     @staticmethod
     def random_electrical(length=10, seed=42):
-        np.random.seed(seed)
-        return (np.array([np.random.random() for _ in range(length)]) + 0.5) / 1.5 * 50
+        rng = np.random.default_rng(seed)
+        return (rng.random(length) + 0.5) / 1.5 * 50
 
 
 class Sinks:

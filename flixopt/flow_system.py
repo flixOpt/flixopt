@@ -640,6 +640,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
+            name=reference_structure.get('name'),
         )
 
         # Restore components

@@ -11,6 +11,7 @@ import logging
 import pathlib
 import timeit
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -141,7 +142,7 @@ if __name__ == '__main__':
     # Verify sizes were correctly fixed
     dispatch_sizes = calculation_dispatch.flow_system.statistics.sizes
     sizing_sizes = calculation_sizing.flow_system.statistics.sizes
-    if (dispatch_sizes.round(5).to_dataarray() == sizing_sizes.round(5).to_dataarray()).all().item():
+    if np.allclose(dispatch_sizes.to_dataarray(), sizing_sizes.to_dataarray(), rtol=1e-5):
         logger.info('Sizes were correctly equalized')
     else:
         raise RuntimeError('Sizes were not correctly equalized')
