@@ -166,6 +166,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def solution(self):
+        """Build solution dataset, reindexing to timesteps_extra for consistency."""
         solution = super().solution
         solution['objective'] = self.objective.value
         solution.attrs = {

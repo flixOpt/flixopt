@@ -8,6 +8,7 @@ Delete this entire folder when the deprecation cycle ends in v6.0.0.
 """
 
 import os
+import warnings
 from collections.abc import Iterable
 
 import linopy.testing
@@ -713,6 +714,12 @@ def assert_almost_equal_numeric(
             if len(actual) > len(desired):
                 extra = actual[len(desired) :]
                 if np.all(np.isnan(extra)):
+                    # Warn if trimming more than the expected single extra timestep
+                    if len(extra) > 1:
+                        warnings.warn(
+                            f'Trimming {len(extra)} NaN values from actual array (expected 1)',
+                            stacklevel=2,
+                        )
                     actual = actual[: len(desired)]
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 

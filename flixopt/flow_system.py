@@ -1199,7 +1199,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def solution(self) -> xr.Dataset | None:
-        """Get the solution dataset."""
+        """
+        Access the optimization solution as an xarray Dataset.
+
+        The solution is indexed by ``timesteps_extra`` (the original timesteps plus
+        one additional timestep at the end). Variables that do not have data for the
+        extra timestep (most variables except storage charge states) will contain
+        NaN values at the final timestep.
+
+        Returns:
+            xr.Dataset: The solution dataset with all optimization variable results,
+                or None if the model hasn't been solved yet.
+
+        Example:
+            >>> flow_system.optimize(solver)
+            >>> flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1]  # Exclude trailing NaN
+        """
         return self._solution
 
     @solution.setter
