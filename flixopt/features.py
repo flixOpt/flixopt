@@ -156,7 +156,7 @@ class StatusModel(Submodel):
     state transitions, duration tracking, and operational effects.
 
     Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/OnOffParameters/>
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
     """
 
     def __init__(

@@ -504,7 +504,8 @@ class TransformAccessor:
             dim_groups[dims_key].append(var_name)
 
         if not dim_groups:
-            return getattr(time_dataset.resample(time=time, **kwargs), method)()
+            # No variables to resample - return dataset as-is
+            return time_dataset
 
         resampled_groups = []
         for var_names in dim_groups.values():
