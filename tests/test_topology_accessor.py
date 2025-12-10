@@ -3,6 +3,7 @@
 import tempfile
 from pathlib import Path
 
+import plotly.graph_objects as go
 import pytest
 
 import flixopt as fx
@@ -64,37 +65,92 @@ class TestTopologyInfos:
 
 
 class TestTopologyPlot:
-    """Tests for topology.plot() method."""
+    """Tests for topology.plot() method (Sankey-based)."""
 
-    def test_plot_returns_network_or_none(self, flow_system):
-        """Test that plot() returns a pyvis Network or None."""
+    def test_plot_returns_plotly_figure(self, flow_system):
+        """Test that plot() returns a Plotly Figure."""
+        result = flow_system.topology.plot(show=False)
+        assert isinstance(result, go.Figure)
+
+    def test_plot_contains_sankey_trace(self, flow_system):
+        """Test that the figure contains a Sankey trace."""
+        fig = flow_system.topology.plot(show=False)
+        assert len(fig.data) == 1
+        assert isinstance(fig.data[0], go.Sankey)
+
+    def test_plot_has_correct_title(self, flow_system):
+        """Test that the figure has the correct title."""
+        fig = flow_system.topology.plot(show=False)
+        assert fig.layout.title.text == 'Flow System Topology'
+
+    def test_plot_with_custom_title(self, flow_system):
+        """Test that custom title can be passed via plotly_kwargs."""
+        fig = flow_system.topology.plot(show=False, title='Custom Title')
+        assert fig.layout.title.text == 'Custom Title'
+
+    def test_plot_contains_all_nodes(self, flow_system):
+        """Test that the Sankey contains all buses and components as nodes."""
+        fig = flow_system.topology.plot(show=False)
+        sankey = fig.data[0]
+        node_labels = set(sankey.node.label)
+
+        # All buses should be in nodes
+        for bus in flow_system.buses.values():
+            assert bus.label in node_labels
+
+        # All components should be in nodes
+        for comp in flow_system.components.values():
+            assert comp.label in node_labels
+
+    def test_plot_contains_all_flows_as_links(self, flow_system):
+        """Test that all flows are represented as links."""
+        fig = flow_system.topology.plot(show=False)
+        sankey = fig.data[0]
+        link_labels = set(sankey.link.label)
+
+        # All flows should be represented as links
+        for flow in flow_system.flows.values():
+            assert flow.label_full in link_labels
+
+    def test_plot_with_colors(self, flow_system):
+        """Test that colors parameter is accepted."""
+        # Should not raise
+        flow_system.topology.plot(colors='Viridis', show=False)
+        flow_system.topology.plot(colors=['red', 'blue', 'green'], show=False)
+
+
+class TestTopologyPlotLegacy:
+    """Tests for topology.plot_legacy() method (PyVis-based)."""
+
+    def test_plot_legacy_returns_network_or_none(self, flow_system):
+        """Test that plot_legacy() returns a pyvis Network or None."""
         try:
             import pyvis
 
-            result = flow_system.topology.plot(path=False, show=False)
+            result = flow_system.topology.plot_legacy(path=False, show=False)
             assert result is None or isinstance(result, pyvis.network.Network)
         except ImportError:
             # pyvis not installed, should return None
-            result = flow_system.topology.plot(path=False, show=False)
+            result = flow_system.topology.plot_legacy(path=False, show=False)
             assert result is None
 
-    def test_plot_creates_html_file(self, flow_system):
-        """Test that plot() creates an HTML file when path is specified."""
+    def test_plot_legacy_creates_html_file(self, flow_system):
+        """Test that plot_legacy() creates an HTML file when path is specified."""
         pytest.importorskip('pyvis')
 
         with tempfile.TemporaryDirectory() as tmpdir:
             html_path = Path(tmpdir) / 'network.html'
-            flow_system.topology.plot(path=str(html_path), show=False)
+            flow_system.topology.plot_legacy(path=str(html_path), show=False)
             assert html_path.exists()
             content = html_path.read_text()
             assert '<html>' in content.lower() or '<!doctype' in content.lower()
 
-    def test_plot_with_controls_list(self, flow_system):
-        """Test that plot() accepts a list of controls."""
+    def test_plot_legacy_with_controls_list(self, flow_system):
+        """Test that plot_legacy() accepts a list of controls."""
         pytest.importorskip('pyvis')
 
         # Should not raise
-        flow_system.topology.plot(path=False, controls=['nodes', 'layout'], show=False)
+        flow_system.topology.plot_legacy(path=False, controls=['nodes', 'layout'], show=False)
 
 
 class TestDeprecatedMethods:

@@ -75,9 +75,8 @@ class TestFlowSystemSolution:
         simple_flow_system.optimize(highs_solver)
         solution = simple_flow_system.solution
 
-        # Check storage charge state
+        # Check storage charge state (includes extra timestep for final state)
         assert 'Speicher|charge_state' in solution
-        assert 'Speicher|charge_state|final' in solution
 
     def test_solution_item_returns_scalar(self, simple_flow_system, highs_solver):
         """Verify .item() returns Python scalar for 0-d arrays."""
@@ -160,6 +159,63 @@ class TestElementSolution:
         )
         with pytest.raises(ValueError, match='not linked to a FlowSystem'):
             _ = boiler.solution
+
+
+# ============================================================================
+# STATISTICS ACCESSOR TESTS
+# ============================================================================
+
+
+class TestStatisticsAccessor:
+    """Tests for flow_system.statistics accessor."""
+
+    def test_statistics_sizes_includes_all_flows(self, simple_flow_system, highs_solver):
+        """Test that statistics.sizes includes all flow and storage sizes (from InvestParameters)."""
+        simple_flow_system.optimize(highs_solver)
+
+        sizes = simple_flow_system.statistics.sizes
+
+        assert isinstance(sizes, xr.Dataset)
+        # Should have sizes for flows with InvestParameters
+        assert len(sizes.data_vars) > 0
+
+        # Check that all size labels are valid flow or storage labels
+        flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
+        storage_labels = [s.label_full for s in simple_flow_system.storages.values()]
+        valid_labels = flow_labels + storage_labels
+        for label in sizes.data_vars:
+            assert label in valid_labels, f'Size label {label} should be a valid flow or storage'
+
+    def test_statistics_sizes_returns_correct_values(self, simple_flow_system, highs_solver):
+        """Test that statistics.sizes returns correct size values."""
+        simple_flow_system.optimize(highs_solver)
+
+        sizes = simple_flow_system.statistics.sizes
+
+        # Check that all values are positive (sizes should be > 0)
+        for label in sizes.data_vars:
+            value = float(sizes[label].values) if sizes[label].dims == () else float(sizes[label].max().values)
+            assert value > 0, f'Size for {label} should be positive'
+
+    def test_statistics_flow_rates(self, simple_flow_system, highs_solver):
+        """Test that statistics.flow_rates returns flow rate data."""
+        simple_flow_system.optimize(highs_solver)
+
+        flow_rates = simple_flow_system.statistics.flow_rates
+
+        assert isinstance(flow_rates, xr.Dataset)
+        assert len(flow_rates.data_vars) > 0
+        # Flow rates should have time dimension
+        assert 'time' in flow_rates.dims
+
+    def test_statistics_flow_hours(self, simple_flow_system, highs_solver):
+        """Test that statistics.flow_hours returns energy data."""
+        simple_flow_system.optimize(highs_solver)
+
+        flow_hours = simple_flow_system.statistics.flow_hours
+
+        assert isinstance(flow_hours, xr.Dataset)
+        assert len(flow_hours.data_vars) > 0
 
 
 # ============================================================================
@@ -371,24 +427,28 @@ class TestHeatmapReshaping:
 class TestNetworkVisualization:
     """Tests for network visualization functionality."""
 
-    def test_plot_network_returns_network(self, simple_flow_system):
-        """Test that plot_network returns a Network object."""
-        pytest.importorskip('pyvis')
-        network = simple_flow_system.plot_network(path=False, show=False)
-        assert network is not None
+    def test_topology_plot_returns_figure(self, simple_flow_system):
+        """Test that topology.plot() returns a Plotly Figure."""
+        import plotly.graph_objects as go
 
-    def test_plot_network_creates_html(self, simple_flow_system, tmp_path):
-        """Test that plot_network creates HTML file."""
+        fig = simple_flow_system.topology.plot(show=False)
+        assert fig is not None
+        assert isinstance(fig, go.Figure)
+
+    def test_topology_plot_creates_html(self, simple_flow_system, tmp_path):
+        """Test that topology.plot() figure can be saved to HTML file."""
         html_path = tmp_path / 'network.html'
-        simple_flow_system.plot_network(path=str(html_path), show=False)
+        fig = simple_flow_system.topology.plot(show=False)
+        fig.write_html(str(html_path))
         assert html_path.exists()
 
-    def test_network_contains_all_buses(self, simple_flow_system):
-        """Test that network contains all buses."""
-        network = simple_flow_system.plot_network(path=False, show=False)
+    def test_topology_plot_contains_all_buses(self, simple_flow_system):
+        """Test that topology plot contains all buses in the Sankey diagram."""
+        fig = simple_flow_system.topology.plot(show=False)
 
-        # Get node labels
-        node_labels = [node['label'] for node in network.nodes]
+        # Get node labels from the Sankey diagram
+        sankey_data = fig.data[0]
+        node_labels = list(sankey_data.node.label)
 
         # Check that buses are in network
         for bus_label in simple_flow_system.buses.keys():
@@ -601,3 +661,118 @@ class TestExportFunctionality:
         plotting.export_figure((fig, ax), default_path=png_path, save=True, show=False)
         assert png_path.exists()
         plt.close(fig)
+
+
+# ============================================================================
+# SANKEY DIAGRAM TESTS
+# ============================================================================
+
+
+class TestSankeyDiagram:
+    """Tests for Sankey diagram functionality."""
+
+    def test_sankey_flow_hours_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with flow_hours mode (default)."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        assert 'value' in result.data
+        assert 'source' in result.data.coords
+        assert 'target' in result.data.coords
+        assert len(result.data.link) > 0
+
+    def test_sankey_peak_flow_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with peak_flow mode."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='peak_flow', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        assert len(result.data.link) > 0
+
+    def test_sankey_sizes_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with sizes mode shows investment sizes."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='sizes', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        # Should have some flows with investment sizes
+        assert len(result.data.link) > 0
+
+    def test_sankey_sizes_max_size_filter(self, simple_flow_system, highs_solver):
+        """Test that max_size parameter filters large sizes."""
+        simple_flow_system.optimize(highs_solver)
+
+        # Get all sizes (no filter)
+        result_all = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=None, show=False)
+
+        # Get filtered sizes
+        result_filtered = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=100, show=False)
+
+        # Filtered should have fewer or equal links
+        assert len(result_filtered.data.link) <= len(result_all.data.link)
+
+    def test_sankey_effects_mode(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with effects mode."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+
+        assert result.figure is not None
+        assert result.data is not None
+        # Should have component -> effect links
+        assert len(result.data.link) > 0
+        # Effects should appear in targets with bracket notation
+        targets = list(result.data.target.values)
+        assert any('[' in str(t) for t in targets), 'Effects should appear as [effect_name] in targets'
+
+    def test_sankey_effects_includes_costs_and_co2(self, simple_flow_system, highs_solver):
+        """Test that effects mode includes both costs and CO2."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+
+        targets = [str(t) for t in result.data.target.values]
+        # Should have at least costs effect
+        assert '[costs]' in targets, 'Should include costs effect'
+
+    def test_sankey_with_timestep_selection(self, simple_flow_system, highs_solver):
+        """Test Sankey with specific timestep."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(timestep=0, show=False)
+
+        assert result.figure is not None
+        assert len(result.data.link) > 0
+
+    def test_sankey_with_mean_aggregate(self, simple_flow_system, highs_solver):
+        """Test Sankey with mean aggregation."""
+        simple_flow_system.optimize(highs_solver)
+
+        result_sum = simple_flow_system.statistics.plot.sankey(aggregate='sum', show=False)
+        result_mean = simple_flow_system.statistics.plot.sankey(aggregate='mean', show=False)
+
+        # Both should produce valid results
+        assert result_sum.figure is not None
+        assert result_mean.figure is not None
+        # Mean values should be smaller than sum values
+        sum_total = sum(result_sum.data.value.values)
+        mean_total = sum(result_mean.data.value.values)
+        assert mean_total < sum_total, 'Mean should produce smaller values than sum'
+
+    def test_sankey_returns_plot_result(self, simple_flow_system, highs_solver):
+        """Test that sankey returns PlotResult with figure and data."""
+        simple_flow_system.optimize(highs_solver)
+
+        result = simple_flow_system.statistics.plot.sankey(show=False)
+
+        # Check PlotResult structure
+        assert hasattr(result, 'figure')
+        assert hasattr(result, 'data')
+        assert isinstance(result.data, xr.Dataset)

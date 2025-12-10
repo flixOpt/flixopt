@@ -178,6 +178,10 @@ class PlotResult:
     data: xr.Dataset
     figure: go.Figure
 
+    def _repr_html_(self) -> str:
+        """Return HTML representation for Jupyter notebook display."""
+        return self.figure.to_html(full_html=False, include_plotlyjs='cdn')
+
     def show(self) -> PlotResult:
         """Display the figure. Returns self for chaining."""
         self.figure.show()
@@ -364,6 +368,8 @@ class StatisticsAccessor:
         # Cached data
         self._flow_rates: xr.Dataset | None = None
         self._flow_hours: xr.Dataset | None = None
+        self._flow_sizes: xr.Dataset | None = None
+        self._storage_sizes: xr.Dataset | None = None
         self._sizes: xr.Dataset | None = None
         self._charge_states: xr.Dataset | None = None
         self._effect_share_factors: dict[str, dict] | None = None
@@ -413,12 +419,36 @@ class StatisticsAccessor:
         return self._flow_hours
 
     @property
-    def sizes(self) -> xr.Dataset:
-        """All flow sizes as a Dataset with flow labels as variable names."""
+    def flow_sizes(self) -> xr.Dataset:
+        """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
+        if self._flow_sizes is None:
+            flow_labels = set(self._fs.flows.keys())
+            size_vars = [
+                v for v in self._fs.solution.data_vars if v.endswith('|size') and v.replace('|size', '') in flow_labels
+            ]
+            self._flow_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+        return self._flow_sizes
+
+    @property
+    def storage_sizes(self) -> xr.Dataset:
+        """Storage capacity sizes as a Dataset with storage labels as variable names."""
+        self._require_solution()
+        if self._storage_sizes is None:
+            storage_labels = set(self._fs.storages.keys())
+            size_vars = [
+                v
+                for v in self._fs.solution.data_vars
+                if v.endswith('|size') and v.replace('|size', '') in storage_labels
+            ]
+            self._storage_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+        return self._storage_sizes
+
+    @property
+    def sizes(self) -> xr.Dataset:
+        """All investment sizes (flows and storage capacities) as a Dataset."""
         if self._sizes is None:
-            size_vars = [v for v in self._fs.solution.data_vars if v.endswith('|size')]
-            self._sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            self._sizes = xr.merge([self.flow_sizes, self.storage_sizes])
         return self._sizes
 
     @property
@@ -981,7 +1011,7 @@ class StatisticsPlotAccessor:
             heatmap_dims = ['time'] if 'time' in da.dims else list(da.dims)[:1]
 
         # Keep only dims we need
-        keep_dims = set(heatmap_dims) | {actual_facet, actual_animation} - {None}
+        keep_dims = set(heatmap_dims) | {d for d in [actual_facet, actual_animation] if d is not None}
         for dim in [d for d in da.dims if d not in keep_dims]:
             da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
 
@@ -1053,7 +1083,7 @@ class StatisticsPlotAccessor:
             for flow in self._fs.flows.values():
                 # Get bus label (could be string or Bus object)
                 bus_label = flow.bus
-                comp_label = flow.component.label_full
+                comp_label = flow.component
 
                 # start/end filtering based on flow direction
                 if flow.is_input_in_component:
@@ -1094,84 +1124,123 @@ class StatisticsPlotAccessor:
 
         return PlotResult(data=ds, figure=fig)
 
-    def sankey(
+    def _prepare_sankey_data(
         self,
-        *,
-        timestep: int | str | None = None,
-        aggregate: Literal['sum', 'mean'] = 'sum',
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot Sankey diagram of energy/material flow hours.
+        mode: Literal['flow_hours', 'sizes', 'peak_flow'],
+        timestep: int | str | None,
+        aggregate: Literal['sum', 'mean'],
+        select: SelectType | None,
+    ) -> tuple[xr.Dataset, str]:
+        """Prepare data for Sankey diagram based on mode.
 
         Args:
-            timestep: Specific timestep to show, or None for aggregation.
-            aggregate: How to aggregate if timestep is None.
+            mode: What to display - flow_hours, sizes, or peak_flow.
+            timestep: Specific timestep (only for flow_hours mode).
+            aggregate: Aggregation method (only for flow_hours mode).
             select: xarray-style selection.
-            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
-            show: Whether to display.
 
         Returns:
-            PlotResult with Sankey flow data.
+            Tuple of (prepared Dataset, title string).
         """
-        self._stats._require_solution()
+        if mode == 'sizes':
+            ds = self._stats.sizes.copy()
+            title = 'Investment Sizes (Capacities)'
+        elif mode == 'peak_flow':
+            ds = self._stats.flow_rates.copy()
+            ds = _apply_selection(ds, select)
+            if 'time' in ds.dims:
+                ds = ds.max(dim='time')
+            for dim in ['period', 'scenario']:
+                if dim in ds.dims:
+                    ds = ds.max(dim=dim)
+            return ds, 'Peak Flow Rates'
+        else:  # flow_hours
+            ds = self._stats.flow_hours.copy()
+            title = 'Energy Flow'
 
-        ds = self._stats.flow_hours.copy()
-
-        # Apply weights
-        if 'period' in ds.dims and self._fs.period_weights is not None:
-            ds = ds * self._fs.period_weights
-        if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
-            weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
-            ds = ds * weights
+        # Apply weights for flow_hours
+        if mode == 'flow_hours':
+            if 'period' in ds.dims and self._fs.period_weights is not None:
+                ds = ds * self._fs.period_weights
+            if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
+                weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
+                ds = ds * weights
 
         ds = _apply_selection(ds, select)
 
-        if timestep is not None:
-            if isinstance(timestep, int):
-                ds = ds.isel(time=timestep)
-            else:
-                ds = ds.sel(time=timestep)
-        elif 'time' in ds.dims:
-            ds = getattr(ds, aggregate)(dim='time')
+        # Time aggregation (only for flow_hours)
+        if mode == 'flow_hours':
+            if timestep is not None:
+                if isinstance(timestep, int):
+                    ds = ds.isel(time=timestep)
+                else:
+                    ds = ds.sel(time=timestep)
+            elif 'time' in ds.dims:
+                ds = getattr(ds, aggregate)(dim='time')
 
+        # Collapse remaining dimensions
         for dim in ['period', 'scenario']:
             if dim in ds.dims:
-                ds = ds.sum(dim=dim)
+                ds = ds.sum(dim=dim) if mode == 'flow_hours' else ds.max(dim=dim)
 
-        # Build Sankey
-        nodes = set()
-        links = {'source': [], 'target': [], 'value': [], 'label': []}
+        return ds, title
 
-        for flow in self._fs.flows.values():
-            label = flow.label_full
-            if label not in ds:
-                continue
-            value = float(ds[label].values)
-            if abs(value) < 1e-6:
-                continue
+    def _build_effects_sankey(
+        self,
+        select: SelectType | None,
+        colors: ColorType | None,
+        **plotly_kwargs: Any,
+    ) -> tuple[go.Figure, xr.Dataset]:
+        """Build Sankey diagram showing contributions from components to effects.
 
-            # Determine source/target based on flow direction
-            # is_input_in_component: True means bus -> component, False means component -> bus
-            bus_label = flow.bus
-            comp_label = flow.component.label_full
+        Creates a Sankey with:
+        - Left side: Components (grouped by type)
+        - Right side: Effects (costs, CO2, etc.)
+        - Links: Contributions from each component to each effect
 
-            if flow.is_input_in_component:
-                source = bus_label
-                target = comp_label
-            else:
-                source = comp_label
-                target = bus_label
+        Args:
+            select: xarray-style selection.
+            colors: Color specification for nodes.
+            **plotly_kwargs: Additional Plotly layout arguments.
 
-            nodes.add(source)
-            nodes.add(target)
-            links['source'].append(source)
-            links['target'].append(target)
-            links['value'].append(abs(value))
-            links['label'].append(label)
+        Returns:
+            Tuple of (Plotly Figure, Dataset with link data).
+        """
+        total_effects = self._stats.total_effects
 
+        # Collect all links: component -> effect
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
+
+        for effect_name in total_effects.data_vars:
+            effect_data = total_effects[effect_name]
+            effect_data = _apply_selection(effect_data, select)
+
+            # Sum over any remaining dimensions
+            for dim in ['period', 'scenario']:
+                if dim in effect_data.dims:
+                    effect_data = effect_data.sum(dim=dim)
+
+            contributors = effect_data.coords['contributor'].values
+            components = effect_data.coords['component'].values
+
+            for contributor, component in zip(contributors, components, strict=False):
+                value = float(effect_data.sel(contributor=contributor).values)
+                if not np.isfinite(value) or abs(value) < 1e-6:
+                    continue
+
+                # Use component as source node, effect as target
+                source = str(component)
+                target = f'[{effect_name}]'  # Bracket notation to distinguish effects
+
+                nodes.add(source)
+                nodes.add(target)
+                links['source'].append(source)
+                links['target'].append(target)
+                links['value'].append(abs(value))
+                links['label'].append(f'{contributor} → {effect_name}: {value:.2f}')
+
+        # Create figure
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
@@ -1193,12 +1262,175 @@ class StatisticsPlotAccessor:
                 )
             ]
         )
-        fig.update_layout(title='Energy Flow Sankey', **plotly_kwargs)
+        fig.update_layout(title='Effect Contributions by Component', **plotly_kwargs)
 
         sankey_ds = xr.Dataset(
             {'value': ('link', links['value'])},
-            coords={'link': links['label'], 'source': ('link', links['source']), 'target': ('link', links['target'])},
+            coords={
+                'link': range(len(links['value'])),
+                'source': ('link', links['source']),
+                'target': ('link', links['target']),
+                'label': ('link', links['label']),
+            },
         )
+
+        return fig, sankey_ds
+
+    def _build_sankey_links(
+        self,
+        ds: xr.Dataset,
+        min_value: float = 1e-6,
+    ) -> tuple[set[str], dict[str, list]]:
+        """Build Sankey nodes and links from flow data.
+
+        Args:
+            ds: Dataset with flow values (one variable per flow).
+            min_value: Minimum value threshold to include a link.
+
+        Returns:
+            Tuple of (nodes set, links dict with source/target/value/label).
+        """
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
+
+        for flow in self._fs.flows.values():
+            label = flow.label_full
+            if label not in ds:
+                continue
+            value = float(ds[label].values)
+            if abs(value) < min_value:
+                continue
+
+            # flow.bus and flow.component are already strings (bus label, component label_full)
+            bus_label = flow.bus
+            comp_label = flow.component
+
+            if flow.is_input_in_component:
+                source = bus_label
+                target = comp_label
+            else:
+                source = comp_label
+                target = bus_label
+
+            nodes.add(source)
+            nodes.add(target)
+            links['source'].append(source)
+            links['target'].append(target)
+            links['value'].append(abs(value))
+            links['label'].append(label)
+
+        return nodes, links
+
+    def _create_sankey_figure(
+        self,
+        nodes: set[str],
+        links: dict[str, list],
+        colors: ColorType | None,
+        title: str,
+        **plotly_kwargs: Any,
+    ) -> go.Figure:
+        """Create Plotly Sankey figure.
+
+        Args:
+            nodes: Set of node labels.
+            links: Dict with source, target, value, label lists.
+            colors: Color specification for nodes.
+            title: Figure title.
+            **plotly_kwargs: Additional Plotly layout arguments.
+
+        Returns:
+            Plotly Figure with Sankey diagram.
+        """
+        node_list = list(nodes)
+        node_indices = {n: i for i, n in enumerate(node_list)}
+
+        color_map = process_colors(colors, node_list)
+        node_colors = [color_map[node] for node in node_list]
+
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=15, thickness=20, line=dict(color='black', width=0.5), label=node_list, color=node_colors
+                    ),
+                    link=dict(
+                        source=[node_indices[s] for s in links['source']],
+                        target=[node_indices[t] for t in links['target']],
+                        value=links['value'],
+                        label=links['label'],
+                    ),
+                )
+            ]
+        )
+        fig.update_layout(title=title, **plotly_kwargs)
+        return fig
+
+    def sankey(
+        self,
+        *,
+        mode: Literal['flow_hours', 'sizes', 'peak_flow', 'effects'] = 'flow_hours',
+        timestep: int | str | None = None,
+        aggregate: Literal['sum', 'mean'] = 'sum',
+        select: SelectType | None = None,
+        max_size: float | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of the flow system.
+
+        Args:
+            mode: What to display:
+                - 'flow_hours': Energy/material amounts (default)
+                - 'sizes': Investment capacities
+                - 'peak_flow': Maximum flow rates
+                - 'effects': Component contributions to all effects (costs, CO2, etc.)
+            timestep: Specific timestep to show, or None for aggregation (flow_hours only).
+            aggregate: How to aggregate if timestep is None ('sum' or 'mean', flow_hours only).
+            select: xarray-style selection.
+            max_size: Filter flows with sizes exceeding this value (sizes mode only).
+            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
+            show: Whether to display.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey flow data and figure.
+
+        Examples:
+            >>> # Show energy flows (default)
+            >>> flow_system.statistics.plot.sankey()
+            >>> # Show investment sizes/capacities
+            >>> flow_system.statistics.plot.sankey(mode='sizes')
+            >>> # Show peak flow rates
+            >>> flow_system.statistics.plot.sankey(mode='peak_flow')
+            >>> # Show effect contributions (components -> effects like costs, CO2)
+            >>> flow_system.statistics.plot.sankey(mode='effects')
+        """
+        self._stats._require_solution()
+
+        if mode == 'effects':
+            fig, sankey_ds = self._build_effects_sankey(select, colors, **plotly_kwargs)
+        else:
+            ds, title = self._prepare_sankey_data(mode, timestep, aggregate, select)
+
+            # Apply max_size filter for sizes mode
+            if max_size is not None and mode == 'sizes' and ds.data_vars:
+                valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
+                ds = ds[valid_labels]
+
+            nodes, links = self._build_sankey_links(ds)
+            fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
+
+            n_links = len(links['value'])
+            sankey_ds = xr.Dataset(
+                {'value': ('link', links['value'])},
+                coords={
+                    'link': range(n_links),
+                    'source': ('link', links['source']),
+                    'target': ('link', links['target']),
+                    'label': ('link', links['label']),
+                },
+            )
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1509,3 +1741,189 @@ class StatisticsPlotAccessor:
             fig.show()
 
         return PlotResult(data=combined.to_dataset(name=aspect), figure=fig)
+
+    def charge_states(
+        self,
+        storages: str | list[str] | None = None,
+        *,
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot storage charge states over time.
+
+        Args:
+            storages: Storage label(s) to plot. If None, plots all storages.
+            select: xarray-style selection.
+            colors: Color specification (colorscale name, color list, or label-to-color dict).
+            facet_col: Dimension for column facets.
+            facet_row: Dimension for row facets.
+            show: Whether to display.
+
+        Returns:
+            PlotResult with charge state data.
+        """
+        self._stats._require_solution()
+        ds = self._stats.charge_states
+
+        if storages is not None:
+            if isinstance(storages, str):
+                storages = [storages]
+            ds = ds[[s for s in storages if s in ds]]
+
+        ds = _apply_selection(ds, select)
+        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+
+        fig = _create_line(
+            ds,
+            colors=colors,
+            title='Storage Charge States',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            **plotly_kwargs,
+        )
+        fig.update_yaxes(title_text='Charge State')
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)
+
+    def storage(
+        self,
+        storage: str,
+        *,
+        select: SelectType | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
+        charge_state_color: str = 'black',
+        facet_col: str | None = 'period',
+        facet_row: str | None = 'scenario',
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot storage operation: balance and charge state in vertically stacked subplots.
+
+        Creates two subplots sharing the x-axis:
+        - Top: Charging/discharging flows as stacked bars (inputs negative, outputs positive)
+        - Bottom: Charge state over time as a line
+
+        Args:
+            storage: Storage component label.
+            select: xarray-style selection.
+            unit: 'flow_rate' (power) or 'flow_hours' (energy).
+            colors: Color specification for flow bars.
+            charge_state_color: Color for the charge state line overlay.
+            facet_col: Dimension for column facets.
+            facet_row: Dimension for row facets.
+            show: Whether to display.
+
+        Returns:
+            PlotResult with combined balance and charge state data.
+
+        Raises:
+            KeyError: If storage component not found.
+            ValueError: If component is not a storage.
+        """
+        self._stats._require_solution()
+
+        # Get the storage component
+        if storage not in self._fs.components:
+            raise KeyError(f"'{storage}' not found in components")
+
+        component = self._fs.components[storage]
+
+        # Check if it's a storage by looking for charge_state variable
+        charge_state_var = f'{storage}|charge_state'
+        if charge_state_var not in self._fs.solution:
+            raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
+
+        # Get flow data
+        input_labels = [f.label_full for f in component.inputs]
+        output_labels = [f.label_full for f in component.outputs]
+        all_labels = input_labels + output_labels
+
+        if unit == 'flow_rate':
+            ds = self._stats.flow_rates[[lbl for lbl in all_labels if lbl in self._stats.flow_rates]]
+        else:
+            ds = self._stats.flow_hours[[lbl for lbl in all_labels if lbl in self._stats.flow_hours]]
+
+        # Negate outputs for balance view (discharging shown as negative)
+        for label in output_labels:
+            if label in ds:
+                ds[label] = -ds[label]
+
+        # Get charge state and add to dataset
+        charge_state = self._fs.solution[charge_state_var].rename(storage)
+        ds['charge_state'] = charge_state
+
+        # Apply selection
+        ds = _apply_selection(ds, select)
+        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+
+        # Build color map
+        flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
+        if colors is None:
+            colors = self._get_color_map_for_balance(storage, flow_labels)
+        color_map = process_colors(colors, flow_labels)
+        color_map['charge_state'] = 'black'
+
+        # Convert to long-form DataFrame
+        df = _dataset_to_long_df(ds)
+
+        # Create figure with facets using px.bar for flows, then add charge_state line
+        flow_df = df[df['variable'] != 'charge_state']
+        charge_df = df[df['variable'] == 'charge_state']
+
+        fig = px.bar(
+            flow_df,
+            x='time',
+            y='value',
+            color='variable',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            color_discrete_map=color_map,
+            title=f'{storage} Operation ({unit})',
+            **plotly_kwargs,
+        )
+        fig.update_layout(bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
+
+        # Add charge state as line on secondary y-axis using px.line, then merge traces
+        if not charge_df.empty:
+            line_fig = px.line(
+                charge_df,
+                x='time',
+                y='value',
+                facet_col=actual_facet_col,
+                facet_row=actual_facet_row,
+            )
+            # Update line traces and add to main figure
+            for trace in line_fig.data:
+                trace.name = 'charge_state'
+                trace.line = dict(color=charge_state_color, width=2)
+                trace.yaxis = 'y2'
+                trace.showlegend = True
+                fig.add_trace(trace)
+
+            # Add secondary y-axis
+            fig.update_layout(
+                yaxis2=dict(
+                    title='Charge State',
+                    overlaying='y',
+                    side='right',
+                    showgrid=False,
+                )
+            )
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=ds, figure=fig)

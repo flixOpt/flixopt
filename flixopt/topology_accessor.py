@@ -11,7 +11,12 @@ import logging
 import pathlib
 import warnings
 from itertools import chain
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+import plotly.graph_objects as go
+
+from .color_processing import ColorType, process_colors
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 
 if TYPE_CHECKING:
     import pyvis
@@ -177,6 +182,142 @@ class TopologyAccessor:
 
     def plot(
         self,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> go.Figure:
+        """
+        Visualize the network structure as a Sankey diagram using Plotly.
+
+        Creates a Sankey diagram showing the topology of the flow system,
+        with buses and components as nodes, and flows as links between them.
+        All links have equal width since no solution data is used.
+
+        Args:
+            colors: Color specification for nodes (buses).
+                - `None`: Uses default color palette based on buses.
+                - `str`: Plotly colorscale name (e.g., 'Viridis', 'Blues').
+                - `list`: List of colors to cycle through.
+                - `dict`: Maps bus labels to specific colors.
+                Links inherit colors from their connected bus.
+            show: Whether to display the figure in the browser.
+                - `None`: Uses default from CONFIG.Plotting.default_show.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            Plotly Figure with the Sankey diagram.
+
+        Examples:
+            >>> flow_system.topology.plot()
+            >>> flow_system.topology.plot(show=True)
+            >>> flow_system.topology.plot(colors='Viridis')
+            >>> flow_system.topology.plot(colors={'ElectricityBus': 'gold', 'HeatBus': 'red'})
+
+        Notes:
+            This visualization shows the network structure without optimization results.
+            For visualizations that include flow values, use `flow_system.statistics.plot.sankey()`
+            after running an optimization.
+
+            Hover over nodes and links to see detailed element information.
+
+        See Also:
+            - `plot_legacy()`: Previous PyVis-based network visualization.
+            - `statistics.plot.sankey()`: Sankey with actual flow values from optimization.
+        """
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        # Build nodes and links from topology
+        nodes: set[str] = set()
+        links: dict[str, list] = {
+            'source': [],
+            'target': [],
+            'value': [],
+            'label': [],
+            'customdata': [],  # For hover text
+        }
+
+        # Collect node hover info (format repr for HTML display)
+        node_hover: dict[str, str] = {}
+        for comp in self._fs.components.values():
+            node_hover[comp.label] = repr(comp).replace('\n', '<br>')
+        for bus in self._fs.buses.values():
+            node_hover[bus.label] = repr(bus).replace('\n', '<br>')
+
+        for flow in self._fs.flows.values():
+            bus_label = flow.bus
+            comp_label = flow.component
+
+            if flow.is_input_in_component:
+                source = bus_label
+                target = comp_label
+            else:
+                source = comp_label
+                target = bus_label
+
+            nodes.add(source)
+            nodes.add(target)
+            links['source'].append(source)
+            links['target'].append(target)
+            links['value'].append(1)  # Equal width for all links (no solution data)
+            links['label'].append(flow.label_full)
+            links['customdata'].append(repr(flow).replace('\n', '<br>'))  # Flow repr for hover
+
+        # Create figure
+        node_list = list(nodes)
+        node_indices = {n: i for i, n in enumerate(node_list)}
+
+        # Get colors for buses only, then apply to all nodes
+        bus_labels = [bus.label for bus in self._fs.buses.values()]
+        bus_color_map = process_colors(colors, bus_labels)
+
+        # Assign colors to nodes: buses get their color, components get a neutral gray
+        node_colors = []
+        for node in node_list:
+            if node in bus_color_map:
+                node_colors.append(bus_color_map[node])
+            else:
+                # Component - use a neutral gray
+                node_colors.append('#808080')
+
+        # Build hover text for nodes
+        node_customdata = [node_hover.get(node, node) for node in node_list]
+
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=15,
+                        thickness=20,
+                        line=dict(color='black', width=0.5),
+                        label=node_list,
+                        color=node_colors,
+                        customdata=node_customdata,
+                        hovertemplate='%{customdata}<extra></extra>',
+                    ),
+                    link=dict(
+                        source=[node_indices[s] for s in links['source']],
+                        target=[node_indices[t] for t in links['target']],
+                        value=links['value'],
+                        label=links['label'],
+                        customdata=links['customdata'],
+                        hovertemplate='%{customdata}<extra></extra>',
+                    ),
+                )
+            ]
+        )
+        title = plotly_kwargs.pop('title', 'Flow System Topology')
+        fig.update_layout(title=title, **plotly_kwargs)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return fig
+
+    def plot_legacy(
+        self,
         path: bool | str | pathlib.Path = 'flow_system.html',
         controls: bool
         | list[
@@ -186,6 +327,10 @@ class TopologyAccessor:
     ) -> pyvis.network.Network | None:
         """
         Visualize the network structure using PyVis, saving it as an interactive HTML file.
+
+        .. deprecated::
+            Use `plot()` instead for the new Plotly-based Sankey visualization.
+            This method is kept for backwards compatibility.
 
         Args:
             path: Path to save the HTML visualization.
@@ -203,9 +348,9 @@ class TopologyAccessor:
             or `None` if `pyvis` is not installed.
 
         Examples:
-            >>> flow_system.topology.plot()
-            >>> flow_system.topology.plot(show=False)
-            >>> flow_system.topology.plot(path='output/network.html', controls=['nodes', 'layout'])
+            >>> flow_system.topology.plot_legacy()
+            >>> flow_system.topology.plot_legacy(show=False)
+            >>> flow_system.topology.plot_legacy(path='output/network.html', controls=['nodes', 'layout'])
 
         Notes:
             This function requires `pyvis`. If not installed, the function prints
@@ -213,8 +358,12 @@ class TopologyAccessor:
             Nodes are styled based on type (circles for buses, boxes for components)
             and annotated with node information.
         """
-        from .config import CONFIG
-
+        warnings.warn(
+            f'This method is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.plot() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         node_infos, edge_infos = self.infos()
         # Normalize path=False to None for _plot_network compatibility
         normalized_path = None if path is False else path
@@ -278,16 +427,6 @@ class TopologyAccessor:
         Examples:
             >>> flow_system.topology.stop_app()
         """
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
-
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
-
         if self._fs._network_app is None:
             logger.warning("No network app is currently running. Can't stop it")
             return

@@ -4,7 +4,7 @@ flixOpt is released under the MIT License.
 
 ## MIT License
 
-```
+```text
 MIT License
 
 Copyright (c) 2022 Chair of Building Energy Systems and Heat Supply - TU Dresden

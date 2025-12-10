@@ -5,6 +5,7 @@ It helps avoid redundancy and centralizes reusable test logic.
 """
 
 import os
+import warnings
 from collections.abc import Iterable
 
 import linopy.testing
@@ -265,7 +266,11 @@ class Storage:
 
         return fx.Storage(
             'Speicher',
-            charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
+            charging=fx.Flow(
+                'Q_th_load',
+                bus='Fernwärme',
+                size=fx.InvestParameters(fixed_size=1e4, mandatory=True),  # Investment for testing sizes
+            ),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
             capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
@@ -692,7 +697,10 @@ def assert_almost_equal_numeric(
     actual, desired, err_msg, relative_error_range_in_percent=0.011, absolute_tolerance=1e-7
 ):
     """
-    Custom assertion function for comparing numeric values with relative and absolute tolerances
+    Custom assertion function for comparing numeric values with relative and absolute tolerances.
+
+    Handles the extra timestep in solutions by trimming actual arrays to match desired length
+    when the extra values are NaN (from storage charge_state variables using extra_timestep).
     """
     relative_tol = relative_error_range_in_percent / 100
 
@@ -700,6 +708,20 @@ def assert_almost_equal_numeric(
         delta = abs(relative_tol * desired) if desired != 0 else absolute_tolerance
         assert np.isclose(actual, desired, atol=delta), err_msg
     else:
+        actual = np.asarray(actual)
+        desired = np.asarray(desired)
+        # Handle extra timestep: trim actual to desired length if extra values are NaN
+        if actual.shape != desired.shape and actual.ndim == 1 and desired.ndim == 1:
+            if len(actual) > len(desired):
+                extra = actual[len(desired) :]
+                if np.all(np.isnan(extra)):
+                    # Warn if trimming more than the expected single extra timestep
+                    if len(extra) > 1:
+                        warnings.warn(
+                            f'Trimming {len(extra)} NaN values from actual array (expected 1)',
+                            stacklevel=2,
+                        )
+                    actual = actual[: len(desired)]
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 

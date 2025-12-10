@@ -37,7 +37,9 @@ nav:
       - Investment: user-guide/mathematical-notation/features/InvestParameters.md
       - Status: user-guide/mathematical-notation/features/StatusParameters.md
       - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-    - Recipes: user-guide/recipes/index.md
+    - Recipes:
+      - user-guide/recipes/index.md
+      - Plotting Custom Data: user-guide/recipes/plotting-custom-data.md
     - Support:
       - FAQ: user-guide/faq.md
       - Troubleshooting: user-guide/troubleshooting.md
@@ -49,16 +51,19 @@ nav:
       - Roadmap: roadmap.md
 
   - Examples:
-    - Overview: examples/index.md
-    - Basic Examples:
-      - examples/00-Minimal Example.md
-      - examples/01-Basic Example.md
-    - Operational Optimization:
-      - examples/02-Complex Example.md
-      - examples/03-Optimization Modes.md
-    - Planning & Investment:
-      - examples/04-Scenarios.md
-      - examples/05-Two-stage-optimization.md
+    - Overview: notebooks/index.md
+    - Getting Started:
+      - Quickstart: notebooks/01-quickstart.ipynb
+      - Heat System with Storage: notebooks/02-heat-system.ipynb
+    - Investment & Planning:
+      - Investment Optimization: notebooks/03-investment-optimization.ipynb
+      - Operational Constraints: notebooks/04-operational-constraints.ipynb
+    - Advanced Modeling:
+      - Multi-Carrier Systems: notebooks/05-multi-carrier-system.ipynb
+      - Piecewise Efficiency: notebooks/06-piecewise-efficiency.ipynb
+    - Scenarios & Scaling:
+      - Scenarios and Periods: notebooks/07-scenarios-and-periods.ipynb
+      - Large-Scale Optimization: notebooks/08-large-scale-optimization.ipynb
 
   - API Reference: api-reference/
 
@@ -67,6 +72,7 @@ nav:
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
 
   palette:
     # Palette toggle for automatic mode
@@ -212,6 +218,12 @@ markdown_extensions:
 plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - mkdocs-jupyter:
+      execute: true  # Execute notebooks during build
+      allow_errors: false
+      include_source: true
+      include_requirejs: true
 
   - plotly
 

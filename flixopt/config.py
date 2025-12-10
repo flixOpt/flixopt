@@ -20,7 +20,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL']
+__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL', 'DEPRECATION_REMOVAL_VERSION']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -782,6 +782,44 @@ class CONFIG:
             import plotly.io as pio
 
             pio.renderers.default = 'browser'
+
+        return cls
+
+    @classmethod
+    def notebook(cls) -> type[CONFIG]:
+        """Configure for Jupyter notebook environments.
+
+        Optimizes settings for notebook usage:
+        - Sets plotly renderer to 'notebook' for inline display
+        - Disables automatic plot.show() calls (notebooks display via _repr_html_)
+        - Enables INFO-level console logging
+        - Disables solver console output (too verbose for notebooks)
+
+        Examples:
+            ```python
+            # At the start of your notebook
+            import flixopt as fx
+
+            fx.CONFIG.notebook()
+
+            # Now plots display inline automatically
+            flow_system.statistics.plot.balance('Heat')  # Displays inline
+            ```
+        """
+        import plotly.io as pio
+
+        # Set plotly to render inline in notebooks
+        pio.renderers.default = 'notebook'
+
+        # Disable default show since notebooks render via _repr_html_
+        cls.Plotting.default_show = False
+
+        # Light logging - SUCCESS level without too much noise
+        cls.Logging.enable_console('SUCCESS')
+
+        # Disable solver console output (too verbose for notebooks)
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
 
         return cls
 

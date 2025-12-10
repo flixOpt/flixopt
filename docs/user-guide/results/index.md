@@ -280,4 +280,4 @@ flow_system.to_netcdf('results/optimized_system.nc')
 ## Next Steps
 
 - [Plotting Results](../results-plotting.md) - Detailed plotting documentation
-- [Examples](../../examples/index.md) - Working code examples
+- [Examples](../../notebooks/index.md) - Working code examples

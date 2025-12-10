@@ -115,21 +115,21 @@ def test_minimal_model(solver_fixture, time_steps_fixture):
     assert_allclose(flow_system.solution['costs'].values, 80, rtol=1e-5, atol=1e-10)
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [-0.0, 10.0, 20.0, -0.0, 10.0],
         rtol=1e-5,
         atol=1e-10,
     )
 
     assert_allclose(
-        flow_system.solution['costs(temporal)|per_timestep'].values,
+        flow_system.solution['costs(temporal)|per_timestep'].values[:-1],
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,
     )
 
     assert_allclose(
-        flow_system.solution['Gastarif(Gas)->costs(temporal)'].values,
+        flow_system.solution['Gastarif(Gas)->costs(temporal)'].values[:-1],
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,
@@ -353,14 +353,14 @@ def test_on(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -395,21 +395,21 @@ def test_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|inactive'].values,
-        1 - flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|inactive'].values[:-1],
+        1 - flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -444,28 +444,28 @@ def test_startup_shutdown(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [0, 1, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|startup'].values,
+        flow_system.solution['Boiler(Q_th)|startup'].values[:-1],
         [0, 1, 0, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|shutdown'].values,
+        flow_system.solution['Boiler(Q_th)|shutdown'].values[:-1],
         [0, 0, 0, 1, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__switch_on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [0, 10, 20, 0, 10],
         rtol=1e-5,
         atol=1e-10,
@@ -506,14 +506,14 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -562,14 +562,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [0, 0, 1, 0, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [0, 0, 20, 0, 12 - 1e-5],
         rtol=1e-5,
         atol=1e-10,
@@ -577,14 +577,14 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        sum(flow_system.solution['Boiler_backup(Q_th)|status'].values),
+        sum(flow_system.solution['Boiler_backup(Q_th)|status'].values[:-1]),
         3,
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values[:-1],
         [0, 10, 1.0e-05, 0, 1.0e-05],
         rtol=1e-5,
         atol=1e-10,
@@ -627,14 +627,14 @@ def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|status'].values,
+        flow_system.solution['Boiler(Q_th)|status'].values[:-1],
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [5, 10, 0, 18, 12],
         rtol=1e-5,
         atol=1e-10,
@@ -642,7 +642,7 @@ def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values[:-1],
         [0, 0, 20, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -687,21 +687,21 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler_backup(Q_th)|status'].values,
+        flow_system.solution['Boiler_backup(Q_th)|status'].values[:-1],
         [0, 0, 1, 0, 0],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__on" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler_backup(Q_th)|inactive'].values,
+        flow_system.solution['Boiler_backup(Q_th)|inactive'].values[:-1],
         [1, 1, 0, 1, 1],
         rtol=1e-5,
         atol=1e-10,
         err_msg='"Boiler_backup__Q_th__off" does not have the right value',
     )
     assert_allclose(
-        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler_backup(Q_th)|flow_rate'].values[:-1],
         [0, 0, 1e-5, 0, 0],
         rtol=1e-5,
         atol=1e-10,
@@ -709,7 +709,7 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['Boiler(Q_th)|flow_rate'].values[:-1],
         [5, 0, 20 - 1e-5, 18, 12],
         rtol=1e-5,
         atol=1e-10,
