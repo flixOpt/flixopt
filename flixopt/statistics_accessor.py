@@ -722,7 +722,7 @@ class StatisticsAccessor:
                 computed = ds[effect].sum('contributor')
                 found = solution[label]
                 if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
-                    logger.critical(
+                    logger.warning(
                         f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
                     )
 

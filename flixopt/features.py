@@ -345,7 +345,7 @@ class StatusModel(Submodel):
         if self._previous_status is None:
             return hours_per_step
         else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status * -1 + 1, hours_per_step)
+            return ModelingUtilities.compute_consecutive_hours_in_state(1 - self._previous_status, hours_per_step)
 
 
 class PieceModel(Submodel):
