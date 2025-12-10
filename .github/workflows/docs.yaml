@@ -87,22 +87,22 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Extract changelog
-        run: |
-          uv pip install --system packaging
-          python scripts/extract_changelog.py
+      - name: Install mike
+        run: uv pip install --system mike
 
-      - name: Install dependencies
-        run: uv pip install --system ".[docs]"
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs
+          path: site/
 
       - name: Configure Git
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Deploy docs
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
-          mike deploy --push --update-aliases $VERSION latest
+          mike deploy --push --update-aliases --no-build $VERSION latest
           mike set-default --push latest
