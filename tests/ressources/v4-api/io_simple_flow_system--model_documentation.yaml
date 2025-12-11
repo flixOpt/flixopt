@@ -1,0 +1,944 @@
+objective: |-
+    Objective:
+    ----------
+    LinearExpression: +1 costs + 1 Penalty
+    Sense: min
+    Value: 81.88394666666667
+termination_condition: optimal
+status: ok
+nvars: 279
+nvarsbin: 36
+nvarscont: 243
+ncons: 253
+variables:
+    costs(periodic): |-
+        Variable
+        --------
+        costs(periodic) ∈ [-inf, inf]
+    costs(temporal): |-
+        Variable
+        --------
+        costs(temporal) ∈ [-inf, inf]
+    "costs(temporal)|per_timestep": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: costs(temporal)|per_timestep[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: costs(temporal)|per_timestep[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: costs(temporal)|per_timestep[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: costs(temporal)|per_timestep[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: costs(temporal)|per_timestep[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: costs(temporal)|per_timestep[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: costs(temporal)|per_timestep[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: costs(temporal)|per_timestep[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: costs(temporal)|per_timestep[2020-01-01 08:00:00] ∈ [-inf, inf]
+    costs: |-
+        Variable
+        --------
+        costs ∈ [-inf, inf]
+    CO2(periodic): |-
+        Variable
+        --------
+        CO2(periodic) ∈ [-inf, inf]
+    CO2(temporal): |-
+        Variable
+        --------
+        CO2(temporal) ∈ [-inf, inf]
+    "CO2(temporal)|per_timestep": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CO2(temporal)|per_timestep[2020-01-01 00:00:00] ∈ [-inf, 1000]
+        [2020-01-01 01:00:00]: CO2(temporal)|per_timestep[2020-01-01 01:00:00] ∈ [-inf, 1000]
+        [2020-01-01 02:00:00]: CO2(temporal)|per_timestep[2020-01-01 02:00:00] ∈ [-inf, 1000]
+        [2020-01-01 03:00:00]: CO2(temporal)|per_timestep[2020-01-01 03:00:00] ∈ [-inf, 1000]
+        [2020-01-01 04:00:00]: CO2(temporal)|per_timestep[2020-01-01 04:00:00] ∈ [-inf, 1000]
+        [2020-01-01 05:00:00]: CO2(temporal)|per_timestep[2020-01-01 05:00:00] ∈ [-inf, 1000]
+        [2020-01-01 06:00:00]: CO2(temporal)|per_timestep[2020-01-01 06:00:00] ∈ [-inf, 1000]
+        [2020-01-01 07:00:00]: CO2(temporal)|per_timestep[2020-01-01 07:00:00] ∈ [-inf, 1000]
+        [2020-01-01 08:00:00]: CO2(temporal)|per_timestep[2020-01-01 08:00:00] ∈ [-inf, 1000]
+    CO2: |-
+        Variable
+        --------
+        CO2 ∈ [-inf, inf]
+    Penalty: |-
+        Variable
+        --------
+        Penalty ∈ [-inf, inf]
+    "CO2(temporal)->costs(temporal)": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: CO2(temporal)->costs(temporal)[2020-01-01 08:00:00] ∈ [-inf, inf]
+    "Speicher(Q_th_load)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+04]
+        [2020-01-01 01:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+04]
+        [2020-01-01 02:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+04]
+        [2020-01-01 03:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+04]
+        [2020-01-01 04:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+04]
+        [2020-01-01 05:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+04]
+        [2020-01-01 06:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+04]
+        [2020-01-01 07:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+04]
+        [2020-01-01 08:00:00]: Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+04]
+    "Speicher(Q_th_load)|on": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Speicher(Q_th_load)|on[2020-01-01 00:00:00] ∈ {0, 1}
+        [2020-01-01 01:00:00]: Speicher(Q_th_load)|on[2020-01-01 01:00:00] ∈ {0, 1}
+        [2020-01-01 02:00:00]: Speicher(Q_th_load)|on[2020-01-01 02:00:00] ∈ {0, 1}
+        [2020-01-01 03:00:00]: Speicher(Q_th_load)|on[2020-01-01 03:00:00] ∈ {0, 1}
+        [2020-01-01 04:00:00]: Speicher(Q_th_load)|on[2020-01-01 04:00:00] ∈ {0, 1}
+        [2020-01-01 05:00:00]: Speicher(Q_th_load)|on[2020-01-01 05:00:00] ∈ {0, 1}
+        [2020-01-01 06:00:00]: Speicher(Q_th_load)|on[2020-01-01 06:00:00] ∈ {0, 1}
+        [2020-01-01 07:00:00]: Speicher(Q_th_load)|on[2020-01-01 07:00:00] ∈ {0, 1}
+        [2020-01-01 08:00:00]: Speicher(Q_th_load)|on[2020-01-01 08:00:00] ∈ {0, 1}
+    "Speicher(Q_th_load)|on_hours_total": |-
+        Variable
+        --------
+        Speicher(Q_th_load)|on_hours_total ∈ [0, inf]
+    "Speicher(Q_th_load)|total_flow_hours": |-
+        Variable
+        --------
+        Speicher(Q_th_load)|total_flow_hours ∈ [0, inf]
+    "Speicher(Q_th_unload)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+04]
+        [2020-01-01 01:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+04]
+        [2020-01-01 02:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+04]
+        [2020-01-01 03:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+04]
+        [2020-01-01 04:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+04]
+        [2020-01-01 05:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+04]
+        [2020-01-01 06:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+04]
+        [2020-01-01 07:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+04]
+        [2020-01-01 08:00:00]: Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+04]
+    "Speicher(Q_th_unload)|on": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Speicher(Q_th_unload)|on[2020-01-01 00:00:00] ∈ {0, 1}
+        [2020-01-01 01:00:00]: Speicher(Q_th_unload)|on[2020-01-01 01:00:00] ∈ {0, 1}
+        [2020-01-01 02:00:00]: Speicher(Q_th_unload)|on[2020-01-01 02:00:00] ∈ {0, 1}
+        [2020-01-01 03:00:00]: Speicher(Q_th_unload)|on[2020-01-01 03:00:00] ∈ {0, 1}
+        [2020-01-01 04:00:00]: Speicher(Q_th_unload)|on[2020-01-01 04:00:00] ∈ {0, 1}
+        [2020-01-01 05:00:00]: Speicher(Q_th_unload)|on[2020-01-01 05:00:00] ∈ {0, 1}
+        [2020-01-01 06:00:00]: Speicher(Q_th_unload)|on[2020-01-01 06:00:00] ∈ {0, 1}
+        [2020-01-01 07:00:00]: Speicher(Q_th_unload)|on[2020-01-01 07:00:00] ∈ {0, 1}
+        [2020-01-01 08:00:00]: Speicher(Q_th_unload)|on[2020-01-01 08:00:00] ∈ {0, 1}
+    "Speicher(Q_th_unload)|on_hours_total": |-
+        Variable
+        --------
+        Speicher(Q_th_unload)|on_hours_total ∈ [0, inf]
+    "Speicher(Q_th_unload)|total_flow_hours": |-
+        Variable
+        --------
+        Speicher(Q_th_unload)|total_flow_hours ∈ [0, inf]
+    "Speicher|charge_state": |-
+        Variable (time: 10)
+        -------------------
+        [2020-01-01 00:00:00]: Speicher|charge_state[2020-01-01 00:00:00] ∈ [0, 8e+06]
+        [2020-01-01 01:00:00]: Speicher|charge_state[2020-01-01 01:00:00] ∈ [0, 7e+06]
+        [2020-01-01 02:00:00]: Speicher|charge_state[2020-01-01 02:00:00] ∈ [0, 8e+06]
+        [2020-01-01 03:00:00]: Speicher|charge_state[2020-01-01 03:00:00] ∈ [0, 8e+06]
+        [2020-01-01 04:00:00]: Speicher|charge_state[2020-01-01 04:00:00] ∈ [0, 8e+06]
+        [2020-01-01 05:00:00]: Speicher|charge_state[2020-01-01 05:00:00] ∈ [0, 8e+06]
+        [2020-01-01 06:00:00]: Speicher|charge_state[2020-01-01 06:00:00] ∈ [0, 8e+06]
+        [2020-01-01 07:00:00]: Speicher|charge_state[2020-01-01 07:00:00] ∈ [0, 8e+06]
+        [2020-01-01 08:00:00]: Speicher|charge_state[2020-01-01 08:00:00] ∈ [0, 8e+06]
+        [2020-01-01 09:00:00]: Speicher|charge_state[2020-01-01 09:00:00] ∈ [0, 8e+06]
+    "Speicher|netto_discharge": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Speicher|netto_discharge[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Speicher|netto_discharge[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Speicher|netto_discharge[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: Speicher|netto_discharge[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: Speicher|netto_discharge[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: Speicher|netto_discharge[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: Speicher|netto_discharge[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: Speicher|netto_discharge[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: Speicher|netto_discharge[2020-01-01 08:00:00] ∈ [-inf, inf]
+    "Speicher|size": |-
+        Variable
+        --------
+        Speicher|size ∈ [30, 30]
+    "Speicher->costs(periodic)": |-
+        Variable
+        --------
+        Speicher->costs(periodic) ∈ [-inf, inf]
+    "Boiler(Q_fu)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+07]
+        [2020-01-01 05:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+07]
+        [2020-01-01 06:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+07]
+        [2020-01-01 07:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+07]
+        [2020-01-01 08:00:00]: Boiler(Q_fu)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+07]
+    "Boiler(Q_fu)|total_flow_hours": |-
+        Variable
+        --------
+        Boiler(Q_fu)|total_flow_hours ∈ [0, inf]
+    "Boiler(Q_th)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] ∈ [0, 50]
+        [2020-01-01 01:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 01:00:00] ∈ [0, 50]
+        [2020-01-01 02:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 02:00:00] ∈ [0, 50]
+        [2020-01-01 03:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 03:00:00] ∈ [0, 50]
+        [2020-01-01 04:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 04:00:00] ∈ [0, 50]
+        [2020-01-01 05:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 05:00:00] ∈ [0, 50]
+        [2020-01-01 06:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] ∈ [0, 50]
+        [2020-01-01 07:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] ∈ [0, 50]
+        [2020-01-01 08:00:00]: Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] ∈ [0, 50]
+    "Boiler(Q_th)|on": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Boiler(Q_th)|on[2020-01-01 00:00:00] ∈ {0, 1}
+        [2020-01-01 01:00:00]: Boiler(Q_th)|on[2020-01-01 01:00:00] ∈ {0, 1}
+        [2020-01-01 02:00:00]: Boiler(Q_th)|on[2020-01-01 02:00:00] ∈ {0, 1}
+        [2020-01-01 03:00:00]: Boiler(Q_th)|on[2020-01-01 03:00:00] ∈ {0, 1}
+        [2020-01-01 04:00:00]: Boiler(Q_th)|on[2020-01-01 04:00:00] ∈ {0, 1}
+        [2020-01-01 05:00:00]: Boiler(Q_th)|on[2020-01-01 05:00:00] ∈ {0, 1}
+        [2020-01-01 06:00:00]: Boiler(Q_th)|on[2020-01-01 06:00:00] ∈ {0, 1}
+        [2020-01-01 07:00:00]: Boiler(Q_th)|on[2020-01-01 07:00:00] ∈ {0, 1}
+        [2020-01-01 08:00:00]: Boiler(Q_th)|on[2020-01-01 08:00:00] ∈ {0, 1}
+    "Boiler(Q_th)|on_hours_total": |-
+        Variable
+        --------
+        Boiler(Q_th)|on_hours_total ∈ [0, inf]
+    "Boiler(Q_th)|total_flow_hours": |-
+        Variable
+        --------
+        Boiler(Q_th)|total_flow_hours ∈ [0, inf]
+    "Wärmelast(Q_th_Last)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 00:00:00] ∈ [30, 30]
+        [2020-01-01 01:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 01:00:00] ∈ [0, 0]
+        [2020-01-01 02:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 02:00:00] ∈ [90, 90]
+        [2020-01-01 03:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 03:00:00] ∈ [110, 110]
+        [2020-01-01 04:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 04:00:00] ∈ [110, 110]
+        [2020-01-01 05:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 05:00:00] ∈ [20, 20]
+        [2020-01-01 06:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 06:00:00] ∈ [20, 20]
+        [2020-01-01 07:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 07:00:00] ∈ [20, 20]
+        [2020-01-01 08:00:00]: Wärmelast(Q_th_Last)|flow_rate[2020-01-01 08:00:00] ∈ [20, 20]
+    "Wärmelast(Q_th_Last)|total_flow_hours": |-
+        Variable
+        --------
+        Wärmelast(Q_th_Last)|total_flow_hours ∈ [0, inf]
+    "Gastarif(Q_Gas)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1000]
+        [2020-01-01 01:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1000]
+        [2020-01-01 02:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1000]
+        [2020-01-01 03:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1000]
+        [2020-01-01 04:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1000]
+        [2020-01-01 05:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1000]
+        [2020-01-01 06:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1000]
+        [2020-01-01 07:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1000]
+        [2020-01-01 08:00:00]: Gastarif(Q_Gas)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1000]
+    "Gastarif(Q_Gas)|total_flow_hours": |-
+        Variable
+        --------
+        Gastarif(Q_Gas)|total_flow_hours ∈ [0, inf]
+    "Gastarif(Q_Gas)->costs(temporal)": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: Gastarif(Q_Gas)->costs(temporal)[2020-01-01 08:00:00] ∈ [-inf, inf]
+    "Gastarif(Q_Gas)->CO2(temporal)": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 08:00:00] ∈ [-inf, inf]
+    "Einspeisung(P_el)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+07]
+        [2020-01-01 05:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+07]
+        [2020-01-01 06:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+07]
+        [2020-01-01 07:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+07]
+        [2020-01-01 08:00:00]: Einspeisung(P_el)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+07]
+    "Einspeisung(P_el)|total_flow_hours": |-
+        Variable
+        --------
+        Einspeisung(P_el)|total_flow_hours ∈ [0, inf]
+    "Einspeisung(P_el)->costs(temporal)": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 02:00:00] ∈ [-inf, inf]
+        [2020-01-01 03:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 03:00:00] ∈ [-inf, inf]
+        [2020-01-01 04:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 04:00:00] ∈ [-inf, inf]
+        [2020-01-01 05:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 05:00:00] ∈ [-inf, inf]
+        [2020-01-01 06:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 06:00:00] ∈ [-inf, inf]
+        [2020-01-01 07:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 07:00:00] ∈ [-inf, inf]
+        [2020-01-01 08:00:00]: Einspeisung(P_el)->costs(temporal)[2020-01-01 08:00:00] ∈ [-inf, inf]
+    "CHP_unit(Q_fu)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+07]
+        [2020-01-01 05:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+07]
+        [2020-01-01 06:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+07]
+        [2020-01-01 07:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+07]
+        [2020-01-01 08:00:00]: CHP_unit(Q_fu)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+07]
+    "CHP_unit(Q_fu)|total_flow_hours": |-
+        Variable
+        --------
+        CHP_unit(Q_fu)|total_flow_hours ∈ [0, inf]
+    "CHP_unit(Q_th)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 03:00:00] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 04:00:00] ∈ [0, 1e+07]
+        [2020-01-01 05:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 05:00:00] ∈ [0, 1e+07]
+        [2020-01-01 06:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 06:00:00] ∈ [0, 1e+07]
+        [2020-01-01 07:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 07:00:00] ∈ [0, 1e+07]
+        [2020-01-01 08:00:00]: CHP_unit(Q_th)|flow_rate[2020-01-01 08:00:00] ∈ [0, 1e+07]
+    "CHP_unit(Q_th)|total_flow_hours": |-
+        Variable
+        --------
+        CHP_unit(Q_th)|total_flow_hours ∈ [0, inf]
+    "CHP_unit(P_el)|flow_rate": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] ∈ [0, 60]
+        [2020-01-01 01:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00] ∈ [0, 60]
+        [2020-01-01 02:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 02:00:00] ∈ [0, 60]
+        [2020-01-01 03:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 03:00:00] ∈ [0, 60]
+        [2020-01-01 04:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 04:00:00] ∈ [0, 60]
+        [2020-01-01 05:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 05:00:00] ∈ [0, 60]
+        [2020-01-01 06:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] ∈ [0, 60]
+        [2020-01-01 07:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] ∈ [0, 60]
+        [2020-01-01 08:00:00]: CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] ∈ [0, 60]
+    "CHP_unit(P_el)|on": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: CHP_unit(P_el)|on[2020-01-01 00:00:00] ∈ {0, 1}
+        [2020-01-01 01:00:00]: CHP_unit(P_el)|on[2020-01-01 01:00:00] ∈ {0, 1}
+        [2020-01-01 02:00:00]: CHP_unit(P_el)|on[2020-01-01 02:00:00] ∈ {0, 1}
+        [2020-01-01 03:00:00]: CHP_unit(P_el)|on[2020-01-01 03:00:00] ∈ {0, 1}
+        [2020-01-01 04:00:00]: CHP_unit(P_el)|on[2020-01-01 04:00:00] ∈ {0, 1}
+        [2020-01-01 05:00:00]: CHP_unit(P_el)|on[2020-01-01 05:00:00] ∈ {0, 1}
+        [2020-01-01 06:00:00]: CHP_unit(P_el)|on[2020-01-01 06:00:00] ∈ {0, 1}
+        [2020-01-01 07:00:00]: CHP_unit(P_el)|on[2020-01-01 07:00:00] ∈ {0, 1}
+        [2020-01-01 08:00:00]: CHP_unit(P_el)|on[2020-01-01 08:00:00] ∈ {0, 1}
+    "CHP_unit(P_el)|on_hours_total": |-
+        Variable
+        --------
+        CHP_unit(P_el)|on_hours_total ∈ [0, inf]
+    "CHP_unit(P_el)|total_flow_hours": |-
+        Variable
+        --------
+        CHP_unit(P_el)|total_flow_hours ∈ [0, inf]
+    "Strom|excess_input": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Strom|excess_input[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Strom|excess_input[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Strom|excess_input[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Strom|excess_input[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Strom|excess_input[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Strom|excess_input[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Strom|excess_input[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Strom|excess_input[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Strom|excess_input[2020-01-01 08:00:00] ∈ [0, inf]
+    "Strom|excess_output": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Strom|excess_output[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Strom|excess_output[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Strom|excess_output[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Strom|excess_output[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Strom|excess_output[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Strom|excess_output[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Strom|excess_output[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Strom|excess_output[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Strom|excess_output[2020-01-01 08:00:00] ∈ [0, inf]
+    "Strom->Penalty": |-
+        Variable
+        --------
+        Strom->Penalty ∈ [-inf, inf]
+    "Fernwärme|excess_input": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Fernwärme|excess_input[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Fernwärme|excess_input[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Fernwärme|excess_input[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Fernwärme|excess_input[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Fernwärme|excess_input[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Fernwärme|excess_input[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Fernwärme|excess_input[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Fernwärme|excess_input[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Fernwärme|excess_input[2020-01-01 08:00:00] ∈ [0, inf]
+    "Fernwärme|excess_output": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Fernwärme|excess_output[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Fernwärme|excess_output[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Fernwärme|excess_output[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Fernwärme|excess_output[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Fernwärme|excess_output[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Fernwärme|excess_output[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Fernwärme|excess_output[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Fernwärme|excess_output[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Fernwärme|excess_output[2020-01-01 08:00:00] ∈ [0, inf]
+    "Fernwärme->Penalty": |-
+        Variable
+        --------
+        Fernwärme->Penalty ∈ [-inf, inf]
+    "Gas|excess_input": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Gas|excess_input[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Gas|excess_input[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Gas|excess_input[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Gas|excess_input[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Gas|excess_input[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Gas|excess_input[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Gas|excess_input[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Gas|excess_input[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Gas|excess_input[2020-01-01 08:00:00] ∈ [0, inf]
+    "Gas|excess_output": |-
+        Variable (time: 9)
+        ------------------
+        [2020-01-01 00:00:00]: Gas|excess_output[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Gas|excess_output[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Gas|excess_output[2020-01-01 02:00:00] ∈ [0, inf]
+        [2020-01-01 03:00:00]: Gas|excess_output[2020-01-01 03:00:00] ∈ [0, inf]
+        [2020-01-01 04:00:00]: Gas|excess_output[2020-01-01 04:00:00] ∈ [0, inf]
+        [2020-01-01 05:00:00]: Gas|excess_output[2020-01-01 05:00:00] ∈ [0, inf]
+        [2020-01-01 06:00:00]: Gas|excess_output[2020-01-01 06:00:00] ∈ [0, inf]
+        [2020-01-01 07:00:00]: Gas|excess_output[2020-01-01 07:00:00] ∈ [0, inf]
+        [2020-01-01 08:00:00]: Gas|excess_output[2020-01-01 08:00:00] ∈ [0, inf]
+    "Gas->Penalty": |-
+        Variable
+        --------
+        Gas->Penalty ∈ [-inf, inf]
+constraints:
+    costs(periodic): |-
+        Constraint `costs(periodic)`
+        ----------------------------
+        +1 costs(periodic) - 1 Speicher->costs(periodic) = -0.0
+    costs(temporal): |-
+        Constraint `costs(temporal)`
+        ----------------------------
+        +1 costs(temporal) - 1 costs(temporal)|per_timestep[2020-01-01 00:00:00] - 1 costs(temporal)|per_timestep[2020-01-01 01:00:00]... -1 costs(temporal)|per_timestep[2020-01-01 06:00:00] - 1 costs(temporal)|per_timestep[2020-01-01 07:00:00] - 1 costs(temporal)|per_timestep[2020-01-01 08:00:00] = -0.0
+    "costs(temporal)|per_timestep": |-
+        Constraint `costs(temporal)|per_timestep`
+        [time: 9]:
+        ----------------------------------------------------
+        [2020-01-01 00:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 00:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 00:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 00:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 01:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 01:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 01:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 02:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 02:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 02:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 03:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 03:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 03:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 04:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 04:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 04:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 05:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 05:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 05:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 06:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 06:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 06:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 07:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 07:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 07:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 costs(temporal)|per_timestep[2020-01-01 08:00:00] - 1 CO2(temporal)->costs(temporal)[2020-01-01 08:00:00] - 1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 08:00:00] - 1 Einspeisung(P_el)->costs(temporal)[2020-01-01 08:00:00] = -0.0
+    costs: |-
+        Constraint `costs`
+        ------------------
+        +1 costs - 1 costs(temporal) - 1 costs(periodic) = -0.0
+    CO2(periodic): |-
+        Constraint `CO2(periodic)`
+        --------------------------
+        +1 CO2(periodic) = -0.0
+    CO2(temporal): |-
+        Constraint `CO2(temporal)`
+        --------------------------
+        +1 CO2(temporal) - 1 CO2(temporal)|per_timestep[2020-01-01 00:00:00] - 1 CO2(temporal)|per_timestep[2020-01-01 01:00:00]... -1 CO2(temporal)|per_timestep[2020-01-01 06:00:00] - 1 CO2(temporal)|per_timestep[2020-01-01 07:00:00] - 1 CO2(temporal)|per_timestep[2020-01-01 08:00:00] = -0.0
+    "CO2(temporal)|per_timestep": |-
+        Constraint `CO2(temporal)|per_timestep`
+        [time: 9]:
+        --------------------------------------------------
+        [2020-01-01 00:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 00:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 01:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 02:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 03:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 04:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 05:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 06:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 07:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 CO2(temporal)|per_timestep[2020-01-01 08:00:00] - 1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 08:00:00] = -0.0
+    CO2: |-
+        Constraint `CO2`
+        ----------------
+        +1 CO2 - 1 CO2(temporal) - 1 CO2(periodic) = -0.0
+    Penalty: |-
+        Constraint `Penalty`
+        --------------------
+        +1 Penalty - 1 Strom->Penalty - 1 Fernwärme->Penalty - 1 Gas->Penalty = -0.0
+    "CO2(temporal)->costs(temporal)": |-
+        Constraint `CO2(temporal)->costs(temporal)`
+        [time: 9]:
+        ------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 00:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 01:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 02:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 03:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 04:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 05:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 06:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 07:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 CO2(temporal)->costs(temporal)[2020-01-01 08:00:00] - 0.2 CO2(temporal)|per_timestep[2020-01-01 08:00:00] = -0.0
+    "Speicher(Q_th_load)|on_hours_total": |-
+        Constraint `Speicher(Q_th_load)|on_hours_total`
+        -----------------------------------------------
+        +1 Speicher(Q_th_load)|on_hours_total - 1 Speicher(Q_th_load)|on[2020-01-01 00:00:00] - 1 Speicher(Q_th_load)|on[2020-01-01 01:00:00]... -1 Speicher(Q_th_load)|on[2020-01-01 06:00:00] - 1 Speicher(Q_th_load)|on[2020-01-01 07:00:00] - 1 Speicher(Q_th_load)|on[2020-01-01 08:00:00] = -0.0
+    "Speicher(Q_th_load)|flow_rate|ub": |-
+        Constraint `Speicher(Q_th_load)|flow_rate|ub`
+        [time: 9]:
+        --------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 00:00:00] ≤ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 01:00:00] ≤ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 02:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 02:00:00] ≤ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 03:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 03:00:00] ≤ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 04:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 04:00:00] ≤ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 05:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 05:00:00] ≤ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 06:00:00] ≤ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 07:00:00] ≤ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] - 1e+04 Speicher(Q_th_load)|on[2020-01-01 08:00:00] ≤ -0.0
+    "Speicher(Q_th_load)|flow_rate|lb": |-
+        Constraint `Speicher(Q_th_load)|flow_rate|lb`
+        [time: 9]:
+        --------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 00:00:00] ≥ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 01:00:00] ≥ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 02:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 02:00:00] ≥ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 03:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 03:00:00] ≥ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 04:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 04:00:00] ≥ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 05:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 05:00:00] ≥ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 06:00:00] ≥ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 07:00:00] ≥ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] - 1e-05 Speicher(Q_th_load)|on[2020-01-01 08:00:00] ≥ -0.0
+    "Speicher(Q_th_load)|total_flow_hours": |-
+        Constraint `Speicher(Q_th_load)|total_flow_hours`
+        -------------------------------------------------
+        +1 Speicher(Q_th_load)|total_flow_hours - 1 Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] - 1 Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00]... -1 Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] - 1 Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] - 1 Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Speicher(Q_th_unload)|on_hours_total": |-
+        Constraint `Speicher(Q_th_unload)|on_hours_total`
+        -------------------------------------------------
+        +1 Speicher(Q_th_unload)|on_hours_total - 1 Speicher(Q_th_unload)|on[2020-01-01 00:00:00] - 1 Speicher(Q_th_unload)|on[2020-01-01 01:00:00]... -1 Speicher(Q_th_unload)|on[2020-01-01 06:00:00] - 1 Speicher(Q_th_unload)|on[2020-01-01 07:00:00] - 1 Speicher(Q_th_unload)|on[2020-01-01 08:00:00] = -0.0
+    "Speicher(Q_th_unload)|flow_rate|ub": |-
+        Constraint `Speicher(Q_th_unload)|flow_rate|ub`
+        [time: 9]:
+        ----------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 00:00:00] ≤ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 01:00:00] ≤ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 02:00:00] ≤ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 03:00:00] ≤ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 04:00:00] ≤ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 05:00:00] ≤ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 06:00:00] ≤ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 07:00:00] ≤ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] - 1e+04 Speicher(Q_th_unload)|on[2020-01-01 08:00:00] ≤ -0.0
+    "Speicher(Q_th_unload)|flow_rate|lb": |-
+        Constraint `Speicher(Q_th_unload)|flow_rate|lb`
+        [time: 9]:
+        ----------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 00:00:00] ≥ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 01:00:00] ≥ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 02:00:00] ≥ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 03:00:00] ≥ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 04:00:00] ≥ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 05:00:00] ≥ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 06:00:00] ≥ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 07:00:00] ≥ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] - 1e-05 Speicher(Q_th_unload)|on[2020-01-01 08:00:00] ≥ -0.0
+    "Speicher(Q_th_unload)|total_flow_hours": |-
+        Constraint `Speicher(Q_th_unload)|total_flow_hours`
+        ---------------------------------------------------
+        +1 Speicher(Q_th_unload)|total_flow_hours - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00]... -1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Speicher|prevent_simultaneous_use": |-
+        Constraint `Speicher|prevent_simultaneous_use`
+        [time: 9]:
+        ---------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 00:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 00:00:00] ≤ 1.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 01:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 01:00:00] ≤ 1.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 02:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 02:00:00] ≤ 1.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 03:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 03:00:00] ≤ 1.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 04:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 04:00:00] ≤ 1.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 05:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 05:00:00] ≤ 1.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 06:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 06:00:00] ≤ 1.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 07:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 07:00:00] ≤ 1.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_load)|on[2020-01-01 08:00:00] + 1 Speicher(Q_th_unload)|on[2020-01-01 08:00:00] ≤ 1.0
+    "Speicher|netto_discharge": |-
+        Constraint `Speicher|netto_discharge`
+        [time: 9]:
+        ------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher|netto_discharge[2020-01-01 00:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Speicher|netto_discharge[2020-01-01 01:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Speicher|netto_discharge[2020-01-01 02:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Speicher|netto_discharge[2020-01-01 03:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Speicher|netto_discharge[2020-01-01 04:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Speicher|netto_discharge[2020-01-01 05:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Speicher|netto_discharge[2020-01-01 06:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Speicher|netto_discharge[2020-01-01 07:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Speicher|netto_discharge[2020-01-01 08:00:00] - 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] + 1 Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Speicher|charge_state": |-
+        Constraint `Speicher|charge_state`
+        [time: 9]:
+        ---------------------------------------------
+        [2020-01-01 01:00:00]: +1 Speicher|charge_state[2020-01-01 01:00:00] - 0.92 Speicher|charge_state[2020-01-01 00:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 00:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Speicher|charge_state[2020-01-01 02:00:00] - 0.92 Speicher|charge_state[2020-01-01 01:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 01:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Speicher|charge_state[2020-01-01 03:00:00] - 0.92 Speicher|charge_state[2020-01-01 02:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 02:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Speicher|charge_state[2020-01-01 04:00:00] - 0.92 Speicher|charge_state[2020-01-01 03:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 03:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Speicher|charge_state[2020-01-01 05:00:00] - 0.92 Speicher|charge_state[2020-01-01 04:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 04:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Speicher|charge_state[2020-01-01 06:00:00] - 0.92 Speicher|charge_state[2020-01-01 05:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 05:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Speicher|charge_state[2020-01-01 07:00:00] - 0.92 Speicher|charge_state[2020-01-01 06:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 06:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Speicher|charge_state[2020-01-01 08:00:00] - 0.92 Speicher|charge_state[2020-01-01 07:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 07:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 09:00:00]: +1 Speicher|charge_state[2020-01-01 09:00:00] - 0.92 Speicher|charge_state[2020-01-01 08:00:00] - 0.9 Speicher(Q_th_load)|flow_rate[2020-01-01 08:00:00] + 1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Speicher->costs(periodic)": |-
+        Constraint `Speicher->costs(periodic)`
+        --------------------------------------
+        +1 Speicher->costs(periodic) = 20.0
+    "Speicher|charge_state|ub": |-
+        Constraint `Speicher|charge_state|ub`
+        [time: 10]:
+        -------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher|charge_state[2020-01-01 00:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher|charge_state[2020-01-01 01:00:00] - 0.7 Speicher|size ≤ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher|charge_state[2020-01-01 02:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher|charge_state[2020-01-01 03:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher|charge_state[2020-01-01 04:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher|charge_state[2020-01-01 05:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher|charge_state[2020-01-01 06:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher|charge_state[2020-01-01 07:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher|charge_state[2020-01-01 08:00:00] - 0.8 Speicher|size ≤ -0.0
+        [2020-01-01 09:00:00]: +1 Speicher|charge_state[2020-01-01 09:00:00] - 0.8 Speicher|size ≤ -0.0
+    "Speicher|charge_state|lb": |-
+        Constraint `Speicher|charge_state|lb`
+        [time: 10]:
+        -------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher|charge_state[2020-01-01 00:00:00] ≥ -0.0
+        [2020-01-01 01:00:00]: +1 Speicher|charge_state[2020-01-01 01:00:00] ≥ -0.0
+        [2020-01-01 02:00:00]: +1 Speicher|charge_state[2020-01-01 02:00:00] ≥ -0.0
+        [2020-01-01 03:00:00]: +1 Speicher|charge_state[2020-01-01 03:00:00] ≥ -0.0
+        [2020-01-01 04:00:00]: +1 Speicher|charge_state[2020-01-01 04:00:00] ≥ -0.0
+        [2020-01-01 05:00:00]: +1 Speicher|charge_state[2020-01-01 05:00:00] ≥ -0.0
+        [2020-01-01 06:00:00]: +1 Speicher|charge_state[2020-01-01 06:00:00] ≥ -0.0
+        [2020-01-01 07:00:00]: +1 Speicher|charge_state[2020-01-01 07:00:00] ≥ -0.0
+        [2020-01-01 08:00:00]: +1 Speicher|charge_state[2020-01-01 08:00:00] ≥ -0.0
+        [2020-01-01 09:00:00]: +1 Speicher|charge_state[2020-01-01 09:00:00] ≥ -0.0
+    "Speicher|initial_charge_state": |-
+        Constraint `Speicher|initial_charge_state`
+        ------------------------------------------
+        +1 Speicher|charge_state[2020-01-01 00:00:00] = -0.0
+    "Boiler(Q_fu)|total_flow_hours": |-
+        Constraint `Boiler(Q_fu)|total_flow_hours`
+        ------------------------------------------
+        +1 Boiler(Q_fu)|total_flow_hours - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00]... -1 Boiler(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Boiler(Q_th)|on_hours_total": |-
+        Constraint `Boiler(Q_th)|on_hours_total`
+        ----------------------------------------
+        +1 Boiler(Q_th)|on_hours_total - 1 Boiler(Q_th)|on[2020-01-01 00:00:00] - 1 Boiler(Q_th)|on[2020-01-01 01:00:00]... -1 Boiler(Q_th)|on[2020-01-01 06:00:00] - 1 Boiler(Q_th)|on[2020-01-01 07:00:00] - 1 Boiler(Q_th)|on[2020-01-01 08:00:00] = -0.0
+    "Boiler(Q_th)|flow_rate|ub": |-
+        Constraint `Boiler(Q_th)|flow_rate|ub`
+        [time: 9]:
+        -------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] - 50 Boiler(Q_th)|on[2020-01-01 00:00:00] ≤ -0.0
+        [2020-01-01 01:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00] - 50 Boiler(Q_th)|on[2020-01-01 01:00:00] ≤ -0.0
+        [2020-01-01 02:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00] - 50 Boiler(Q_th)|on[2020-01-01 02:00:00] ≤ -0.0
+        [2020-01-01 03:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00] - 50 Boiler(Q_th)|on[2020-01-01 03:00:00] ≤ -0.0
+        [2020-01-01 04:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00] - 50 Boiler(Q_th)|on[2020-01-01 04:00:00] ≤ -0.0
+        [2020-01-01 05:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 05:00:00] - 50 Boiler(Q_th)|on[2020-01-01 05:00:00] ≤ -0.0
+        [2020-01-01 06:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] - 50 Boiler(Q_th)|on[2020-01-01 06:00:00] ≤ -0.0
+        [2020-01-01 07:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] - 50 Boiler(Q_th)|on[2020-01-01 07:00:00] ≤ -0.0
+        [2020-01-01 08:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] - 50 Boiler(Q_th)|on[2020-01-01 08:00:00] ≤ -0.0
+    "Boiler(Q_th)|flow_rate|lb": |-
+        Constraint `Boiler(Q_th)|flow_rate|lb`
+        [time: 9]:
+        -------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] - 5 Boiler(Q_th)|on[2020-01-01 00:00:00] ≥ -0.0
+        [2020-01-01 01:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00] - 5 Boiler(Q_th)|on[2020-01-01 01:00:00] ≥ -0.0
+        [2020-01-01 02:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00] - 5 Boiler(Q_th)|on[2020-01-01 02:00:00] ≥ -0.0
+        [2020-01-01 03:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00] - 5 Boiler(Q_th)|on[2020-01-01 03:00:00] ≥ -0.0
+        [2020-01-01 04:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00] - 5 Boiler(Q_th)|on[2020-01-01 04:00:00] ≥ -0.0
+        [2020-01-01 05:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 05:00:00] - 5 Boiler(Q_th)|on[2020-01-01 05:00:00] ≥ -0.0
+        [2020-01-01 06:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] - 5 Boiler(Q_th)|on[2020-01-01 06:00:00] ≥ -0.0
+        [2020-01-01 07:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] - 5 Boiler(Q_th)|on[2020-01-01 07:00:00] ≥ -0.0
+        [2020-01-01 08:00:00]: +1 Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] - 5 Boiler(Q_th)|on[2020-01-01 08:00:00] ≥ -0.0
+    "Boiler(Q_th)|total_flow_hours": |-
+        Constraint `Boiler(Q_th)|total_flow_hours`
+        ------------------------------------------
+        +1 Boiler(Q_th)|total_flow_hours - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00]... -1 Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Boiler|conversion_0": |-
+        Constraint `Boiler|conversion_0`
+        [time: 9]:
+        -------------------------------------------
+        [2020-01-01 00:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 05:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +0.5 Boiler(Q_fu)|flow_rate[2020-01-01 08:00:00] - 1 Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Wärmelast(Q_th_Last)|total_flow_hours": |-
+        Constraint `Wärmelast(Q_th_Last)|total_flow_hours`
+        --------------------------------------------------
+        +1 Wärmelast(Q_th_Last)|total_flow_hours - 1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 00:00:00] - 1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 01:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 06:00:00] - 1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 07:00:00] - 1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Gastarif(Q_Gas)|total_flow_hours": |-
+        Constraint `Gastarif(Q_Gas)|total_flow_hours`
+        ---------------------------------------------
+        +1 Gastarif(Q_Gas)|total_flow_hours - 1 Gastarif(Q_Gas)|flow_rate[2020-01-01 00:00:00] - 1 Gastarif(Q_Gas)|flow_rate[2020-01-01 01:00:00]... -1 Gastarif(Q_Gas)|flow_rate[2020-01-01 06:00:00] - 1 Gastarif(Q_Gas)|flow_rate[2020-01-01 07:00:00] - 1 Gastarif(Q_Gas)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Gastarif(Q_Gas)->costs(temporal)": |-
+        Constraint `Gastarif(Q_Gas)->costs(temporal)`
+        [time: 9]:
+        --------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 00:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 01:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 02:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 03:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 04:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 05:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 06:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 07:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Gastarif(Q_Gas)->costs(temporal)[2020-01-01 08:00:00] - 0.04 Gastarif(Q_Gas)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Gastarif(Q_Gas)->CO2(temporal)": |-
+        Constraint `Gastarif(Q_Gas)->CO2(temporal)`
+        [time: 9]:
+        ------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 00:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 01:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 02:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 03:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 04:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 05:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 06:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 07:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Gastarif(Q_Gas)->CO2(temporal)[2020-01-01 08:00:00] - 0.3 Gastarif(Q_Gas)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Einspeisung(P_el)|total_flow_hours": |-
+        Constraint `Einspeisung(P_el)|total_flow_hours`
+        -----------------------------------------------
+        +1 Einspeisung(P_el)|total_flow_hours - 1 Einspeisung(P_el)|flow_rate[2020-01-01 00:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 01:00:00]... -1 Einspeisung(P_el)|flow_rate[2020-01-01 06:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 07:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Einspeisung(P_el)->costs(temporal)": |-
+        Constraint `Einspeisung(P_el)->costs(temporal)`
+        [time: 9]:
+        ----------------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 00:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 01:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 02:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 03:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 04:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 05:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 06:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 07:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Einspeisung(P_el)->costs(temporal)[2020-01-01 08:00:00] + 0.08 Einspeisung(P_el)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "CHP_unit(Q_fu)|total_flow_hours": |-
+        Constraint `CHP_unit(Q_fu)|total_flow_hours`
+        --------------------------------------------
+        +1 CHP_unit(Q_fu)|total_flow_hours - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 01:00:00]... -1 CHP_unit(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "CHP_unit(Q_th)|total_flow_hours": |-
+        Constraint `CHP_unit(Q_th)|total_flow_hours`
+        --------------------------------------------
+        +1 CHP_unit(Q_th)|total_flow_hours - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 01:00:00]... -1 CHP_unit(Q_th)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "CHP_unit(P_el)|on_hours_total": |-
+        Constraint `CHP_unit(P_el)|on_hours_total`
+        ------------------------------------------
+        +1 CHP_unit(P_el)|on_hours_total - 1 CHP_unit(P_el)|on[2020-01-01 00:00:00] - 1 CHP_unit(P_el)|on[2020-01-01 01:00:00]... -1 CHP_unit(P_el)|on[2020-01-01 06:00:00] - 1 CHP_unit(P_el)|on[2020-01-01 07:00:00] - 1 CHP_unit(P_el)|on[2020-01-01 08:00:00] = -0.0
+    "CHP_unit(P_el)|flow_rate|ub": |-
+        Constraint `CHP_unit(P_el)|flow_rate|ub`
+        [time: 9]:
+        ---------------------------------------------------
+        [2020-01-01 00:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 00:00:00] ≤ -0.0
+        [2020-01-01 01:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 01:00:00] ≤ -0.0
+        [2020-01-01 02:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 02:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 02:00:00] ≤ -0.0
+        [2020-01-01 03:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 03:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 03:00:00] ≤ -0.0
+        [2020-01-01 04:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 04:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 04:00:00] ≤ -0.0
+        [2020-01-01 05:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 05:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 05:00:00] ≤ -0.0
+        [2020-01-01 06:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 06:00:00] ≤ -0.0
+        [2020-01-01 07:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 07:00:00] ≤ -0.0
+        [2020-01-01 08:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] - 60 CHP_unit(P_el)|on[2020-01-01 08:00:00] ≤ -0.0
+    "CHP_unit(P_el)|flow_rate|lb": |-
+        Constraint `CHP_unit(P_el)|flow_rate|lb`
+        [time: 9]:
+        ---------------------------------------------------
+        [2020-01-01 00:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 00:00:00] ≥ -0.0
+        [2020-01-01 01:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 01:00:00] ≥ -0.0
+        [2020-01-01 02:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 02:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 02:00:00] ≥ -0.0
+        [2020-01-01 03:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 03:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 03:00:00] ≥ -0.0
+        [2020-01-01 04:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 04:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 04:00:00] ≥ -0.0
+        [2020-01-01 05:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 05:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 05:00:00] ≥ -0.0
+        [2020-01-01 06:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 06:00:00] ≥ -0.0
+        [2020-01-01 07:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 07:00:00] ≥ -0.0
+        [2020-01-01 08:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] - 5 CHP_unit(P_el)|on[2020-01-01 08:00:00] ≥ -0.0
+    "CHP_unit(P_el)|total_flow_hours": |-
+        Constraint `CHP_unit(P_el)|total_flow_hours`
+        --------------------------------------------
+        +1 CHP_unit(P_el)|total_flow_hours - 1 CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00]... -1 CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "CHP_unit|conversion_0": |-
+        Constraint `CHP_unit|conversion_0`
+        [time: 9]:
+        ---------------------------------------------
+        [2020-01-01 00:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 01:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 02:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 03:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 04:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 05:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +0.5 CHP_unit(Q_fu)|flow_rate[2020-01-01 08:00:00] - 1 CHP_unit(Q_th)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "CHP_unit|conversion_1": |-
+        Constraint `CHP_unit|conversion_1`
+        [time: 9]:
+        ---------------------------------------------
+        [2020-01-01 00:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 01:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 02:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 03:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 04:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 05:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +0.4 CHP_unit(Q_fu)|flow_rate[2020-01-01 08:00:00] - 1 CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] = -0.0
+    "Strom|balance": |-
+        Constraint `Strom|balance`
+        [time: 9]:
+        -------------------------------------
+        [2020-01-01 00:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 00:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 00:00:00] + 1 Strom|excess_input[2020-01-01 00:00:00] - 1 Strom|excess_output[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 01:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 01:00:00] + 1 Strom|excess_input[2020-01-01 01:00:00] - 1 Strom|excess_output[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 02:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 02:00:00] + 1 Strom|excess_input[2020-01-01 02:00:00] - 1 Strom|excess_output[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 03:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 03:00:00] + 1 Strom|excess_input[2020-01-01 03:00:00] - 1 Strom|excess_output[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 04:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 04:00:00] + 1 Strom|excess_input[2020-01-01 04:00:00] - 1 Strom|excess_output[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 05:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 05:00:00] + 1 Strom|excess_input[2020-01-01 05:00:00] - 1 Strom|excess_output[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 06:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 06:00:00] + 1 Strom|excess_input[2020-01-01 06:00:00] - 1 Strom|excess_output[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 07:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 07:00:00] + 1 Strom|excess_input[2020-01-01 07:00:00] - 1 Strom|excess_output[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 CHP_unit(P_el)|flow_rate[2020-01-01 08:00:00] - 1 Einspeisung(P_el)|flow_rate[2020-01-01 08:00:00] + 1 Strom|excess_input[2020-01-01 08:00:00] - 1 Strom|excess_output[2020-01-01 08:00:00] = -0.0
+    "Strom->Penalty": |-
+        Constraint `Strom->Penalty`
+        ---------------------------
+        +1 Strom->Penalty - 1e+05 Strom|excess_input[2020-01-01 00:00:00] - 1e+05 Strom|excess_input[2020-01-01 01:00:00]... -1e+05 Strom|excess_output[2020-01-01 06:00:00] - 1e+05 Strom|excess_output[2020-01-01 07:00:00] - 1e+05 Strom|excess_output[2020-01-01 08:00:00] = -0.0
+    "Fernwärme|balance": |-
+        Constraint `Fernwärme|balance`
+        [time: 9]:
+        -----------------------------------------
+        [2020-01-01 00:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 00:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 00:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 00:00:00] + 1 Fernwärme|excess_input[2020-01-01 00:00:00] - 1 Fernwärme|excess_output[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 01:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 01:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 01:00:00] + 1 Fernwärme|excess_input[2020-01-01 01:00:00] - 1 Fernwärme|excess_output[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 02:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 02:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 02:00:00] + 1 Fernwärme|excess_input[2020-01-01 02:00:00] - 1 Fernwärme|excess_output[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 03:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 03:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 03:00:00] + 1 Fernwärme|excess_input[2020-01-01 03:00:00] - 1 Fernwärme|excess_output[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 04:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 04:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 04:00:00] + 1 Fernwärme|excess_input[2020-01-01 04:00:00] - 1 Fernwärme|excess_output[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 05:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 05:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 05:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 05:00:00] + 1 Fernwärme|excess_input[2020-01-01 05:00:00] - 1 Fernwärme|excess_output[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 06:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 06:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 06:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 06:00:00] + 1 Fernwärme|excess_input[2020-01-01 06:00:00] - 1 Fernwärme|excess_output[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 07:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 07:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 07:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 07:00:00] + 1 Fernwärme|excess_input[2020-01-01 07:00:00] - 1 Fernwärme|excess_output[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Speicher(Q_th_unload)|flow_rate[2020-01-01 08:00:00] + 1 Boiler(Q_th)|flow_rate[2020-01-01 08:00:00] + 1 CHP_unit(Q_th)|flow_rate[2020-01-01 08:00:00]... -1 Wärmelast(Q_th_Last)|flow_rate[2020-01-01 08:00:00] + 1 Fernwärme|excess_input[2020-01-01 08:00:00] - 1 Fernwärme|excess_output[2020-01-01 08:00:00] = -0.0
+    "Fernwärme->Penalty": |-
+        Constraint `Fernwärme->Penalty`
+        -------------------------------
+        +1 Fernwärme->Penalty - 1e+05 Fernwärme|excess_input[2020-01-01 00:00:00] - 1e+05 Fernwärme|excess_input[2020-01-01 01:00:00]... -1e+05 Fernwärme|excess_output[2020-01-01 06:00:00] - 1e+05 Fernwärme|excess_output[2020-01-01 07:00:00] - 1e+05 Fernwärme|excess_output[2020-01-01 08:00:00] = -0.0
+    "Gas|balance": |-
+        Constraint `Gas|balance`
+        [time: 9]:
+        -----------------------------------
+        [2020-01-01 00:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 00:00:00] + 1 Gas|excess_input[2020-01-01 00:00:00] - 1 Gas|excess_output[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 01:00:00] + 1 Gas|excess_input[2020-01-01 01:00:00] - 1 Gas|excess_output[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 02:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 02:00:00] + 1 Gas|excess_input[2020-01-01 02:00:00] - 1 Gas|excess_output[2020-01-01 02:00:00] = -0.0
+        [2020-01-01 03:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 03:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 03:00:00] + 1 Gas|excess_input[2020-01-01 03:00:00] - 1 Gas|excess_output[2020-01-01 03:00:00] = -0.0
+        [2020-01-01 04:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 04:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 04:00:00] + 1 Gas|excess_input[2020-01-01 04:00:00] - 1 Gas|excess_output[2020-01-01 04:00:00] = -0.0
+        [2020-01-01 05:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 05:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 05:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 05:00:00] + 1 Gas|excess_input[2020-01-01 05:00:00] - 1 Gas|excess_output[2020-01-01 05:00:00] = -0.0
+        [2020-01-01 06:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 06:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 06:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 06:00:00] + 1 Gas|excess_input[2020-01-01 06:00:00] - 1 Gas|excess_output[2020-01-01 06:00:00] = -0.0
+        [2020-01-01 07:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 07:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 07:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 07:00:00] + 1 Gas|excess_input[2020-01-01 07:00:00] - 1 Gas|excess_output[2020-01-01 07:00:00] = -0.0
+        [2020-01-01 08:00:00]: +1 Gastarif(Q_Gas)|flow_rate[2020-01-01 08:00:00] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 08:00:00] - 1 CHP_unit(Q_fu)|flow_rate[2020-01-01 08:00:00] + 1 Gas|excess_input[2020-01-01 08:00:00] - 1 Gas|excess_output[2020-01-01 08:00:00] = -0.0
+    "Gas->Penalty": |-
+        Constraint `Gas->Penalty`
+        -------------------------
+        +1 Gas->Penalty - 1e+05 Gas|excess_input[2020-01-01 00:00:00] - 1e+05 Gas|excess_input[2020-01-01 01:00:00]... -1e+05 Gas|excess_output[2020-01-01 06:00:00] - 1e+05 Gas|excess_output[2020-01-01 07:00:00] - 1e+05 Gas|excess_output[2020-01-01 08:00:00] = -0.0
+binaries:
+    - "Speicher(Q_th_load)|on"
+    - "Speicher(Q_th_unload)|on"
+    - "Boiler(Q_th)|on"
+    - "CHP_unit(P_el)|on"
+integers: []
+continuous:
+    - costs(periodic)
+    - costs(temporal)
+    - "costs(temporal)|per_timestep"
+    - costs
+    - CO2(periodic)
+    - CO2(temporal)
+    - "CO2(temporal)|per_timestep"
+    - CO2
+    - Penalty
+    - "CO2(temporal)->costs(temporal)"
+    - "Speicher(Q_th_load)|flow_rate"
+    - "Speicher(Q_th_load)|on_hours_total"
+    - "Speicher(Q_th_load)|total_flow_hours"
+    - "Speicher(Q_th_unload)|flow_rate"
+    - "Speicher(Q_th_unload)|on_hours_total"
+    - "Speicher(Q_th_unload)|total_flow_hours"
+    - "Speicher|charge_state"
+    - "Speicher|netto_discharge"
+    - "Speicher|size"
+    - "Speicher->costs(periodic)"
+    - "Boiler(Q_fu)|flow_rate"
+    - "Boiler(Q_fu)|total_flow_hours"
+    - "Boiler(Q_th)|flow_rate"
+    - "Boiler(Q_th)|on_hours_total"
+    - "Boiler(Q_th)|total_flow_hours"
+    - "Wärmelast(Q_th_Last)|flow_rate"
+    - "Wärmelast(Q_th_Last)|total_flow_hours"
+    - "Gastarif(Q_Gas)|flow_rate"
+    - "Gastarif(Q_Gas)|total_flow_hours"
+    - "Gastarif(Q_Gas)->costs(temporal)"
+    - "Gastarif(Q_Gas)->CO2(temporal)"
+    - "Einspeisung(P_el)|flow_rate"
+    - "Einspeisung(P_el)|total_flow_hours"
+    - "Einspeisung(P_el)->costs(temporal)"
+    - "CHP_unit(Q_fu)|flow_rate"
+    - "CHP_unit(Q_fu)|total_flow_hours"
+    - "CHP_unit(Q_th)|flow_rate"
+    - "CHP_unit(Q_th)|total_flow_hours"
+    - "CHP_unit(P_el)|flow_rate"
+    - "CHP_unit(P_el)|on_hours_total"
+    - "CHP_unit(P_el)|total_flow_hours"
+    - "Strom|excess_input"
+    - "Strom|excess_output"
+    - "Strom->Penalty"
+    - "Fernwärme|excess_input"
+    - "Fernwärme|excess_output"
+    - "Fernwärme->Penalty"
+    - "Gas|excess_input"
+    - "Gas|excess_output"
+    - "Gas->Penalty"
+infeasible_constraints: ''

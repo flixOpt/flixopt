@@ -1,4 +1,4 @@
-# Migration Guide: v5.x → v6.0.0
+# Migration Guide: v4.x → v5.0.0
 
 !!! tip "Quick Start"
     ```bash
@@ -10,9 +10,9 @@
 
 ## Overview
 
-v6.0.0 introduces a streamlined API for optimization and results access. The key changes are:
+v5.0.0 introduces a streamlined API for optimization and results access. The key changes are:
 
-| Aspect | Old API (v5.x) | New API (v6.0.0) |
+| Aspect | Old API (v4.x) | New API (v5.0.0) |
 |--------|----------------|------------------|
 | **Optimization** | `fx.Optimization` class | `FlowSystem.optimize()` method |
 | **Results access** | `element.submodel.variable.solution` | `flow_system.solution['variable_name']` |
@@ -20,13 +20,13 @@ v6.0.0 introduces a streamlined API for optimization and results access. The key
 
 ---
 
-## 💥 Breaking Changes in v6.0.0
+## 💥 Breaking Changes in v5.0.0
 
 ### Optimization API
 
 The `Optimization` class is removed. Use `FlowSystem.optimize()` directly.
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     import flixopt as fx
 
@@ -44,7 +44,7 @@ The `Optimization` class is removed. Use `FlowSystem.optimize()` directly.
     costs = results.model['costs'].solution.item()
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     import flixopt as fx
 
@@ -74,7 +74,7 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
 
 #### Effect Values
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     # Via element reference
     costs = flow_system.effects['costs']
@@ -84,7 +84,7 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
     total_costs = optimization.results.model['costs'].solution.item()
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     # Direct access via solution Dataset
     total_costs = flow_system.solution['costs'].item()
@@ -97,27 +97,27 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
 
 #### Flow Rates
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     boiler = flow_system.components['Boiler']
     flow_rate = boiler.thermal_flow.submodel.flow_rate.solution.values
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     flow_rate = flow_system.solution['Boiler(Q_th)|flow_rate'].values
     ```
 
 #### Investment Variables
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     boiler = flow_system.components['Boiler']
     size = boiler.thermal_flow.submodel.investment.size.solution.item()
     invested = boiler.thermal_flow.submodel.investment.invested.solution.item()
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     size = flow_system.solution['Boiler(Q_th)|size'].item()
     invested = flow_system.solution['Boiler(Q_th)|invested'].item()
@@ -125,7 +125,7 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
 
 #### Status Variables
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     boiler = flow_system.components['Boiler']
     status = boiler.thermal_flow.submodel.status.status.solution.values
@@ -133,7 +133,7 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
     shutdown = boiler.thermal_flow.submodel.status.shutdown.solution.values
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     status = flow_system.solution['Boiler(Q_th)|status'].values
     startup = flow_system.solution['Boiler(Q_th)|startup'].values
@@ -142,14 +142,14 @@ Results are now accessed via `flow_system.solution`, which is an `xarray.Dataset
 
 #### Storage Variables
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     storage = flow_system.components['Speicher']
     charge_state = storage.submodel.charge_state.solution.values
     netto_discharge = storage.submodel.netto_discharge.solution.values
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     charge_state = flow_system.solution['Speicher|charge_state'].values
     netto_discharge = flow_system.solution['Speicher|netto_discharge'].values
@@ -214,12 +214,12 @@ boiler_vars = [v for v in flow_system.solution.data_vars if 'Boiler' in v]
 
 ### Saving Results
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     optimization.results.to_file(folder='results', name='my_model')
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     # Save entire FlowSystem with solution
     flow_system.to_netcdf('results/my_model.nc4')
@@ -230,12 +230,12 @@ boiler_vars = [v for v in flow_system.solution.data_vars if 'Boiler' in v]
 
 ### Loading Results
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     results = fx.results.Results.from_file('results', 'my_model')
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     import xarray as xr
 
@@ -245,6 +245,35 @@ boiler_vars = [v for v in flow_system.solution.data_vars if 'Boiler' in v]
     # Or load just the solution
     solution = xr.open_dataset('results/solution.nc4')
     ```
+
+### Migrating Old Result Files
+
+If you have result files saved with the old API (v4.x), you can migrate them to the new format using `FlowSystem.from_old_results()`. This method:
+
+- Loads the old multi-file format (`*--flow_system.nc4`, `*--solution.nc4`)
+- Renames deprecated parameters in the FlowSystem structure (e.g., `on_off_parameters` → `status_parameters`)
+- Attaches the solution data to the FlowSystem
+
+```python
+# Load old results
+flow_system = fx.FlowSystem.from_old_results('results_folder', 'my_model')
+
+# Access basic solution data (flow rates, sizes, charge states, etc.)
+flow_system.solution['Boiler(Q_th)|flow_rate'].plot()
+
+# Save in new single-file format
+flow_system.to_netcdf('results/my_model_migrated.nc4')
+```
+
+!!! warning "Limitations"
+    This is a best-effort migration for accessing old results:
+
+    - **Solution variable names are NOT renamed** - only basic variables work
+      (flow rates, sizes, charge states, effect totals)
+    - Advanced variable access may require using the original variable names
+    - Summary metadata (solver info, timing) is not loaded
+
+    For full compatibility, re-run optimizations with the new API.
 
 ---
 
@@ -278,7 +307,7 @@ df = flow_system.solution.to_dataframe()
 
 The new API also applies to advanced optimization modes:
 
-=== "v5.x (Old)"
+=== "v4.x (Old)"
     ```python
     calc = fx.SegmentedOptimization('model', flow_system,
                                      timesteps_per_segment=96)
@@ -286,7 +315,7 @@ The new API also applies to advanced optimization modes:
     results = calc.results
     ```
 
-=== "v6.0.0 (New)"
+=== "v5.0.0 (New)"
     ```python
     # Use transform accessor for segmented optimization
     flow_system.transform.segment(timesteps_per_segment=96)
@@ -343,8 +372,9 @@ stats.total_effects['costs'].groupby('component_type').sum()
 | **Replace Optimization class** | Use `flow_system.optimize(solver)` instead |
 | **Update results access** | Use `flow_system.solution['var_name']` pattern |
 | **Update I/O code** | Use `to_netcdf()` / `from_netcdf()` |
+| **Migrate old result files** | Use `FlowSystem.from_old_results(folder, name)` |
 | **Update transform methods** | Use `flow_system.transform.sel/isel/resample()` instead |
-| **Test thoroughly** | Verify results match v5.x outputs |
+| **Test thoroughly** | Verify results match v4.x outputs |
 | **Remove deprecated imports** | Remove `fx.Optimization`, `fx.Results` |
 
 ---
@@ -382,8 +412,8 @@ The `sel()`, `isel()`, and `resample()` methods have been moved from `FlowSystem
 
 | Version | Status |
 |---------|--------|
-| v5.x | `Optimization` class deprecated with warning |
-| v6.0.0 | `Optimization` class removed, `sel/isel/resample` methods deprecated |
+| v4.x | `Optimization` and `Results` classes available |
+| v5.0.0 | `Optimization` and `Results` deprecated, new API available |
 
 !!! warning "Update your code"
     The `Optimization` and `Results` classes are deprecated and will be removed in a future version.
