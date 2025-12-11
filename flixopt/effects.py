@@ -187,7 +187,7 @@ class Effect(Element):
         self,
         label: str,
         unit: str,
-        description: str,
+        description: str = '',
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
