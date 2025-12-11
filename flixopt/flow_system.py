@@ -760,11 +760,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Load a FlowSystem from old-format Results files (pre-v5 API).
 
         This method loads results saved with the deprecated Results API
-        (which used multiple files) and converts them to a FlowSystem with
-        the solution attached.
+        (which used multiple files: ``*--flow_system.nc4``, ``*--solution.nc4``)
+        and converts them to a FlowSystem with the solution attached.
 
-        The parameter names are automatically converted from older flixopt
-        versions to the current naming conventions.
+        The method performs the following:
+
+        - Loads the old multi-file format
+        - Renames deprecated parameters in the FlowSystem structure
+          (e.g., ``on_off_parameters`` → ``status_parameters``)
+        - Attaches the solution data to the FlowSystem
 
         Args:
             folder: Directory containing the saved result files
@@ -774,25 +778,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             FlowSystem instance with solution attached
 
         Warning:
-            This is a best-effort migration utility. It loads the FlowSystem
-            structure and solution data, but does NOT provide the full
-            functionality of the old Results class:
+            This is a best-effort migration for accessing old results:
 
-            - The linopy model is NOT loaded
-            - Element submodels are NOT recreated
-            - No re-optimization possible without calling optimize() again
-            - Summary metadata (solver info, timing) is NOT loaded
+            - **Solution variable names are NOT renamed** - only basic variables
+              work (flow rates, sizes, charge states, effect totals)
+            - Advanced variable access may require using the original names
+            - Summary metadata (solver info, timing) is not loaded
 
-            For full results analysis, the solution data is available via
-            ``flow_system.solution`` as an xarray Dataset.
+            For full compatibility, re-run optimizations with the new API.
 
         Examples:
             ```python
-            # Load old results and get FlowSystem with solution
+            # Load old results
             fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
 
-            # Access solution data
-            fs.solution['Boiler|flow_rate'].plot()
+            # Access basic solution data
+            fs.solution['Boiler(Q_th)|flow_rate'].plot()
 
             # Save in new single-file format
             fs.to_netcdf('my_optimization.nc')
