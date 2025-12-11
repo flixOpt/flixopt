@@ -492,6 +492,29 @@ class Storage(Component):
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
             initial_equals_final = True
 
+        # Capacity is required when using non-default relative bounds
+        if self.capacity_in_flow_hours is None:
+            if np.any(self.relative_minimum_charge_state > 0):
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
+                    f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
+                )
+            if np.any(self.relative_maximum_charge_state < 1):
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
+                    f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
+                )
+            if self.relative_minimum_final_charge_state is not None:
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
+                    f'A capacity is required for relative final charge state constraints.'
+                )
+            if self.relative_maximum_final_charge_state is not None:
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
+                    f'A capacity is required for relative final charge state constraints.'
+                )
+
         # Skip capacity-related checks if capacity is None (unbounded)
         if self.capacity_in_flow_hours is not None:
             # Use new InvestParameters methods to get capacity bounds
