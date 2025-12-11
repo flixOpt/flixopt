@@ -464,7 +464,9 @@ class TestTransmissionModel:
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            thermal_flow=fx.Flow(
+                'Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1]), size=1000
+            ),
             fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
@@ -537,7 +539,9 @@ class TestTransmissionModel:
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            thermal_flow=fx.Flow(
+                'Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1]), size=1000
+            ),
             fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
