@@ -21,8 +21,8 @@ Main Results:
         Not invested: {}
     Buses with excess: []
 Durations:
-    modeling: 0.69
-    solving: 0.78
+    modeling: 0.52
+    solving: 0.34
     saving: 0.0
 Config:
     config_name: flixopt

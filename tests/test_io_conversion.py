@@ -739,3 +739,35 @@ class TestV4APIConversion:
             assert var is not None
             # Variables should have data
             assert var.size > 0
+
+    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
+    def test_v4_reoptimized_objective_matches_original(self, result_name):
+        """Test that re-solving the migrated FlowSystem gives the same objective effect."""
+        import flixopt as fx
+
+        # Load old results
+        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
+
+        # Get the objective effect label
+        objective_effect_label = fs.effects.objective_effect.label
+
+        # Get the original effect total from the old solution (sum for multi-scenario)
+        old_effect_total = float(fs.solution[objective_effect_label].values.sum())
+        old_objective = float(fs.solution['objective'].values.sum())
+
+        # Re-solve the FlowSystem
+        fs.optimize(fx.solvers.HighsSolver(mip_gap=0))
+
+        # Get new objective effect total (sum for multi-scenario)
+        new_objective = float(fs.solution['objective'].item())
+        new_effect_total = float(fs.solution[objective_effect_label].sum().item())
+
+        # Verify objective matches (within tolerance)
+        assert new_objective == pytest.approx(old_objective, rel=1e-5, abs=1), (
+            f'Objective mismatch for {result_name}: new={new_objective}, old={old_objective}'
+        )
+
+        assert new_effect_total == pytest.approx(old_effect_total, rel=1e-5, abs=1), (
+            f'Effect {objective_effect_label} mismatch for {result_name}: '
+            f'new={new_effect_total}, old={old_effect_total}'
+        )

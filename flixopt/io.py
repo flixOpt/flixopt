@@ -626,9 +626,8 @@ PARAMETER_RENAMES = {
     'source': 'outputs',
     'sink': 'inputs',
     'prevent_simultaneous_sink_and_source': 'prevent_simultaneous_flow_rates',
-    # Storage
-    # Note: 'lastValueOfSim' → 'equals_final' is a value change, not a key change
-    # Linear converter parameters
+    # LinearConverter flow/efficiency parameters (pre-v4 files)
+    # These are needed for very old files that use short flow names
     'Q_fu': 'fuel_flow',
     'P_el': 'electrical_flow',
     'Q_th': 'thermal_flow',
@@ -637,6 +636,8 @@ PARAMETER_RENAMES = {
     'eta_th': 'thermal_efficiency',
     'eta_el': 'electrical_efficiency',
     'COP': 'cop',
+    # Storage
+    # Note: 'lastValueOfSim' → 'equals_final' is a value change, not a key change
     # Class renames (v4.2.0)
     'FullCalculation': 'Optimization',
     'AggregatedCalculation': 'ClusteredOptimization',
@@ -646,9 +647,16 @@ PARAMETER_RENAMES = {
     'Aggregation': 'Clustering',
     'AggregationParameters': 'ClusteringParameters',
     'AggregationModel': 'ClusteringModel',
-    # OnOffParameters → StatusParameters
+    # OnOffParameters → StatusParameters (class and attribute names)
     'OnOffParameters': 'StatusParameters',
     'on_off_parameters': 'status_parameters',
+    # StatusParameters attribute renames (applies to both Flow-level and Component-level)
+    'effects_per_switch_on': 'effects_per_startup',
+    'effects_per_running_hour': 'effects_per_active_hour',
+    'consecutive_on_hours_min': 'min_uptime',
+    'consecutive_on_hours_max': 'max_uptime',
+    'consecutive_off_hours_min': 'min_downtime',
+    'consecutive_off_hours_max': 'max_downtime',
     # TimeSeriesData
     'agg_group': 'aggregation_group',
     'agg_weight': 'aggregation_weight',
@@ -660,13 +668,26 @@ VALUE_RENAMES = {
 }
 
 
-def _rename_keys_recursive(obj: Any, key_renames: dict[str, str], value_renames: dict[str, dict]) -> Any:
+# Keys that should NOT have their child keys renamed (they reference flow labels)
+_FLOW_LABEL_REFERENCE_KEYS = {'piecewises', 'conversion_factors'}
+
+# Keys that ARE flow parameters on components (should be renamed)
+_FLOW_PARAMETER_KEYS = {'Q_fu', 'P_el', 'Q_th', 'Q_ab', 'eta', 'eta_th', 'eta_el', 'COP'}
+
+
+def _rename_keys_recursive(
+    obj: Any,
+    key_renames: dict[str, str],
+    value_renames: dict[str, dict],
+    skip_flow_renames: bool = False,
+) -> Any:
     """Recursively rename keys and values in nested data structures.
 
     Args:
         obj: The object to process (dict, list, or scalar)
         key_renames: Mapping of old key names to new key names
         value_renames: Mapping of key names to {old_value: new_value} dicts
+        skip_flow_renames: If True, skip renaming flow parameter keys (for inside piecewises)
 
     Returns:
         The processed object with renamed keys and values
@@ -674,11 +695,17 @@ def _rename_keys_recursive(obj: Any, key_renames: dict[str, str], value_renames:
     if isinstance(obj, dict):
         new_dict = {}
         for key, value in obj.items():
-            # Rename the key if needed
-            new_key = key_renames.get(key, key)
+            # Determine if we should skip flow renames for children
+            child_skip_flow_renames = skip_flow_renames or key in _FLOW_LABEL_REFERENCE_KEYS
+
+            # Rename the key if needed (skip flow params if in reference context)
+            if skip_flow_renames and key in _FLOW_PARAMETER_KEYS:
+                new_key = key  # Don't rename flow labels inside piecewises etc.
+            else:
+                new_key = key_renames.get(key, key)
 
             # Process the value recursively
-            new_value = _rename_keys_recursive(value, key_renames, value_renames)
+            new_value = _rename_keys_recursive(value, key_renames, value_renames, child_skip_flow_renames)
 
             # Check if this key has value renames
             if key in value_renames and isinstance(new_value, str):
@@ -692,7 +719,7 @@ def _rename_keys_recursive(obj: Any, key_renames: dict[str, str], value_renames:
         return new_dict
 
     elif isinstance(obj, list):
-        return [_rename_keys_recursive(item, key_renames, value_renames) for item in obj]
+        return [_rename_keys_recursive(item, key_renames, value_renames, skip_flow_renames) for item in obj]
 
     else:
         return obj

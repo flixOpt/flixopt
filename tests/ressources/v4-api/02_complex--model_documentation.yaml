@@ -3,7 +3,7 @@ objective: |-
     ----------
     LinearExpression: +1 costs + 1 Penalty
     Sense: min
-    Value: -10623.180480056364
+    Value: -10711.526565761338
 termination_condition: optimal
 status: ok
 nvars: 507

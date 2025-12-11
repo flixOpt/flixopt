@@ -4,17 +4,17 @@ Calculation Type: FullCalculation
 Constraints: 589
 Variables: 507
 Main Results:
-    Objective: -10623.18
+    Objective: -10711.53
     Penalty: -0.0
     Effects:
         CO2 [kg]:
-            temporal: 1276.72
+            temporal: 1278.26
             periodic: -0.0
-            total: 1276.72
+            total: 1278.26
         costs [€]:
-            temporal: -12577.93
+            temporal: -12666.27
             periodic: 1954.75
-            total: -10623.18
+            total: -10711.53
         PE [kWh_PE]:
             temporal: -0.0
             periodic: 152.92
@@ -26,8 +26,8 @@ Main Results:
         Not invested: {}
     Buses with excess: []
 Durations:
-    modeling: 1.75
-    solving: 1.31
+    modeling: 1.1
+    solving: 0.86
     saving: 0.0
 Config:
     config_name: flixopt
