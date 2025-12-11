@@ -1128,6 +1128,52 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             path = self.folder / f'{self.name}--network.html'
         return self.flow_system.plot_network(controls=controls, path=path, show=show)
 
+    def to_flow_system(self) -> FlowSystem:
+        """Convert Results to a FlowSystem with solution attached.
+
+        This method migrates results from the deprecated Results format to the
+        new FlowSystem-based format, enabling use of the modern API.
+
+        Returns:
+            FlowSystem: A FlowSystem instance with the solution data attached.
+
+        Caveats:
+            - The linopy model is NOT attached (only the solution data)
+            - Element submodels are NOT recreated (no re-optimization without
+              calling build_model() first)
+            - Variable/constraint names on elements are NOT restored
+
+        Examples:
+            Convert loaded Results to FlowSystem:
+
+            ```python
+            # Load old results
+            results = Results.from_file('results', 'my_optimization')
+
+            # Convert to FlowSystem
+            flow_system = results.to_flow_system()
+
+            # Use new API
+            flow_system.plot.heatmap()
+            flow_system.solution.to_netcdf('solution.nc')
+
+            # Save in new single-file format
+            flow_system.to_netcdf('my_optimization.nc')
+            ```
+        """
+        # Reconstruct FlowSystem from stored data
+        flow_system = FlowSystem.from_dataset(self.flow_system_data)
+
+        # Convert solution attrs from dicts to JSON strings for consistency with new format
+        # The _get_solution_attr helper handles both formats, but we normalize here
+        solution = self.solution.copy()
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+
+        flow_system.solution = solution
+        return flow_system
+
     def to_file(
         self,
         folder: str | pathlib.Path | None = None,
