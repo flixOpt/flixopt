@@ -1,0 +1,51 @@
+Name: io_simple_flow_system_scenarios
+Number of timesteps: 9
+Calculation Type: FullCalculation
+Constraints: 753
+Variables: 829
+Main Results:
+    Objective: 75.37
+    Penalty: 0.0
+    Effects:
+        CO2 [kg]:
+            temporal: [255.09, 255.09, 255.09]
+            periodic: [-0.0, -0.0, -0.0]
+            total: [255.09, 255.09, 255.09]
+        costs [€]:
+            temporal: [61.88, 56.1, 41.63]
+            periodic: [20.0, 20.0, 20.0]
+            total: [81.88, 76.1, 61.63]
+    Invest-Decisions:
+        Invested:
+            Speicher: [30.0, 30.0, 30.0]
+        Not invested: {}
+    Buses with excess: []
+Durations:
+    modeling: 1.19
+    solving: 0.64
+    saving: 0.0
+Config:
+    config_name: flixopt
+    logging:
+        level: INFO
+        file: null
+        console: false
+        max_file_size: 10485760
+        backup_count: 5
+        verbose_tracebacks: false
+    modeling:
+        big: 10000000
+        epsilon: 1.0e-05
+        big_binary_bound: 100000
+    solving:
+        mip_gap: 0.01
+        time_limit_seconds: 300
+        log_to_console: false
+        log_main_results: false
+    plotting:
+        default_show: false
+        default_engine: plotly
+        default_dpi: 300
+        default_facet_cols: 3
+        default_sequential_colorscale: turbo
+        default_qualitative_colorscale: plotly

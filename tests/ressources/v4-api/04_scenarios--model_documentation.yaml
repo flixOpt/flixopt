@@ -1,0 +1,339 @@
+objective: |-
+    Objective:
+    ----------
+    LinearExpression: +0.5 costs[low] + 0.5 costs[high] + 1 Penalty
+    Sense: min
+    Value: 10.666666666666668
+termination_condition: optimal
+status: ok
+nvars: 117
+nvarsbin: 0
+nvarscont: 117
+ncons: 67
+variables:
+    costs(periodic): |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: costs(periodic)[low] ∈ [-inf, inf]
+        [high]: costs(periodic)[high] ∈ [-inf, inf]
+    costs(temporal): |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: costs(temporal)[low] ∈ [-inf, inf]
+        [high]: costs(temporal)[high] ∈ [-inf, inf]
+    "costs(temporal)|per_timestep": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: costs(temporal)|per_timestep[2020-01-01 00:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 00:00:00, high]: costs(temporal)|per_timestep[2020-01-01 00:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 01:00:00, low]: costs(temporal)|per_timestep[2020-01-01 01:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 01:00:00, high]: costs(temporal)|per_timestep[2020-01-01 01:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 02:00:00, low]: costs(temporal)|per_timestep[2020-01-01 02:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 02:00:00, high]: costs(temporal)|per_timestep[2020-01-01 02:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 03:00:00, low]: costs(temporal)|per_timestep[2020-01-01 03:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 03:00:00, high]: costs(temporal)|per_timestep[2020-01-01 03:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 04:00:00, low]: costs(temporal)|per_timestep[2020-01-01 04:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 04:00:00, high]: costs(temporal)|per_timestep[2020-01-01 04:00:00, high] ∈ [-inf, inf]
+    costs: |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: costs[low] ∈ [-inf, inf]
+        [high]: costs[high] ∈ [-inf, inf]
+    Penalty: |-
+        Variable
+        --------
+        Penalty ∈ [-inf, inf]
+    "Boiler(Q_fu)|flow_rate": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, low] ∈ [0, 1e+07]
+        [2020-01-01 00:00:00, high]: Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, high] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00, low]: Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, low] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00, high]: Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, high] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00, low]: Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, low] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00, high]: Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, high] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00, low]: Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, low] ∈ [0, 1e+07]
+        [2020-01-01 03:00:00, high]: Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, high] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00, low]: Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, low] ∈ [0, 1e+07]
+        [2020-01-01 04:00:00, high]: Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, high] ∈ [0, 1e+07]
+    "Boiler(Q_fu)|total_flow_hours": |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: Boiler(Q_fu)|total_flow_hours[low] ∈ [0, inf]
+        [high]: Boiler(Q_fu)|total_flow_hours[high] ∈ [0, inf]
+    "Boiler(Q_th)|flow_rate": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, low] ∈ [0, 100]
+        [2020-01-01 00:00:00, high]: Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, high] ∈ [0, 100]
+        [2020-01-01 01:00:00, low]: Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, low] ∈ [0, 100]
+        [2020-01-01 01:00:00, high]: Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, high] ∈ [0, 100]
+        [2020-01-01 02:00:00, low]: Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, low] ∈ [0, 100]
+        [2020-01-01 02:00:00, high]: Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, high] ∈ [0, 100]
+        [2020-01-01 03:00:00, low]: Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, low] ∈ [0, 100]
+        [2020-01-01 03:00:00, high]: Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, high] ∈ [0, 100]
+        [2020-01-01 04:00:00, low]: Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, low] ∈ [0, 100]
+        [2020-01-01 04:00:00, high]: Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, high] ∈ [0, 100]
+    "Boiler(Q_th)|total_flow_hours": |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: Boiler(Q_th)|total_flow_hours[low] ∈ [0, inf]
+        [high]: Boiler(Q_th)|total_flow_hours[high] ∈ [0, inf]
+    "HeatLoad(Q_th)|flow_rate": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, low] ∈ [30, 30]
+        [2020-01-01 00:00:00, high]: HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, high] ∈ [50, 50]
+        [2020-01-01 01:00:00, low]: HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, low] ∈ [40, 40]
+        [2020-01-01 01:00:00, high]: HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, high] ∈ [60, 60]
+        [2020-01-01 02:00:00, low]: HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, low] ∈ [50, 50]
+        [2020-01-01 02:00:00, high]: HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, high] ∈ [70, 70]
+        [2020-01-01 03:00:00, low]: HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, low] ∈ [40, 40]
+        [2020-01-01 03:00:00, high]: HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, high] ∈ [60, 60]
+        [2020-01-01 04:00:00, low]: HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, low] ∈ [30, 30]
+        [2020-01-01 04:00:00, high]: HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, high] ∈ [50, 50]
+    "HeatLoad(Q_th)|total_flow_hours": |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: HeatLoad(Q_th)|total_flow_hours[low] ∈ [0, inf]
+        [high]: HeatLoad(Q_th)|total_flow_hours[high] ∈ [0, inf]
+    "GasSource(Q_Gas)|flow_rate": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, low] ∈ [0, 1000]
+        [2020-01-01 00:00:00, high]: GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, high] ∈ [0, 1000]
+        [2020-01-01 01:00:00, low]: GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, low] ∈ [0, 1000]
+        [2020-01-01 01:00:00, high]: GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, high] ∈ [0, 1000]
+        [2020-01-01 02:00:00, low]: GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, low] ∈ [0, 1000]
+        [2020-01-01 02:00:00, high]: GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, high] ∈ [0, 1000]
+        [2020-01-01 03:00:00, low]: GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, low] ∈ [0, 1000]
+        [2020-01-01 03:00:00, high]: GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, high] ∈ [0, 1000]
+        [2020-01-01 04:00:00, low]: GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, low] ∈ [0, 1000]
+        [2020-01-01 04:00:00, high]: GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, high] ∈ [0, 1000]
+    "GasSource(Q_Gas)|total_flow_hours": |-
+        Variable (scenario: 2)
+        ----------------------
+        [low]: GasSource(Q_Gas)|total_flow_hours[low] ∈ [0, inf]
+        [high]: GasSource(Q_Gas)|total_flow_hours[high] ∈ [0, inf]
+    "GasSource(Q_Gas)->costs(temporal)": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 00:00:00, high]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 01:00:00, low]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 01:00:00, high]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 02:00:00, low]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 02:00:00, high]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 03:00:00, low]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 03:00:00, high]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, high] ∈ [-inf, inf]
+        [2020-01-01 04:00:00, low]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, low] ∈ [-inf, inf]
+        [2020-01-01 04:00:00, high]: GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, high] ∈ [-inf, inf]
+    "Heat|excess_input": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Heat|excess_input[2020-01-01 00:00:00, low] ∈ [0, inf]
+        [2020-01-01 00:00:00, high]: Heat|excess_input[2020-01-01 00:00:00, high] ∈ [0, inf]
+        [2020-01-01 01:00:00, low]: Heat|excess_input[2020-01-01 01:00:00, low] ∈ [0, inf]
+        [2020-01-01 01:00:00, high]: Heat|excess_input[2020-01-01 01:00:00, high] ∈ [0, inf]
+        [2020-01-01 02:00:00, low]: Heat|excess_input[2020-01-01 02:00:00, low] ∈ [0, inf]
+        [2020-01-01 02:00:00, high]: Heat|excess_input[2020-01-01 02:00:00, high] ∈ [0, inf]
+        [2020-01-01 03:00:00, low]: Heat|excess_input[2020-01-01 03:00:00, low] ∈ [0, inf]
+        [2020-01-01 03:00:00, high]: Heat|excess_input[2020-01-01 03:00:00, high] ∈ [0, inf]
+        [2020-01-01 04:00:00, low]: Heat|excess_input[2020-01-01 04:00:00, low] ∈ [0, inf]
+        [2020-01-01 04:00:00, high]: Heat|excess_input[2020-01-01 04:00:00, high] ∈ [0, inf]
+    "Heat|excess_output": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Heat|excess_output[2020-01-01 00:00:00, low] ∈ [0, inf]
+        [2020-01-01 00:00:00, high]: Heat|excess_output[2020-01-01 00:00:00, high] ∈ [0, inf]
+        [2020-01-01 01:00:00, low]: Heat|excess_output[2020-01-01 01:00:00, low] ∈ [0, inf]
+        [2020-01-01 01:00:00, high]: Heat|excess_output[2020-01-01 01:00:00, high] ∈ [0, inf]
+        [2020-01-01 02:00:00, low]: Heat|excess_output[2020-01-01 02:00:00, low] ∈ [0, inf]
+        [2020-01-01 02:00:00, high]: Heat|excess_output[2020-01-01 02:00:00, high] ∈ [0, inf]
+        [2020-01-01 03:00:00, low]: Heat|excess_output[2020-01-01 03:00:00, low] ∈ [0, inf]
+        [2020-01-01 03:00:00, high]: Heat|excess_output[2020-01-01 03:00:00, high] ∈ [0, inf]
+        [2020-01-01 04:00:00, low]: Heat|excess_output[2020-01-01 04:00:00, low] ∈ [0, inf]
+        [2020-01-01 04:00:00, high]: Heat|excess_output[2020-01-01 04:00:00, high] ∈ [0, inf]
+    "Heat->Penalty": |-
+        Variable
+        --------
+        Heat->Penalty ∈ [-inf, inf]
+    "Gas|excess_input": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Gas|excess_input[2020-01-01 00:00:00, low] ∈ [0, inf]
+        [2020-01-01 00:00:00, high]: Gas|excess_input[2020-01-01 00:00:00, high] ∈ [0, inf]
+        [2020-01-01 01:00:00, low]: Gas|excess_input[2020-01-01 01:00:00, low] ∈ [0, inf]
+        [2020-01-01 01:00:00, high]: Gas|excess_input[2020-01-01 01:00:00, high] ∈ [0, inf]
+        [2020-01-01 02:00:00, low]: Gas|excess_input[2020-01-01 02:00:00, low] ∈ [0, inf]
+        [2020-01-01 02:00:00, high]: Gas|excess_input[2020-01-01 02:00:00, high] ∈ [0, inf]
+        [2020-01-01 03:00:00, low]: Gas|excess_input[2020-01-01 03:00:00, low] ∈ [0, inf]
+        [2020-01-01 03:00:00, high]: Gas|excess_input[2020-01-01 03:00:00, high] ∈ [0, inf]
+        [2020-01-01 04:00:00, low]: Gas|excess_input[2020-01-01 04:00:00, low] ∈ [0, inf]
+        [2020-01-01 04:00:00, high]: Gas|excess_input[2020-01-01 04:00:00, high] ∈ [0, inf]
+    "Gas|excess_output": |-
+        Variable (time: 5, scenario: 2)
+        -------------------------------
+        [2020-01-01 00:00:00, low]: Gas|excess_output[2020-01-01 00:00:00, low] ∈ [0, inf]
+        [2020-01-01 00:00:00, high]: Gas|excess_output[2020-01-01 00:00:00, high] ∈ [0, inf]
+        [2020-01-01 01:00:00, low]: Gas|excess_output[2020-01-01 01:00:00, low] ∈ [0, inf]
+        [2020-01-01 01:00:00, high]: Gas|excess_output[2020-01-01 01:00:00, high] ∈ [0, inf]
+        [2020-01-01 02:00:00, low]: Gas|excess_output[2020-01-01 02:00:00, low] ∈ [0, inf]
+        [2020-01-01 02:00:00, high]: Gas|excess_output[2020-01-01 02:00:00, high] ∈ [0, inf]
+        [2020-01-01 03:00:00, low]: Gas|excess_output[2020-01-01 03:00:00, low] ∈ [0, inf]
+        [2020-01-01 03:00:00, high]: Gas|excess_output[2020-01-01 03:00:00, high] ∈ [0, inf]
+        [2020-01-01 04:00:00, low]: Gas|excess_output[2020-01-01 04:00:00, low] ∈ [0, inf]
+        [2020-01-01 04:00:00, high]: Gas|excess_output[2020-01-01 04:00:00, high] ∈ [0, inf]
+    "Gas->Penalty": |-
+        Variable
+        --------
+        Gas->Penalty ∈ [-inf, inf]
+constraints:
+    costs(periodic): |-
+        Constraint `costs(periodic)`
+        [scenario: 2]:
+        -------------------------------------------
+        [low]: +1 costs(periodic)[low]   = -0.0
+        [high]: +1 costs(periodic)[high] = -0.0
+    costs(temporal): |-
+        Constraint `costs(temporal)`
+        [scenario: 2]:
+        -------------------------------------------
+        [low]: +1 costs(temporal)[low] - 1 costs(temporal)|per_timestep[2020-01-01 00:00:00, low] - 1 costs(temporal)|per_timestep[2020-01-01 01:00:00, low] - 1 costs(temporal)|per_timestep[2020-01-01 02:00:00, low] - 1 costs(temporal)|per_timestep[2020-01-01 03:00:00, low] - 1 costs(temporal)|per_timestep[2020-01-01 04:00:00, low]        = -0.0
+        [high]: +1 costs(temporal)[high] - 1 costs(temporal)|per_timestep[2020-01-01 00:00:00, high] - 1 costs(temporal)|per_timestep[2020-01-01 01:00:00, high] - 1 costs(temporal)|per_timestep[2020-01-01 02:00:00, high] - 1 costs(temporal)|per_timestep[2020-01-01 03:00:00, high] - 1 costs(temporal)|per_timestep[2020-01-01 04:00:00, high] = -0.0
+    "costs(temporal)|per_timestep": |-
+        Constraint `costs(temporal)|per_timestep`
+        [time: 5, scenario: 2]:
+        -----------------------------------------------------------------
+        [2020-01-01 00:00:00, low]: +1 costs(temporal)|per_timestep[2020-01-01 00:00:00, low] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, low]    = -0.0
+        [2020-01-01 00:00:00, high]: +1 costs(temporal)|per_timestep[2020-01-01 00:00:00, high] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, high] = -0.0
+        [2020-01-01 01:00:00, low]: +1 costs(temporal)|per_timestep[2020-01-01 01:00:00, low] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, low]    = -0.0
+        [2020-01-01 01:00:00, high]: +1 costs(temporal)|per_timestep[2020-01-01 01:00:00, high] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, high] = -0.0
+        [2020-01-01 02:00:00, low]: +1 costs(temporal)|per_timestep[2020-01-01 02:00:00, low] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, low]    = -0.0
+        [2020-01-01 02:00:00, high]: +1 costs(temporal)|per_timestep[2020-01-01 02:00:00, high] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, high] = -0.0
+        [2020-01-01 03:00:00, low]: +1 costs(temporal)|per_timestep[2020-01-01 03:00:00, low] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, low]    = -0.0
+        [2020-01-01 03:00:00, high]: +1 costs(temporal)|per_timestep[2020-01-01 03:00:00, high] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, high] = -0.0
+        [2020-01-01 04:00:00, low]: +1 costs(temporal)|per_timestep[2020-01-01 04:00:00, low] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, low]    = -0.0
+        [2020-01-01 04:00:00, high]: +1 costs(temporal)|per_timestep[2020-01-01 04:00:00, high] - 1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, high] = -0.0
+    costs: |-
+        Constraint `costs`
+        [scenario: 2]:
+        ---------------------------------
+        [low]: +1 costs[low] - 1 costs(temporal)[low] - 1 costs(periodic)[low]     = -0.0
+        [high]: +1 costs[high] - 1 costs(temporal)[high] - 1 costs(periodic)[high] = -0.0
+    Penalty: |-
+        Constraint `Penalty`
+        --------------------
+        +1 Penalty - 1 Heat->Penalty - 1 Gas->Penalty = -0.0
+    "Boiler(Q_fu)|total_flow_hours": |-
+        Constraint `Boiler(Q_fu)|total_flow_hours`
+        [scenario: 2]:
+        ---------------------------------------------------------
+        [low]: +1 Boiler(Q_fu)|total_flow_hours[low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, low]        = -0.0
+        [high]: +1 Boiler(Q_fu)|total_flow_hours[high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "Boiler(Q_th)|total_flow_hours": |-
+        Constraint `Boiler(Q_th)|total_flow_hours`
+        [scenario: 2]:
+        ---------------------------------------------------------
+        [low]: +1 Boiler(Q_th)|total_flow_hours[low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, low]        = -0.0
+        [high]: +1 Boiler(Q_th)|total_flow_hours[high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "Boiler|conversion_0": |-
+        Constraint `Boiler|conversion_0`
+        [time: 5, scenario: 2]:
+        --------------------------------------------------------
+        [2020-01-01 00:00:00, low]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, low]    = -0.0
+        [2020-01-01 00:00:00, high]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, high] = -0.0
+        [2020-01-01 01:00:00, low]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, low]    = -0.0
+        [2020-01-01 01:00:00, high]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, high] = -0.0
+        [2020-01-01 02:00:00, low]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, low]    = -0.0
+        [2020-01-01 02:00:00, high]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, high] = -0.0
+        [2020-01-01 03:00:00, low]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, low]    = -0.0
+        [2020-01-01 03:00:00, high]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, high] = -0.0
+        [2020-01-01 04:00:00, low]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, low] - 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, low]    = -0.0
+        [2020-01-01 04:00:00, high]: +0.9 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, high] - 1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "HeatLoad(Q_th)|total_flow_hours": |-
+        Constraint `HeatLoad(Q_th)|total_flow_hours`
+        [scenario: 2]:
+        -----------------------------------------------------------
+        [low]: +1 HeatLoad(Q_th)|total_flow_hours[low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, low]        = -0.0
+        [high]: +1 HeatLoad(Q_th)|total_flow_hours[high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "GasSource(Q_Gas)|total_flow_hours": |-
+        Constraint `GasSource(Q_Gas)|total_flow_hours`
+        [scenario: 2]:
+        -------------------------------------------------------------
+        [low]: +1 GasSource(Q_Gas)|total_flow_hours[low] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, low] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, low] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, low] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, low] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, low]        = -0.0
+        [high]: +1 GasSource(Q_Gas)|total_flow_hours[high] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, high] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, high] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, high] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, high] - 1 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "GasSource(Q_Gas)->costs(temporal)": |-
+        Constraint `GasSource(Q_Gas)->costs(temporal)`
+        [time: 5, scenario: 2]:
+        ----------------------------------------------------------------------
+        [2020-01-01 00:00:00, low]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, low] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, low]    = -0.0
+        [2020-01-01 00:00:00, high]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 00:00:00, high] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, high] = -0.0
+        [2020-01-01 01:00:00, low]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, low] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, low]    = -0.0
+        [2020-01-01 01:00:00, high]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 01:00:00, high] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, high] = -0.0
+        [2020-01-01 02:00:00, low]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, low] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, low]    = -0.0
+        [2020-01-01 02:00:00, high]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 02:00:00, high] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, high] = -0.0
+        [2020-01-01 03:00:00, low]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, low] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, low]    = -0.0
+        [2020-01-01 03:00:00, high]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 03:00:00, high] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, high] = -0.0
+        [2020-01-01 04:00:00, low]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, low] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, low]    = -0.0
+        [2020-01-01 04:00:00, high]: +1 GasSource(Q_Gas)->costs(temporal)[2020-01-01 04:00:00, high] - 0.04 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, high] = -0.0
+    "Heat|balance": |-
+        Constraint `Heat|balance`
+        [time: 5, scenario: 2]:
+        -------------------------------------------------
+        [2020-01-01 00:00:00, low]: +1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, low] + 1 Heat|excess_input[2020-01-01 00:00:00, low] - 1 Heat|excess_output[2020-01-01 00:00:00, low]      = -0.0
+        [2020-01-01 00:00:00, high]: +1 Boiler(Q_th)|flow_rate[2020-01-01 00:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 00:00:00, high] + 1 Heat|excess_input[2020-01-01 00:00:00, high] - 1 Heat|excess_output[2020-01-01 00:00:00, high] = -0.0
+        [2020-01-01 01:00:00, low]: +1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, low] + 1 Heat|excess_input[2020-01-01 01:00:00, low] - 1 Heat|excess_output[2020-01-01 01:00:00, low]      = -0.0
+        [2020-01-01 01:00:00, high]: +1 Boiler(Q_th)|flow_rate[2020-01-01 01:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 01:00:00, high] + 1 Heat|excess_input[2020-01-01 01:00:00, high] - 1 Heat|excess_output[2020-01-01 01:00:00, high] = -0.0
+        [2020-01-01 02:00:00, low]: +1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, low] + 1 Heat|excess_input[2020-01-01 02:00:00, low] - 1 Heat|excess_output[2020-01-01 02:00:00, low]      = -0.0
+        [2020-01-01 02:00:00, high]: +1 Boiler(Q_th)|flow_rate[2020-01-01 02:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 02:00:00, high] + 1 Heat|excess_input[2020-01-01 02:00:00, high] - 1 Heat|excess_output[2020-01-01 02:00:00, high] = -0.0
+        [2020-01-01 03:00:00, low]: +1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, low] + 1 Heat|excess_input[2020-01-01 03:00:00, low] - 1 Heat|excess_output[2020-01-01 03:00:00, low]      = -0.0
+        [2020-01-01 03:00:00, high]: +1 Boiler(Q_th)|flow_rate[2020-01-01 03:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 03:00:00, high] + 1 Heat|excess_input[2020-01-01 03:00:00, high] - 1 Heat|excess_output[2020-01-01 03:00:00, high] = -0.0
+        [2020-01-01 04:00:00, low]: +1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, low] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, low] + 1 Heat|excess_input[2020-01-01 04:00:00, low] - 1 Heat|excess_output[2020-01-01 04:00:00, low]      = -0.0
+        [2020-01-01 04:00:00, high]: +1 Boiler(Q_th)|flow_rate[2020-01-01 04:00:00, high] - 1 HeatLoad(Q_th)|flow_rate[2020-01-01 04:00:00, high] + 1 Heat|excess_input[2020-01-01 04:00:00, high] - 1 Heat|excess_output[2020-01-01 04:00:00, high] = -0.0
+    "Heat->Penalty": |-
+        Constraint `Heat->Penalty`
+        --------------------------
+        +1 Heat->Penalty - 1e+05 Heat|excess_input[2020-01-01 00:00:00, low] - 1e+05 Heat|excess_input[2020-01-01 00:00:00, high]... -1e+05 Heat|excess_output[2020-01-01 03:00:00, high] - 1e+05 Heat|excess_output[2020-01-01 04:00:00, low] - 1e+05 Heat|excess_output[2020-01-01 04:00:00, high] = -0.0
+    "Gas|balance": |-
+        Constraint `Gas|balance`
+        [time: 5, scenario: 2]:
+        ------------------------------------------------
+        [2020-01-01 00:00:00, low]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, low] + 1 Gas|excess_input[2020-01-01 00:00:00, low] - 1 Gas|excess_output[2020-01-01 00:00:00, low]      = -0.0
+        [2020-01-01 00:00:00, high]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 00:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 00:00:00, high] + 1 Gas|excess_input[2020-01-01 00:00:00, high] - 1 Gas|excess_output[2020-01-01 00:00:00, high] = -0.0
+        [2020-01-01 01:00:00, low]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, low] + 1 Gas|excess_input[2020-01-01 01:00:00, low] - 1 Gas|excess_output[2020-01-01 01:00:00, low]      = -0.0
+        [2020-01-01 01:00:00, high]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 01:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 01:00:00, high] + 1 Gas|excess_input[2020-01-01 01:00:00, high] - 1 Gas|excess_output[2020-01-01 01:00:00, high] = -0.0
+        [2020-01-01 02:00:00, low]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, low] + 1 Gas|excess_input[2020-01-01 02:00:00, low] - 1 Gas|excess_output[2020-01-01 02:00:00, low]      = -0.0
+        [2020-01-01 02:00:00, high]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 02:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 02:00:00, high] + 1 Gas|excess_input[2020-01-01 02:00:00, high] - 1 Gas|excess_output[2020-01-01 02:00:00, high] = -0.0
+        [2020-01-01 03:00:00, low]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, low] + 1 Gas|excess_input[2020-01-01 03:00:00, low] - 1 Gas|excess_output[2020-01-01 03:00:00, low]      = -0.0
+        [2020-01-01 03:00:00, high]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 03:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 03:00:00, high] + 1 Gas|excess_input[2020-01-01 03:00:00, high] - 1 Gas|excess_output[2020-01-01 03:00:00, high] = -0.0
+        [2020-01-01 04:00:00, low]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, low] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, low] + 1 Gas|excess_input[2020-01-01 04:00:00, low] - 1 Gas|excess_output[2020-01-01 04:00:00, low]      = -0.0
+        [2020-01-01 04:00:00, high]: +1 GasSource(Q_Gas)|flow_rate[2020-01-01 04:00:00, high] - 1 Boiler(Q_fu)|flow_rate[2020-01-01 04:00:00, high] + 1 Gas|excess_input[2020-01-01 04:00:00, high] - 1 Gas|excess_output[2020-01-01 04:00:00, high] = -0.0
+    "Gas->Penalty": |-
+        Constraint `Gas->Penalty`
+        -------------------------
+        +1 Gas->Penalty - 1e+05 Gas|excess_input[2020-01-01 00:00:00, low] - 1e+05 Gas|excess_input[2020-01-01 00:00:00, high]... -1e+05 Gas|excess_output[2020-01-01 03:00:00, high] - 1e+05 Gas|excess_output[2020-01-01 04:00:00, low] - 1e+05 Gas|excess_output[2020-01-01 04:00:00, high] = -0.0
+binaries: []
+integers: []
+continuous:
+    - costs(periodic)
+    - costs(temporal)
+    - "costs(temporal)|per_timestep"
+    - costs
+    - Penalty
+    - "Boiler(Q_fu)|flow_rate"
+    - "Boiler(Q_fu)|total_flow_hours"
+    - "Boiler(Q_th)|flow_rate"
+    - "Boiler(Q_th)|total_flow_hours"
+    - "HeatLoad(Q_th)|flow_rate"
+    - "HeatLoad(Q_th)|total_flow_hours"
+    - "GasSource(Q_Gas)|flow_rate"
+    - "GasSource(Q_Gas)|total_flow_hours"
+    - "GasSource(Q_Gas)->costs(temporal)"
+    - "Heat|excess_input"
+    - "Heat|excess_output"
+    - "Heat->Penalty"
+    - "Gas|excess_input"
+    - "Gas|excess_output"
+    - "Gas->Penalty"
+infeasible_constraints: ''

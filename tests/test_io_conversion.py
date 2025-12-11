@@ -1,5 +1,8 @@
 """Tests for the IO conversion utilities for backwards compatibility."""
 
+import pathlib
+
+import pytest
 import xarray as xr
 
 from flixopt.io import (
@@ -666,3 +669,73 @@ class TestFlowSystemFromOldResults:
         loaded = fx.FlowSystem.from_netcdf(new_path)
         assert loaded is not None
         assert loaded.solution is not None
+
+
+class TestV4APIConversion:
+    """Tests for converting v4 API result files to the new format."""
+
+    V4_API_PATH = pathlib.Path(__file__).parent / 'ressources' / 'v4-api'
+
+    # All result names in the v4-api folder
+    V4_RESULT_NAMES = [
+        '00_minimal',
+        '01_simple',
+        '02_complex',
+        '04_scenarios',
+        'io_flow_system_base',
+        'io_flow_system_long',
+        'io_flow_system_segments',
+        'io_simple_flow_system',
+        'io_simple_flow_system_scenarios',
+    ]
+
+    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
+    def test_v4_results_can_be_loaded(self, result_name):
+        """Test that v4 API results can be loaded."""
+        import flixopt as fx
+
+        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
+
+        # Verify FlowSystem was loaded
+        assert fs is not None
+        assert fs.name == result_name
+
+        # Verify solution was attached
+        assert fs.solution is not None
+        assert len(fs.solution.data_vars) > 0
+
+        # Verify we have components
+        assert len(fs.components) > 0
+
+    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
+    def test_v4_results_can_be_saved_and_reloaded(self, result_name, tmp_path):
+        """Test that v4 API results can be saved in new format and reloaded."""
+        import flixopt as fx
+
+        # Load old results
+        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
+
+        # Save in new format
+        new_path = tmp_path / f'{result_name}_migrated.nc'
+        fs.to_netcdf(new_path)
+
+        # Reload and verify
+        loaded = fx.FlowSystem.from_netcdf(new_path)
+        assert loaded is not None
+        assert loaded.solution is not None
+        assert len(loaded.solution.data_vars) == len(fs.solution.data_vars)
+        assert len(loaded.components) == len(fs.components)
+
+    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
+    def test_v4_solution_variables_accessible(self, result_name):
+        """Test that solution variables from v4 results are accessible."""
+        import flixopt as fx
+
+        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
+
+        # Check that we can access solution variables
+        for var_name in list(fs.solution.data_vars)[:5]:  # Check first 5 variables
+            var = fs.solution[var_name]
+            assert var is not None
+            # Variables should have data
+            assert var.size > 0

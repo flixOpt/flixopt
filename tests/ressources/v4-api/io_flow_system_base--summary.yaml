@@ -1,0 +1,56 @@
+Name: io_flow_system_base
+Number of timesteps: 9
+Calculation Type: FullCalculation
+Constraints: 536
+Variables: 454
+Main Results:
+    Objective: -11597.87
+    Penalty: 0.0
+    Effects:
+        CO2 [kg]:
+            temporal: 1293.19
+            periodic: 1.0
+            total: 1294.19
+        costs [€]:
+            temporal: -13898.87
+            periodic: 2301.0
+            total: -11597.87
+        PE [kWh_PE]:
+            temporal: -0.0
+            periodic: 200.0
+            total: 200.0
+    Invest-Decisions:
+        Invested:
+            Kessel(Q_th): 50.0
+            Speicher: 100.0
+        Not invested: {}
+    Buses with excess: []
+Durations:
+    modeling: 0.95
+    solving: 1.54
+    saving: 0.0
+Config:
+    config_name: flixopt
+    logging:
+        level: INFO
+        file: null
+        console: false
+        max_file_size: 10485760
+        backup_count: 5
+        verbose_tracebacks: false
+    modeling:
+        big: 10000000
+        epsilon: 1.0e-05
+        big_binary_bound: 100000
+    solving:
+        mip_gap: 0.01
+        time_limit_seconds: 300
+        log_to_console: false
+        log_main_results: false
+    plotting:
+        default_show: false
+        default_engine: plotly
+        default_dpi: 300
+        default_facet_cols: 3
+        default_sequential_colorscale: turbo
+        default_qualitative_colorscale: plotly
