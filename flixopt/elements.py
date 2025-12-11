@@ -582,6 +582,32 @@ class Flow(Element):
                 f'A size is required because flow_rate = size * fixed_relative_profile.'
             )
 
+        # Size is required when using non-default relative bounds (flow_rate = size * relative_bound)
+        if self.size is None and np.any(self.relative_minimum > 0):
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has relative_minimum > 0 but no size defined. '
+                f'A size is required because the lower bound is size * relative_minimum.'
+            )
+
+        if self.size is None and np.any(self.relative_maximum < 1):
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has relative_maximum != 1 but no size defined. '
+                f'A size is required because the upper bound is size * relative_maximum.'
+            )
+
+        # Size is required for load factor constraints (total_flow_hours / size)
+        if self.size is None and self.load_factor_min is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has load_factor_min but no size defined. '
+                f'A size is required because the constraint is total_flow_hours >= size * load_factor_min * hours.'
+            )
+
+        if self.size is None and self.load_factor_max is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has load_factor_max but no size defined. '
+                f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
+            )
+
         if self.fixed_relative_profile is not None and self.status_parameters is not None:
             logger.warning(
                 f'Flow {self.label_full} has both a fixed_relative_profile and status_parameters.'
