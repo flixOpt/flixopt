@@ -361,3 +361,264 @@ class TestFullConversionScenario:
         assert result['effects_of_investment_per_size'] == {'costs': 100}
         assert result['effects_of_retirement'] == {'costs': 500}
         assert result['piecewise_effects_of_investment']['__class__'] == 'PiecewiseEffects'
+
+
+class TestEdgeCases:
+    """Tests for edge cases and potential issues."""
+
+    def test_effect_dict_keys_not_renamed(self):
+        """Effect dict keys are effect labels, not parameter names - should NOT be renamed."""
+        old = {
+            'effects_per_flow_hour': {'costs': 100, 'CO2': 50},
+            'fix_effects': {'costs': 1000},  # key should be renamed, but 'costs' value key should not
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        # 'costs' and 'CO2' are effect labels, not parameter names
+        assert result['effects_per_flow_hour'] == {'costs': 100, 'CO2': 50}
+        # 'fix_effects' key should be renamed to 'effects_of_investment'
+        assert 'effects_of_investment' in result
+        # But the nested 'costs' key should remain (it's an effect label)
+        assert result['effects_of_investment'] == {'costs': 1000}
+
+    def test_deeply_nested_structure(self):
+        """Test handling of deeply nested structures (5+ levels)."""
+        old = {
+            'level1': {
+                'level2': {
+                    'level3': {
+                        'level4': {
+                            'level5': {
+                                'on_hours_total_max': 100,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+        assert result['level1']['level2']['level3']['level4']['level5']['on_hours_max'] == 100
+
+    def test_mixed_old_and_new_parameters(self):
+        """Test structure with both old and new parameter names."""
+        old = {
+            'minimum_operation': 0,  # old
+            'minimum_temporal': 10,  # new (should not be double-renamed)
+            'maximum_periodic': 1000,  # new
+            'maximum_invest': 500,  # old
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        # Old should be renamed
+        assert 'minimum_temporal' in result
+        assert 'maximum_periodic' in result
+
+        # Values should be correct (old one gets overwritten if both exist)
+        # This is a potential issue - if both old and new exist, new gets overwritten
+        # In practice this shouldn't happen, but let's document the behavior
+        assert result['minimum_temporal'] == 10  # new value preserved (processed second)
+        assert result['maximum_periodic'] in [500, 1000]  # either could win
+
+    def test_none_values_preserved(self):
+        """Test that None values are preserved."""
+        old = {
+            'minimum_operation': None,
+            'some_param': None,
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+        assert result['minimum_temporal'] is None
+        assert result['some_param'] is None
+
+    def test_boolean_values_preserved(self):
+        """Test that boolean values are preserved."""
+        old = {
+            'mandatory': True,
+            'is_standard': False,
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+        assert result['mandatory'] is True
+        assert result['is_standard'] is False
+
+    def test_numeric_edge_cases(self):
+        """Test numeric edge cases (0, negative, floats)."""
+        old = {
+            'minimum_operation': 0,
+            'maximum_operation': -100,  # negative (unusual but possible)
+            'eta': 0.95,
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+        assert result['minimum_temporal'] == 0
+        assert result['maximum_temporal'] == -100
+        assert result['thermal_efficiency'] == 0.95
+
+    def test_dataarray_reference_strings_preserved(self):
+        """Test that DataArray reference strings are preserved as-is.
+
+        Note: We don't rename inside reference strings like ':::Boiler|Q_fu'
+        because those reference the actual DataArray variable names, which
+        would need separate handling if they also need renaming.
+        """
+        old = {
+            'Q_fu': ':::Boiler|Q_fu',  # key renamed, but ref string preserved
+            'eta': ':::Boiler|eta',
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        # Keys should be renamed
+        assert 'fuel_flow' in result
+        assert 'thermal_efficiency' in result
+
+        # Reference strings should be preserved (they point to DataArray names)
+        assert result['fuel_flow'] == ':::Boiler|Q_fu'
+        assert result['thermal_efficiency'] == ':::Boiler|eta'
+
+    def test_list_of_dicts(self):
+        """Test conversion of lists containing dictionaries."""
+        old = {
+            'flows': [
+                {
+                    '__class__': 'Flow',
+                    'on_off_parameters': {'__class__': 'OnOffParameters'},
+                    'flow_hours_total_max': 100,
+                },
+                {
+                    '__class__': 'Flow',
+                    'flow_hours_total_min': 50,
+                },
+            ]
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        assert len(result['flows']) == 2
+        assert result['flows'][0]['status_parameters']['__class__'] == 'StatusParameters'
+        assert result['flows'][0]['flow_hours_max'] == 100
+        assert result['flows'][1]['flow_hours_min'] == 50
+
+    def test_special_characters_in_labels(self):
+        """Test that special characters in component labels are preserved."""
+        old = {
+            'components': {
+                'CHP_Unit-1': {
+                    '__class__': 'CHP',
+                    'eta_th': 0.4,
+                },
+                'Heat Pump (Main)': {
+                    '__class__': 'HeatPump',
+                    'COP': 3.5,
+                },
+            }
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        # Labels should be preserved exactly
+        assert 'CHP_Unit-1' in result['components']
+        assert 'Heat Pump (Main)' in result['components']
+
+        # Parameters should still be renamed
+        assert result['components']['CHP_Unit-1']['thermal_efficiency'] == 0.4
+        assert result['components']['Heat Pump (Main)']['cop'] == 3.5
+
+    def test_value_rename_only_for_specific_keys(self):
+        """Test that value renames only apply to specific keys."""
+        old = {
+            'initial_charge_state': 'lastValueOfSim',  # should be renamed
+            'other_param': 'lastValueOfSim',  # should NOT be renamed (different key)
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        assert result['initial_charge_state'] == 'equals_final'
+        assert result['other_param'] == 'lastValueOfSim'  # unchanged
+
+    def test_value_rename_with_non_string_value(self):
+        """Test that value renames don't break with non-string values."""
+        old = {
+            'initial_charge_state': 0.5,  # numeric, not string
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        # Should be preserved as-is (value rename only applies to strings)
+        assert result['initial_charge_state'] == 0.5
+
+
+class TestRealWorldScenarios:
+    """Tests with real-world-like data structures."""
+
+    def test_source_with_investment(self):
+        """Test Source component with investment parameters."""
+        old = {
+            '__class__': 'Source',
+            'label': 'GasGrid',
+            'source': [
+                {
+                    '__class__': 'Flow',
+                    'label': 'gas',
+                    'bus': 'gas_bus',
+                    'flow_hours_total_max': 10000,
+                    'invest_parameters': {
+                        '__class__': 'InvestParameters',
+                        'fix_effects': {'costs': 5000},
+                        'specific_effects': {'costs': 100},
+                    },
+                }
+            ],
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        assert 'outputs' in result
+        assert result['outputs'][0]['flow_hours_max'] == 10000
+        assert result['outputs'][0]['invest_parameters']['effects_of_investment'] == {'costs': 5000}
+        assert result['outputs'][0]['invest_parameters']['effects_of_investment_per_size'] == {'costs': 100}
+
+    def test_storage_with_all_old_parameters(self):
+        """Test Storage component with various old parameters."""
+        old = {
+            '__class__': 'Storage',
+            'label': 'Battery',
+            'initial_charge_state': 'lastValueOfSim',
+            'charging': {
+                '__class__': 'Flow',
+                'on_off_parameters': {
+                    '__class__': 'OnOffParameters',
+                    'on_hours_total_max': 100,
+                    'on_hours_total_min': 10,
+                    'switch_on_total_max': 50,
+                },
+            },
+            'discharging': {
+                '__class__': 'Flow',
+                'flow_hours_total_max': 500,
+            },
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        assert result['initial_charge_state'] == 'equals_final'
+        assert result['charging']['status_parameters']['on_hours_max'] == 100
+        assert result['charging']['status_parameters']['on_hours_min'] == 10
+        assert result['charging']['status_parameters']['switch_on_max'] == 50
+        assert result['discharging']['flow_hours_max'] == 500
+
+    def test_effect_with_all_old_parameters(self):
+        """Test Effect with all old parameter names."""
+        old = {
+            '__class__': 'Effect',
+            'label': 'costs',
+            'unit': '€',
+            'minimum_operation': 0,
+            'maximum_operation': 1000000,
+            'minimum_invest': 0,
+            'maximum_invest': 500000,
+            'minimum_operation_per_hour': 0,
+            'maximum_operation_per_hour': 10000,
+        }
+        result = _rename_keys_recursive(old, PARAMETER_RENAMES, VALUE_RENAMES)
+
+        assert result['minimum_temporal'] == 0
+        assert result['maximum_temporal'] == 1000000
+        assert result['minimum_periodic'] == 0
+        assert result['maximum_periodic'] == 500000
+        assert result['minimum_per_hour'] == 0
+        assert result['maximum_per_hour'] == 10000
+
+        # Labels should be preserved
+        assert result['label'] == 'costs'
+        assert result['unit'] == '€'
