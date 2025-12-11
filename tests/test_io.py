@@ -1,8 +1,4 @@
-"""Tests for I/O functionality.
-
-Tests for deprecated Results.to_file() and Results.from_file() API
-have been moved to tests/deprecated/test_results_io.py.
-"""
+"""Tests for I/O functionality."""
 
 import pytest
 
