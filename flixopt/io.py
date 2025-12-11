@@ -657,6 +657,10 @@ PARAMETER_RENAMES = {
     'consecutive_on_hours_max': 'max_uptime',
     'consecutive_off_hours_min': 'min_downtime',
     'consecutive_off_hours_max': 'max_downtime',
+    'force_switch_on': 'force_startup_tracking',
+    'on_hours_min': 'active_hours_min',
+    'on_hours_max': 'active_hours_max',
+    'switch_on_max': 'startup_limit',
     # TimeSeriesData
     'agg_group': 'aggregation_group',
     'agg_weight': 'aggregation_weight',
