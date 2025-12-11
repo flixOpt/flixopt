@@ -138,6 +138,17 @@ class Component(Element):
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
 
+        # Component with status_parameters requires all flows to have sizes set
+        # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
+        if self.status_parameters is not None:
+            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
+            if flows_without_size:
+                raise PlausibilityError(
+                    f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
+                    f'{flows_without_size}. All flows need explicit sizes when the component uses status_parameters '
+                    f'(required for big-M constraints).'
+                )
+
     def _connect_flows(self):
         # Inputs
         for flow in self.inputs:
