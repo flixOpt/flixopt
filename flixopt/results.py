@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import json
 import logging
 import pathlib
 import warnings
@@ -45,6 +46,18 @@ def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
         ValueError: If file cannot be loaded as JSON or YAML
     """
     return fx_io.load_config_file(path)
+
+
+def _get_solution_attr(solution: xr.Dataset, key: str) -> dict:
+    """Get an attribute from solution, decoding JSON if necessary.
+
+    Solution attrs are stored as JSON strings for netCDF compatibility.
+    This helper handles both JSON strings and dicts (for backward compatibility).
+    """
+    value = solution.attrs.get(key, {})
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 class _FlowSystemRestorationError(Exception):
@@ -239,19 +252,25 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         # Create ResultsContainers for better access patterns
         components_dict = {
-            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos)
+            for label, infos in _get_solution_attr(self.solution, 'Components').items()
         }
         self.components = ResultsContainer(
             elements=components_dict, element_type_name='component results', truncate_repr=10
         )
 
-        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {
+            label: BusResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Buses').items()
+        }
         self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
 
-        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {
+            label: EffectResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Effects').items()
+        }
         self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
 
-        if 'Flows' not in self.solution.attrs:
+        flows_attr = _get_solution_attr(self.solution, 'Flows')
+        if not flows_attr:
             warnings.warn(
                 'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
@@ -260,9 +279,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             flows_dict = {}
             self._has_flow_data = False
         else:
-            flows_dict = {
-                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
-            }
+            flows_dict = {label: FlowResults(self, **infos) for label, infos in flows_attr.items()}
             self._has_flow_data = True
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 

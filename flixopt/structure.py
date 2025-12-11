@@ -6,6 +6,7 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 import pathlib
 import re
@@ -169,25 +170,36 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
         solution = super().solution
         solution['objective'] = self.objective.value
+        # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
-            'Components': {
-                comp.label_full: comp.submodel.results_structure()
-                for comp in sorted(
-                    self.flow_system.components.values(), key=lambda component: component.label_full.upper()
-                )
-            },
-            'Buses': {
-                bus.label_full: bus.submodel.results_structure()
-                for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-            },
-            'Effects': {
-                effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
-            },
-            'Flows': {
-                flow.label_full: flow.submodel.results_structure()
-                for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
-            },
+            'Components': json.dumps(
+                {
+                    comp.label_full: comp.submodel.results_structure()
+                    for comp in sorted(
+                        self.flow_system.components.values(), key=lambda component: component.label_full.upper()
+                    )
+                }
+            ),
+            'Buses': json.dumps(
+                {
+                    bus.label_full: bus.submodel.results_structure()
+                    for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                }
+            ),
+            'Effects': json.dumps(
+                {
+                    effect.label_full: effect.submodel.results_structure()
+                    for effect in sorted(
+                        self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
+                    )
+                }
+            ),
+            'Flows': json.dumps(
+                {
+                    flow.label_full: flow.submodel.results_structure()
+                    for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                }
+            ),
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
