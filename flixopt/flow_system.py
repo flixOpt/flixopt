@@ -754,6 +754,78 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         flow_system.name = path.stem
         return flow_system
 
+    @classmethod
+    def from_old_results(cls, folder: str | pathlib.Path, name: str) -> FlowSystem:
+        """
+        Load a FlowSystem from old-format Results files (pre-v5 API).
+
+        This method loads results saved with the deprecated Results API
+        (which used multiple files) and converts them to a FlowSystem with
+        the solution attached.
+
+        The parameter names are automatically converted from older flixopt
+        versions to the current naming conventions.
+
+        Args:
+            folder: Directory containing the saved result files
+            name: Base name of the saved files (without extensions)
+
+        Returns:
+            FlowSystem instance with solution attached
+
+        Warning:
+            This is a best-effort migration utility. It loads the FlowSystem
+            structure and solution data, but does NOT provide the full
+            functionality of the old Results class:
+
+            - The linopy model is NOT loaded
+            - Element submodels are NOT recreated
+            - No re-optimization possible without calling optimize() again
+            - Summary metadata (solver info, timing) is NOT loaded
+
+            For full results analysis, the solution data is available via
+            ``flow_system.solution`` as an xarray Dataset.
+
+        Examples:
+            ```python
+            # Load old results and get FlowSystem with solution
+            fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
+
+            # Access solution data
+            fs.solution['Boiler|flow_rate'].plot()
+
+            # Save in new single-file format
+            fs.to_netcdf('my_optimization.nc')
+            ```
+        """
+        import json
+
+        from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
+
+        folder = pathlib.Path(folder)
+
+        # Load datasets directly (old format used --flow_system.nc4 and --solution.nc4)
+        flow_system_path = folder / f'{name}--flow_system.nc4'
+        solution_path = folder / f'{name}--solution.nc4'
+
+        flow_system_data = load_dataset_from_netcdf(flow_system_path)
+        solution = load_dataset_from_netcdf(solution_path)
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(flow_system_data)
+
+        # Reconstruct FlowSystem
+        flow_system = cls.from_dataset(flow_system_data)
+        flow_system.name = name
+
+        # Attach solution (convert attrs from dicts to JSON strings for consistency)
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+        flow_system.solution = solution
+
+        return flow_system
+
     def copy(self) -> FlowSystem:
         """Create a copy of the FlowSystem without optimization state.
 

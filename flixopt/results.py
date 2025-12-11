@@ -238,7 +238,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         warnings.warn(
             f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
             'Access results directly via FlowSystem.solution after optimization, or use the '
-            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)).',
+            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)). '
+            'To load old result files, use FlowSystem.from_old_results(folder, name).',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1134,6 +1135,10 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         This method migrates results from the deprecated Results format to the
         new FlowSystem-based format, enabling use of the modern API.
 
+        Note:
+            For loading old results files directly, consider using
+            ``FlowSystem.from_old_results(folder, name)`` instead.
+
         Returns:
             FlowSystem: A FlowSystem instance with the solution data attached.
 
@@ -1161,6 +1166,11 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             flow_system.to_netcdf('my_optimization.nc')
             ```
         """
+        from flixopt.io import convert_old_dataset
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(self.flow_system_data)
+
         # Reconstruct FlowSystem from stored data
         flow_system = FlowSystem.from_dataset(self.flow_system_data)
 

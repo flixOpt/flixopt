@@ -622,3 +622,47 @@ class TestRealWorldScenarios:
         # Labels should be preserved
         assert result['label'] == 'costs'
         assert result['unit'] == '€'
+
+
+class TestFlowSystemFromOldResults:
+    """Tests for FlowSystem.from_old_results() method."""
+
+    def test_load_old_results_from_resources(self):
+        """Test loading old results files from test resources."""
+        import pathlib
+
+        import flixopt as fx
+
+        resources_path = pathlib.Path(__file__).parent / 'ressources'
+
+        # Load old results using new method
+        fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
+
+        # Verify FlowSystem was loaded
+        assert fs is not None
+        assert fs.name == 'Sim1'
+
+        # Verify solution was attached
+        assert fs.solution is not None
+        assert len(fs.solution.data_vars) > 0
+
+    def test_old_results_can_be_saved_new_format(self, tmp_path):
+        """Test that old results can be saved in new single-file format."""
+        import pathlib
+
+        import flixopt as fx
+
+        resources_path = pathlib.Path(__file__).parent / 'ressources'
+
+        # Load old results
+        fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
+
+        # Save in new format
+        new_path = tmp_path / 'migrated.nc'
+        fs.to_netcdf(new_path)
+
+        # Verify the new file exists and can be loaded
+        assert new_path.exists()
+        loaded = fx.FlowSystem.from_netcdf(new_path)
+        assert loaded is not None
+        assert loaded.solution is not None
