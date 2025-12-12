@@ -220,6 +220,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
+        # Topology accessor cache - lazily initialized, invalidated on structure change
+        self._topology: TopologyAccessor | None = None
+
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
 
@@ -1369,7 +1372,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Invalidate the model and element submodels when structure changes.
 
         This clears the model, resets the ``connected_and_transformed`` flag,
-        and clears all element submodels and variable/constraint names.
+        clears all element submodels and variable/constraint names, and invalidates
+        the topology accessor cache.
 
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
@@ -1380,6 +1384,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.model = None
         self._connected_and_transformed = False
+        self._topology = None  # Invalidate topology accessor (and its cached colors)
         for element in self.values():
             element.submodel = None
             element._variable_names = []
@@ -1537,11 +1542,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Access network topology inspection and visualization methods.
 
-        This property returns a TopologyAccessor that provides methods to inspect
-        the network structure and visualize it.
+        This property returns a cached TopologyAccessor that provides methods to inspect
+        the network structure and visualize it. The accessor is invalidated when the
+        FlowSystem structure changes (via reset() or invalidate()).
 
         Returns:
-            A TopologyAccessor instance.
+            A cached TopologyAccessor instance.
 
         Examples:
             Visualize the network:
@@ -1559,7 +1565,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             >>> nodes, edges = flow_system.topology.infos()
         """
-        return TopologyAccessor(self)
+        if self._topology is None:
+            self._topology = TopologyAccessor(self)
+        return self._topology
 
     def plot_network(
         self,

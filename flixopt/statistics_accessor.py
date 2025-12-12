@@ -411,7 +411,6 @@ class StatisticsAccessor:
         self._temporal_effects: xr.Dataset | None = None
         self._periodic_effects: xr.Dataset | None = None
         self._total_effects: xr.Dataset | None = None
-        self._carrier_colors: dict[str, str] | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -425,12 +424,34 @@ class StatisticsAccessor:
     def carrier_colors(self) -> dict[str, str]:
         """Cached mapping of carrier name to color.
 
+        Delegates to topology accessor for centralized color caching.
+
         Returns:
             Dict mapping carrier names (lowercase) to hex color strings.
         """
-        if self._carrier_colors is None:
-            self._carrier_colors = {name: carrier.color for name, carrier in self._fs.carriers.items() if carrier.color}
-        return self._carrier_colors
+        return self._fs.topology.carrier_colors
+
+    @property
+    def component_colors(self) -> dict[str, str]:
+        """Cached mapping of component label to color.
+
+        Delegates to topology accessor for centralized color caching.
+
+        Returns:
+            Dict mapping component labels to hex color strings.
+        """
+        return self._fs.topology.component_colors
+
+    @property
+    def bus_colors(self) -> dict[str, str]:
+        """Cached mapping of bus label to color (from carrier).
+
+        Delegates to topology accessor for centralized color caching.
+
+        Returns:
+            Dict mapping bus labels to hex color strings.
+        """
+        return self._fs.topology.bus_colors
 
     @property
     def plot(self) -> StatisticsPlotAccessor:
@@ -1293,7 +1314,7 @@ class StatisticsPlotAccessor:
     def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
         """Build color map for balance plot.
 
-        - Bus balance: colors from component.color
+        - Bus balance: colors from component.color (using cached component_colors)
         - Component balance: colors from flow's carrier (using cached carrier_colors)
 
         Raises:
@@ -1308,13 +1329,16 @@ class StatisticsPlotAccessor:
         color_map = {}
         uncolored = []
 
-        # Get cached carrier colors for efficient lookup
+        # Get cached colors for efficient lookup
         carrier_colors = self._stats.carrier_colors
+        component_colors = self._stats.component_colors
         flow_rates = self._stats.flow_rates
 
         for label in flow_labels:
             if is_bus:
-                color = self._fs.components[self._fs.flows[label].component].color
+                # Use cached component colors
+                comp_label = self._fs.flows[label].component
+                color = component_colors.get(comp_label)
             else:
                 # Use carrier name from xarray attribute (already computed) + cached colors
                 carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
@@ -1529,16 +1553,17 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
 
-        # Use component colors for flows
+        # Use cached component colors for flows
         if colors is None:
+            component_colors = self._stats.component_colors
             color_map = {}
             uncolored = []
             for label in ds.data_vars:
                 flow = self._fs.flows.get(label)
                 if flow:
-                    comp = self._fs.components.get(flow.component)
-                    if comp and comp.color:
-                        color_map[label] = comp.color
+                    color = component_colors.get(flow.component)
+                    if color:
+                        color_map[label] = color
                         continue
                 uncolored.append(label)
             if uncolored:
