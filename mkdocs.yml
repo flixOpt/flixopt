@@ -64,6 +64,8 @@ nav:
     - Scenarios & Scaling:
       - Scenarios and Periods: notebooks/07-scenarios-and-periods.ipynb
       - Large-Scale Optimization: notebooks/08-large-scale-optimization.ipynb
+    - Results & Visualization:
+      - Plotting and Data Access: notebooks/09-plotting-and-data-access.ipynb
 
   - API Reference: api-reference/
 
