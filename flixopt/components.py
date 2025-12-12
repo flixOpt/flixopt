@@ -525,21 +525,23 @@ class Storage(Component):
                 maximum_capacity = self.capacity_in_flow_hours
                 minimum_capacity = self.capacity_in_flow_hours
 
-            # Initial capacity should not constraint investment decision
-            minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-            maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+            # Initial charge state should not constrain investment decision
+            # If initial > (min_cap * rel_max), investment is forced to increase capacity
+            # If initial < (max_cap * rel_min), investment is forced to decrease capacity
+            min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
+            max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
             # Only perform numeric comparisons if not using 'equals_final'
             if not initial_equals_final:
-                if (self.initial_charge_state > maximum_initial_capacity).any():
+                if (self.initial_charge_state > max_initial_at_min_capacity).any():
                     raise PlausibilityError(
                         f'{self.label_full}: {self.initial_charge_state=} '
-                        f'is constraining the investment decision. Chosse a value above {maximum_initial_capacity}'
+                        f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
                     )
-                if (self.initial_charge_state < minimum_initial_capacity).any():
+                if (self.initial_charge_state < min_initial_at_max_capacity).any():
                     raise PlausibilityError(
                         f'{self.label_full}: {self.initial_charge_state=} '
-                        f'is constraining the investment decision. Chosse a value below {minimum_initial_capacity}'
+                        f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
                     )
 
         if self.balanced:
