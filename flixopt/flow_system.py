@@ -707,7 +707,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, overwrite: bool = True):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -718,7 +718,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             path: The path to the netCDF file. Parent directories are created if they don't exist.
             compression: The compression level to use when saving the file (0-9).
-            overwrite: If True (default), overwrite existing file. If False, raise error if file exists.
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.
