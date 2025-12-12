@@ -289,6 +289,7 @@ class TransformAccessor:
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        fill_gaps: Literal['ffill', 'bfill', 'interpolate'] | None = None,
         **kwargs: Any,
     ) -> FlowSystem:
         """
@@ -304,10 +305,17 @@ class TransformAccessor:
                 If None, computed from the last time interval.
             hours_of_previous_timesteps: Duration of previous timesteps after resampling.
                 If None, computed from the first time interval. Can be a scalar or array.
+            fill_gaps: Strategy for filling gaps (NaN values) that arise when resampling
+                irregular timesteps to regular intervals. Options: 'ffill' (forward fill),
+                'bfill' (backward fill), 'interpolate' (linear interpolation).
+                If None (default), raises an error when gaps are detected.
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
             FlowSystem: New resampled FlowSystem (no solution).
+
+        Raises:
+            ValueError: If resampling creates gaps and fill_gaps is not specified.
 
         Examples:
             >>> # Resample to 4-hour intervals
@@ -329,6 +337,7 @@ class TransformAccessor:
             method=method,
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
+            fill_gaps=fill_gaps,
             **kwargs,
         )
         return FlowSystem.from_dataset(ds)  # from_dataset doesn't include solution
@@ -443,6 +452,7 @@ class TransformAccessor:
         method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
+        fill_gaps: Literal['ffill', 'bfill', 'interpolate'] | None = None,
         **kwargs: Any,
     ) -> xr.Dataset:
         """
@@ -454,10 +464,17 @@ class TransformAccessor:
             method: Resampling method (e.g., 'mean', 'sum', 'first')
             hours_of_last_timestep: Duration of the last timestep after resampling.
             hours_of_previous_timesteps: Duration of previous timesteps after resampling.
+            fill_gaps: Strategy for filling gaps (NaN values) that arise when resampling
+                irregular timesteps to regular intervals. Options: 'ffill' (forward fill),
+                'bfill' (backward fill), 'interpolate' (linear interpolation).
+                If None (default), raises an error when gaps are detected.
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
             xr.Dataset: Resampled dataset
+
+        Raises:
+            ValueError: If resampling creates gaps and fill_gaps is not specified.
         """
         from .flow_system import FlowSystem
 
@@ -473,11 +490,29 @@ class TransformAccessor:
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
-        # Fill NaN values that may arise from resampling irregular timesteps to regular intervals.
+        # Handle NaN values that may arise from resampling irregular timesteps to regular intervals.
         # When irregular data (e.g., [00:00, 01:00, 03:00]) is resampled to regular intervals (e.g., '1h'),
-        # bins without data (e.g., 02:00) get NaN. We fill these using interpolation for continuity.
+        # bins without data (e.g., 02:00) get NaN.
         if resampled_time_dataset.isnull().any().to_array().any():
-            resampled_time_dataset = resampled_time_dataset.ffill(dim='time').bfill(dim='time')
+            if fill_gaps is None:
+                # Find which variables have NaN values for a helpful error message
+                vars_with_nans = [
+                    name for name in resampled_time_dataset.data_vars if resampled_time_dataset[name].isnull().any()
+                ]
+                raise ValueError(
+                    f'Resampling created gaps (NaN values) in variables: {vars_with_nans}. '
+                    f'This typically happens when resampling irregular timesteps to regular intervals. '
+                    f"Specify fill_gaps='ffill', 'bfill', or 'interpolate' to handle gaps, "
+                    f'or resample to a coarser frequency.'
+                )
+            elif fill_gaps == 'ffill':
+                resampled_time_dataset = resampled_time_dataset.ffill(dim='time').bfill(dim='time')
+            elif fill_gaps == 'bfill':
+                resampled_time_dataset = resampled_time_dataset.bfill(dim='time').ffill(dim='time')
+            elif fill_gaps == 'interpolate':
+                resampled_time_dataset = resampled_time_dataset.interpolate_na(dim='time', method='linear')
+                # Handle edges that can't be interpolated
+                resampled_time_dataset = resampled_time_dataset.ffill(dim='time').bfill(dim='time')
 
         if non_time_var_names:
             non_time_dataset = dataset[non_time_var_names]
