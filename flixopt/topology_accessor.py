@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
 
-from .color_processing import ColorType, process_colors
+from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 
 if TYPE_CHECKING:
@@ -67,13 +67,15 @@ def _plot_network(
         )
 
     for edge in edge_infos.values():
+        # Use carrier color if available, otherwise default gray
+        edge_color = edge.get('carrier_color', '#222831') or '#222831'
         net.add_edge(
             edge['start'],
             edge['end'],
             label=edge['label'],
             title=edge['infos'].replace(')', '\n)'),
             font={'color': '#4D4D4D', 'size': 14},
-            color='#222831',
+            color=edge_color,
         )
 
     net.barnes_hut(central_gravity=0.8, spring_length=50, spring_strength=0.05, gravity=-10000)
@@ -138,6 +140,67 @@ class TopologyAccessor:
         """
         self._fs = flow_system
 
+        # Cached color mappings (lazily initialized)
+        self._carrier_colors: dict[str, str] | None = None
+        self._component_colors: dict[str, str] | None = None
+        self._bus_colors: dict[str, str] | None = None
+
+    @property
+    def carrier_colors(self) -> dict[str, str]:
+        """Cached mapping of carrier name to hex color.
+
+        Returns:
+            Dict mapping carrier names (lowercase) to hex color strings.
+            Only carriers with a color defined are included.
+
+        Examples:
+            >>> fs.topology.carrier_colors
+            {'electricity': '#FECB52', 'heat': '#D62728', 'gas': '#1F77B4'}
+        """
+        if self._carrier_colors is None:
+            self._carrier_colors = {name: carrier.color for name, carrier in self._fs.carriers.items() if carrier.color}
+        return self._carrier_colors
+
+    @property
+    def component_colors(self) -> dict[str, str]:
+        """Cached mapping of component label to hex color.
+
+        Returns:
+            Dict mapping component labels to hex color strings.
+            Only components with a color defined are included.
+
+        Examples:
+            >>> fs.topology.component_colors
+            {'Boiler': '#1f77b4', 'CHP': '#ff7f0e', 'HeatPump': '#2ca02c'}
+        """
+        if self._component_colors is None:
+            self._component_colors = {label: comp.color for label, comp in self._fs.components.items() if comp.color}
+        return self._component_colors
+
+    @property
+    def bus_colors(self) -> dict[str, str]:
+        """Cached mapping of bus label to hex color (from carrier).
+
+        Bus colors are derived from their associated carrier's color.
+
+        Returns:
+            Dict mapping bus labels to hex color strings.
+            Only buses with a carrier that has a color defined are included.
+
+        Examples:
+            >>> fs.topology.bus_colors
+            {'ElectricityBus': '#FECB52', 'HeatBus': '#D62728'}
+        """
+        if self._bus_colors is None:
+            carrier_colors = self.carrier_colors
+            self._bus_colors = {}
+            for label, bus in self._fs.buses.items():
+                if bus.carrier:
+                    color = carrier_colors.get(bus.carrier.lower())
+                    if color:
+                        self._bus_colors[label] = color
+        return self._bus_colors
+
     def infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         """
         Get network topology information as dictionaries.
@@ -168,15 +231,20 @@ class TopologyAccessor:
             for node in chain(self._fs.components.values(), self._fs.buses.values())
         }
 
-        edges = {
-            flow.label_full: {
+        # Use cached colors for efficient lookup
+        flow_carriers = self._fs.flow_carriers
+        carrier_colors = self.carrier_colors
+
+        edges = {}
+        for flow in self._fs.flows.values():
+            carrier_name = flow_carriers.get(flow.label_full)
+            edges[flow.label_full] = {
                 'label': flow.label,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
                 'end': flow.component if flow.is_input_in_component else flow.bus,
                 'infos': flow.__str__(),
+                'carrier_color': carrier_colors.get(carrier_name) if carrier_name else None,
             }
-            for flow in self._fs.flows.values()
-        }
 
         return nodes, edges
 
@@ -235,6 +303,7 @@ class TopologyAccessor:
             'value': [],
             'label': [],
             'customdata': [],  # For hover text
+            'color': [],  # Carrier-based colors
         }
 
         # Collect node hover info (format repr for HTML display)
@@ -243,6 +312,10 @@ class TopologyAccessor:
             node_hover[comp.label] = repr(comp).replace('\n', '<br>')
         for bus in self._fs.buses.values():
             node_hover[bus.label] = repr(bus).replace('\n', '<br>')
+
+        # Use cached colors for efficient lookup
+        flow_carriers = self._fs.flow_carriers
+        carrier_colors = self.carrier_colors
 
         for flow in self._fs.flows.values():
             bus_label = flow.bus
@@ -263,21 +336,35 @@ class TopologyAccessor:
             links['label'].append(flow.label_full)
             links['customdata'].append(repr(flow).replace('\n', '<br>'))  # Flow repr for hover
 
+            # Get carrier color for this flow (subtle/semi-transparent) using cached colors
+            carrier_name = flow_carriers.get(flow.label_full)
+            color = carrier_colors.get(carrier_name) if carrier_name else None
+            links['color'].append(hex_to_rgba(color, alpha=0.4) if color else hex_to_rgba('', alpha=0.4))
+
         # Create figure
         node_list = list(nodes)
         node_indices = {n: i for i, n in enumerate(node_list)}
 
-        # Get colors for buses only, then apply to all nodes
-        bus_labels = [bus.label for bus in self._fs.buses.values()]
-        bus_color_map = process_colors(colors, bus_labels)
+        # Get colors for buses and components using cached colors
+        bus_colors_cached = self.bus_colors
+        component_colors_cached = self.component_colors
 
-        # Assign colors to nodes: buses get their color, components get a neutral gray
+        # If user provided colors, process them for buses
+        if colors is not None:
+            bus_labels = [bus.label for bus in self._fs.buses.values()]
+            bus_color_map = process_colors(colors, bus_labels)
+        else:
+            bus_color_map = bus_colors_cached
+
+        # Assign colors to nodes: buses get their color, components get their color or neutral gray
         node_colors = []
         for node in node_list:
             if node in bus_color_map:
                 node_colors.append(bus_color_map[node])
+            elif node in component_colors_cached:
+                node_colors.append(component_colors_cached[node])
             else:
-                # Component - use a neutral gray
+                # Fallback - use a neutral gray
                 node_colors.append('#808080')
 
         # Build hover text for nodes
@@ -302,6 +389,7 @@ class TopologyAccessor:
                         label=links['label'],
                         customdata=links['customdata'],
                         hovertemplate='%{customdata}<extra></extra>',
+                        color=links['color'],  # Carrier-based colors
                     ),
                 )
             ]
