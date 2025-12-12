@@ -245,13 +245,20 @@ def _filter_by_pattern(
     return result
 
 
-def _apply_selection(ds: xr.Dataset, select: SelectType | None) -> xr.Dataset:
-    """Apply xarray-style selection to dataset."""
+def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = True) -> xr.Dataset:
+    """Apply xarray-style selection to dataset.
+
+    Args:
+        ds: Dataset to select from.
+        select: xarray-style selection dict.
+        drop: If True (default), drop dimensions that become scalar after selection.
+            This prevents auto-faceting when selecting a single value.
+    """
     if select is None:
         return ds
     valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
     if valid_select:
-        ds = ds.sel(valid_select)
+        ds = ds.sel(valid_select, drop=drop)
     return ds
 
 
