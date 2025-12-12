@@ -30,7 +30,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import xarray as xr
 
-from .color_processing import ColorType, process_colors
+from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
@@ -457,13 +457,13 @@ class StatisticsAccessor:
         self._require_solution()
         if self._flow_rates is None:
             flow_rate_vars = [v for v in self._fs.solution.data_vars if v.endswith('|flow_rate')]
+            flow_carriers = self._fs.flow_carriers  # Cached lookup
             data_vars = {}
             for v in flow_rate_vars:
                 flow_label = v.replace('|flow_rate', '')
                 da = self._fs.solution[v].copy()
-                # Add carrier as attribute
-                carrier = self._fs.get_carrier(flow_label)
-                da.attrs['carrier'] = carrier.name if carrier else None
+                # Add carrier as attribute (from cached mapping)
+                da.attrs['carrier'] = flow_carriers.get(flow_label)
                 data_vars[flow_label] = da
             self._flow_rates = xr.Dataset(data_vars)
         return self._flow_rates
@@ -1004,27 +1004,11 @@ class SankeyPlotAccessor:
 
         # Use cached carrier colors for efficiency
         carrier_colors = self._stats.carrier_colors
-        default_gray = 'rgba(200, 200, 200, 0.4)'
 
         link_colors = []
         for carrier_name in carriers:
-            if carrier_name is None:
-                link_colors.append(default_gray)
-                continue
-
-            hex_color = carrier_colors.get(carrier_name.lower() if carrier_name else '')
-            if hex_color:
-                # Convert hex color to rgba with transparency
-                hex_color = hex_color.lstrip('#')
-                if len(hex_color) == 6:
-                    r = int(hex_color[0:2], 16)
-                    g = int(hex_color[2:4], 16)
-                    b = int(hex_color[4:6], 16)
-                    link_colors.append(f'rgba({r}, {g}, {b}, 0.4)')
-                else:
-                    link_colors.append(default_gray)
-            else:
-                link_colors.append(default_gray)
+            hex_color = carrier_colors.get(carrier_name.lower()) if carrier_name else None
+            link_colors.append(hex_to_rgba(hex_color, alpha=0.4) if hex_color else hex_to_rgba('', alpha=0.4))
 
         return link_colors
 

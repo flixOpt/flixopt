@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
 
-from .color_processing import ColorType, process_colors
+from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 
 if TYPE_CHECKING:
@@ -170,9 +170,14 @@ class TopologyAccessor:
             for node in chain(self._fs.components.values(), self._fs.buses.values())
         }
 
+        # Use cached flow_carriers for efficient carrier lookup
+        flow_carriers = self._fs.flow_carriers
+        carriers = self._fs.carriers
+
         edges = {}
         for flow in self._fs.flows.values():
-            carrier = self._fs.get_carrier(flow.label_full)
+            carrier_name = flow_carriers.get(flow.label_full)
+            carrier = carriers.get(carrier_name) if carrier_name else None
             edges[flow.label_full] = {
                 'label': flow.label,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
@@ -248,6 +253,10 @@ class TopologyAccessor:
         for bus in self._fs.buses.values():
             node_hover[bus.label] = repr(bus).replace('\n', '<br>')
 
+        # Use cached flow_carriers for efficient carrier lookup
+        flow_carriers = self._fs.flow_carriers
+        carriers = self._fs.carriers
+
         for flow in self._fs.flows.values():
             bus_label = flow.bus
             comp_label = flow.component
@@ -268,18 +277,10 @@ class TopologyAccessor:
             links['customdata'].append(repr(flow).replace('\n', '<br>'))  # Flow repr for hover
 
             # Get carrier color for this flow (subtle/semi-transparent)
-            carrier = self._fs.get_carrier(flow.label_full)
-            if carrier and carrier.color:
-                hex_color = carrier.color.lstrip('#')
-                if len(hex_color) == 6:
-                    r = int(hex_color[0:2], 16)
-                    g = int(hex_color[2:4], 16)
-                    b = int(hex_color[4:6], 16)
-                    links['color'].append(f'rgba({r}, {g}, {b}, 0.4)')
-                else:
-                    links['color'].append('rgba(200, 200, 200, 0.4)')
-            else:
-                links['color'].append('rgba(200, 200, 200, 0.4)')
+            carrier_name = flow_carriers.get(flow.label_full)
+            carrier = carriers.get(carrier_name) if carrier_name else None
+            color = carrier.color if carrier and carrier.color else None
+            links['color'].append(hex_to_rgba(color, alpha=0.4) if color else hex_to_rgba('', alpha=0.4))
 
         # Create figure
         node_list = list(nodes)

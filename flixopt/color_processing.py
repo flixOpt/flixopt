@@ -109,6 +109,37 @@ def _rgb_string_to_hex(color: str) -> str:
         return color
 
 
+def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
+    """Convert hex color to RGBA string format.
+
+    Args:
+        hex_color: Color in hex format '#RRGGBB' or 'RRGGBB'.
+        alpha: Alpha/opacity value between 0.0 and 1.0.
+
+    Returns:
+        Color in RGBA format 'rgba(R, G, B, A)'.
+
+    Examples:
+        >>> hex_to_rgba('#FF0000')
+        'rgba(255, 0, 0, 1.0)'
+        >>> hex_to_rgba('#FF0000', 0.5)
+        'rgba(255, 0, 0, 0.5)'
+        >>> hex_to_rgba('invalid')
+        'rgba(200, 200, 200, 1.0)'
+    """
+    try:
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 6:
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            return f'rgba({r}, {g}, {b}, {alpha})'
+    except (ValueError, AttributeError):
+        pass
+    # Fallback to gray
+    return f'rgba(200, 200, 200, {alpha})'
+
+
 def process_colors(
     colors: None | str | list[str] | dict[str, str],
     labels: list[str],

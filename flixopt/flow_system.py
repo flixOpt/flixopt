@@ -223,6 +223,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
 
+        # Cached flow→carrier mapping (built lazily after connect_and_transform)
+        self._flow_carriers: dict[str, str] | None = None
+
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
         self.scenario_independent_flow_rates = scenario_independent_flow_rates
@@ -1186,6 +1189,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def carriers(self) -> CarrierContainer:
         """Carriers registered on this FlowSystem."""
         return self._carriers
+
+    @property
+    def flow_carriers(self) -> dict[str, str]:
+        """Cached mapping of flow labels to carrier names.
+
+        Returns:
+            Dict mapping flow label to carrier name (lowercase).
+            Flows without a carrier are not included.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        if self._flow_carriers is None:
+            self._flow_carriers = {}
+            for flow_label, flow in self.flows.items():
+                bus = self.buses.get(flow.bus)
+                if bus and bus.carrier:
+                    self._flow_carriers[flow_label] = bus.carrier.lower()
+
+        return self._flow_carriers
 
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
