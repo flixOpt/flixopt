@@ -473,6 +473,12 @@ class TransformAccessor:
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
+        # Fill NaN values that may arise from resampling irregular timesteps to regular intervals.
+        # When irregular data (e.g., [00:00, 01:00, 03:00]) is resampled to regular intervals (e.g., '1h'),
+        # bins without data (e.g., 02:00) get NaN. We fill these using interpolation for continuity.
+        if resampled_time_dataset.isnull().any().to_array().any():
+            resampled_time_dataset = resampled_time_dataset.ffill(dim='time').bfill(dim='time')
+
         if non_time_var_names:
             non_time_dataset = dataset[non_time_var_names]
             result = xr.merge([resampled_time_dataset, non_time_dataset])
