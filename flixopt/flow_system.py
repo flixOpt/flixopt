@@ -711,9 +711,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
 
-        # Mark as connected since to_netcdf enforces connected_and_transformed state.
-        # The solution (if present) is stored separately and not affected by this flag.
-        flow_system._connected_and_transformed = True
+        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
+        flow_system.connect_and_transform()
 
         return flow_system
 
