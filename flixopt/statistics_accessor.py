@@ -48,6 +48,14 @@ FilterType = str | list[str]
 """For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
 
 
+# Sankey select types with Literal keys for IDE autocomplete
+FlowSankeySelect = dict[Literal['flow', 'bus', 'component', 'time', 'period', 'scenario'], Any]
+"""Select options for flow-based sankey: flow, bus, component, time, period, scenario."""
+
+EffectsSankeySelect = dict[Literal['effect', 'component', 'contributor', 'period', 'scenario'], Any]
+"""Select options for effects sankey: effect, component, contributor, period, scenario."""
+
+
 def _reshape_time_for_heatmap(
     data: xr.DataArray,
     reshape: tuple[str, str],
@@ -237,13 +245,20 @@ def _filter_by_pattern(
     return result
 
 
-def _apply_selection(ds: xr.Dataset, select: SelectType | None) -> xr.Dataset:
-    """Apply xarray-style selection to dataset."""
+def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = True) -> xr.Dataset:
+    """Apply xarray-style selection to dataset.
+
+    Args:
+        ds: Dataset to select from.
+        select: xarray-style selection dict.
+        drop: If True (default), drop dimensions that become scalar after selection.
+            This prevents auto-faceting when selecting a single value.
+    """
     if select is None:
         return ds
     valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
     if valid_select:
-        ds = ds.sel(valid_select)
+        ds = ds.sel(valid_select, drop=drop)
     return ds
 
 
@@ -755,6 +770,376 @@ class StatisticsAccessor:
         return ds
 
 
+# --- Sankey Plot Accessor ---
+
+
+class SankeyPlotAccessor:
+    """Sankey diagram accessor. Access via ``flow_system.statistics.plot.sankey``.
+
+    Provides typed methods for different sankey diagram types.
+
+    Examples:
+        >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
+        >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
+        >>> fs.statistics.plot.sankey.sizes(select={'component': 'Boiler'})
+    """
+
+    def __init__(self, plot_accessor: StatisticsPlotAccessor) -> None:
+        self._plot = plot_accessor
+        self._stats = plot_accessor._stats
+        self._fs = plot_accessor._fs
+
+    def _extract_flow_filters(
+        self, select: FlowSankeySelect | None
+    ) -> tuple[SelectType | None, list[str] | None, list[str] | None, list[str] | None]:
+        """Extract special filters from select dict.
+
+        Returns:
+            Tuple of (xarray_select, flow_filter, bus_filter, component_filter).
+        """
+        if select is None:
+            return None, None, None, None
+
+        select = dict(select)  # Copy to avoid mutating original
+        flow_filter = select.pop('flow', None)
+        bus_filter = select.pop('bus', None)
+        component_filter = select.pop('component', None)
+
+        # Normalize to lists
+        if isinstance(flow_filter, str):
+            flow_filter = [flow_filter]
+        if isinstance(bus_filter, str):
+            bus_filter = [bus_filter]
+        if isinstance(component_filter, str):
+            component_filter = [component_filter]
+
+        return select if select else None, flow_filter, bus_filter, component_filter
+
+    def _build_flow_links(
+        self,
+        ds: xr.Dataset,
+        flow_filter: list[str] | None = None,
+        bus_filter: list[str] | None = None,
+        component_filter: list[str] | None = None,
+        min_value: float = 1e-6,
+    ) -> tuple[set[str], dict[str, list]]:
+        """Build Sankey nodes and links from flow data."""
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
+
+        for flow in self._fs.flows.values():
+            label = flow.label_full
+            if label not in ds:
+                continue
+
+            # Apply filters
+            if flow_filter is not None and label not in flow_filter:
+                continue
+            bus_label = flow.bus
+            comp_label = flow.component
+            if bus_filter is not None and bus_label not in bus_filter:
+                continue
+            if component_filter is not None and comp_label not in component_filter:
+                continue
+
+            value = float(ds[label].values)
+            if abs(value) < min_value:
+                continue
+
+            if flow.is_input_in_component:
+                source, target = bus_label, comp_label
+            else:
+                source, target = comp_label, bus_label
+
+            nodes.add(source)
+            nodes.add(target)
+            links['source'].append(source)
+            links['target'].append(target)
+            links['value'].append(abs(value))
+            links['label'].append(label)
+
+        return nodes, links
+
+    def _create_figure(
+        self,
+        nodes: set[str],
+        links: dict[str, list],
+        colors: ColorType | None,
+        title: str,
+        **plotly_kwargs: Any,
+    ) -> go.Figure:
+        """Create Plotly Sankey figure."""
+        node_list = list(nodes)
+        node_indices = {n: i for i, n in enumerate(node_list)}
+
+        color_map = process_colors(colors, node_list)
+        node_colors = [color_map[node] for node in node_list]
+
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=15, thickness=20, line=dict(color='black', width=0.5), label=node_list, color=node_colors
+                    ),
+                    link=dict(
+                        source=[node_indices[s] for s in links['source']],
+                        target=[node_indices[t] for t in links['target']],
+                        value=links['value'],
+                        label=links['label'],
+                    ),
+                )
+            ]
+        )
+        fig.update_layout(title=title, **plotly_kwargs)
+        return fig
+
+    def _finalize(self, fig: go.Figure, links: dict[str, list], show: bool | None) -> PlotResult:
+        """Create PlotResult and optionally show figure."""
+        sankey_ds = xr.Dataset(
+            {'value': ('link', links['value'])},
+            coords={
+                'link': range(len(links['value'])),
+                'source': ('link', links['source']),
+                'target': ('link', links['target']),
+                'label': ('link', links['label']),
+            },
+        )
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            fig.show()
+
+        return PlotResult(data=sankey_ds, figure=fig)
+
+    def flows(
+        self,
+        *,
+        aggregate: Literal['sum', 'mean'] = 'sum',
+        select: FlowSankeySelect | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of energy/material flow amounts.
+
+        Args:
+            aggregate: How to aggregate over time ('sum' or 'mean').
+            select: Filter options:
+                - flow: filter by flow label (e.g., 'Boiler|Q_th')
+                - bus: filter by bus label (e.g., 'HeatBus')
+                - component: filter by component label (e.g., 'Boiler')
+                - time: select specific time (e.g., 100 or '2023-01-01')
+                - period, scenario: xarray dimension selection
+            colors: Color specification for nodes.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey flow data and figure.
+        """
+        self._stats._require_solution()
+        xr_select, flow_filter, bus_filter, component_filter = self._extract_flow_filters(select)
+
+        ds = self._stats.flow_hours.copy()
+
+        # Apply period/scenario weights
+        if 'period' in ds.dims and self._fs.period_weights is not None:
+            ds = ds * self._fs.period_weights
+        if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
+            weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
+            ds = ds * weights
+
+        ds = _apply_selection(ds, xr_select)
+
+        # Aggregate remaining dimensions
+        if 'time' in ds.dims:
+            ds = getattr(ds, aggregate)(dim='time')
+        for dim in ['period', 'scenario']:
+            if dim in ds.dims:
+                ds = ds.sum(dim=dim)
+
+        nodes, links = self._build_flow_links(ds, flow_filter, bus_filter, component_filter)
+        fig = self._create_figure(nodes, links, colors, 'Energy Flow', **plotly_kwargs)
+        return self._finalize(fig, links, show)
+
+    def sizes(
+        self,
+        *,
+        select: FlowSankeySelect | None = None,
+        max_size: float | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of investment sizes/capacities.
+
+        Args:
+            select: Filter options:
+                - flow: filter by flow label (e.g., 'Boiler|Q_th')
+                - bus: filter by bus label (e.g., 'HeatBus')
+                - component: filter by component label (e.g., 'Boiler')
+                - period, scenario: xarray dimension selection
+            max_size: Filter flows with sizes exceeding this value.
+            colors: Color specification for nodes.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey size data and figure.
+        """
+        self._stats._require_solution()
+        xr_select, flow_filter, bus_filter, component_filter = self._extract_flow_filters(select)
+
+        ds = self._stats.sizes.copy()
+        ds = _apply_selection(ds, xr_select)
+
+        # Collapse remaining dimensions
+        for dim in ['period', 'scenario']:
+            if dim in ds.dims:
+                ds = ds.max(dim=dim)
+
+        # Apply max_size filter
+        if max_size is not None and ds.data_vars:
+            valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
+            ds = ds[valid_labels]
+
+        nodes, links = self._build_flow_links(ds, flow_filter, bus_filter, component_filter)
+        fig = self._create_figure(nodes, links, colors, 'Investment Sizes (Capacities)', **plotly_kwargs)
+        return self._finalize(fig, links, show)
+
+    def peak_flow(
+        self,
+        *,
+        select: FlowSankeySelect | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of peak (maximum) flow rates.
+
+        Args:
+            select: Filter options:
+                - flow: filter by flow label (e.g., 'Boiler|Q_th')
+                - bus: filter by bus label (e.g., 'HeatBus')
+                - component: filter by component label (e.g., 'Boiler')
+                - time, period, scenario: xarray dimension selection
+            colors: Color specification for nodes.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey peak flow data and figure.
+        """
+        self._stats._require_solution()
+        xr_select, flow_filter, bus_filter, component_filter = self._extract_flow_filters(select)
+
+        ds = self._stats.flow_rates.copy()
+        ds = _apply_selection(ds, xr_select)
+
+        # Take max over all dimensions
+        for dim in ['time', 'period', 'scenario']:
+            if dim in ds.dims:
+                ds = ds.max(dim=dim)
+
+        nodes, links = self._build_flow_links(ds, flow_filter, bus_filter, component_filter)
+        fig = self._create_figure(nodes, links, colors, 'Peak Flow Rates', **plotly_kwargs)
+        return self._finalize(fig, links, show)
+
+    def effects(
+        self,
+        *,
+        select: EffectsSankeySelect | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot Sankey diagram of component contributions to effects.
+
+        Shows how each component contributes to costs, CO2, and other effects.
+
+        Args:
+            select: Filter options:
+                - effect: filter which effects are shown (e.g., 'costs', ['costs', 'CO2'])
+                - component: filter by component label (e.g., 'Boiler')
+                - contributor: filter by contributor label (e.g., 'Boiler|Q_th')
+                - period, scenario: xarray dimension selection
+            colors: Color specification for nodes.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to Plotly layout.
+
+        Returns:
+            PlotResult with Sankey effects data and figure.
+        """
+        self._stats._require_solution()
+        total_effects = self._stats.total_effects
+
+        # Extract special filters from select
+        effect_filter: list[str] | None = None
+        component_filter: list[str] | None = None
+        contributor_filter: list[str] | None = None
+        xr_select: SelectType | None = None
+
+        if select is not None:
+            select = dict(select)  # Copy to avoid mutating
+            effect_filter = select.pop('effect', None)
+            component_filter = select.pop('component', None)
+            contributor_filter = select.pop('contributor', None)
+            xr_select = select if select else None
+
+            # Normalize to lists
+            if isinstance(effect_filter, str):
+                effect_filter = [effect_filter]
+            if isinstance(component_filter, str):
+                component_filter = [component_filter]
+            if isinstance(contributor_filter, str):
+                contributor_filter = [contributor_filter]
+
+        # Determine which effects to include
+        effect_names = list(total_effects.data_vars)
+        if effect_filter is not None:
+            effect_names = [e for e in effect_names if e in effect_filter]
+
+        # Collect all links: component -> effect
+        nodes: set[str] = set()
+        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
+
+        for effect_name in effect_names:
+            effect_data = total_effects[effect_name]
+            effect_data = _apply_selection(effect_data, xr_select)
+
+            # Sum over remaining dimensions
+            for dim in ['period', 'scenario']:
+                if dim in effect_data.dims:
+                    effect_data = effect_data.sum(dim=dim)
+
+            contributors = effect_data.coords['contributor'].values
+            components = effect_data.coords['component'].values
+
+            for contributor, component in zip(contributors, components, strict=False):
+                if component_filter is not None and component not in component_filter:
+                    continue
+                if contributor_filter is not None and contributor not in contributor_filter:
+                    continue
+
+                value = float(effect_data.sel(contributor=contributor).values)
+                if not np.isfinite(value) or abs(value) < 1e-6:
+                    continue
+
+                source = str(component)
+                target = f'[{effect_name}]'
+
+                nodes.add(source)
+                nodes.add(target)
+                links['source'].append(source)
+                links['target'].append(target)
+                links['value'].append(abs(value))
+                links['label'].append(f'{contributor} → {effect_name}: {value:.2f}')
+
+        fig = self._create_figure(nodes, links, colors, 'Effect Contributions by Component', **plotly_kwargs)
+        return self._finalize(fig, links, show)
+
+
 # --- Statistics Plot Accessor ---
 
 
@@ -767,6 +1152,22 @@ class StatisticsPlotAccessor:
     def __init__(self, statistics: StatisticsAccessor) -> None:
         self._stats = statistics
         self._fs = statistics._fs
+        self._sankey: SankeyPlotAccessor | None = None
+
+    @property
+    def sankey(self) -> SankeyPlotAccessor:
+        """Access sankey diagram methods with typed select options.
+
+        Returns:
+            SankeyPlotAccessor with methods: flows(), sizes(), peak_flow(), effects()
+
+        Examples:
+            >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
+            >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
+        """
+        if self._sankey is None:
+            self._sankey = SankeyPlotAccessor(self)
+        return self._sankey
 
     def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
         """Build color map for balance plot.
@@ -1123,321 +1524,6 @@ class StatisticsPlotAccessor:
             fig.show()
 
         return PlotResult(data=ds, figure=fig)
-
-    def _prepare_sankey_data(
-        self,
-        mode: Literal['flow_hours', 'sizes', 'peak_flow'],
-        timestep: int | str | None,
-        aggregate: Literal['sum', 'mean'],
-        select: SelectType | None,
-    ) -> tuple[xr.Dataset, str]:
-        """Prepare data for Sankey diagram based on mode.
-
-        Args:
-            mode: What to display - flow_hours, sizes, or peak_flow.
-            timestep: Specific timestep (only for flow_hours mode).
-            aggregate: Aggregation method (only for flow_hours mode).
-            select: xarray-style selection.
-
-        Returns:
-            Tuple of (prepared Dataset, title string).
-        """
-        if mode == 'sizes':
-            ds = self._stats.sizes.copy()
-            title = 'Investment Sizes (Capacities)'
-        elif mode == 'peak_flow':
-            ds = self._stats.flow_rates.copy()
-            ds = _apply_selection(ds, select)
-            if 'time' in ds.dims:
-                ds = ds.max(dim='time')
-            for dim in ['period', 'scenario']:
-                if dim in ds.dims:
-                    ds = ds.max(dim=dim)
-            return ds, 'Peak Flow Rates'
-        else:  # flow_hours
-            ds = self._stats.flow_hours.copy()
-            title = 'Energy Flow'
-
-        # Apply weights for flow_hours
-        if mode == 'flow_hours':
-            if 'period' in ds.dims and self._fs.period_weights is not None:
-                ds = ds * self._fs.period_weights
-            if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
-                weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
-                ds = ds * weights
-
-        ds = _apply_selection(ds, select)
-
-        # Time aggregation (only for flow_hours)
-        if mode == 'flow_hours':
-            if timestep is not None:
-                if isinstance(timestep, int):
-                    ds = ds.isel(time=timestep)
-                else:
-                    ds = ds.sel(time=timestep)
-            elif 'time' in ds.dims:
-                ds = getattr(ds, aggregate)(dim='time')
-
-        # Collapse remaining dimensions
-        for dim in ['period', 'scenario']:
-            if dim in ds.dims:
-                ds = ds.sum(dim=dim) if mode == 'flow_hours' else ds.max(dim=dim)
-
-        return ds, title
-
-    def _build_effects_sankey(
-        self,
-        select: SelectType | None,
-        colors: ColorType | None,
-        **plotly_kwargs: Any,
-    ) -> tuple[go.Figure, xr.Dataset]:
-        """Build Sankey diagram showing contributions from components to effects.
-
-        Creates a Sankey with:
-        - Left side: Components (grouped by type)
-        - Right side: Effects (costs, CO2, etc.)
-        - Links: Contributions from each component to each effect
-
-        Args:
-            select: xarray-style selection.
-            colors: Color specification for nodes.
-            **plotly_kwargs: Additional Plotly layout arguments.
-
-        Returns:
-            Tuple of (Plotly Figure, Dataset with link data).
-        """
-        total_effects = self._stats.total_effects
-
-        # Collect all links: component -> effect
-        nodes: set[str] = set()
-        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
-
-        for effect_name in total_effects.data_vars:
-            effect_data = total_effects[effect_name]
-            effect_data = _apply_selection(effect_data, select)
-
-            # Sum over any remaining dimensions
-            for dim in ['period', 'scenario']:
-                if dim in effect_data.dims:
-                    effect_data = effect_data.sum(dim=dim)
-
-            contributors = effect_data.coords['contributor'].values
-            components = effect_data.coords['component'].values
-
-            for contributor, component in zip(contributors, components, strict=False):
-                value = float(effect_data.sel(contributor=contributor).values)
-                if not np.isfinite(value) or abs(value) < 1e-6:
-                    continue
-
-                # Use component as source node, effect as target
-                source = str(component)
-                target = f'[{effect_name}]'  # Bracket notation to distinguish effects
-
-                nodes.add(source)
-                nodes.add(target)
-                links['source'].append(source)
-                links['target'].append(target)
-                links['value'].append(abs(value))
-                links['label'].append(f'{contributor} → {effect_name}: {value:.2f}')
-
-        # Create figure
-        node_list = list(nodes)
-        node_indices = {n: i for i, n in enumerate(node_list)}
-
-        color_map = process_colors(colors, node_list)
-        node_colors = [color_map[node] for node in node_list]
-
-        fig = go.Figure(
-            data=[
-                go.Sankey(
-                    node=dict(
-                        pad=15, thickness=20, line=dict(color='black', width=0.5), label=node_list, color=node_colors
-                    ),
-                    link=dict(
-                        source=[node_indices[s] for s in links['source']],
-                        target=[node_indices[t] for t in links['target']],
-                        value=links['value'],
-                        label=links['label'],
-                    ),
-                )
-            ]
-        )
-        fig.update_layout(title='Effect Contributions by Component', **plotly_kwargs)
-
-        sankey_ds = xr.Dataset(
-            {'value': ('link', links['value'])},
-            coords={
-                'link': range(len(links['value'])),
-                'source': ('link', links['source']),
-                'target': ('link', links['target']),
-                'label': ('link', links['label']),
-            },
-        )
-
-        return fig, sankey_ds
-
-    def _build_sankey_links(
-        self,
-        ds: xr.Dataset,
-        min_value: float = 1e-6,
-    ) -> tuple[set[str], dict[str, list]]:
-        """Build Sankey nodes and links from flow data.
-
-        Args:
-            ds: Dataset with flow values (one variable per flow).
-            min_value: Minimum value threshold to include a link.
-
-        Returns:
-            Tuple of (nodes set, links dict with source/target/value/label).
-        """
-        nodes: set[str] = set()
-        links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
-
-        for flow in self._fs.flows.values():
-            label = flow.label_full
-            if label not in ds:
-                continue
-            value = float(ds[label].values)
-            if abs(value) < min_value:
-                continue
-
-            # flow.bus and flow.component are already strings (bus label, component label_full)
-            bus_label = flow.bus
-            comp_label = flow.component
-
-            if flow.is_input_in_component:
-                source = bus_label
-                target = comp_label
-            else:
-                source = comp_label
-                target = bus_label
-
-            nodes.add(source)
-            nodes.add(target)
-            links['source'].append(source)
-            links['target'].append(target)
-            links['value'].append(abs(value))
-            links['label'].append(label)
-
-        return nodes, links
-
-    def _create_sankey_figure(
-        self,
-        nodes: set[str],
-        links: dict[str, list],
-        colors: ColorType | None,
-        title: str,
-        **plotly_kwargs: Any,
-    ) -> go.Figure:
-        """Create Plotly Sankey figure.
-
-        Args:
-            nodes: Set of node labels.
-            links: Dict with source, target, value, label lists.
-            colors: Color specification for nodes.
-            title: Figure title.
-            **plotly_kwargs: Additional Plotly layout arguments.
-
-        Returns:
-            Plotly Figure with Sankey diagram.
-        """
-        node_list = list(nodes)
-        node_indices = {n: i for i, n in enumerate(node_list)}
-
-        color_map = process_colors(colors, node_list)
-        node_colors = [color_map[node] for node in node_list]
-
-        fig = go.Figure(
-            data=[
-                go.Sankey(
-                    node=dict(
-                        pad=15, thickness=20, line=dict(color='black', width=0.5), label=node_list, color=node_colors
-                    ),
-                    link=dict(
-                        source=[node_indices[s] for s in links['source']],
-                        target=[node_indices[t] for t in links['target']],
-                        value=links['value'],
-                        label=links['label'],
-                    ),
-                )
-            ]
-        )
-        fig.update_layout(title=title, **plotly_kwargs)
-        return fig
-
-    def sankey(
-        self,
-        *,
-        mode: Literal['flow_hours', 'sizes', 'peak_flow', 'effects'] = 'flow_hours',
-        timestep: int | str | None = None,
-        aggregate: Literal['sum', 'mean'] = 'sum',
-        select: SelectType | None = None,
-        max_size: float | None = None,
-        colors: ColorType | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot Sankey diagram of the flow system.
-
-        Args:
-            mode: What to display:
-                - 'flow_hours': Energy/material amounts (default)
-                - 'sizes': Investment capacities
-                - 'peak_flow': Maximum flow rates
-                - 'effects': Component contributions to all effects (costs, CO2, etc.)
-            timestep: Specific timestep to show, or None for aggregation (flow_hours only).
-            aggregate: How to aggregate if timestep is None ('sum' or 'mean', flow_hours only).
-            select: xarray-style selection.
-            max_size: Filter flows with sizes exceeding this value (sizes mode only).
-            colors: Color specification for nodes (colorscale name, color list, or label-to-color dict).
-            show: Whether to display.
-            **plotly_kwargs: Additional arguments passed to Plotly layout.
-
-        Returns:
-            PlotResult with Sankey flow data and figure.
-
-        Examples:
-            >>> # Show energy flows (default)
-            >>> flow_system.statistics.plot.sankey()
-            >>> # Show investment sizes/capacities
-            >>> flow_system.statistics.plot.sankey(mode='sizes')
-            >>> # Show peak flow rates
-            >>> flow_system.statistics.plot.sankey(mode='peak_flow')
-            >>> # Show effect contributions (components -> effects like costs, CO2)
-            >>> flow_system.statistics.plot.sankey(mode='effects')
-        """
-        self._stats._require_solution()
-
-        if mode == 'effects':
-            fig, sankey_ds = self._build_effects_sankey(select, colors, **plotly_kwargs)
-        else:
-            ds, title = self._prepare_sankey_data(mode, timestep, aggregate, select)
-
-            # Apply max_size filter for sizes mode
-            if max_size is not None and mode == 'sizes' and ds.data_vars:
-                valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
-                ds = ds[valid_labels]
-
-            nodes, links = self._build_sankey_links(ds)
-            fig = self._create_sankey_figure(nodes, links, colors, title, **plotly_kwargs)
-
-            n_links = len(links['value'])
-            sankey_ds = xr.Dataset(
-                {'value': ('link', links['value'])},
-                coords={
-                    'link': range(n_links),
-                    'source': ('link', links['source']),
-                    'target': ('link', links['target']),
-                    'label': ('link', links['label']),
-                },
-            )
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=sankey_ds, figure=fig)
 
     def sizes(
         self,
