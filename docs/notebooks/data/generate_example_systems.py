@@ -172,10 +172,18 @@ def create_complex_system() -> fx.FlowSystem:
             ),
             status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 2}),
         ),
-        # Heat pump
+        # Heat pump (with investment)
         fx.linear_converters.HeatPump(
             'HeatPump',
-            thermal_flow=fx.Flow('Heat', bus='Heat', size=40),
+            thermal_flow=fx.Flow(
+                'Heat',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    effects_of_investment={'costs': 500},
+                    effects_of_investment_per_size={'costs': 100},
+                    maximum_size=60,
+                ),
+            ),
             electrical_flow=fx.Flow('El', bus='Electricity'),
             cop=3.5,
         ),
@@ -186,11 +194,14 @@ def create_complex_system() -> fx.FlowSystem:
             fuel_flow=fx.Flow('Gas', bus='Gas'),
             thermal_efficiency=0.90,
         ),
-        # Thermal storage
+        # Thermal storage (with investment)
         fx.Storage(
             'HeatStorage',
-            capacity_in_flow_hours=200,
-            initial_charge_state=100,
+            capacity_in_flow_hours=fx.InvestParameters(
+                effects_of_investment={'costs': 200},
+                effects_of_investment_per_size={'costs': 10},
+                maximum_size=300,
+            ),
             eta_charge=0.95,
             eta_discharge=0.95,
             charging=fx.Flow('Charge', bus='Heat', size=50),
@@ -259,13 +270,24 @@ def create_multiperiod_system() -> fx.FlowSystem:
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.92,
-            thermal_flow=fx.Flow('Heat', bus='Heat', size=200),
+            thermal_flow=fx.Flow(
+                'Heat',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    effects_of_investment={'costs': 1000},
+                    effects_of_investment_per_size={'costs': 50},
+                    maximum_size=250,
+                ),
+            ),
             fuel_flow=fx.Flow('Gas', bus='Gas'),
         ),
         fx.Storage(
             'ThermalStorage',
-            capacity_in_flow_hours=300,
-            initial_charge_state=150,
+            capacity_in_flow_hours=fx.InvestParameters(
+                effects_of_investment={'costs': 500},
+                effects_of_investment_per_size={'costs': 15},
+                maximum_size=400,
+            ),
             eta_charge=0.98,
             eta_discharge=0.98,
             charging=fx.Flow('Charge', bus='Heat', size=80),
