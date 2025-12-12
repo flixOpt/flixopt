@@ -30,6 +30,12 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | [07-Scenarios and Periods](07-scenarios-and-periods.ipynb) | Multi-year planning with uncertain demand scenarios |
 | [08-Large-Scale Optimization](08-large-scale-optimization.ipynb) | Speed up large problems with resampling and two-stage optimization |
 
+## Results & Visualization
+
+| Notebook | Description |
+|----------|-------------|
+| [09-Plotting and Data Access](09-plotting-and-data-access.ipynb) | Access optimization results and create visualizations |
+
 ## Key Concepts by Notebook
 
 | Concept | Introduced In |
@@ -42,3 +48,4 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | `Piecewise`, variable efficiency | 06-Piecewise |
 | Periods, scenarios, weights | 07-Scenarios |
 | `transform.resample()`, `fix_sizes()` | 08-Large-Scale |
+| `statistics`, `topology`, plotting | 09-Plotting |
