@@ -169,8 +169,8 @@ Visualize energy/material flows as a Sankey diagram. Access via the `sankey` acc
 ```python
 # Energy flow amounts (default)
 flow_system.statistics.plot.sankey.flows()
-flow_system.statistics.plot.sankey.flows(timestep=100)
-flow_system.statistics.plot.sankey.flows(aggregate='mean')
+flow_system.statistics.plot.sankey.flows(select={'time': '2023-01-01 12:00'})  # specific time
+flow_system.statistics.plot.sankey.flows(aggregate='mean')  # mean instead of sum
 
 # Investment sizes/capacities
 flow_system.statistics.plot.sankey.sizes()

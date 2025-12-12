@@ -742,11 +742,13 @@ class TestSankeyDiagram:
         # Should have at least costs effect
         assert '[costs]' in targets, 'Should include costs effect'
 
-    def test_sankey_flows_with_timestep(self, simple_flow_system, highs_solver):
-        """Test Sankey flows with specific timestep."""
+    def test_sankey_flows_with_time_select(self, simple_flow_system, highs_solver):
+        """Test Sankey flows with specific time selection."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey.flows(timestep=0, show=False)
+        # Get first timestamp from the data
+        first_time = simple_flow_system.statistics.flow_hours.time.values[0]
+        result = simple_flow_system.statistics.plot.sankey.flows(select={'time': first_time}, show=False)
 
         assert result.figure is not None
         assert len(result.data.link) > 0

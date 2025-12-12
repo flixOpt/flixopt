@@ -915,7 +915,6 @@ class SankeyPlotAccessor:
     def flows(
         self,
         *,
-        timestep: int | str | None = None,
         aggregate: Literal['sum', 'mean'] = 'sum',
         select: FlowSankeySelect | None = None,
         colors: ColorType | None = None,
@@ -925,13 +924,13 @@ class SankeyPlotAccessor:
         """Plot Sankey diagram of energy/material flow amounts.
 
         Args:
-            timestep: Specific timestep to show, or None for aggregation.
-            aggregate: How to aggregate if timestep is None ('sum' or 'mean').
+            aggregate: How to aggregate over time ('sum' or 'mean').
             select: Filter options:
                 - flow: filter by flow label (e.g., 'Boiler|Q_th')
                 - bus: filter by bus label (e.g., 'HeatBus')
                 - component: filter by component label (e.g., 'Boiler')
-                - time, period, scenario: xarray dimension selection
+                - time: select specific time (e.g., 100 or '2023-01-01')
+                - period, scenario: xarray dimension selection
             colors: Color specification for nodes.
             show: Whether to display the figure.
             **plotly_kwargs: Additional arguments passed to Plotly layout.
@@ -953,13 +952,9 @@ class SankeyPlotAccessor:
 
         ds = _apply_selection(ds, xr_select)
 
-        # Time aggregation
-        if timestep is not None:
-            ds = ds.isel(time=timestep) if isinstance(timestep, int) else ds.sel(time=timestep)
-        elif 'time' in ds.dims:
+        # Aggregate remaining dimensions
+        if 'time' in ds.dims:
             ds = getattr(ds, aggregate)(dim='time')
-
-        # Collapse remaining dimensions
         for dim in ['period', 'scenario']:
             if dim in ds.dims:
                 ds = ds.sum(dim=dim)
