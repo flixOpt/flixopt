@@ -1083,6 +1083,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'Adding elements to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
+        # Always invalidate when adding elements to ensure new elements get transformed
+        if self.model is not None or self._connected_and_transformed:
             self._invalidate_model()
 
         for new_element in list(elements):
