@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import json
 import logging
 import pathlib
 import warnings
@@ -45,6 +46,18 @@ def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
         ValueError: If file cannot be loaded as JSON or YAML
     """
     return fx_io.load_config_file(path)
+
+
+def _get_solution_attr(solution: xr.Dataset, key: str) -> dict:
+    """Get an attribute from solution, decoding JSON if necessary.
+
+    Solution attrs are stored as JSON strings for netCDF compatibility.
+    This helper handles both JSON strings and dicts (for backward compatibility).
+    """
+    value = solution.attrs.get(key, {})
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 class _FlowSystemRestorationError(Exception):
@@ -225,7 +238,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         warnings.warn(
             f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
             'Access results directly via FlowSystem.solution after optimization, or use the '
-            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)).',
+            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)). '
+            'To load old result files, use FlowSystem.from_old_results(folder, name).',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -239,19 +253,25 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         # Create ResultsContainers for better access patterns
         components_dict = {
-            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos)
+            for label, infos in _get_solution_attr(self.solution, 'Components').items()
         }
         self.components = ResultsContainer(
             elements=components_dict, element_type_name='component results', truncate_repr=10
         )
 
-        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {
+            label: BusResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Buses').items()
+        }
         self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
 
-        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {
+            label: EffectResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Effects').items()
+        }
         self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
 
-        if 'Flows' not in self.solution.attrs:
+        flows_attr = _get_solution_attr(self.solution, 'Flows')
+        if not flows_attr:
             warnings.warn(
                 'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
@@ -260,9 +280,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             flows_dict = {}
             self._has_flow_data = False
         else:
-            flows_dict = {
-                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
-            }
+            flows_dict = {label: FlowResults(self, **infos) for label, infos in flows_attr.items()}
             self._has_flow_data = True
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
@@ -1110,6 +1128,61 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         if path is None:
             path = self.folder / f'{self.name}--network.html'
         return self.flow_system.plot_network(controls=controls, path=path, show=show)
+
+    def to_flow_system(self) -> FlowSystem:
+        """Convert Results to a FlowSystem with solution attached.
+
+        This method migrates results from the deprecated Results format to the
+        new FlowSystem-based format, enabling use of the modern API.
+
+        Note:
+            For loading old results files directly, consider using
+            ``FlowSystem.from_old_results(folder, name)`` instead.
+
+        Returns:
+            FlowSystem: A FlowSystem instance with the solution data attached.
+
+        Caveats:
+            - The linopy model is NOT attached (only the solution data)
+            - Element submodels are NOT recreated (no re-optimization without
+              calling build_model() first)
+            - Variable/constraint names on elements are NOT restored
+
+        Examples:
+            Convert loaded Results to FlowSystem:
+
+            ```python
+            # Load old results
+            results = Results.from_file('results', 'my_optimization')
+
+            # Convert to FlowSystem
+            flow_system = results.to_flow_system()
+
+            # Use new API
+            flow_system.plot.heatmap()
+            flow_system.solution.to_netcdf('solution.nc')
+
+            # Save in new single-file format
+            flow_system.to_netcdf('my_optimization.nc')
+            ```
+        """
+        from flixopt.io import convert_old_dataset
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(self.flow_system_data)
+
+        # Reconstruct FlowSystem from stored data
+        flow_system = FlowSystem.from_dataset(self.flow_system_data)
+
+        # Convert solution attrs from dicts to JSON strings for consistency with new format
+        # The _get_solution_attr helper handles both formats, but we normalize here
+        solution = self.solution.copy()
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+
+        flow_system.solution = solution
+        return flow_system
 
     def to_file(
         self,

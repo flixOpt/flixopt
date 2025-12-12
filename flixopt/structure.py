@@ -6,6 +6,7 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 import pathlib
 import re
@@ -14,6 +15,7 @@ from difflib import get_close_matches
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Generic,
     Literal,
     TypeVar,
@@ -169,25 +171,36 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
         solution = super().solution
         solution['objective'] = self.objective.value
+        # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
-            'Components': {
-                comp.label_full: comp.submodel.results_structure()
-                for comp in sorted(
-                    self.flow_system.components.values(), key=lambda component: component.label_full.upper()
-                )
-            },
-            'Buses': {
-                bus.label_full: bus.submodel.results_structure()
-                for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-            },
-            'Effects': {
-                effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
-            },
-            'Flows': {
-                flow.label_full: flow.submodel.results_structure()
-                for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
-            },
+            'Components': json.dumps(
+                {
+                    comp.label_full: comp.submodel.results_structure()
+                    for comp in sorted(
+                        self.flow_system.components.values(), key=lambda component: component.label_full.upper()
+                    )
+                }
+            ),
+            'Buses': json.dumps(
+                {
+                    bus.label_full: bus.submodel.results_structure()
+                    for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                }
+            ),
+            'Effects': json.dumps(
+                {
+                    effect.label_full: effect.submodel.results_structure()
+                    for effect in sorted(
+                        self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
+                    )
+                }
+            ),
+            'Flows': json.dumps(
+                {
+                    flow.label_full: flow.submodel.results_structure()
+                    for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                }
+            ),
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
@@ -773,18 +786,31 @@ class Interface:
                     # Get valid constructor parameters for this class
                     init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
 
-                    # Separate constructor args from extra attributes
-                    constructor_args = {k: v for k, v in resolved_nested_data.items() if k in init_params}
-                    extra_attrs = {k: v for k, v in resolved_nested_data.items() if k not in init_params}
+                    # Check for deferred init attributes (defined as class attribute on Element subclasses)
+                    # These are serialized but set after construction, not passed to child __init__
+                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                    deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
+                    constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
 
-                    # Create instance with constructor args
-                    instance = nested_class(**constructor_args)
+                    # Check for unknown parameters - these could be typos or renamed params
+                    unknown_params = set(constructor_data.keys()) - init_params
+                    if unknown_params:
+                        raise TypeError(
+                            f'{class_name}.__init__() got unexpected keyword arguments: {unknown_params}. '
+                            f'This may indicate renamed parameters that need conversion. '
+                            f'Valid parameters are: {init_params - {"self"}}'
+                        )
 
-                    # Set extra attributes (like _variable_names, _constraint_names)
-                    for attr_name, attr_value in extra_attrs.items():
+                    # Create instance with constructor parameters
+                    instance = nested_class(**constructor_data)
+
+                    # Set internal attributes after construction
+                    for attr_name, attr_value in deferred_attrs.items():
                         setattr(instance, attr_name, attr_value)
 
                     return instance
+                except TypeError as e:
+                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
                 except Exception as e:
                     raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
             else:
@@ -1032,6 +1058,10 @@ class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
     submodel: ElementModel | None
+
+    # Attributes that are serialized but set after construction (not passed to child __init__)
+    # These are internal state populated during modeling, not user-facing parameters
+    _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
 
     def __init__(
         self,

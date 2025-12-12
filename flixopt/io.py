@@ -597,6 +597,236 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     return ds
 
 
+# Parameter rename mappings for backwards compatibility conversion
+# Format: {old_name: new_name}
+PARAMETER_RENAMES = {
+    # Effect parameters
+    'minimum_operation': 'minimum_temporal',
+    'maximum_operation': 'maximum_temporal',
+    'minimum_invest': 'minimum_periodic',
+    'maximum_invest': 'maximum_periodic',
+    'minimum_investment': 'minimum_periodic',
+    'maximum_investment': 'maximum_periodic',
+    'minimum_operation_per_hour': 'minimum_per_hour',
+    'maximum_operation_per_hour': 'maximum_per_hour',
+    # InvestParameters
+    'fix_effects': 'effects_of_investment',
+    'specific_effects': 'effects_of_investment_per_size',
+    'divest_effects': 'effects_of_retirement',
+    'piecewise_effects': 'piecewise_effects_of_investment',
+    # Flow/OnOffParameters
+    'flow_hours_total_max': 'flow_hours_max',
+    'flow_hours_total_min': 'flow_hours_min',
+    'on_hours_total_max': 'on_hours_max',
+    'on_hours_total_min': 'on_hours_min',
+    'switch_on_total_max': 'switch_on_max',
+    # Bus
+    'excess_penalty_per_flow_hour': 'imbalance_penalty_per_flow_hour',
+    # Component parameters (Source/Sink)
+    'source': 'outputs',
+    'sink': 'inputs',
+    'prevent_simultaneous_sink_and_source': 'prevent_simultaneous_flow_rates',
+    # LinearConverter flow/efficiency parameters (pre-v4 files)
+    # These are needed for very old files that use short flow names
+    'Q_fu': 'fuel_flow',
+    'P_el': 'electrical_flow',
+    'Q_th': 'thermal_flow',
+    'Q_ab': 'heat_source_flow',
+    'eta': 'thermal_efficiency',
+    'eta_th': 'thermal_efficiency',
+    'eta_el': 'electrical_efficiency',
+    'COP': 'cop',
+    # Storage
+    # Note: 'lastValueOfSim' → 'equals_final' is a value change, not a key change
+    # Class renames (v4.2.0)
+    'FullCalculation': 'Optimization',
+    'AggregatedCalculation': 'ClusteredOptimization',
+    'SegmentedCalculation': 'SegmentedOptimization',
+    'CalculationResults': 'Results',
+    'SegmentedCalculationResults': 'SegmentedResults',
+    'Aggregation': 'Clustering',
+    'AggregationParameters': 'ClusteringParameters',
+    'AggregationModel': 'ClusteringModel',
+    # OnOffParameters → StatusParameters (class and attribute names)
+    'OnOffParameters': 'StatusParameters',
+    'on_off_parameters': 'status_parameters',
+    # StatusParameters attribute renames (applies to both Flow-level and Component-level)
+    'effects_per_switch_on': 'effects_per_startup',
+    'effects_per_running_hour': 'effects_per_active_hour',
+    'consecutive_on_hours_min': 'min_uptime',
+    'consecutive_on_hours_max': 'max_uptime',
+    'consecutive_off_hours_min': 'min_downtime',
+    'consecutive_off_hours_max': 'max_downtime',
+    'force_switch_on': 'force_startup_tracking',
+    'on_hours_min': 'active_hours_min',
+    'on_hours_max': 'active_hours_max',
+    'switch_on_max': 'startup_limit',
+    # TimeSeriesData
+    'agg_group': 'aggregation_group',
+    'agg_weight': 'aggregation_weight',
+}
+
+# Value renames (for specific parameter values that changed)
+VALUE_RENAMES = {
+    'initial_charge_state': {'lastValueOfSim': 'equals_final'},
+}
+
+
+# Keys that should NOT have their child keys renamed (they reference flow labels)
+_FLOW_LABEL_REFERENCE_KEYS = {'piecewises', 'conversion_factors'}
+
+# Keys that ARE flow parameters on components (should be renamed)
+_FLOW_PARAMETER_KEYS = {'Q_fu', 'P_el', 'Q_th', 'Q_ab', 'eta', 'eta_th', 'eta_el', 'COP'}
+
+
+def _rename_keys_recursive(
+    obj: Any,
+    key_renames: dict[str, str],
+    value_renames: dict[str, dict],
+    skip_flow_renames: bool = False,
+) -> Any:
+    """Recursively rename keys and values in nested data structures.
+
+    Args:
+        obj: The object to process (dict, list, or scalar)
+        key_renames: Mapping of old key names to new key names
+        value_renames: Mapping of key names to {old_value: new_value} dicts
+        skip_flow_renames: If True, skip renaming flow parameter keys (for inside piecewises)
+
+    Returns:
+        The processed object with renamed keys and values
+    """
+    if isinstance(obj, dict):
+        new_dict = {}
+        for key, value in obj.items():
+            # Determine if we should skip flow renames for children
+            child_skip_flow_renames = skip_flow_renames or key in _FLOW_LABEL_REFERENCE_KEYS
+
+            # Rename the key if needed (skip flow params if in reference context)
+            if skip_flow_renames and key in _FLOW_PARAMETER_KEYS:
+                new_key = key  # Don't rename flow labels inside piecewises etc.
+            else:
+                new_key = key_renames.get(key, key)
+
+            # Process the value recursively
+            new_value = _rename_keys_recursive(value, key_renames, value_renames, child_skip_flow_renames)
+
+            # Check if this key has value renames
+            if key in value_renames and isinstance(new_value, str):
+                new_value = value_renames[key].get(new_value, new_value)
+
+            # Handle __class__ values - rename class names
+            if key == '__class__' and isinstance(new_value, str):
+                new_value = key_renames.get(new_value, new_value)
+
+            new_dict[new_key] = new_value
+        return new_dict
+
+    elif isinstance(obj, list):
+        return [_rename_keys_recursive(item, key_renames, value_renames, skip_flow_renames) for item in obj]
+
+    else:
+        return obj
+
+
+def convert_old_dataset(
+    ds: xr.Dataset,
+    key_renames: dict[str, str] | None = None,
+    value_renames: dict[str, dict] | None = None,
+) -> xr.Dataset:
+    """Convert an old FlowSystem dataset to use new parameter names.
+
+    This function updates the reference structure in a dataset's attrs to use
+    the current parameter naming conventions. This is useful for loading
+    FlowSystem files saved with older versions of flixopt.
+
+    Args:
+        ds: The dataset to convert (will be modified in place)
+        key_renames: Custom key renames to apply. If None, uses PARAMETER_RENAMES.
+        value_renames: Custom value renames to apply. If None, uses VALUE_RENAMES.
+
+    Returns:
+        The converted dataset (same object, modified in place)
+
+    Examples:
+        Convert an old netCDF file to new format:
+
+        ```python
+        from flixopt import io
+
+        # Load old file
+        ds = io.load_dataset_from_netcdf('old_flow_system.nc4')
+
+        # Convert parameter names
+        ds = io.convert_old_dataset(ds)
+
+        # Now load as FlowSystem
+        from flixopt import FlowSystem
+
+        fs = FlowSystem.from_dataset(ds)
+        ```
+    """
+    if key_renames is None:
+        key_renames = PARAMETER_RENAMES
+    if value_renames is None:
+        value_renames = VALUE_RENAMES
+
+    # Convert the attrs (reference_structure)
+    ds.attrs = _rename_keys_recursive(ds.attrs, key_renames, value_renames)
+
+    return ds
+
+
+def convert_old_netcdf(
+    input_path: str | pathlib.Path,
+    output_path: str | pathlib.Path | None = None,
+    compression: int = 0,
+) -> xr.Dataset:
+    """Load an old FlowSystem netCDF file and convert to new parameter names.
+
+    This is a convenience function that combines loading, conversion, and
+    optionally saving the converted dataset.
+
+    Args:
+        input_path: Path to the old netCDF file
+        output_path: If provided, save the converted dataset to this path.
+            If None, only returns the converted dataset without saving.
+        compression: Compression level (0-9) for saving. Only used if output_path is provided.
+
+    Returns:
+        The converted dataset
+
+    Examples:
+        Convert and save to new file:
+
+        ```python
+        from flixopt import io
+
+        # Convert old file to new format
+        ds = io.convert_old_netcdf('old_system.nc4', 'new_system.nc')
+        ```
+
+        Convert and load as FlowSystem:
+
+        ```python
+        from flixopt import FlowSystem, io
+
+        ds = io.convert_old_netcdf('old_system.nc4')
+        fs = FlowSystem.from_dataset(ds)
+        ```
+    """
+    # Load and convert
+    ds = load_dataset_from_netcdf(input_path)
+    ds = convert_old_dataset(ds)
+
+    # Optionally save
+    if output_path is not None:
+        save_dataset_to_netcdf(ds, output_path, compression=compression)
+        logger.info(f'Converted {input_path} -> {output_path}')
+
+    return ds
+
+
 @dataclass
 class ResultsPaths:
     """Container for all paths related to saving Results."""

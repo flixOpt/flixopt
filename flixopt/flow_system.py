@@ -754,6 +754,88 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         flow_system.name = path.stem
         return flow_system
 
+    @classmethod
+    def from_old_results(cls, folder: str | pathlib.Path, name: str) -> FlowSystem:
+        """
+        Load a FlowSystem from old-format Results files (pre-v5 API).
+
+        This method loads results saved with the deprecated Results API
+        (which used multiple files: ``*--flow_system.nc4``, ``*--solution.nc4``)
+        and converts them to a FlowSystem with the solution attached.
+
+        The method performs the following:
+
+        - Loads the old multi-file format
+        - Renames deprecated parameters in the FlowSystem structure
+          (e.g., ``on_off_parameters`` → ``status_parameters``)
+        - Attaches the solution data to the FlowSystem
+
+        Args:
+            folder: Directory containing the saved result files
+            name: Base name of the saved files (without extensions)
+
+        Returns:
+            FlowSystem instance with solution attached
+
+        Warning:
+            This is a best-effort migration for accessing old results:
+
+            - **Solution variable names are NOT renamed** - only basic variables
+              work (flow rates, sizes, charge states, effect totals)
+            - Advanced variable access may require using the original names
+            - Summary metadata (solver info, timing) is not loaded
+
+            For full compatibility, re-run optimizations with the new API.
+
+        Examples:
+            ```python
+            # Load old results
+            fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
+
+            # Access basic solution data
+            fs.solution['Boiler(Q_th)|flow_rate'].plot()
+
+            # Save in new single-file format
+            fs.to_netcdf('my_optimization.nc')
+            ```
+
+        Deprecated:
+            This method will be removed in v6.
+        """
+        warnings.warn(
+            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'This utility is only for migrating results from flixopt versions before v5.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        import json
+
+        from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
+
+        folder = pathlib.Path(folder)
+
+        # Load datasets directly (old format used --flow_system.nc4 and --solution.nc4)
+        flow_system_path = folder / f'{name}--flow_system.nc4'
+        solution_path = folder / f'{name}--solution.nc4'
+
+        flow_system_data = load_dataset_from_netcdf(flow_system_path)
+        solution = load_dataset_from_netcdf(solution_path)
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(flow_system_data)
+
+        # Reconstruct FlowSystem
+        flow_system = cls.from_dataset(flow_system_data)
+        flow_system.name = name
+
+        # Attach solution (convert attrs from dicts to JSON strings for consistency)
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+        flow_system.solution = solution
+
+        return flow_system
+
     def copy(self) -> FlowSystem:
         """Create a copy of the FlowSystem without optimization state.
 
