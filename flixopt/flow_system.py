@@ -1151,6 +1151,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'Adding carriers to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
+        # Always invalidate when adding carriers to ensure proper re-transformation
+        if self.model is not None or self._connected_and_transformed:
             self._invalidate_model()
 
         for carrier in list(carriers):

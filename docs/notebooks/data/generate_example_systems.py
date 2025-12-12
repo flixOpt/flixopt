@@ -16,7 +16,11 @@ import pandas as pd
 import flixopt as fx
 
 # Output directory (same as this script)
-OUTPUT_DIR = Path(__file__).parent
+try:
+    OUTPUT_DIR = Path(__file__).parent
+except NameError:
+    # Running in notebook context (e.g., mkdocs-jupyter)
+    OUTPUT_DIR = Path('docs/notebooks/data')
 
 
 def create_simple_system() -> fx.FlowSystem:
