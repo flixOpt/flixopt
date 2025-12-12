@@ -996,25 +996,21 @@ class SankeyPlotAccessor:
         return fig
 
     def _get_node_colors(self, node_list: list[str], colors: ColorType | None) -> list[str]:
-        """Get colors for nodes: buses use carrier colors, components use process_colors."""
+        """Get colors for nodes: buses use cached bus_colors, components use process_colors."""
         # Get fallback colors from process_colors
         fallback_colors = process_colors(colors, node_list)
 
-        # Use cached carrier colors for efficiency
-        carrier_colors = self._stats.carrier_colors
+        # Use cached bus colors for efficiency
+        bus_colors = self._stats.bus_colors
 
         node_colors = []
         for node in node_list:
-            # Check if node is a bus
-            if node in self._fs.buses:
-                bus = self._fs.buses[node]
-                if bus.carrier:
-                    color = carrier_colors.get(bus.carrier.lower())
-                    if color:
-                        node_colors.append(color)
-                        continue
-            # Fall back to process_colors
-            node_colors.append(fallback_colors[node])
+            # Check if node is a bus with a cached color
+            if node in bus_colors:
+                node_colors.append(bus_colors[node])
+            else:
+                # Fall back to process_colors
+                node_colors.append(fallback_colors[node])
 
         return node_colors
 
