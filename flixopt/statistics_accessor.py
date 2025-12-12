@@ -422,6 +422,17 @@ class StatisticsAccessor:
         return self._fs.solution
 
     @property
+    def carrier_colors(self) -> dict[str, str]:
+        """Cached mapping of carrier name to color.
+
+        Returns:
+            Dict mapping carrier names (lowercase) to hex color strings.
+        """
+        if self._carrier_colors is None:
+            self._carrier_colors = {name: carrier.color for name, carrier in self._fs.carriers.items() if carrier.color}
+        return self._carrier_colors
+
+    @property
     def plot(self) -> StatisticsPlotAccessor:
         """Access plotting methods for statistics.
 
@@ -879,6 +890,9 @@ class SankeyPlotAccessor:
         if carrier_filter is not None:
             carrier_filter = [c.lower() for c in carrier_filter]
 
+        # Use flow_rates to get carrier names from xarray attributes (already computed)
+        flow_rates = self._stats.flow_rates
+
         for flow in self._fs.flows.values():
             label = flow.label_full
             if label not in ds:
@@ -892,9 +906,8 @@ class SankeyPlotAccessor:
             if bus_filter is not None and bus_label not in bus_filter:
                 continue
 
-            # Get carrier for this flow
-            carrier = self._fs.get_carrier(label)
-            carrier_name = carrier.name if carrier else None
+            # Get carrier name from flow_rates xarray attribute (efficient lookup)
+            carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
 
             if carrier_filter is not None:
                 if carrier_name is None or carrier_name.lower() not in carrier_filter:
@@ -966,15 +979,18 @@ class SankeyPlotAccessor:
         # Get fallback colors from process_colors
         fallback_colors = process_colors(colors, node_list)
 
+        # Use cached carrier colors for efficiency
+        carrier_colors = self._stats.carrier_colors
+
         node_colors = []
         for node in node_list:
             # Check if node is a bus
             if node in self._fs.buses:
                 bus = self._fs.buses[node]
                 if bus.carrier:
-                    carrier = self._fs.carriers.get(bus.carrier)
-                    if carrier and carrier.color:
-                        node_colors.append(carrier.color)
+                    color = carrier_colors.get(bus.carrier.lower())
+                    if color:
+                        node_colors.append(color)
                         continue
             # Fall back to process_colors
             node_colors.append(fallback_colors[node])
@@ -986,25 +1002,29 @@ class SankeyPlotAccessor:
         if not carriers:
             return []
 
+        # Use cached carrier colors for efficiency
+        carrier_colors = self._stats.carrier_colors
+        default_gray = 'rgba(200, 200, 200, 0.4)'
+
         link_colors = []
         for carrier_name in carriers:
             if carrier_name is None:
-                link_colors.append('rgba(200, 200, 200, 0.4)')  # Default gray
+                link_colors.append(default_gray)
                 continue
 
-            carrier = self._fs.carriers.get(carrier_name)
-            if carrier and carrier.color:
+            hex_color = carrier_colors.get(carrier_name.lower() if carrier_name else '')
+            if hex_color:
                 # Convert hex color to rgba with transparency
-                hex_color = carrier.color.lstrip('#')
+                hex_color = hex_color.lstrip('#')
                 if len(hex_color) == 6:
                     r = int(hex_color[0:2], 16)
                     g = int(hex_color[2:4], 16)
                     b = int(hex_color[4:6], 16)
                     link_colors.append(f'rgba({r}, {g}, {b}, 0.4)')
                 else:
-                    link_colors.append('rgba(200, 200, 200, 0.4)')
+                    link_colors.append(default_gray)
             else:
-                link_colors.append('rgba(200, 200, 200, 0.4)')
+                link_colors.append(default_gray)
 
         return link_colors
 
@@ -1290,7 +1310,7 @@ class StatisticsPlotAccessor:
         """Build color map for balance plot.
 
         - Bus balance: colors from component.color
-        - Component balance: colors from flow's carrier
+        - Component balance: colors from flow's carrier (using cached carrier_colors)
 
         Raises:
             RuntimeError: If FlowSystem is not connected_and_transformed.
@@ -1304,12 +1324,17 @@ class StatisticsPlotAccessor:
         color_map = {}
         uncolored = []
 
+        # Get cached carrier colors for efficient lookup
+        carrier_colors = self._stats.carrier_colors
+        flow_rates = self._stats.flow_rates
+
         for label in flow_labels:
             if is_bus:
                 color = self._fs.components[self._fs.flows[label].component].color
             else:
-                carrier = self._fs.get_carrier(label)  # get_carrier accepts flow labels
-                color = carrier.color if carrier else None
+                # Use carrier name from xarray attribute (already computed) + cached colors
+                carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
+                color = carrier_colors.get(carrier_name) if carrier_name else None
 
             if color:
                 color_map[label] = color
