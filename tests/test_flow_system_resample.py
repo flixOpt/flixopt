@@ -271,8 +271,8 @@ def test_frequencies(freq, exp_len):
     assert len(fs.resample(freq, method='mean').timesteps) == exp_len
 
 
-def test_irregular_timesteps():
-    """Test irregular timesteps."""
+def test_irregular_timesteps_error():
+    """Test that resampling irregular timesteps to finer resolution raises error without fill_gaps."""
     ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
@@ -280,8 +280,26 @@ def test_irregular_timesteps():
         fx.Sink(label='s', inputs=[fx.Flow(label='in', bus='b', fixed_relative_profile=np.ones(3), size=1)])
     )
 
-    fs_r = fs.resample('1h', method='mean')
-    assert len(fs_r.timesteps) > 0
+    with pytest.raises(ValueError, match='Resampling created gaps'):
+        fs.transform.resample('1h', method='mean')
+
+
+def test_irregular_timesteps_with_fill_gaps():
+    """Test that resampling irregular timesteps works with explicit fill_gaps strategy."""
+    ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
+    fs = fx.FlowSystem(ts)
+    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add_elements(
+        fx.Sink(
+            label='s', inputs=[fx.Flow(label='in', bus='b', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)]
+        )
+    )
+
+    # Test with ffill
+    fs_r = fs.transform.resample('1h', method='mean', fill_gaps='ffill')
+    assert len(fs_r.timesteps) == 4
+    # Gap at 02:00 should be filled with previous value (2.0)
+    assert_allclose(fs_r.flows['s(in)'].fixed_relative_profile.values, [1.0, 2.0, 2.0, 4.0])
 
 
 if __name__ == '__main__':
