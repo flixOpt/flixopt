@@ -52,18 +52,20 @@ nav:
 
   - Examples:
     - Overview: notebooks/index.md
-    - Getting Started:
+    - Basics:
       - Quickstart: notebooks/01-quickstart.ipynb
-      - Heat System with Storage: notebooks/02-heat-system.ipynb
-    - Investment & Planning:
-      - Investment Optimization: notebooks/03-investment-optimization.ipynb
-      - Operational Constraints: notebooks/04-operational-constraints.ipynb
-    - Advanced Modeling:
-      - Multi-Carrier Systems: notebooks/05-multi-carrier-system.ipynb
-      - Piecewise Efficiency: notebooks/06-piecewise-efficiency.ipynb
-    - Scenarios & Scaling:
-      - Scenarios and Periods: notebooks/07-scenarios-and-periods.ipynb
-      - Large-Scale Optimization: notebooks/08-large-scale-optimization.ipynb
+      - Heat System: notebooks/02-heat-system.ipynb
+    - Investment:
+      - Sizing: notebooks/03-investment-optimization.ipynb
+      - Constraints: notebooks/04-operational-constraints.ipynb
+    - Advanced:
+      - Multi-Carrier: notebooks/05-multi-carrier-system.ipynb
+      - Piecewise: notebooks/06-piecewise-efficiency.ipynb
+    - Scaling:
+      - Scenarios: notebooks/07-scenarios-and-periods.ipynb
+      - Large-Scale: notebooks/08-large-scale-optimization.ipynb
+    - Results:
+      - Plotting: notebooks/09-plotting-and-data-access.ipynb
 
   - API Reference: api-reference/
 

@@ -711,6 +711,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
 
+        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
+        flow_system.connect_and_transform()
+
         return flow_system
 
     def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
