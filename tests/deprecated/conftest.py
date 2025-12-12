@@ -216,10 +216,10 @@ class Converters:
             """Piecewise converter from flow_system_piecewise_conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -236,10 +236,10 @@ class Converters:
             """Segments converter with time-varying piecewise conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -613,12 +613,12 @@ def flow_system_long():
         ),
         fx.linear_converters.CHP(
             'BHKW2',
-            thermal_efficiency=0.58,
-            electrical_efficiency=0.22,
+            thermal_efficiency=(eta_th := 0.58),
+            electrical_efficiency=(eta_el := 0.22),
             status_parameters=fx.StatusParameters(effects_per_startup=24000),
-            electrical_flow=fx.Flow('P_el', bus='Strom'),
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
-            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288),
+            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=(fuel_size := 288), relative_minimum=87 / fuel_size),
+            electrical_flow=fx.Flow('P_el', bus='Strom', size=fuel_size * eta_el),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=fuel_size * eta_th),
         ),
         fx.Storage(
             'Speicher',

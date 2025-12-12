@@ -1031,7 +1031,7 @@ def build_repr_from_init(
         excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
                         Default excludes 'self', 'label', and 'kwargs'
         label_as_positional: If True and 'label' param exists, show it as first positional arg
-        skip_default_size: If True, skip 'size' parameter when it equals CONFIG.Modeling.big
+        skip_default_size: Deprecated. Previously skipped size=CONFIG.Modeling.big, now size=None is default.
 
     Returns:
         Formatted repr string like: ClassName("label", param=value)

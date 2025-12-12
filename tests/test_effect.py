@@ -251,7 +251,9 @@ class TestEffectResults:
                 thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
-                    size=fx.InvestParameters(effects_of_investment_per_size=10, minimum_size=20, mandatory=True),
+                    size=fx.InvestParameters(
+                        effects_of_investment_per_size=10, minimum_size=20, maximum_size=200, mandatory=True
+                    ),
                 ),
                 fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             ),

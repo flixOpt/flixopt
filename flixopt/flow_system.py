@@ -711,6 +711,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
 
+        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
+        flow_system.connect_and_transform()
+
         return flow_system
 
     def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
@@ -1080,6 +1083,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'Adding elements to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
+        # Always invalidate when adding elements to ensure new elements get transformed
+        if self.model is not None or self._connected_and_transformed:
             self._invalidate_model()
 
         for new_element in list(elements):
@@ -1146,6 +1151,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'Adding carriers to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
+        # Always invalidate when adding carriers to ensure proper re-transformation
+        if self.model is not None or self._connected_and_transformed:
             self._invalidate_model()
 
         for carrier in list(carriers):
