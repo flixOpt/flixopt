@@ -12,7 +12,7 @@ flow_system.optimize(fx.solvers.HighsSolver())
 
 # Access plotting via statistics
 flow_system.statistics.plot.balance('ElectricityBus')
-flow_system.statistics.plot.sankey()
+flow_system.statistics.plot.sankey.flows()
 flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 ```
 
@@ -164,20 +164,45 @@ flow_system.statistics.plot.compare(['Battery1', 'Battery2'], variable='charge_s
 
 ### Sankey Diagram
 
-Visualize energy/material flows as a Sankey diagram:
+Visualize energy/material flows as a Sankey diagram. Access via the `sankey` accessor:
 
 ```python
-flow_system.statistics.plot.sankey()
-flow_system.statistics.plot.sankey(timestep=100)
-flow_system.statistics.plot.sankey(aggregate='mean')
+# Energy flow amounts (default)
+flow_system.statistics.plot.sankey.flows()
+flow_system.statistics.plot.sankey.flows(timestep=100)
+flow_system.statistics.plot.sankey.flows(aggregate='mean')
+
+# Investment sizes/capacities
+flow_system.statistics.plot.sankey.sizes()
+
+# Peak flow rates
+flow_system.statistics.plot.sankey.peak_flow()
+
+# Effect contributions (costs, CO2, etc.)
+flow_system.statistics.plot.sankey.effects()
+flow_system.statistics.plot.sankey.effects(select={'effect': 'costs'})
 ```
 
-**Key parameters:**
+**Available methods:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `timestep` | int or str | Specific timestep, or None for aggregation |
-| `aggregate` | `'sum'`, `'mean'` | Aggregation method when timestep is None |
+| Method | Description |
+|--------|-------------|
+| `sankey.flows()` | Energy/material flow amounts |
+| `sankey.sizes()` | Investment sizes/capacities |
+| `sankey.peak_flow()` | Maximum flow rates |
+| `sankey.effects()` | Component contributions to effects |
+
+**Select options for filtering:**
+
+```python
+# Filter by bus or component
+flow_system.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
+flow_system.statistics.plot.sankey.flows(select={'component': ['Boiler', 'CHP']})
+
+# Filter effects by name
+flow_system.statistics.plot.sankey.effects(select={'effect': 'costs'})
+flow_system.statistics.plot.sankey.effects(select={'effect': ['costs', 'CO2']})
+```
 
 ### Effects Plot
 
@@ -345,7 +370,7 @@ heat_bus = fx.Bus('HeatNetwork', carrier='heat')
 elec_bus = fx.Bus('Grid', carrier='electricity')
 
 # Plots automatically use carrier colors for bus-related elements
-flow_system.statistics.plot.sankey()  # Buses colored by carrier
+flow_system.statistics.plot.sankey.flows()  # Buses colored by carrier
 ```
 
 ### Custom Carriers
@@ -489,7 +514,7 @@ flow_system.statistics.plot.compare(
 plots = {
     'balance': flow_system.statistics.plot.balance('HeatBus', show=False),
     'storage': flow_system.statistics.plot.storage('ThermalStorage', show=False),
-    'sankey': flow_system.statistics.plot.sankey(show=False),
+    'sankey': flow_system.statistics.plot.sankey.flows(show=False),
     'costs': flow_system.statistics.plot.effects(effect='costs', show=False),
 }
 

@@ -671,11 +671,11 @@ class TestExportFunctionality:
 class TestSankeyDiagram:
     """Tests for Sankey diagram functionality."""
 
-    def test_sankey_flow_hours_mode(self, simple_flow_system, highs_solver):
-        """Test Sankey diagram with flow_hours mode (default)."""
+    def test_sankey_flows(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with flows() method."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(show=False)
+        result = simple_flow_system.statistics.plot.sankey.flows(show=False)
 
         assert result.figure is not None
         assert result.data is not None
@@ -684,21 +684,21 @@ class TestSankeyDiagram:
         assert 'target' in result.data.coords
         assert len(result.data.link) > 0
 
-    def test_sankey_peak_flow_mode(self, simple_flow_system, highs_solver):
-        """Test Sankey diagram with peak_flow mode."""
+    def test_sankey_peak_flow(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with peak_flow() method."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(mode='peak_flow', show=False)
+        result = simple_flow_system.statistics.plot.sankey.peak_flow(show=False)
 
         assert result.figure is not None
         assert result.data is not None
         assert len(result.data.link) > 0
 
-    def test_sankey_sizes_mode(self, simple_flow_system, highs_solver):
-        """Test Sankey diagram with sizes mode shows investment sizes."""
+    def test_sankey_sizes(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with sizes() method shows investment sizes."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(mode='sizes', show=False)
+        result = simple_flow_system.statistics.plot.sankey.sizes(show=False)
 
         assert result.figure is not None
         assert result.data is not None
@@ -710,19 +710,19 @@ class TestSankeyDiagram:
         simple_flow_system.optimize(highs_solver)
 
         # Get all sizes (no filter)
-        result_all = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=None, show=False)
+        result_all = simple_flow_system.statistics.plot.sankey.sizes(max_size=None, show=False)
 
         # Get filtered sizes
-        result_filtered = simple_flow_system.statistics.plot.sankey(mode='sizes', max_size=100, show=False)
+        result_filtered = simple_flow_system.statistics.plot.sankey.sizes(max_size=100, show=False)
 
         # Filtered should have fewer or equal links
         assert len(result_filtered.data.link) <= len(result_all.data.link)
 
-    def test_sankey_effects_mode(self, simple_flow_system, highs_solver):
-        """Test Sankey diagram with effects mode."""
+    def test_sankey_effects(self, simple_flow_system, highs_solver):
+        """Test Sankey diagram with effects() method."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+        result = simple_flow_system.statistics.plot.sankey.effects(show=False)
 
         assert result.figure is not None
         assert result.data is not None
@@ -733,30 +733,30 @@ class TestSankeyDiagram:
         assert any('[' in str(t) for t in targets), 'Effects should appear as [effect_name] in targets'
 
     def test_sankey_effects_includes_costs_and_co2(self, simple_flow_system, highs_solver):
-        """Test that effects mode includes both costs and CO2."""
+        """Test that effects() method includes both costs and CO2."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(mode='effects', show=False)
+        result = simple_flow_system.statistics.plot.sankey.effects(show=False)
 
         targets = [str(t) for t in result.data.target.values]
         # Should have at least costs effect
         assert '[costs]' in targets, 'Should include costs effect'
 
-    def test_sankey_with_timestep_selection(self, simple_flow_system, highs_solver):
-        """Test Sankey with specific timestep."""
+    def test_sankey_flows_with_timestep(self, simple_flow_system, highs_solver):
+        """Test Sankey flows with specific timestep."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(timestep=0, show=False)
+        result = simple_flow_system.statistics.plot.sankey.flows(timestep=0, show=False)
 
         assert result.figure is not None
         assert len(result.data.link) > 0
 
-    def test_sankey_with_mean_aggregate(self, simple_flow_system, highs_solver):
-        """Test Sankey with mean aggregation."""
+    def test_sankey_flows_with_mean_aggregate(self, simple_flow_system, highs_solver):
+        """Test Sankey flows with mean aggregation."""
         simple_flow_system.optimize(highs_solver)
 
-        result_sum = simple_flow_system.statistics.plot.sankey(aggregate='sum', show=False)
-        result_mean = simple_flow_system.statistics.plot.sankey(aggregate='mean', show=False)
+        result_sum = simple_flow_system.statistics.plot.sankey.flows(aggregate='sum', show=False)
+        result_mean = simple_flow_system.statistics.plot.sankey.flows(aggregate='mean', show=False)
 
         # Both should produce valid results
         assert result_sum.figure is not None
@@ -770,7 +770,7 @@ class TestSankeyDiagram:
         """Test that sankey returns PlotResult with figure and data."""
         simple_flow_system.optimize(highs_solver)
 
-        result = simple_flow_system.statistics.plot.sankey(show=False)
+        result = simple_flow_system.statistics.plot.sankey.flows(show=False)
 
         # Check PlotResult structure
         assert hasattr(result, 'figure')

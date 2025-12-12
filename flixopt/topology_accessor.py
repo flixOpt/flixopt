@@ -215,14 +215,14 @@ class TopologyAccessor:
 
         Notes:
             This visualization shows the network structure without optimization results.
-            For visualizations that include flow values, use `flow_system.statistics.plot.sankey()`
+            For visualizations that include flow values, use `flow_system.statistics.plot.sankey.flows()`
             after running an optimization.
 
             Hover over nodes and links to see detailed element information.
 
         See Also:
             - `plot_legacy()`: Previous PyVis-based network visualization.
-            - `statistics.plot.sankey()`: Sankey with actual flow values from optimization.
+            - `statistics.plot.sankey.flows()`: Sankey with actual flow values from optimization.
         """
         if not self._fs.connected_and_transformed:
             self._fs.connect_and_transform()
