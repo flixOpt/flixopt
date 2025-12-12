@@ -886,14 +886,14 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, overwrite: bool = True):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the object to a NetCDF file.
 
         Args:
             path: Path to save the NetCDF file. Parent directories are created if they don't exist.
             compression: Compression level (0-9)
-            overwrite: If True (default), overwrite existing file. If False, raise error if file exists.
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.

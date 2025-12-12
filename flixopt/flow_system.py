@@ -220,8 +220,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
+        # Topology accessor cache - lazily initialized, invalidated on structure change
+        self._topology: TopologyAccessor | None = None
+
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
+
+        # Cached flow→carrier mapping (built lazily after connect_and_transform)
+        self._flow_carriers: dict[str, str] | None = None
 
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
@@ -707,7 +713,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0, overwrite: bool = True):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -718,7 +724,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             path: The path to the netCDF file. Parent directories are created if they don't exist.
             compression: The compression level to use when saving the file (0-9).
-            overwrite: If True (default), overwrite existing file. If False, raise error if file exists.
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.
@@ -1187,6 +1193,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Carriers registered on this FlowSystem."""
         return self._carriers
 
+    @property
+    def flow_carriers(self) -> dict[str, str]:
+        """Cached mapping of flow labels to carrier names.
+
+        Returns:
+            Dict mapping flow label to carrier name (lowercase).
+            Flows without a carrier are not included.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        if self._flow_carriers is None:
+            self._flow_carriers = {}
+            for flow_label, flow in self.flows.items():
+                bus = self.buses.get(flow.bus)
+                if bus and bus.carrier:
+                    self._flow_carriers[flow_label] = bus.carrier.lower()
+
+        return self._flow_carriers
+
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
         Create a linopy model from the FlowSystem.
@@ -1341,7 +1372,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Invalidate the model and element submodels when structure changes.
 
         This clears the model, resets the ``connected_and_transformed`` flag,
-        and clears all element submodels and variable/constraint names.
+        clears all element submodels and variable/constraint names, and invalidates
+        the topology accessor cache.
 
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
@@ -1352,6 +1384,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.model = None
         self._connected_and_transformed = False
+        self._topology = None  # Invalidate topology accessor (and its cached colors)
         for element in self.values():
             element.submodel = None
             element._variable_names = []
@@ -1509,11 +1542,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Access network topology inspection and visualization methods.
 
-        This property returns a TopologyAccessor that provides methods to inspect
-        the network structure and visualize it.
+        This property returns a cached TopologyAccessor that provides methods to inspect
+        the network structure and visualize it. The accessor is invalidated when the
+        FlowSystem structure changes (via reset() or invalidate()).
 
         Returns:
-            A TopologyAccessor instance.
+            A cached TopologyAccessor instance.
 
         Examples:
             Visualize the network:
@@ -1531,7 +1565,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             >>> nodes, edges = flow_system.topology.infos()
         """
-        return TopologyAccessor(self)
+        if self._topology is None:
+            self._topology = TopologyAccessor(self)
+        return self._topology
 
     def plot_network(
         self,
