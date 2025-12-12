@@ -109,35 +109,57 @@ def _rgb_string_to_hex(color: str) -> str:
         return color
 
 
-def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
-    """Convert hex color to RGBA string format.
+def color_to_rgba(color: str | None, alpha: float = 1.0) -> str:
+    """Convert any valid color to RGBA string format.
+
+    Handles hex colors (with or without #), named colors, and rgb/rgba strings.
 
     Args:
-        hex_color: Color in hex format '#RRGGBB' or 'RRGGBB'.
+        color: Color in any valid format (hex '#FF0000' or 'FF0000',
+               named 'red', rgb 'rgb(255,0,0)', rgba 'rgba(255,0,0,1)').
         alpha: Alpha/opacity value between 0.0 and 1.0.
 
     Returns:
         Color in RGBA format 'rgba(R, G, B, A)'.
 
     Examples:
-        >>> hex_to_rgba('#FF0000')
+        >>> color_to_rgba('#FF0000')
         'rgba(255, 0, 0, 1.0)'
-        >>> hex_to_rgba('#FF0000', 0.5)
+        >>> color_to_rgba('FF0000')
+        'rgba(255, 0, 0, 1.0)'
+        >>> color_to_rgba('red', 0.5)
         'rgba(255, 0, 0, 0.5)'
-        >>> hex_to_rgba('invalid')
+        >>> color_to_rgba('forestgreen', 0.4)
+        'rgba(34, 139, 34, 0.4)'
+        >>> color_to_rgba(None)
         'rgba(200, 200, 200, 1.0)'
     """
+    if not color:
+        return f'rgba(200, 200, 200, {alpha})'
+
     try:
-        hex_color = hex_color.lstrip('#')
-        if len(hex_color) == 6:
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            return f'rgba({r}, {g}, {b}, {alpha})'
-    except (ValueError, AttributeError):
-        pass
-    # Fallback to gray
-    return f'rgba(200, 200, 200, {alpha})'
+        # Use matplotlib's robust color conversion (handles hex, named, etc.)
+        rgba = mcolors.to_rgba(color)
+    except ValueError:
+        # Try adding # prefix for bare hex colors (e.g., 'FF0000' -> '#FF0000')
+        if len(color) == 6 and all(c in '0123456789ABCDEFabcdef' for c in color):
+            try:
+                rgba = mcolors.to_rgba(f'#{color}')
+            except ValueError:
+                return f'rgba(200, 200, 200, {alpha})'
+        else:
+            return f'rgba(200, 200, 200, {alpha})'
+    except TypeError:
+        return f'rgba(200, 200, 200, {alpha})'
+
+    r = int(round(rgba[0] * 255))
+    g = int(round(rgba[1] * 255))
+    b = int(round(rgba[2] * 255))
+    return f'rgba({r}, {g}, {b}, {alpha})'
+
+
+# Alias for backwards compatibility
+hex_to_rgba = color_to_rgba
 
 
 def process_colors(
