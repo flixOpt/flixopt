@@ -67,13 +67,15 @@ def _plot_network(
         )
 
     for edge in edge_infos.values():
+        # Use carrier color if available, otherwise default gray
+        edge_color = edge.get('carrier_color', '#222831') or '#222831'
         net.add_edge(
             edge['start'],
             edge['end'],
             label=edge['label'],
             title=edge['infos'].replace(')', '\n)'),
             font={'color': '#4D4D4D', 'size': 14},
-            color='#222831',
+            color=edge_color,
         )
 
     net.barnes_hut(central_gravity=0.8, spring_length=50, spring_strength=0.05, gravity=-10000)
@@ -168,15 +170,16 @@ class TopologyAccessor:
             for node in chain(self._fs.components.values(), self._fs.buses.values())
         }
 
-        edges = {
-            flow.label_full: {
+        edges = {}
+        for flow in self._fs.flows.values():
+            carrier = self._fs.get_carrier(flow.label_full)
+            edges[flow.label_full] = {
                 'label': flow.label,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
                 'end': flow.component if flow.is_input_in_component else flow.bus,
                 'infos': flow.__str__(),
+                'carrier_color': carrier.color if carrier else None,
             }
-            for flow in self._fs.flows.values()
-        }
 
         return nodes, edges
 
@@ -235,6 +238,7 @@ class TopologyAccessor:
             'value': [],
             'label': [],
             'customdata': [],  # For hover text
+            'color': [],  # Carrier-based colors
         }
 
         # Collect node hover info (format repr for HTML display)
@@ -262,6 +266,20 @@ class TopologyAccessor:
             links['value'].append(1)  # Equal width for all links (no solution data)
             links['label'].append(flow.label_full)
             links['customdata'].append(repr(flow).replace('\n', '<br>'))  # Flow repr for hover
+
+            # Get carrier color for this flow (subtle/semi-transparent)
+            carrier = self._fs.get_carrier(flow.label_full)
+            if carrier and carrier.color:
+                hex_color = carrier.color.lstrip('#')
+                if len(hex_color) == 6:
+                    r = int(hex_color[0:2], 16)
+                    g = int(hex_color[2:4], 16)
+                    b = int(hex_color[4:6], 16)
+                    links['color'].append(f'rgba({r}, {g}, {b}, 0.4)')
+                else:
+                    links['color'].append('rgba(200, 200, 200, 0.4)')
+            else:
+                links['color'].append('rgba(200, 200, 200, 0.4)')
 
         # Create figure
         node_list = list(nodes)
@@ -302,6 +320,7 @@ class TopologyAccessor:
                         label=links['label'],
                         customdata=links['customdata'],
                         hovertemplate='%{customdata}<extra></extra>',
+                        color=links['color'],  # Carrier-based colors
                     ),
                 )
             ]
