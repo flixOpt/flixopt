@@ -472,7 +472,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Numeric_PS | InvestParameters = None,
+        size: Numeric_PS | InvestParameters | None = None,
         fixed_relative_profile: Numeric_TPS | None = None,
         relative_minimum: Numeric_TPS = 0,
         relative_maximum: Numeric_TPS = 1,
