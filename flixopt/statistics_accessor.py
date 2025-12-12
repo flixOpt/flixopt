@@ -1199,7 +1199,9 @@ class StatisticsPlotAccessor:
         - Links: Contributions from each component to each effect
 
         Args:
-            select: xarray-style selection.
+            select: xarray-style selection. Supports 'effect' key to filter
+                which effects are shown (e.g., select={'effect': 'costs'} or
+                select={'effect': ['costs', 'CO2']}).
             colors: Color specification for nodes.
             **plotly_kwargs: Additional Plotly layout arguments.
 
@@ -1208,11 +1210,24 @@ class StatisticsPlotAccessor:
         """
         total_effects = self._stats.total_effects
 
+        # Extract effect filter from select (not passed to xarray sel)
+        effect_filter: str | list[str] | None = None
+        if select is not None:
+            select = dict(select)  # Make a copy to avoid mutating original
+            effect_filter = select.pop('effect', None)
+
+        # Determine which effects to include
+        effect_names = list(total_effects.data_vars)
+        if effect_filter is not None:
+            if isinstance(effect_filter, str):
+                effect_filter = [effect_filter]
+            effect_names = [e for e in effect_names if e in effect_filter]
+
         # Collect all links: component -> effect
         nodes: set[str] = set()
         links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
 
-        for effect_name in total_effects.data_vars:
+        for effect_name in effect_names:
             effect_data = total_effects[effect_name]
             effect_data = _apply_selection(effect_data, select)
 
