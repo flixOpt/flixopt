@@ -428,26 +428,27 @@ class TestNetworkVisualization:
     """Tests for network visualization functionality."""
 
     def test_topology_plot_returns_figure(self, simple_flow_system):
-        """Test that topology.plot() returns a Plotly Figure."""
+        """Test that topology.plot() returns a PlotResult with Plotly Figure."""
         import plotly.graph_objects as go
 
-        fig = simple_flow_system.topology.plot(show=False)
-        assert fig is not None
-        assert isinstance(fig, go.Figure)
+        result = simple_flow_system.topology.plot(show=False)
+        assert result is not None
+        assert hasattr(result, 'figure')
+        assert isinstance(result.figure, go.Figure)
 
     def test_topology_plot_creates_html(self, simple_flow_system, tmp_path):
         """Test that topology.plot() figure can be saved to HTML file."""
         html_path = tmp_path / 'network.html'
-        fig = simple_flow_system.topology.plot(show=False)
-        fig.write_html(str(html_path))
+        result = simple_flow_system.topology.plot(show=False)
+        result.figure.write_html(str(html_path))
         assert html_path.exists()
 
     def test_topology_plot_contains_all_buses(self, simple_flow_system):
         """Test that topology plot contains all buses in the Sankey diagram."""
-        fig = simple_flow_system.topology.plot(show=False)
+        result = simple_flow_system.topology.plot(show=False)
 
         # Get node labels from the Sankey diagram
-        sankey_data = fig.data[0]
+        sankey_data = result.figure.data[0]
         node_labels = list(sankey_data.node.label)
 
         # Check that buses are in network
