@@ -178,10 +178,9 @@ class OptimizeAccessor:
         # Calculate segment indices
         segment_indices = self._calculate_segment_indices(total_timesteps, horizon, overlap)
         n_segments = len(segment_indices)
-
-        logger.info(f'{"":#^80}')
-        logger.info(f'{" Rolling Horizon Optimization ":#^80}')
-        logger.info(f'Segments: {n_segments}, Horizon: {horizon}, Overlap: {overlap}')
+        logger.info(
+            f'Starting Rolling Horizon Optimization - Segments: {n_segments}, Horizon: {horizon}, Overlap: {overlap}'
+        )
 
         # Create and solve segments
         segment_flow_systems: list[FlowSystem] = []
