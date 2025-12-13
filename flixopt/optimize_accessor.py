@@ -324,78 +324,48 @@ class OptimizeAccessor:
         segment_flow_systems: list[FlowSystem],
         horizon: int,
     ) -> xr.Dataset:
-        """Combine segment solutions into a single Dataset, recomputing effect totals.
+        """Combine segment solutions into a single Dataset.
 
-        Effect variables are identified from the FlowSystem's effect labels:
-        - {effect}: Total = temporal + periodic (recomputed)
-        - {effect}(temporal): Sum of per_timestep values (recomputed)
-        - {effect}(periodic): Sum across segments (no overlap)
-        - {effect}(temporal)|per_timestep: Time-dependent (concatenated with overlap trimming)
+        - Time-dependent variables: concatenated with overlap trimming
+        - Effect totals: recomputed from per-timestep values
+        - Other scalars: set to NaN (unknown how to combine)
         """
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
 
-        # Get effect labels from the original FlowSystem (includes Penalty)
         effect_labels = set(self._fs.effects.keys())
-
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
 
-        for var_name in first_solution.data_vars:
-            first_var = first_solution[var_name]
-
+        # Step 1: Concatenate all time-dependent variables
+        for var_name, first_var in first_solution.data_vars.items():
             if 'time' in first_var.dims:
-                # Time-dependent: concatenate with overlap trimming
-                combined_vars[var_name] = self._concat_time_variable(segment_flow_systems, var_name, horizon)
-
-            elif var_name in effect_labels:
-                # Effect total: skip for now, will recompute from temporal + periodic
-                pass
-
-            elif var_name.endswith('(temporal)') and var_name[:-10] in effect_labels:
-                # Temporal effect total: skip for now, will recompute from per_timestep
-                pass
-
-            elif var_name.endswith('(periodic)') and var_name[:-10] in effect_labels:
-                # Periodic effect: sum across all segments (no overlap issue)
-                combined_vars[var_name] = sum(seg.solution[var_name] for seg in segment_flow_systems)
-
+                arrays = [
+                    seg.solution[var_name].isel(
+                        time=slice(None, horizon if i < len(segment_flow_systems) - 1 else None)
+                    )
+                    for i, seg in enumerate(segment_flow_systems)
+                ]
+                combined_vars[var_name] = xr.concat(arrays, dim='time')
             else:
-                # Other scalar: use last segment's value
-                combined_vars[var_name] = segment_flow_systems[-1].solution[var_name]
+                # Scalar: NaN placeholder (will recompute effects below)
+                combined_vars[var_name] = xr.DataArray(float('nan'))
 
-        # Recompute effect totals from combined per-timestep values
-        for effect_label in effect_labels:
-            per_timestep_var = f'{effect_label}(temporal)|per_timestep'
-            temporal_var = f'{effect_label}(temporal)'
-            periodic_var = f'{effect_label}(periodic)'
+        # Step 2: Recompute effect totals
+        for effect in effect_labels:
+            per_ts = f'{effect}(temporal)|per_timestep'
+            temporal = f'{effect}(temporal)'
+            periodic = f'{effect}(periodic)'
 
-            # Temporal total = sum of per_timestep
-            if per_timestep_var in combined_vars:
-                combined_vars[temporal_var] = combined_vars[per_timestep_var].sum(dim='time', skipna=True)
+            # Temporal = sum of per_timestep
+            if per_ts in combined_vars:
+                combined_vars[temporal] = combined_vars[per_ts].sum(dim='time', skipna=True)
+
+            # Periodic = sum across segments (no overlap issue for periodic costs)
+            if periodic in first_solution:
+                combined_vars[periodic] = sum(seg.solution[periodic] for seg in segment_flow_systems)
 
             # Total = temporal + periodic
-            total = xr.DataArray(0.0)
-            if temporal_var in combined_vars:
-                total = total + combined_vars[temporal_var]
-            if periodic_var in combined_vars:
-                total = total + combined_vars[periodic_var]
-            combined_vars[effect_label] = total
+            combined_vars[effect] = combined_vars.get(temporal, 0.0) + combined_vars.get(periodic, 0.0)
 
         return xr.Dataset(combined_vars)
-
-    def _concat_time_variable(
-        self,
-        segment_flow_systems: list[FlowSystem],
-        var_name: str,
-        horizon: int,
-    ) -> xr.DataArray:
-        """Concatenate a time-dependent variable from segments, trimming overlaps."""
-        arrays = []
-        for i, seg_fs in enumerate(segment_flow_systems):
-            da = seg_fs.solution[var_name]
-            # Trim overlap for all segments except the last
-            if i < len(segment_flow_systems) - 1:
-                da = da.isel(time=slice(None, horizon))
-            arrays.append(da)
-        return xr.concat(arrays, dim='time')
