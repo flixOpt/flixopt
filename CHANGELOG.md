@@ -238,7 +238,7 @@ costs = results.model['costs'].solution.item()
 
 # New (v5.0)
 flow_system.optimize(solver)
-costs = flow_system.solution['costs(total)'].item()
+costs = flow_system.solution['costs'].item()
 ```
 
 **Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
