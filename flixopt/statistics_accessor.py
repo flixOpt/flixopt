@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -32,10 +31,9 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
+from .plot_result import PlotResult
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -172,58 +170,6 @@ def _heatmap_figure(
         imshow_args['animation_frame'] = animation_frame
 
     return px.imshow(**imshow_args)
-
-
-@dataclass
-class PlotResult:
-    """Container returned by all plot methods. Holds both data and figure.
-
-    Attributes:
-        data: Prepared xarray Dataset used for the plot.
-        figure: Plotly figure object.
-    """
-
-    data: xr.Dataset
-    figure: go.Figure
-
-    def _repr_html_(self) -> str:
-        """Return HTML representation for Jupyter notebook display."""
-        return self.figure.to_html(full_html=False, include_plotlyjs='cdn')
-
-    def show(self) -> PlotResult:
-        """Display the figure. Returns self for chaining."""
-        self.figure.show()
-        return self
-
-    def update(self, **layout_kwargs: Any) -> PlotResult:
-        """Update figure layout. Returns self for chaining."""
-        self.figure.update_layout(**layout_kwargs)
-        return self
-
-    def update_traces(self, **trace_kwargs: Any) -> PlotResult:
-        """Update figure traces. Returns self for chaining."""
-        self.figure.update_traces(**trace_kwargs)
-        return self
-
-    def to_html(self, path: str | Path) -> PlotResult:
-        """Save figure as interactive HTML. Returns self for chaining."""
-        self.figure.write_html(str(path))
-        return self
-
-    def to_image(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Save figure as static image. Returns self for chaining."""
-        self.figure.write_image(str(path), **kwargs)
-        return self
-
-    def to_csv(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Export the underlying data to CSV. Returns self for chaining."""
-        self.data.to_dataframe().to_csv(path, **kwargs)
-        return self
-
-    def to_netcdf(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Export the underlying data to netCDF. Returns self for chaining."""
-        self.data.to_netcdf(path, **kwargs)
-        return self
 
 
 # --- Helper functions ---

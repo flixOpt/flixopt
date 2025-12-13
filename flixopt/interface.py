@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import xarray as xr
 
 from .config import CONFIG
+from .plot_result import PlotResult
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -476,7 +476,8 @@ class PiecewiseConversion(Interface):
         title: str = '',
         select: dict[str, Any] | None = None,
         colorscale: str | None = None,
-    ) -> go.Figure:
+        show: bool | None = None,
+    ) -> PlotResult:
         """Plot multi-flow piecewise conversion with time variation visualization.
 
         Visualizes the piecewise linear relationships between flows. Each flow
@@ -494,9 +495,11 @@ class PiecewiseConversion(Interface):
                 e.g. {'time': slice('2024-01-01', '2024-01-02')}.
             colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
 
         Returns:
-            Plotly Figure with subplots per flow.
+            PlotResult containing the figure and underlying piecewise data.
 
         Examples:
             >>> flow_system.connect_and_transform()
@@ -594,7 +597,14 @@ class PiecewiseConversion(Interface):
         fig.update_yaxes(title_text='')
         fig.update_xaxes(title_text=x_label)
 
-        return fig
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
@@ -821,7 +831,8 @@ class PiecewiseEffects(Interface):
         title: str = '',
         select: dict[str, Any] | None = None,
         colorscale: str | None = None,
-    ) -> go.Figure:
+        show: bool | None = None,
+    ) -> PlotResult:
         """Plot origin vs effect shares with time variation visualization.
 
         Visualizes the piecewise linear relationships between the origin variable
@@ -838,9 +849,11 @@ class PiecewiseEffects(Interface):
                 e.g. {'time': slice('2024-01-01', '2024-01-02')}.
             colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
 
         Returns:
-            Plotly Figure with subplots per effect.
+            PlotResult containing the figure and underlying piecewise data.
 
         Examples:
             >>> flow_system.connect_and_transform()
@@ -929,7 +942,14 @@ class PiecewiseEffects(Interface):
         fig.update_yaxes(title_text='')
         fig.update_xaxes(title_text='Origin')
 
-        return fig
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
