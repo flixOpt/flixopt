@@ -393,7 +393,7 @@ results = calc.results  # Returns SegmentedResults
 ```
 
 **Planned for future release:**
-- `flow_system.optimize.rolling(solver, ...)` - Rolling horizon optimization to replace `SegmentedOptimization`
+- `flow_system.optimize.rolling_horizon(solver, horizon, overlap, ...)` - Rolling horizon optimization to replace `SegmentedOptimization`
 
 ### Migration Checklist
 

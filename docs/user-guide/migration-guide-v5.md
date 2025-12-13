@@ -327,7 +327,7 @@ Clustered optimization uses the new transform accessor:
 
 ### Segmented Optimization (Not Yet Migrated)
 
-Segmented optimization still uses the class-based API. A new `optimize.rolling()` method is planned for a future release.
+Segmented optimization still uses the class-based API. A new `optimize.rolling_horizon()` method is planned for a future release.
 
 ```python
 # Still use the class-based API (unchanged from v4.x)
