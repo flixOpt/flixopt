@@ -1391,6 +1391,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model = None
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
+        self._flow_carriers = None  # Invalidate flow-to-carrier mapping
         for element in self.values():
             element.submodel = None
             element._variable_names = []
