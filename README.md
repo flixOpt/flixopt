@@ -98,8 +98,8 @@ boiler = fx.Boiler("Boiler", eta=0.9, ...)
 **Multi-criteria optimization:** Model costs, emissions, resource use - any custom metric. Optimize single objectives or use weighted combinations and ε-constraints.
 → [Effects documentation](https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/)
 
-**Performance at any scale:** Choose optimization modes without changing your model - Optimization, SegmentedOptimization, or ClusteredOptimization (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
-→ [Optimization modes](https://flixopt.github.io/flixopt/latest/api-reference/optimization/)
+**Performance at any scale:** Choose optimization modes without changing your model - full optimization, rolling horizon, or clustering (using [TSAM](https://github.com/FZJ-IEK3-VSA/tsam)).
+→ [Scaling notebooks](https://flixopt.github.io/flixopt/latest/notebooks/08a-aggregation/)
 
 **Built for reproducibility:** Self-contained NetCDF result files with complete model information. Load results months later - everything is preserved.
 → [Results documentation](https://flixopt.github.io/flixopt/latest/api-reference/results/)
