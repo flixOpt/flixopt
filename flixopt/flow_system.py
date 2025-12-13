@@ -210,6 +210,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
+        self._storages_cache: ElementContainer[Storage] | None = None
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
@@ -1702,6 +1703,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Invalidate cache once after all additions
         if components:
             self._flows_cache = None
+            self._storages_cache = None
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
@@ -1710,6 +1712,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Invalidate cache once after all additions
         if buses:
             self._flows_cache = None
+            self._storages_cache = None
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -1817,9 +1820,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             ElementContainer containing all Storage components in the FlowSystem,
             sorted by label for reproducibility.
         """
-        storages = [c for c in self.components.values() if isinstance(c, Storage)]
-        storages = sorted(storages, key=lambda s: s.label_full.lower())
-        return ElementContainer(storages, element_type_name='storages', truncate_repr=10)
+        if self._storages_cache is None:
+            storages = [c for c in self.components.values() if isinstance(c, Storage)]
+            storages = sorted(storages, key=lambda s: s.label_full.lower())
+            self._storages_cache = ElementContainer(storages, element_type_name='storages', truncate_repr=10)
+        return self._storages_cache
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
