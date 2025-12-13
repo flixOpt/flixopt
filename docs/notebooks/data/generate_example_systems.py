@@ -150,8 +150,8 @@ def create_complex_system() -> fx.FlowSystem:
         # CHP with piecewise efficiency (efficiency varies with load)
         fx.LinearConverter(
             'CHP',
-            inputs=[fx.Flow('Gas', bus='Gas')],
-            outputs=[fx.Flow('El', bus='Electricity'), fx.Flow('Heat', bus='Heat')],
+            inputs=[fx.Flow('Gas', bus='Gas', size=200)],
+            outputs=[fx.Flow('El', bus='Electricity', size=80), fx.Flow('Heat', bus='Heat', size=85)],
             piecewise_conversion=fx.PiecewiseConversion(
                 {
                     'Gas': fx.Piecewise(
