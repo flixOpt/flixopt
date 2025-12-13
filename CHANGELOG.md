@@ -51,6 +51,84 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.1.0] - Upcoming
+
+**Summary**: This release significantly improves the time series clustering (tsam) integration with a simplified API, multi-period/scenario support, and inner-period segmentation.
+
+### ✨ Added
+
+**Improved Clustering API**: The new `transform.cluster()` method provides a clean, keyword-based interface:
+
+```python
+# Simple: 8 typical days
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+)
+clustered_fs.optimize(solver)
+
+# With inner-period segmentation (8 days × 4 segments = 32 timesteps)
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    n_segments=4,  # Reduce 24 hours to 4 segments per day
+)
+
+# Segmentation only (no clustering, just reduce resolution)
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=None,
+    cluster_duration='1D',
+    n_segments=4,
+)
+```
+
+**Multi-Period Clustering**: FlowSystems with multiple periods (e.g., multi-year investment studies) now support clustering, with each period clustered independently:
+
+```python
+multi_year_fs = fx.FlowSystem(timesteps, periods=pd.Index([2025, 2026, 2027]))
+clustered_fs = multi_year_fs.transform.cluster(n_clusters=8, cluster_duration='1D')
+```
+
+**Multi-Scenario Clustering**: FlowSystems with scenarios now support clustering, with each scenario clustered independently.
+
+**Inner-Period Segmentation**: New `n_segments` parameter enables tsam's inner-period clustering to reduce timesteps within each typical period. This provides additional computational reduction beyond regular clustering.
+
+### 💥 Breaking Changes
+
+**ClusteringParameters API Changed**: The `ClusteringParameters` class has new parameter names:
+
+| Old Parameter | New Parameter |
+|---------------|---------------|
+| `hours_per_period` | `cluster_duration` (accepts '1D', '24h', or hours) |
+| `nr_of_periods` | `n_clusters` |
+| `fix_storage_flows` | `include_storage` |
+| `aggregate_data_and_fix_non_binary_vars` | `aggregate_data` |
+| `percentage_of_period_freedom` | `flexibility_percent` |
+| `penalty_of_period_freedom` | `flexibility_penalty` |
+
+**Migration Example**:
+
+```python
+# Old (v5.0):
+params = fx.ClusteringParameters(
+    hours_per_period=24,
+    nr_of_periods=8,
+    fix_storage_flows=True,
+    aggregate_data_and_fix_non_binary_vars=True,
+)
+clustered_fs = flow_system.transform.cluster(params)
+
+# New (v5.1):
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    include_storage=True,
+    aggregate_data=True,
+)
+```
+
+---
+
 ## [Upcoming] - v5.0.0
 
 **Summary**: This is a major release that fundamentally reimagines how users interact with flixopt. The new **FlowSystem-centric API** dramatically simplifies workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **removes all deprecated items from v4.x**.
