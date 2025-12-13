@@ -41,7 +41,7 @@ logger = logging.getLogger('flixopt')
 
 class Clustering:
     """
-    Clustering organizing class
+    Clustering organizing class for time series aggregation using tsam.
     """
 
     def __init__(
@@ -49,17 +49,21 @@ class Clustering:
         original_data: pd.DataFrame,
         hours_per_time_step: Scalar,
         hours_per_period: Scalar,
-        nr_of_periods: int = 8,
+        nr_of_periods: int | None = 8,
+        n_segments: int | None = None,
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
     ):
         """
         Args:
-            original_data: The original data to aggregate
+            original_data: The original data to aggregate.
             hours_per_time_step: The duration of each timestep in hours.
             hours_per_period: The duration of each period in hours.
             nr_of_periods: The number of typical periods to use in the aggregation.
+                Set to None to skip period clustering and only do segmentation.
+            n_segments: Number of segments within each period (inner-period clustering).
+                If None, no inner-period segmentation is performed.
             weights: The weights for aggregation. If None, all time series are equally weighted.
             time_series_for_high_peaks: List of time series to use for explicitly selecting periods with high values.
             time_series_for_low_peaks: List of time series to use for explicitly selecting periods with low values.
@@ -72,6 +76,7 @@ class Clustering:
         self.hours_per_time_step = hours_per_time_step
         self.hours_per_period = hours_per_period
         self.nr_of_periods = nr_of_periods
+        self.n_segments = n_segments
         self.nr_of_time_steps = len(self.original_data.index)
         self.weights = weights or {}
         self.time_series_for_high_peaks = time_series_for_high_peaks or []
@@ -83,28 +88,35 @@ class Clustering:
 
     def cluster(self) -> None:
         """
-        Durchführung der Zeitreihenaggregation
+        Perform time series clustering/aggregation.
         """
         start_time = timeit.default_timer()
-        # Erstellen des aggregation objects
+
+        # Determine number of periods for clustering
+        # If nr_of_periods is None, use segmentation only (no inter-period clustering)
+        total_periods = int(self.nr_of_time_steps * self.hours_per_time_step / self.hours_per_period)
+        n_typical_periods = self.nr_of_periods if self.nr_of_periods is not None else total_periods
+
+        # Create aggregation object
         self.tsam = tsam.TimeSeriesAggregation(
             self.original_data,
-            noTypicalPeriods=self.nr_of_periods,
+            noTypicalPeriods=n_typical_periods,
             hoursPerPeriod=self.hours_per_period,
             resolution=self.hours_per_time_step,
             clusterMethod='k_means',
-            extremePeriodMethod='new_cluster_center'
-            if self.use_extreme_periods
-            else 'None',  # Wenn Extremperioden eingebunden werden sollen, nutze die Methode 'new_cluster_center' aus tsam
+            extremePeriodMethod='new_cluster_center' if self.use_extreme_periods else 'None',
             weightDict={name: weight for name, weight in self.weights.items() if name in self.original_data.columns},
             addPeakMax=self.time_series_for_high_peaks,
             addPeakMin=self.time_series_for_low_peaks,
+            # Inner-period segmentation parameters
+            segmentation=self.n_segments is not None,
+            noSegments=self.n_segments if self.n_segments is not None else 1,
         )
 
-        self.tsam.createTypicalPeriods()  # Ausführen der Aggregation/Clustering
+        self.tsam.createTypicalPeriods()
         self.aggregated_data = self.tsam.predictOriginalData()
 
-        self.clustering_duration_seconds = timeit.default_timer() - start_time  # Zeit messen:
+        self.clustering_duration_seconds = timeit.default_timer() - start_time
         if logger.isEnabledFor(logging.INFO):
             logger.info(self.describe_clusters())
 
@@ -310,8 +322,13 @@ class ClusteringParameters:
 
     Args:
         n_clusters: Number of clusters to create (e.g., 8 typical days).
+            Set to None to skip clustering and only do segmentation.
         cluster_duration: Duration of each cluster segment. Can be a pandas-style
             string ('1D', '24h', '6h') or a numeric value in hours.
+        n_segments: Number of segments to create within each cluster (inner-period
+            clustering). For example, n_segments=4 with cluster_duration='1D' will
+            reduce 24 hourly timesteps to 4 representative segments per day.
+            Default is None (no inner-period segmentation).
         aggregate_data: If True, aggregate time series data and fix all time-dependent
             variables. If False, only fix binary variables. Default is True.
         include_storage: Whether to include storage flows in clustering constraints.
@@ -334,23 +351,28 @@ class ClusteringParameters:
         ...     cluster_duration='1D',
         ... )
 
-        With all options:
+        With inner-period segmentation (8 typical days × 4 segments each = 32 timesteps):
 
         >>> clustered_fs = flow_system.transform.cluster(
         ...     n_clusters=8,
-        ...     cluster_duration=24,  # 24 hours = 1 day
-        ...     aggregate_data=True,
-        ...     include_storage=True,
-        ...     flexibility_percent=5,
-        ...     flexibility_penalty=100,
-        ...     time_series_for_high_peaks=[heat_demand_ts],
+        ...     cluster_duration='1D',
+        ...     n_segments=4,  # Reduce 24h to 4 segments per day
+        ... )
+
+        Segmentation only (no clustering, just reduce to 4 segments per day):
+
+        >>> clustered_fs = flow_system.transform.cluster(
+        ...     n_clusters=None,  # Skip clustering
+        ...     cluster_duration='1D',
+        ...     n_segments=4,
         ... )
     """
 
     def __init__(
         self,
-        n_clusters: int,
+        n_clusters: int | None,
         cluster_duration: str | float,
+        n_segments: int | None = None,
         aggregate_data: bool = True,
         include_storage: bool = True,
         flexibility_percent: float = 0,
@@ -360,6 +382,7 @@ class ClusteringParameters:
     ):
         self.n_clusters = n_clusters
         self.cluster_duration_hours = _parse_cluster_duration(cluster_duration)
+        self.n_segments = n_segments
         self.aggregate_data = aggregate_data
         self.include_storage = include_storage
         self.flexibility_percent = flexibility_percent
@@ -371,6 +394,11 @@ class ClusteringParameters:
     def use_extreme_periods(self) -> bool:
         """Whether extreme segment selection is enabled."""
         return bool(self.time_series_for_high_peaks or self.time_series_for_low_peaks)
+
+    @property
+    def use_segmentation(self) -> bool:
+        """Whether inner-period segmentation is enabled."""
+        return self.n_segments is not None
 
     @property
     def labels_for_high_peaks(self) -> list[str]:

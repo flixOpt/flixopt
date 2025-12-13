@@ -54,8 +54,9 @@ class TransformAccessor:
 
     def cluster(
         self,
-        n_clusters: int,
+        n_clusters: int | None,
         cluster_duration: str | float,
+        n_segments: int | None = None,
         aggregate_data: bool = True,
         include_storage: bool = True,
         flexibility_percent: float = 0,
@@ -82,8 +83,13 @@ class TransformAccessor:
         Args:
             n_clusters: Number of clusters (typical segments) to create.
                 E.g., 8 for 8 typical days from a year of data.
+                Set to None to skip inter-period clustering (only do segmentation).
             cluster_duration: Duration of each cluster segment. Can be a pandas-style
                 string ('1D', '24h', '6h') or a numeric value in hours.
+            n_segments: Number of segments within each cluster (inner-period clustering).
+                For example, n_segments=4 with cluster_duration='1D' will reduce
+                24 hourly timesteps to 4 representative segments per day.
+                Default is None (no inner-period segmentation).
             aggregate_data: If True (default), aggregate time series data and fix
                 all time-dependent variables. If False, only fix binary variables.
             include_storage: Whether to include storage flows in clustering constraints.
@@ -115,12 +121,20 @@ class TransformAccessor:
             ... )
             >>> clustered_fs.optimize(solver)
 
-            With extreme period selection:
+            With inner-period segmentation (8 typical days × 4 segments = 32 timesteps):
 
             >>> clustered_fs = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     time_series_for_high_peaks=[heat_demand_ts],
+            ...     n_segments=4,  # Reduce 24 hours to 4 segments
+            ... )
+
+            Segmentation only (no clustering, reduce each day to 4 segments):
+
+            >>> clustered_fs = flow_system.transform.cluster(
+            ...     n_clusters=None,  # Skip inter-period clustering
+            ...     cluster_duration='1D',
+            ...     n_segments=4,
             ... )
 
             Multi-period FlowSystem (each year clustered independently):
@@ -137,6 +151,7 @@ class TransformAccessor:
         params = ClusteringParameters(
             n_clusters=n_clusters,
             cluster_duration=cluster_duration,
+            n_segments=n_segments,
             aggregate_data=aggregate_data,
             include_storage=include_storage,
             flexibility_percent=flexibility_percent,
@@ -195,6 +210,7 @@ class TransformAccessor:
             hours_per_time_step=float(dt_min),
             hours_per_period=params.cluster_duration_hours,
             nr_of_periods=params.n_clusters,
+            n_segments=params.n_segments,
             weights=self._calculate_clustering_weights(temporaly_changing_ds),
             time_series_for_high_peaks=params.labels_for_high_peaks,
             time_series_for_low_peaks=params.labels_for_low_peaks,
@@ -298,6 +314,7 @@ class TransformAccessor:
                     hours_per_time_step=float(dt_min),
                     hours_per_period=params.cluster_duration_hours,
                     nr_of_periods=params.n_clusters,
+                    n_segments=params.n_segments,
                     weights=self._calculate_clustering_weights(temporaly_changing_ds),
                     time_series_for_high_peaks=params.labels_for_high_peaks,
                     time_series_for_low_peaks=params.labels_for_low_peaks,
