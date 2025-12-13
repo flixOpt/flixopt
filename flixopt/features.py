@@ -156,7 +156,7 @@ class StatusModel(Submodel):
     state transitions, duration tracking, and operational effects.
 
     Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/OnOffParameters/>
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
     """
 
     def __init__(
@@ -345,7 +345,7 @@ class StatusModel(Submodel):
         if self._previous_status is None:
             return hours_per_step
         else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status * -1 + 1, hours_per_step)
+            return ModelingUtilities.compute_consecutive_hours_in_state(1 - self._previous_status, hours_per_step)
 
 
 class PieceModel(Submodel):

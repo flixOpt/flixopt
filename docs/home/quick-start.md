@@ -88,19 +88,41 @@ battery = fx.Storage(
 flow_system.add_elements(solar, demand, battery, electricity_bus)
 ```
 
-### 5. Run Optimization
+### 5. Visualize and Run Optimization
 
 ```python
-# Create and run optimization
-optimization = fx.Optimization('solar_battery_optimization', flow_system)
-optimization.solve(fx.solvers.HighsSolver())
+# Optional: visualize your system structure
+flow_system.topology.plot(path='system.html')
+
+# Run optimization
+flow_system.optimize(fx.solvers.HighsSolver())
 ```
 
-### 6. Save Results
+### 6. Access and Visualize Results
 
 ```python
-# This includes the modeled FlowSystem. SO you can restore both results and inputs
-optimization.results.to_file()
+# Access raw solution data
+print(flow_system.solution)
+
+# Use statistics for aggregated data
+print(flow_system.statistics.flow_hours)
+
+# Access component-specific results
+print(flow_system.components['battery'].solution)
+
+# Visualize results
+flow_system.statistics.plot.balance('electricity')
+flow_system.statistics.plot.storage('battery')
+```
+
+### 7. Save Results (Optional)
+
+```python
+# Save the flow system (includes inputs and solution)
+flow_system.to_netcdf('results/solar_battery.nc')
+
+# Load it back later
+loaded_fs = fx.FlowSystem.from_netcdf('results/solar_battery.nc')
 ```
 
 ## What's Next?
@@ -108,7 +130,7 @@ optimization.results.to_file()
 Now that you've created your first model, you can:
 
 - **Learn the concepts** - Read the [Core Concepts](../user-guide/core-concepts.md) guide
-- **Explore examples** - Check out more [Examples](../examples/index.md)
+- **Explore examples** - Check out more [Examples](../notebooks/index.md)
 - **Deep dive** - Study the [Mathematical Formulation](../user-guide/mathematical-notation/index.md)
 - **Build complex models** - Use [Recipes](../user-guide/recipes/index.md) for common patterns
 
@@ -120,8 +142,10 @@ Most flixOpt projects follow this pattern:
 2. **Create flow system** - Initialize with time series and effects
 3. **Add buses** - Define connection points
 4. **Add components** - Create generators, storage, converters, loads
-5. **Run optimization** - Solve the optimization
-6. **Save Results** - For later analysis. Or only extract needed data
+5. **Verify structure** - Use `flow_system.topology.plot()` to visualize
+6. **Run optimization** - Call `flow_system.optimize(solver)`
+7. **Analyze results** - Via `flow_system.statistics` and `.solution`
+8. **Visualize** - Use `flow_system.statistics.plot.*` methods
 
 ## Tips
 

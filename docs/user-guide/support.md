@@ -15,7 +15,7 @@ When opening an issue, include:
 
 - [FAQ](faq.md) — Common questions
 - [Troubleshooting](troubleshooting.md) — Common issues
-- [Examples](../examples/index.md) — Working code
+- [Examples](../notebooks/index.md) — Working code
 - [API Reference](../api-reference/index.md) — Technical docs
 
 ## Contributing

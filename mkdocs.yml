@@ -23,9 +23,12 @@ nav:
   - User Guide:
     - Overview: user-guide/index.md
     - Core Concepts: user-guide/core-concepts.md
-    - Building Models: user-guide/building-models/index.md
+    - Building Models:
+      - Overview: user-guide/building-models/index.md
+      - Choosing Components: user-guide/building-models/choosing-components.md
     - Running Optimizations: user-guide/optimization/index.md
     - Analyzing Results: user-guide/results/index.md
+    - Plotting Results: user-guide/results-plotting.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
       - Bus: user-guide/mathematical-notation/elements/Bus.md
@@ -36,27 +39,39 @@ nav:
       - Investment: user-guide/mathematical-notation/features/InvestParameters.md
       - Status: user-guide/mathematical-notation/features/StatusParameters.md
       - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-    - Recipes: user-guide/recipes/index.md
+    - Recipes:
+      - user-guide/recipes/index.md
+      - Plotting Custom Data: user-guide/recipes/plotting-custom-data.md
     - Support:
       - FAQ: user-guide/faq.md
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
     - Migration & Updates:
+      - Migration Guide v5: user-guide/migration-guide-v5.md
       - Migration Guide v3: user-guide/migration-guide-v3.md
       - Release Notes: changelog.md
       - Roadmap: roadmap.md
 
   - Examples:
-    - Overview: examples/index.md
-    - Basic Examples:
-      - examples/00-Minimal Example.md
-      - examples/01-Basic Example.md
-    - Operational Optimization:
-      - examples/02-Complex Example.md
-      - examples/03-Optimization Modes.md
-    - Planning & Investment:
-      - examples/04-Scenarios.md
-      - examples/05-Two-stage-optimization.md
+    - Overview: notebooks/index.md
+    - Basics:
+      - Quickstart: notebooks/01-quickstart.ipynb
+      - Heat System: notebooks/02-heat-system.ipynb
+    - Investment:
+      - Sizing: notebooks/03-investment-optimization.ipynb
+      - Constraints: notebooks/04-operational-constraints.ipynb
+    - Advanced:
+      - Multi-Carrier: notebooks/05-multi-carrier-system.ipynb
+      - Transmission: notebooks/10-transmission.ipynb
+    - Non-Linear Modeling:
+      - Time-Varying Parameters: notebooks/06a-time-varying-parameters.ipynb
+      - Piecewise Conversion: notebooks/06b-piecewise-conversion.ipynb
+      - Piecewise Effects: notebooks/06c-piecewise-effects.ipynb
+    - Scaling:
+      - Scenarios: notebooks/07-scenarios-and-periods.ipynb
+      - Large-Scale: notebooks/08-large-scale-optimization.ipynb
+    - Results:
+      - Plotting: notebooks/09-plotting-and-data-access.ipynb
 
   - API Reference: api-reference/
 
@@ -65,6 +80,7 @@ nav:
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
 
   palette:
     # Palette toggle for automatic mode
@@ -210,6 +226,12 @@ markdown_extensions:
 plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - mkdocs-jupyter:
+      execute: true  # Execute notebooks during build
+      allow_errors: false
+      include_source: true
+      include_requirejs: true
 
   - plotly
 

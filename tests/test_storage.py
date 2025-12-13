@@ -451,6 +451,7 @@ class TestStorageModel:
             'effects_of_investment': 100,
             'effects_of_investment_per_size': 10,
             'mandatory': mandatory,
+            'maximum_size': 100,
         }
         if minimum_size is not None:
             invest_params['minimum_size'] = minimum_size

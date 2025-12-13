@@ -1,12 +1,14 @@
-import uuid
+"""Tests for I/O functionality.
+
+Tests for deprecated Results.to_file() and Results.from_file() API
+have been moved to tests/deprecated/test_results_io.py.
+"""
 
 import pytest
 
 import flixopt as fx
-from flixopt.io import ResultsPaths
 
 from .conftest import (
-    assert_almost_equal_numeric,
     flow_system_base,
     flow_system_long,
     flow_system_segments_of_flows_2,
@@ -30,40 +32,6 @@ def flow_system(request):
         return fs
     else:
         return fs[0]
-
-
-@pytest.mark.slow
-def test_flow_system_file_io(flow_system, highs_solver, request):
-    # Use UUID to ensure unique names across parallel test workers
-    unique_id = uuid.uuid4().hex[:12]
-    worker_id = getattr(request.config, 'workerinput', {}).get('workerid', 'main')
-    test_id = f'{worker_id}-{unique_id}'
-
-    calculation_0 = fx.Optimization(f'IO-{test_id}', flow_system=flow_system)
-    calculation_0.do_modeling()
-    calculation_0.solve(highs_solver)
-    calculation_0.flow_system.plot_network()
-
-    calculation_0.results.to_file()
-    paths = ResultsPaths(calculation_0.folder, calculation_0.name)
-    flow_system_1 = fx.FlowSystem.from_netcdf(paths.flow_system)
-
-    calculation_1 = fx.Optimization(f'Loaded_IO-{test_id}', flow_system=flow_system_1)
-    calculation_1.do_modeling()
-    calculation_1.solve(highs_solver)
-    calculation_1.flow_system.plot_network()
-
-    assert_almost_equal_numeric(
-        calculation_0.results.model.objective.value,
-        calculation_1.results.model.objective.value,
-        'objective of loaded flow_system doesnt match the original',
-    )
-
-    assert_almost_equal_numeric(
-        calculation_0.results.solution['costs'].values,
-        calculation_1.results.solution['costs'].values,
-        'costs doesnt match expected value',
-    )
 
 
 def test_flow_system_io(flow_system):

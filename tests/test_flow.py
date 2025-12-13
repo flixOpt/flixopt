@@ -593,6 +593,7 @@ class TestFlowOnModel:
         flow = fx.Flow(
             'Wärme',
             bus='Fernwärme',
+            size=100,
             status_parameters=fx.StatusParameters(
                 effects_per_active_hour={'costs': costs_per_running_hour, 'CO2': co2_per_running_hour}
             ),

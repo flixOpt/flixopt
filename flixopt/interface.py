@@ -6,13 +6,15 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import xarray as xr
 
 from .config import CONFIG
+from .plot_result import PlotResult
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -74,10 +76,10 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
         dims = None if self.has_time_dim else ['period', 'scenario']
-        self.start = self._fit_coords(f'{name_prefix}|start', self.start, dims=dims)
-        self.end = self._fit_coords(f'{name_prefix}|end', self.end, dims=dims)
+        self.start = self._fit_coords(f'{self.prefix}|start', self.start, dims=dims)
+        self.end = self._fit_coords(f'{self.prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
@@ -226,15 +228,15 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piece objects."""
-        super()._set_flow_system(flow_system)
-        for piece in self.pieces:
-            piece._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
+        super().link_to_flow_system(flow_system, prefix)
         for i, piece in enumerate(self.pieces):
-            piece.transform_data(f'{name_prefix}|Piece{i}')
+            piece.link_to_flow_system(flow_system, self._sub_prefix(f'Piece{i}'))
+
+    def transform_data(self) -> None:
+        for piece in self.pieces:
+            piece.transform_data()
 
 
 @register_class_for_io
@@ -458,15 +460,151 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
-        for piecewise in self.piecewises.values():
-            piecewise._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
+        super().link_to_flow_system(flow_system, prefix)
         for name, piecewise in self.piecewises.items():
-            piecewise.transform_data(f'{name_prefix}|{name}')
+            piecewise.link_to_flow_system(flow_system, self._sub_prefix(name))
+
+    def transform_data(self) -> None:
+        for piecewise in self.piecewises.values():
+            piecewise.transform_data()
+
+    def plot(
+        self,
+        x_flow: str | None = None,
+        title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
+        show: bool | None = None,
+    ) -> PlotResult:
+        """Plot multi-flow piecewise conversion with time variation visualization.
+
+        Visualizes the piecewise linear relationships between flows. Each flow
+        is shown in a separate subplot (faceted by flow). Pieces are distinguished
+        by line dash style. If boundaries vary over time, color shows time progression.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            x_flow: Flow label to use for X-axis. Defaults to first flow in dict.
+            title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying piecewise data.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> chp.piecewise_conversion.plot(x_flow='Gas', title='CHP Curves')
+            >>> # Select specific time range
+            >>> chp.piecewise_conversion.plot(select={'time': slice(0, 12)})
+        """
+        if not self.flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseConversion')
+            self.flow_system.connect_and_transform()
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+
+        flow_labels = list(self.piecewises.keys())
+        x_label = x_flow if x_flow is not None else flow_labels[0]
+        if x_label not in flow_labels:
+            raise ValueError(f"x_flow '{x_label}' not found. Available: {flow_labels}")
+
+        y_flows = [label for label in flow_labels if label != x_label]
+        if not y_flows:
+            raise ValueError('Need at least two flows to plot')
+
+        x_piecewise = self.piecewises[x_label]
+
+        # Build Dataset with all piece data
+        datasets = []
+        for y_label in y_flows:
+            y_piecewise = self.piecewises[y_label]
+            for i, (x_piece, y_piece) in enumerate(zip(x_piecewise, y_piecewise, strict=False)):
+                ds = xr.Dataset(
+                    {
+                        x_label: xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'output': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['flow'] = y_label
+                ds['piece'] = f'Piece {i}'
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
+        df = combined.to_dataframe().reset_index()
+
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[[x_label, 'output']].nunique().max().max() > 1
+
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
+
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'flow', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('flow=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text=x_label)
+
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
@@ -676,17 +814,142 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
-        self.piecewise_origin._set_flow_system(flow_system)
-        for piecewise in self.piecewise_shares.values():
-            piecewise._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
-        self.piecewise_origin.transform_data(f'{name_prefix}|PiecewiseEffects|origin')
+        super().link_to_flow_system(flow_system, prefix)
+        self.piecewise_origin.link_to_flow_system(flow_system, self._sub_prefix('origin'))
         for effect, piecewise in self.piecewise_shares.items():
-            piecewise.transform_data(f'{name_prefix}|PiecewiseEffects|{effect}')
+            piecewise.link_to_flow_system(flow_system, self._sub_prefix(effect))
+
+    def transform_data(self) -> None:
+        self.piecewise_origin.transform_data()
+        for piecewise in self.piecewise_shares.values():
+            piecewise.transform_data()
+
+    def plot(
+        self,
+        title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
+        show: bool | None = None,
+    ) -> PlotResult:
+        """Plot origin vs effect shares with time variation visualization.
+
+        Visualizes the piecewise linear relationships between the origin variable
+        and its effect shares. Each effect is shown in a separate subplot (faceted
+        by effect). Pieces are distinguished by line dash style.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying piecewise data.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> invest_params.piecewise_effects_of_investment.plot(title='Investment Effects')
+        """
+        if not self.flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseEffects')
+            self.flow_system.connect_and_transform()
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+
+        effect_labels = list(self.piecewise_shares.keys())
+        if not effect_labels:
+            raise ValueError('Need at least one effect share to plot')
+
+        # Build Dataset with all piece data
+        datasets = []
+        for effect_label in effect_labels:
+            y_piecewise = self.piecewise_shares[effect_label]
+            for i, (x_piece, y_piece) in enumerate(zip(self.piecewise_origin, y_piecewise, strict=False)):
+                ds = xr.Dataset(
+                    {
+                        'origin': xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'share': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['effect'] = effect_label
+                ds['piece'] = f'Piece {i}'
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
+        df = combined.to_dataframe().reset_index()
+
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[['origin', 'share']].nunique().max().max() > 1
+
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
+
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'effect', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('effect=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text='Origin')
+
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
@@ -718,7 +981,7 @@ class InvestParameters(Interface):
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
         minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        maximum_size: Upper bound for continuous sizing. Required if fixed_size is not set.
             Ignored if fixed_size is specified.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
@@ -901,30 +1164,36 @@ class InvestParameters(Interface):
         )
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
+        self.maximum_size = maximum_size
         self.linked_periods = linked_periods
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment._set_flow_system(flow_system)
+            self.piecewise_effects_of_investment.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseEffects'))
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
+        # Validate that either fixed_size or maximum_size is set
+        if self.fixed_size is None and self.maximum_size is None:
+            raise ValueError(
+                f'InvestParameters in "{self.prefix}" requires either fixed_size or maximum_size to be set. '
+                f'An upper bound is needed to properly scale the optimization model.'
+            )
         self.effects_of_investment = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_investment,
             suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
         self.effects_of_retirement = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_retirement,
             suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
         self.effects_of_investment_per_size = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_investment_per_size,
             suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
@@ -932,13 +1201,13 @@ class InvestParameters(Interface):
 
         if self.piecewise_effects_of_investment is not None:
             self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data(f'{name_prefix}|PiecewiseEffects')
+            self.piecewise_effects_of_investment.transform_data()
 
         self.minimum_size = self._fit_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
         )
         self.maximum_size = self._fit_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
         # Convert tuple (first_period, last_period) to DataArray if needed
         if isinstance(self.linked_periods, (tuple, list)):
@@ -965,9 +1234,9 @@ class InvestParameters(Interface):
             logger.debug(f'Computed {self.linked_periods=}')
 
         self.linked_periods = self._fit_coords(
-            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
+            f'{self.prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
-        self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
+        self.fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
 
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
@@ -1215,29 +1484,29 @@ class StatusParameters(Interface):
         self.startup_limit = startup_limit
         self.force_startup_tracking: bool = force_startup_tracking
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
         self.effects_per_startup = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_per_startup,
             suffix='per_startup',
         )
         self.effects_per_active_hour = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_per_active_hour,
             suffix='per_active_hour',
         )
-        self.min_uptime = self._fit_coords(f'{name_prefix}|min_uptime', self.min_uptime)
-        self.max_uptime = self._fit_coords(f'{name_prefix}|max_uptime', self.max_uptime)
-        self.min_downtime = self._fit_coords(f'{name_prefix}|min_downtime', self.min_downtime)
-        self.max_downtime = self._fit_coords(f'{name_prefix}|max_downtime', self.max_downtime)
+        self.min_uptime = self._fit_coords(f'{self.prefix}|min_uptime', self.min_uptime)
+        self.max_uptime = self._fit_coords(f'{self.prefix}|max_uptime', self.max_uptime)
+        self.min_downtime = self._fit_coords(f'{self.prefix}|min_downtime', self.min_downtime)
+        self.max_downtime = self._fit_coords(f'{self.prefix}|max_downtime', self.max_downtime)
         self.active_hours_max = self._fit_coords(
-            f'{name_prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
+            f'{self.prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
         )
         self.active_hours_min = self._fit_coords(
-            f'{name_prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
+            f'{self.prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
         )
         self.startup_limit = self._fit_coords(
-            f'{name_prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
+            f'{self.prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
         )
 
     @property

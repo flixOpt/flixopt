@@ -1,0 +1,46 @@
+Name: 04_scenarios
+Number of timesteps: 5
+Calculation Type: FullCalculation
+Constraints: 67
+Variables: 117
+Main Results:
+    Objective: 10.67
+    Penalty: -0.0
+    Effects:
+        costs [€]:
+            temporal: [8.44, 12.89]
+            periodic: [-0.0, -0.0]
+            total: [8.44, 12.89]
+    Invest-Decisions:
+        Invested: {}
+        Not invested: {}
+    Buses with excess: []
+Durations:
+    modeling: 0.21
+    solving: 0.12
+    saving: 0.0
+Config:
+    config_name: flixopt
+    logging:
+        level: INFO
+        file: null
+        console: false
+        max_file_size: 10485760
+        backup_count: 5
+        verbose_tracebacks: false
+    modeling:
+        big: 10000000
+        epsilon: 1.0e-05
+        big_binary_bound: 100000
+    solving:
+        mip_gap: 0.01
+        time_limit_seconds: 300
+        log_to_console: false
+        log_main_results: false
+    plotting:
+        default_show: false
+        default_engine: plotly
+        default_dpi: 300
+        default_facet_cols: 3
+        default_sequential_colorscale: turbo
+        default_qualitative_colorscale: plotly

@@ -10,7 +10,6 @@ from .conftest import (
     assert_sets_equal,
     assert_var_equal,
     create_linopy_model,
-    create_optimization_and_solve,
 )
 
 
@@ -32,12 +31,12 @@ class TestComponentModel:
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
-            fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
-            fx.Flow('In2', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
+            fx.Flow('In1', 'Fernwärme', size=100, relative_minimum=np.ones(10) * 0.1),
+            fx.Flow('In2', 'Fernwärme', size=100, relative_minimum=np.ones(10) * 0.1),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.01),
-            fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.01),
+            fx.Flow('Out1', 'Gas', size=100, relative_minimum=np.ones(10) * 0.01),
+            fx.Flow('Out2', 'Gas', size=100, relative_minimum=np.ones(10) * 0.01),
         ]
         comp = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
         flow_system.add_elements(comp)
@@ -442,18 +441,18 @@ class TestTransmissionModel:
 
         flow_system.add_elements(transmission, boiler)
 
-        _ = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_basic')
+        flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1)|status'].values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
             'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8 - 20,
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1)|flow_rate'].values * 0.8 - 20,
+            flow_system.solution['Rohr(Rohr2)|flow_rate'].values,
             'Losses are not computed correctly',
         )
 
@@ -465,7 +464,9 @@ class TestTransmissionModel:
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            thermal_flow=fx.Flow(
+                'Q_th', bus='Fernwärme', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
+            ),
             fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
@@ -499,38 +500,34 @@ class TestTransmissionModel:
                 size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1000),
             ),
             out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
-            in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters()),
+            in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters(maximum_size=1000)),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
             balanced=True,
         )
 
         flow_system.add_elements(transmission, boiler, boiler2, last2)
 
-        optimization = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
+        flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1a)|status'].values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
+        # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
+        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            optimization.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.submodel.flow_rate.solution.values,
-            'Flow rate of Rohr__Rohr1b is not correct',
-        )
-
-        assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            expected_out1_flow,
             'Losses are not computed correctly',
         )
 
         assert_almost_equal_numeric(
-            transmission.in1.submodel._investment.size.solution.item(),
-            transmission.in2.submodel._investment.size.solution.item(),
+            flow_system.solution['Rohr(Rohr1a)|size'].item(),
+            flow_system.solution['Rohr(Rohr2a)|size'].item(),
             'The Investments are not equated correctly',
         )
 
@@ -542,7 +539,9 @@ class TestTransmissionModel:
         boiler = fx.linear_converters.Boiler(
             'Boiler_Standard',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])),
+            thermal_flow=fx.Flow(
+                'Q_th', bus='Fernwärme', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
+            ),
             fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         )
 
@@ -579,7 +578,9 @@ class TestTransmissionModel:
             in2=fx.Flow(
                 'Rohr2a',
                 'Fernwärme',
-                size=fx.InvestParameters(effects_of_investment_per_size=100, minimum_size=10, mandatory=True),
+                size=fx.InvestParameters(
+                    effects_of_investment_per_size=100, minimum_size=10, maximum_size=1000, mandatory=True
+                ),
             ),
             out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
             balanced=False,
@@ -587,32 +588,28 @@ class TestTransmissionModel:
 
         flow_system.add_elements(transmission, boiler, boiler2, last2)
 
-        optimization = create_optimization_and_solve(flow_system, highs_solver, 'test_transmission_advanced')
+        flow_system.optimize(highs_solver)
 
-        # Assertions
+        # Assertions using new API (flow_system.solution)
         assert_almost_equal_numeric(
-            transmission.in1.submodel.status.status.solution.values,
+            flow_system.solution['Rohr(Rohr1a)|status'].values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
+        # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
+        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            optimization.results.model.variables['Rohr(Rohr1b)|flow_rate'].solution.values,
-            transmission.out1.submodel.flow_rate.solution.values,
-            'Flow rate of Rohr__Rohr1b is not correct',
-        )
-
-        assert_almost_equal_numeric(
-            transmission.in1.submodel.flow_rate.solution.values * 0.8
-            - np.array([20 if val > 0.1 else 0 for val in transmission.in1.submodel.flow_rate.solution.values]),
-            transmission.out1.submodel.flow_rate.solution.values,
+            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            expected_out1_flow,
             'Losses are not computed correctly',
         )
 
-        assert transmission.in1.submodel._investment.size.solution.item() > 11
+        assert flow_system.solution['Rohr(Rohr1a)|size'].item() > 11
 
         assert_almost_equal_numeric(
-            transmission.in2.submodel._investment.size.solution.item(),
+            flow_system.solution['Rohr(Rohr2a)|size'].item(),
             10,
             'Sizing does not work properly',
         )

@@ -4,9 +4,10 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
+import json
 import logging
+import pathlib
 import warnings
-from collections import defaultdict
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -15,7 +16,8 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG
+from .components import Storage
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
     DataConverter,
@@ -24,15 +26,21 @@ from .core import (
 )
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
+from .optimize_accessor import OptimizeAccessor
+from .statistics_accessor import StatisticsAccessor
 from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .topology_accessor import TopologyAccessor
+from .transform_accessor import TransformAccessor
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import Collection
 
     import pyvis
 
+    from .solvers import _Solver
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
+
+from .carrier import Carrier, CarrierContainer
 
 logger = logging.getLogger('flixopt')
 
@@ -163,6 +171,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_weights: Numeric_S | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
+        name: str | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -202,9 +211,30 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
 
+        # Solution dataset - populated after optimization or loaded from file
+        self._solution: xr.Dataset | None = None
+
+        # Clustering info - populated by transform.cluster()
+        self._clustering_info: dict | None = None
+
+        # Statistics accessor cache - lazily initialized, invalidated on new solution
+        self._statistics: StatisticsAccessor | None = None
+
+        # Topology accessor cache - lazily initialized, invalidated on structure change
+        self._topology: TopologyAccessor | None = None
+
+        # Carrier container - local carriers override CONFIG.Carriers
+        self._carriers: CarrierContainer = CarrierContainer()
+
+        # Cached flow→carrier mapping (built lazily after connect_and_transform)
+        self._flow_carriers: dict[str, str] | None = None
+
         # Use properties to validate and store scenario dimension settings
         self.scenario_independent_sizes = scenario_independent_sizes
         self.scenario_independent_flow_rates = scenario_independent_flow_rates
+
+        # Optional name for identification (derived from filename on load)
+        self.name = name
 
     @staticmethod
     def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -484,6 +514,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return dataset
 
+    @classmethod
+    def _update_scenario_metadata(cls, dataset: xr.Dataset) -> xr.Dataset:
+        """
+        Update scenario-related attributes and data variables in dataset based on its scenario index.
+
+        Recomputes or removes scenario weights. This ensures scenario metadata stays synchronized with the actual
+        scenarios after operations like selection.
+
+        This is analogous to _update_period_metadata() for time-related metadata.
+
+        Args:
+            dataset: Dataset to update (will be modified in place)
+
+        Returns:
+            The same dataset with updated scenario-related attributes and data variables
+        """
+        new_scenario_index = dataset.indexes.get('scenario')
+        if new_scenario_index is None or len(new_scenario_index) <= 1:
+            dataset.attrs.pop('scenario_weights')
+
+        return dataset
+
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
@@ -529,6 +581,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
 
+        If a solution is present, it will be included in the dataset with variable names
+        prefixed by 'solution|' to avoid conflicts with FlowSystem configuration variables.
+        Solution time coordinates are renamed to 'solution_time' to preserve them
+        independently of the FlowSystem's time coordinates.
+
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
@@ -536,13 +593,44 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        return super().to_dataset()
+        ds = super().to_dataset()
+
+        # Include solution data if present
+        if self.solution is not None:
+            # Rename 'time' to 'solution_time' in solution variables to preserve full solution
+            # (linopy solution may have extra timesteps, e.g., for final charge states)
+            solution_renamed = (
+                self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
+            )
+            # Add solution variables with 'solution|' prefix to avoid conflicts
+            solution_vars = {f'solution|{name}': var for name, var in solution_renamed.data_vars.items()}
+            ds = ds.assign(solution_vars)
+            # Also add the solution_time coordinate if it exists
+            if 'solution_time' in solution_renamed.coords:
+                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+            ds.attrs['has_solution'] = True
+        else:
+            ds.attrs['has_solution'] = False
+
+        # Include carriers if any are registered
+        if self._carriers:
+            carriers_structure = {}
+            for name, carrier in self._carriers.items():
+                carrier_ref, _ = carrier._create_reference_structure()
+                carriers_structure[name] = carrier_ref
+            ds.attrs['carriers'] = json.dumps(carriers_structure)
+
+        return ds
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
         Handles FlowSystem-specific reconstruction logic.
+
+        If the dataset contains solution data (variables prefixed with 'solution|'),
+        the solution will be restored to the FlowSystem. Solution time coordinates
+        are renamed back from 'solution_time' to 'time'.
 
         Args:
             ds: Dataset containing the FlowSystem data
@@ -553,8 +641,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
-        # Create arrays dictionary from dataset variables
-        arrays_dict = {name: array for name, array in ds.data_vars.items()}
+        # Separate solution variables from config variables
+        solution_prefix = 'solution|'
+        solution_vars = {}
+        config_vars = {}
+        for name, array in ds.data_vars.items():
+            if name.startswith(solution_prefix):
+                # Remove prefix for solution dataset
+                original_name = name[len(solution_prefix) :]
+                solution_vars[original_name] = array
+            else:
+                config_vars[name] = array
+
+        # Create arrays dictionary from config variables only
+        arrays_dict = config_vars
 
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
@@ -569,6 +669,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
+            name=reference_structure.get('name'),
         )
 
         # Restore components
@@ -595,23 +696,198 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 logger.critical(f'Restoring effect {effect_label} failed.')
             flow_system._add_effects(effect)
 
+        # Restore solution if present
+        if reference_structure.get('has_solution', False) and solution_vars:
+            solution_ds = xr.Dataset(solution_vars)
+            # Rename 'solution_time' back to 'time' if present
+            if 'solution_time' in solution_ds.dims:
+                solution_ds = solution_ds.rename({'solution_time': 'time'})
+            flow_system.solution = solution_ds
+
+        # Restore carriers if present
+        if 'carriers' in reference_structure:
+            carriers_structure = json.loads(reference_structure['carriers'])
+            for carrier_data in carriers_structure.values():
+                carrier = cls._resolve_reference_structure(carrier_data, {})
+                flow_system._carriers.add(carrier)
+
+        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
+        flow_system.connect_and_transform()
+
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
 
+        The FlowSystem's name is automatically set from the filename
+        (without extension) when saving.
+
         Args:
-            path: The path to the netCDF file.
-            compression: The compression level to use when saving the file.
+            path: The path to the netCDF file. Parent directories are created if they don't exist.
+            compression: The compression level to use when saving the file (0-9).
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
+
+        Raises:
+            FileExistsError: If overwrite=False and file already exists.
         """
         if not self.connected_and_transformed:
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
-        super().to_netcdf(path, compression)
+        path = pathlib.Path(path)
+        # Set name from filename (without extension)
+        self.name = path.stem
+
+        super().to_netcdf(path, compression, overwrite)
         logger.info(f'Saved FlowSystem to {path}')
+
+    @classmethod
+    def from_netcdf(cls, path: str | pathlib.Path) -> FlowSystem:
+        """
+        Load a FlowSystem from a NetCDF file.
+
+        The FlowSystem's name is automatically derived from the filename
+        (without extension), overriding any name that may have been stored.
+
+        Args:
+            path: Path to the NetCDF file
+
+        Returns:
+            FlowSystem instance with name set from filename
+        """
+        path = pathlib.Path(path)
+        flow_system = super().from_netcdf(path)
+        # Derive name from filename (without extension)
+        flow_system.name = path.stem
+        return flow_system
+
+    @classmethod
+    def from_old_results(cls, folder: str | pathlib.Path, name: str) -> FlowSystem:
+        """
+        Load a FlowSystem from old-format Results files (pre-v5 API).
+
+        This method loads results saved with the deprecated Results API
+        (which used multiple files: ``*--flow_system.nc4``, ``*--solution.nc4``)
+        and converts them to a FlowSystem with the solution attached.
+
+        The method performs the following:
+
+        - Loads the old multi-file format
+        - Renames deprecated parameters in the FlowSystem structure
+          (e.g., ``on_off_parameters`` → ``status_parameters``)
+        - Attaches the solution data to the FlowSystem
+
+        Args:
+            folder: Directory containing the saved result files
+            name: Base name of the saved files (without extensions)
+
+        Returns:
+            FlowSystem instance with solution attached
+
+        Warning:
+            This is a best-effort migration for accessing old results:
+
+            - **Solution variable names are NOT renamed** - only basic variables
+              work (flow rates, sizes, charge states, effect totals)
+            - Advanced variable access may require using the original names
+            - Summary metadata (solver info, timing) is not loaded
+
+            For full compatibility, re-run optimizations with the new API.
+
+        Examples:
+            ```python
+            # Load old results
+            fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
+
+            # Access basic solution data
+            fs.solution['Boiler(Q_th)|flow_rate'].plot()
+
+            # Save in new single-file format
+            fs.to_netcdf('my_optimization.nc')
+            ```
+
+        Deprecated:
+            This method will be removed in v6.
+        """
+        warnings.warn(
+            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'This utility is only for migrating results from flixopt versions before v5.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        import json
+
+        from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
+
+        folder = pathlib.Path(folder)
+
+        # Load datasets directly (old format used --flow_system.nc4 and --solution.nc4)
+        flow_system_path = folder / f'{name}--flow_system.nc4'
+        solution_path = folder / f'{name}--solution.nc4'
+
+        flow_system_data = load_dataset_from_netcdf(flow_system_path)
+        solution = load_dataset_from_netcdf(solution_path)
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(flow_system_data)
+
+        # Reconstruct FlowSystem
+        flow_system = cls.from_dataset(flow_system_data)
+        flow_system.name = name
+
+        # Attach solution (convert attrs from dicts to JSON strings for consistency)
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+        flow_system.solution = solution
+
+        return flow_system
+
+    def copy(self) -> FlowSystem:
+        """Create a copy of the FlowSystem without optimization state.
+
+        Creates a new FlowSystem with copies of all elements, but without:
+        - The solution dataset
+        - The optimization model
+        - Element submodels and variable/constraint names
+
+        This is useful for creating variations of a FlowSystem for different
+        optimization scenarios without affecting the original.
+
+        Returns:
+            A new FlowSystem instance that can be modified and optimized independently.
+
+        Examples:
+            >>> original = FlowSystem(timesteps)
+            >>> original.add_elements(boiler, bus)
+            >>> original.optimize(solver)  # Original now has solution
+            >>>
+            >>> # Create a copy to try different parameters
+            >>> variant = original.copy()  # No solution, can be modified
+            >>> variant.add_elements(new_component)
+            >>> variant.optimize(solver)
+        """
+        # Temporarily clear solution to use standard serialization without solution data
+        original_solution = self._solution
+        self._solution = None
+        try:
+            ds = self.to_dataset()
+        finally:
+            self._solution = original_solution
+
+        # Create new FlowSystem from dataset (without solution)
+        new_fs = FlowSystem.from_dataset(ds.copy(deep=True))
+        return new_fs
+
+    def __copy__(self):
+        """Support for copy.copy()."""
+        return self.copy()
+
+    def __deepcopy__(self, memo):
+        """Support for copy.deepcopy()."""
+        return self.copy()
 
     def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
         """
@@ -710,12 +986,38 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         }
 
     def connect_and_transform(self):
-        """Transform data for all elements using the new simplified approach."""
+        """Connect the network and transform all element data to model coordinates.
+
+        This method performs the following steps:
+
+        1. Connects flows to buses (establishing the network topology)
+        2. Registers any missing carriers from CONFIG defaults
+        3. Assigns colors to elements without explicit colors
+        4. Transforms all element data to xarray DataArrays aligned with
+           FlowSystem coordinates (time, period, scenario)
+        5. Validates system integrity
+
+        This is called automatically by :meth:`build_model` and :meth:`optimize`.
+
+        Warning:
+            After this method runs, element attributes (e.g., ``flow.size``,
+            ``flow.relative_minimum``) contain transformed xarray DataArrays,
+            not the original input values. If you modify element attributes after
+            transformation, call :meth:`invalidate` to ensure the changes take
+            effect on the next optimization.
+
+        Note:
+            This method is idempotent within a single model lifecycle - calling
+            it multiple times has no effect once ``connected_and_transformed``
+            is True. Use :meth:`invalidate` to reset this flag.
+        """
         if self.connected_and_transformed:
             logger.debug('FlowSystem already connected and transformed')
             return
 
         self._connect_network()
+        self._register_missing_carriers()
+        self._assign_element_colors()
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
@@ -724,6 +1026,40 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self._connected_and_transformed = True
 
+    def _register_missing_carriers(self) -> None:
+        """Auto-register carriers from CONFIG for buses that reference unregistered carriers."""
+        for bus in self.buses.values():
+            if bus.carrier and bus.carrier not in self._carriers:
+                # Try to get from CONFIG defaults
+                default_carrier = getattr(CONFIG.Carriers, bus.carrier, None)
+                if default_carrier is not None:
+                    self._carriers[bus.carrier] = default_carrier
+                    logger.debug(f"Auto-registered carrier '{bus.carrier}' from CONFIG")
+
+    def _assign_element_colors(self) -> None:
+        """Auto-assign colors to elements that don't have explicit colors set.
+
+        Components and buses without explicit colors are assigned colors from the
+        default qualitative colorscale. This ensures zero-config color support
+        while still allowing users to override with explicit colors.
+        """
+        from .color_processing import process_colors
+
+        # Collect elements without colors (components only - buses use carrier colors)
+        elements_without_colors = [comp.label for comp in self.components.values() if comp.color is None]
+
+        if not elements_without_colors:
+            return
+
+        # Generate colors from the default colorscale
+        colorscale = CONFIG.Plotting.default_qualitative_colorscale
+        color_mapping = process_colors(colorscale, elements_without_colors)
+
+        # Assign colors to elements
+        for label, color in color_mapping.items():
+            self.components[label].color = color
+            logger.debug(f"Auto-assigned color '{color}' to component '{label}'")
+
     def add_elements(self, *elements: Element) -> None:
         """
         Add Components(Storages, Boilers, Heatpumps, ...), Buses or Effects to the FlowSystem
@@ -731,13 +1067,25 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             *elements: childs of  Element like Boiler, HeatPump, Bus,...
                 modeling Elements
+
+        Raises:
+            RuntimeError: If the FlowSystem is locked (has a solution).
+                Call `reset()` to unlock it first.
         """
-        if self.connected_and_transformed:
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot add elements to a FlowSystem that has a solution. '
+                'Call `reset()` first to clear the solution and allow modifications.'
+            )
+
+        if self.model is not None:
             warnings.warn(
-                'You are adding elements to an already connected FlowSystem. This is not recommended (But it works).',
+                'Adding elements to a FlowSystem with an existing model. The model will be invalidated.',
                 stacklevel=2,
             )
-            self._connected_and_transformed = False
+        # Always invalidate when adding elements to ensure new elements get transformed
+        if self.model is not None or self._connected_and_transformed:
+            self._invalidate_model()
 
         for new_element in list(elements):
             # Validate element type first
@@ -762,6 +1110,121 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             element_type = type(new_element).__name__
             logger.info(f'Registered new {element_type}: {new_element.label_full}')
 
+    def add_carriers(self, *carriers: Carrier) -> None:
+        """Register a custom carrier for this FlowSystem.
+
+        Custom carriers registered on the FlowSystem take precedence over
+        CONFIG.Carriers defaults when resolving colors and units for buses.
+
+        Args:
+            carriers: Carrier objects defining the carrier properties.
+
+        Raises:
+            RuntimeError: If the FlowSystem is locked (has a solution).
+                Call `reset()` to unlock it first.
+
+        Examples:
+            ```python
+            import flixopt as fx
+
+            fs = fx.FlowSystem(timesteps)
+
+            # Define and register custom carriers
+            biogas = fx.Carrier('biogas', '#228B22', 'kW', 'Biogas fuel')
+            fs.add_carrier(biogas)
+
+            # Now buses can reference this carrier by name
+            bus = fx.Bus('BioGasNetwork', carrier='biogas')
+            fs.add_elements(bus)
+
+            # The carrier color will be used in plots automatically
+            ```
+        """
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot add carriers to a FlowSystem that has a solution. '
+                'Call `reset()` first to clear the solution and allow modifications.'
+            )
+
+        if self.model is not None:
+            warnings.warn(
+                'Adding carriers to a FlowSystem with an existing model. The model will be invalidated.',
+                stacklevel=2,
+            )
+        # Always invalidate when adding carriers to ensure proper re-transformation
+        if self.model is not None or self._connected_and_transformed:
+            self._invalidate_model()
+
+        for carrier in list(carriers):
+            if not isinstance(carrier, Carrier):
+                raise TypeError(f'Expected Carrier object, got {type(carrier)}')
+            self._carriers.add(carrier)
+            logger.debug(f'Adding carrier {carrier} to FlowSystem')
+
+    def get_carrier(self, label: str) -> Carrier | None:
+        """Get the carrier for a bus or flow.
+
+        Args:
+            label: Bus label (e.g., 'Fernwärme') or flow label (e.g., 'Boiler(Q_th)').
+
+        Returns:
+            Carrier or None if not found.
+
+        Note:
+            To access a carrier directly by name, use ``flow_system.carriers['electricity']``.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        # Try as bus label
+        bus = self.buses.get(label)
+        if bus and bus.carrier:
+            return self._carriers.get(bus.carrier.lower())
+
+        # Try as flow label
+        flow = self.flows.get(label)
+        if flow and flow.bus:
+            bus = self.buses.get(flow.bus)
+            if bus and bus.carrier:
+                return self._carriers.get(bus.carrier.lower())
+
+        return None
+
+    @property
+    def carriers(self) -> CarrierContainer:
+        """Carriers registered on this FlowSystem."""
+        return self._carriers
+
+    @property
+    def flow_carriers(self) -> dict[str, str]:
+        """Cached mapping of flow labels to carrier names.
+
+        Returns:
+            Dict mapping flow label to carrier name (lowercase).
+            Flows without a carrier are not included.
+
+        Raises:
+            RuntimeError: If FlowSystem is not connected_and_transformed.
+        """
+        if not self.connected_and_transformed:
+            raise RuntimeError(
+                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
+            )
+
+        if self._flow_carriers is None:
+            self._flow_carriers = {}
+            for flow_label, flow in self.flows.items():
+                bus = self.buses.get(flow.bus)
+                if bus and bus.carrier:
+                    self._flow_carriers[flow_label] = bus.carrier.lower()
+
+        return self._flow_carriers
+
     def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
         """
         Create a linopy model from the FlowSystem.
@@ -777,6 +1240,342 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model = FlowSystemModel(self, normalize_weights)
         return self.model
 
+    def build_model(self, normalize_weights: bool = True) -> FlowSystem:
+        """
+        Build the optimization model for this FlowSystem.
+
+        This method prepares the FlowSystem for optimization by:
+        1. Connecting and transforming all elements (if not already done)
+        2. Creating the FlowSystemModel with all variables and constraints
+        3. Adding clustering constraints (if this is a clustered FlowSystem)
+
+        After calling this method, `self.model` will be available for inspection
+        before solving.
+
+        Args:
+            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> print(flow_system.model.variables)  # Inspect variables before solving
+            >>> flow_system.solve(solver)
+        """
+        self.connect_and_transform()
+        self.create_model(normalize_weights)
+        self.model.do_modeling()
+
+        # Add clustering constraints if this is a clustered FlowSystem
+        if self._clustering_info is not None:
+            self._add_clustering_constraints()
+
+        return self
+
+    def _add_clustering_constraints(self) -> None:
+        """Add clustering constraints to the model."""
+        from .clustering import ClusteringModel
+
+        info = self._clustering_info
+        clustering_model = ClusteringModel(
+            model=self.model,
+            clustering_parameters=info['parameters'],
+            flow_system=self,
+            clustering_data=info['clustering'],
+            components_to_clusterize=info['components_to_clusterize'],
+        )
+        clustering_model.do_modeling()
+
+    def solve(self, solver: _Solver) -> FlowSystem:
+        """
+        Solve the optimization model and populate the solution.
+
+        This method solves the previously built model using the specified solver.
+        After solving, `self.solution` will contain the optimization results,
+        and each element's `.solution` property will provide access to its
+        specific variables.
+
+        Args:
+            solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the model has not been built yet (call build_model first).
+            RuntimeError: If the model is infeasible.
+
+        Examples:
+            >>> flow_system.build_model()
+            >>> flow_system.solve(HighsSolver())
+            >>> print(flow_system.solution)
+        """
+        if self.model is None:
+            raise RuntimeError('Model has not been built. Call build_model() first.')
+
+        self.model.solve(
+            solver_name=solver.name,
+            **solver.options,
+        )
+
+        if 'infeasible' in self.model.termination_condition:
+            if CONFIG.Solving.compute_infeasibilities:
+                import io
+                from contextlib import redirect_stdout
+
+                f = io.StringIO()
+
+                # Redirect stdout to our buffer
+                with redirect_stdout(f):
+                    self.model.print_infeasibilities()
+
+                infeasibilities = f.getvalue()
+                logger.error('Sucessfully extracted infeasibilities: \n%s', infeasibilities)
+            raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
+
+        # Store solution on FlowSystem for direct Element access
+        self.solution = self.model.solution
+
+        logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
+
+        return self
+
+    @property
+    def solution(self) -> xr.Dataset | None:
+        """
+        Access the optimization solution as an xarray Dataset.
+
+        The solution is indexed by ``timesteps_extra`` (the original timesteps plus
+        one additional timestep at the end). Variables that do not have data for the
+        extra timestep (most variables except storage charge states) will contain
+        NaN values at the final timestep.
+
+        Returns:
+            xr.Dataset: The solution dataset with all optimization variable results,
+                or None if the model hasn't been solved yet.
+
+        Example:
+            >>> flow_system.optimize(solver)
+            >>> flow_system.solution.isel(time=slice(None, -1))  # Exclude trailing NaN (and final charge states)
+        """
+        return self._solution
+
+    @solution.setter
+    def solution(self, value: xr.Dataset | None) -> None:
+        """Set the solution dataset and invalidate statistics cache."""
+        self._solution = value
+        self._statistics = None  # Invalidate cached statistics
+
+    @property
+    def is_locked(self) -> bool:
+        """Check if the FlowSystem is locked (has a solution).
+
+        A locked FlowSystem cannot be modified. Use `reset()` to unlock it.
+        """
+        return self._solution is not None
+
+    def _invalidate_model(self) -> None:
+        """Invalidate the model and element submodels when structure changes.
+
+        This clears the model, resets the ``connected_and_transformed`` flag,
+        clears all element submodels and variable/constraint names, and invalidates
+        the topology accessor cache.
+
+        Called internally by :meth:`add_elements`, :meth:`add_carriers`,
+        :meth:`reset`, and :meth:`invalidate`.
+
+        See Also:
+            :meth:`invalidate`: Public method for manual invalidation.
+            :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
+        """
+        self.model = None
+        self._connected_and_transformed = False
+        self._topology = None  # Invalidate topology accessor (and its cached colors)
+        for element in self.values():
+            element.submodel = None
+            element._variable_names = []
+            element._constraint_names = []
+
+    def reset(self) -> FlowSystem:
+        """Clear optimization state to allow modifications.
+
+        This method unlocks the FlowSystem by clearing:
+        - The solution dataset
+        - The optimization model
+        - All element submodels and variable/constraint names
+        - The connected_and_transformed flag
+
+        After calling reset(), the FlowSystem can be modified again
+        (e.g., adding elements or carriers).
+
+        Returns:
+            Self, for method chaining.
+
+        Examples:
+            >>> flow_system.optimize(solver)  # FlowSystem is now locked
+            >>> flow_system.add_elements(new_bus)  # Raises RuntimeError
+            >>> flow_system.reset()  # Unlock the FlowSystem
+            >>> flow_system.add_elements(new_bus)  # Now works
+        """
+        self.solution = None  # Also clears _statistics via setter
+        self._invalidate_model()
+        return self
+
+    def invalidate(self) -> FlowSystem:
+        """Invalidate the model to allow re-transformation after modifying elements.
+
+        Call this after modifying existing element attributes (e.g., ``flow.size``,
+        ``flow.relative_minimum``) to ensure changes take effect on the next
+        optimization. The next call to :meth:`optimize` or :meth:`build_model`
+        will re-run :meth:`connect_and_transform`.
+
+        Note:
+            Adding new elements via :meth:`add_elements` automatically invalidates
+            the model. This method is only needed when modifying attributes of
+            elements that are already part of the FlowSystem.
+
+        Returns:
+            Self, for method chaining.
+
+        Raises:
+            RuntimeError: If the FlowSystem has a solution. Call :meth:`reset`
+                first to clear the solution.
+
+        Examples:
+            Modify a flow's size and re-optimize:
+
+            >>> flow_system.optimize(solver)
+            >>> flow_system.reset()  # Clear solution first
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Re-runs connect_and_transform
+
+            Modify before first optimization:
+
+            >>> flow_system.connect_and_transform()
+            >>> # Oops, need to change something
+            >>> flow_system.components['Boiler'].inputs[0].size = 200
+            >>> flow_system.invalidate()
+            >>> flow_system.optimize(solver)  # Changes take effect
+        """
+        if self.is_locked:
+            raise RuntimeError(
+                'Cannot invalidate a FlowSystem with a solution. Call `reset()` first to clear the solution.'
+            )
+        self._invalidate_model()
+        return self
+
+    @property
+    def optimize(self) -> OptimizeAccessor:
+        """
+        Access optimization methods for this FlowSystem.
+
+        This property returns an OptimizeAccessor that can be called directly
+        for standard optimization, or used to access specialized optimization modes.
+
+        Returns:
+            An OptimizeAccessor instance.
+
+        Examples:
+            Standard optimization (call directly):
+
+            >>> flow_system.optimize(HighsSolver())
+            >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
+
+            Access element solutions directly:
+
+            >>> flow_system.optimize(solver)
+            >>> boiler = flow_system.components['Boiler']
+            >>> print(boiler.solution)
+
+            Future specialized modes:
+
+            >>> flow_system.optimize.clustered(solver, aggregation=params)
+            >>> flow_system.optimize.mga(solver, alternatives=5)
+        """
+        return OptimizeAccessor(self)
+
+    @property
+    def transform(self) -> TransformAccessor:
+        """
+        Access transformation methods for this FlowSystem.
+
+        This property returns a TransformAccessor that provides methods to create
+        transformed versions of this FlowSystem (e.g., clustered for time aggregation).
+
+        Returns:
+            A TransformAccessor instance.
+
+        Examples:
+            Clustered optimization:
+
+            >>> params = ClusteringParameters(hours_per_period=24, nr_of_periods=8)
+            >>> clustered_fs = flow_system.transform.cluster(params)
+            >>> clustered_fs.optimize(solver)
+            >>> print(clustered_fs.solution)
+        """
+        return TransformAccessor(self)
+
+    @property
+    def statistics(self) -> StatisticsAccessor:
+        """
+        Access statistics and plotting methods for optimization results.
+
+        This property returns a StatisticsAccessor that provides methods to analyze
+        and visualize optimization results stored in this FlowSystem's solution.
+
+        Note:
+            The FlowSystem must have a solution (from optimize() or solve()) before
+            most statistics methods can be used.
+
+        Returns:
+            A cached StatisticsAccessor instance.
+
+        Examples:
+            After optimization:
+
+            >>> flow_system.optimize(solver)
+            >>> flow_system.statistics.plot.balance('ElectricityBus')
+            >>> flow_system.statistics.plot.heatmap('Boiler|on')
+            >>> ds = flow_system.statistics.flow_rates  # Get data for analysis
+        """
+        if self._statistics is None:
+            self._statistics = StatisticsAccessor(self)
+        return self._statistics
+
+    @property
+    def topology(self) -> TopologyAccessor:
+        """
+        Access network topology inspection and visualization methods.
+
+        This property returns a cached TopologyAccessor that provides methods to inspect
+        the network structure and visualize it. The accessor is invalidated when the
+        FlowSystem structure changes (via reset() or invalidate()).
+
+        Returns:
+            A cached TopologyAccessor instance.
+
+        Examples:
+            Visualize the network:
+
+            >>> flow_system.topology.plot()
+            >>> flow_system.topology.plot(path='my_network.html', show=True)
+
+            Interactive visualization:
+
+            >>> flow_system.topology.start_app()
+            >>> # ... interact with the visualization ...
+            >>> flow_system.topology.stop_app()
+
+            Get network structure info:
+
+            >>> nodes, edges = flow_system.topology.infos()
+        """
+        if self._topology is None:
+            self._topology = TopologyAccessor(self)
+        return self._topology
+
     def plot_network(
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
@@ -787,114 +1586,53 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         show: bool | None = None,
     ) -> pyvis.network.Network | None:
         """
-        Visualizes the network structure of a FlowSystem using PyVis, saving it as an interactive HTML file.
+        Deprecated: Use `flow_system.topology.plot()` instead.
 
-        Args:
-            path: Path to save the HTML visualization.
-                - `False`: Visualization is created but not saved.
-                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
-            controls: UI controls to add to the visualization.
-                - `True`: Enables all available controls.
-                - `List`: Specify controls, e.g., ['nodes', 'layout'].
-                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-            show: Whether to open the visualization in the web browser.
-
-        Returns:
-        - 'pyvis.network.Network' | None: The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
-
-        Examples:
-            >>> flow_system.plot_network()
-            >>> flow_system.plot_network(show=False)
-            >>> flow_system.plot_network(path='output/custom_network.html', controls=['nodes', 'layout'])
-
-        Notes:
-        - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
-        - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
+        Visualizes the network structure of a FlowSystem using PyVis.
         """
-        from . import plotting
+        return self.topology.plot_legacy(path=path, controls=controls, show=show)
 
-        node_infos, edge_infos = self.network_infos()
-        return plotting.plot_network(
-            node_infos, edge_infos, path, controls, show if show is not None else CONFIG.Plotting.default_show
-        )
-
-    def start_network_app(self):
-        """Visualizes the network structure of a FlowSystem using Dash, Cytoscape, and networkx.
-        Requires optional dependencies: dash, dash-cytoscape, dash-daq, networkx, flask, werkzeug.
+    def start_network_app(self) -> None:
         """
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR, flow_graph, shownetwork
+        Deprecated: Use `flow_system.topology.start_app()` instead.
 
+        Visualizes the network structure using Dash and Cytoscape.
+        """
         warnings.warn(
-            'The network visualization is still experimental and might change in the future.',
+            f'start_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.start_app() instead.',
+            DeprecationWarning,
             stacklevel=2,
-            category=UserWarning,
         )
+        self.topology.start_app()
 
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
+    def stop_network_app(self) -> None:
+        """
+        Deprecated: Use `flow_system.topology.stop_app()` instead.
 
-        if not self._connected_and_transformed:
-            self._connect_network()
-
-        if self._network_app is not None:
-            logger.warning('The network app is already running. Restarting it.')
-            self.stop_network_app()
-
-        self._network_app = shownetwork(flow_graph(self))
-
-    def stop_network_app(self):
-        """Stop the network visualization server."""
-        from .network_app import DASH_CYTOSCAPE_AVAILABLE, VISUALIZATION_ERROR
-
-        if not DASH_CYTOSCAPE_AVAILABLE:
-            raise ImportError(
-                f'Network visualization requires optional dependencies. '
-                f'Install with: `pip install flixopt[network_viz]`, `pip install flixopt[full]` '
-                f'or: `pip install dash dash-cytoscape dash-daq networkx werkzeug`. '
-                f'Original error: {VISUALIZATION_ERROR}'
-            )
-
-        if self._network_app is None:
-            logger.warning("No network app is currently running. Can't stop it")
-            return
-
-        try:
-            logger.info('Stopping network visualization server...')
-            self._network_app.server_instance.shutdown()
-            logger.info('Network visualization stopped.')
-        except Exception as e:
-            logger.error(f'Failed to stop the network visualization app: {e}')
-        finally:
-            self._network_app = None
+        Stop the network visualization server.
+        """
+        warnings.warn(
+            f'stop_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.stop_app() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.topology.stop_app()
 
     def network_infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-        nodes = {
-            node.label_full: {
-                'label': node.label,
-                'class': 'Bus' if isinstance(node, Bus) else 'Component',
-                'infos': node.__str__(),
-            }
-            for node in chain(self.components.values(), self.buses.values())
-        }
+        """
+        Deprecated: Use `flow_system.topology.infos()` instead.
 
-        edges = {
-            flow.label_full: {
-                'label': flow.label,
-                'start': flow.bus if flow.is_input_in_component else flow.component,
-                'end': flow.component if flow.is_input_in_component else flow.bus,
-                'infos': flow.__str__(),
-            }
-            for flow in self.flows.values()
-        }
-
-        return nodes, edges
+        Get network topology information as dictionaries.
+        """
+        warnings.warn(
+            f'network_infos() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.infos() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.topology.infos()
 
     def _check_if_element_is_unique(self, element: Element) -> None:
         """
@@ -950,12 +1688,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_effects(self, *args: Effect) -> None:
         for effect in args:
-            effect._set_flow_system(self)  # Link element to FlowSystem
+            effect.link_to_flow_system(self)  # Link element to FlowSystem
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            new_component._set_flow_system(self)  # Link element to FlowSystem
+            new_component.link_to_flow_system(self)  # Link element to FlowSystem
             self.components.add(new_component)  # Add to existing components
         # Invalidate cache once after all additions
         if components:
@@ -963,7 +1701,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            new_bus._set_flow_system(self)  # Link element to FlowSystem
+            new_bus.link_to_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
         # Invalidate cache once after all additions
         if buses:
@@ -1066,6 +1804,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
             self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=10)
         return self._flows_cache
+
+    @property
+    def storages(self) -> ElementContainer[Storage]:
+        """All storage components as an ElementContainer.
+
+        Returns:
+            ElementContainer containing all Storage components in the FlowSystem,
+            sorted by label for reproducibility.
+        """
+        storages = [c for c in self.components.values() if isinstance(c, Storage)]
+        storages = sorted(storages, key=lambda s: s.label_full.lower())
+        return ElementContainer(storages, element_type_name='storages', truncate_repr=10)
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
@@ -1223,29 +1973,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             xr.Dataset: Selected dataset
         """
-        indexers = {}
-        if time is not None:
-            indexers['time'] = time
-        if period is not None:
-            indexers['period'] = period
-        if scenario is not None:
-            indexers['scenario'] = scenario
+        warnings.warn(
+            f'\n_dataset_sel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use TransformAccessor._dataset_sel() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from .transform_accessor import TransformAccessor
 
-        if not indexers:
-            return dataset
-
-        result = dataset.sel(**indexers)
-
-        # Update time-related attributes if time was selected
-        if 'time' in indexers:
-            result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
-
-        # Update period-related attributes if period was selected
-        # This recalculates period_weights and weights from the new period index
-        if 'period' in indexers:
-            result = cls._update_period_metadata(result)
-
-        return result
+        return TransformAccessor._dataset_sel(
+            dataset,
+            time=time,
+            period=period,
+            scenario=scenario,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+        )
 
     def sel(
         self,
@@ -1256,8 +1999,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Select a subset of the flowsystem by label.
 
-        For power users: Use FlowSystem._dataset_sel() to chain operations on datasets
-        without conversion overhead. See _dataset_sel() documentation.
+        .. deprecated::
+            Use ``flow_system.transform.sel()`` instead. Will be removed in v6.0.0.
 
         Args:
             time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15')
@@ -1265,17 +2008,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario: Scenario selection (e.g., 'scenario1', or list of scenarios)
 
         Returns:
-            FlowSystem: New FlowSystem with selected data
+            FlowSystem: New FlowSystem with selected data (no solution).
         """
-        if time is None and period is None and scenario is None:
-            return self.copy()
-
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-
-        ds = self.to_dataset()
-        ds = self._dataset_sel(ds, time=time, period=period, scenario=scenario)
-        return self.__class__.from_dataset(ds)
+        warnings.warn(
+            f'\nsel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.transform.sel() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.transform.sel(time=time, period=period, scenario=scenario)
 
     @classmethod
     def _dataset_isel(
@@ -1304,29 +2045,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             xr.Dataset: Selected dataset
         """
-        indexers = {}
-        if time is not None:
-            indexers['time'] = time
-        if period is not None:
-            indexers['period'] = period
-        if scenario is not None:
-            indexers['scenario'] = scenario
+        warnings.warn(
+            f'\n_dataset_isel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use TransformAccessor._dataset_isel() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from .transform_accessor import TransformAccessor
 
-        if not indexers:
-            return dataset
-
-        result = dataset.isel(**indexers)
-
-        # Update time-related attributes if time was selected
-        if 'time' in indexers:
-            result = cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
-
-        # Update period-related attributes if period was selected
-        # This recalculates period_weights and weights from the new period index
-        if 'period' in indexers:
-            result = cls._update_period_metadata(result)
-
-        return result
+        return TransformAccessor._dataset_isel(
+            dataset,
+            time=time,
+            period=period,
+            scenario=scenario,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+        )
 
     def isel(
         self,
@@ -1337,109 +2071,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Select a subset of the flowsystem by integer indices.
 
-        For power users: Use FlowSystem._dataset_isel() to chain operations on datasets
-        without conversion overhead. See _dataset_sel() documentation.
+        .. deprecated::
+            Use ``flow_system.transform.isel()`` instead. Will be removed in v6.0.0.
 
         Args:
             time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
-            period: Period selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
-            scenario: Scenario selection by integer index (e.g., slice(0, 3), 50, or [0, 5, 10])
+            period: Period selection by integer index
+            scenario: Scenario selection by integer index
 
         Returns:
-            FlowSystem: New FlowSystem with selected data
+            FlowSystem: New FlowSystem with selected data (no solution).
         """
-        if time is None and period is None and scenario is None:
-            return self.copy()
-
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-
-        ds = self.to_dataset()
-        ds = self._dataset_isel(ds, time=time, period=period, scenario=scenario)
-        return self.__class__.from_dataset(ds)
-
-    @classmethod
-    def _resample_by_dimension_groups(
-        cls,
-        time_dataset: xr.Dataset,
-        time: str,
-        method: str,
-        **kwargs: Any,
-    ) -> xr.Dataset:
-        """
-        Resample variables grouped by their dimension structure to avoid broadcasting.
-
-        This method groups variables by their non-time dimensions before resampling,
-        which provides two key benefits:
-
-        1. **Performance**: Resampling many variables with the same dimensions together
-           is significantly faster than resampling each variable individually.
-
-        2. **Safety**: Prevents xarray from broadcasting variables with different
-           dimensions into a larger dimensional space filled with NaNs, which would
-           cause memory bloat and computational inefficiency.
-
-        Example:
-            Without grouping (problematic):
-                var1: (time, location, tech)  shape (8000, 10, 2)
-                var2: (time, region)          shape (8000, 5)
-                concat → (variable, time, location, tech, region)  ← Unwanted broadcasting!
-
-            With grouping (safe and fast):
-                Group 1: [var1, var3, ...] with dims (time, location, tech)
-                Group 2: [var2, var4, ...] with dims (time, region)
-                Each group resampled separately → No broadcasting, optimal performance!
-
-        Args:
-            time_dataset: Dataset containing only variables with time dimension
-            time: Resampling frequency (e.g., '2h', '1D', '1M')
-            method: Resampling method name (e.g., 'mean', 'sum', 'first')
-            **kwargs: Additional arguments passed to xarray.resample()
-
-        Returns:
-            Resampled dataset with original dimension structure preserved
-        """
-        # Group variables by dimensions (excluding time)
-        dim_groups = defaultdict(list)
-        for var_name, var in time_dataset.data_vars.items():
-            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
-            dim_groups[dims_key].append(var_name)
-
-        # Handle empty case: no time-dependent variables
-        if not dim_groups:
-            return getattr(time_dataset.resample(time=time, **kwargs), method)()
-
-        # Resample each group separately using DataArray concat (faster)
-        resampled_groups = []
-        for var_names in dim_groups.values():
-            # Skip empty groups
-            if not var_names:
-                continue
-
-            # Concat variables into a single DataArray with 'variable' dimension
-            # Use combine_attrs='drop_conflicts' to handle attribute conflicts
-            stacked = xr.concat(
-                [time_dataset[name] for name in var_names],
-                dim=pd.Index(var_names, name='variable'),
-                combine_attrs='drop_conflicts',
-            )
-
-            # Resample the DataArray (faster than resampling Dataset)
-            resampled = getattr(stacked.resample(time=time, **kwargs), method)()
-
-            # Convert back to Dataset using the 'variable' dimension
-            resampled_dataset = resampled.to_dataset(dim='variable')
-            resampled_groups.append(resampled_dataset)
-
-        # Merge all resampled groups, handling empty list case
-        if not resampled_groups:
-            return time_dataset  # Return empty dataset as-is
-
-        if len(resampled_groups) == 1:
-            return resampled_groups[0]
-
-        # Merge multiple groups with combine_attrs to avoid conflicts
-        return xr.merge(resampled_groups, combine_attrs='drop_conflicts')
+        warnings.warn(
+            f'\nisel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.transform.isel() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.transform.isel(time=time, period=period, scenario=scenario)
 
     @classmethod
     def _dataset_resample(
@@ -1470,36 +2119,47 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             xr.Dataset: Resampled dataset
         """
-        # Validate method
-        available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
-        if method not in available_methods:
-            raise ValueError(f'Unsupported resampling method: {method}. Available: {available_methods}')
+        warnings.warn(
+            f'\n_dataset_resample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use TransformAccessor._dataset_resample() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from .transform_accessor import TransformAccessor
 
-        # Preserve original dataset attributes (especially the reference structure)
-        original_attrs = dict(dataset.attrs)
+        return TransformAccessor._dataset_resample(
+            dataset,
+            freq=freq,
+            method=method,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+            **kwargs,
+        )
 
-        # Separate time and non-time variables
-        time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
-        non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
+    @classmethod
+    def _resample_by_dimension_groups(
+        cls,
+        time_dataset: xr.Dataset,
+        time: str,
+        method: str,
+        **kwargs: Any,
+    ) -> xr.Dataset:
+        """
+        Resample variables grouped by their dimension structure to avoid broadcasting.
 
-        # Only resample variables that have time dimension
-        time_dataset = dataset[time_var_names]
+        .. deprecated::
+            Use ``TransformAccessor._resample_by_dimension_groups()`` instead.
+            Will be removed in v6.0.0.
+        """
+        warnings.warn(
+            f'\n_resample_by_dimension_groups() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use TransformAccessor._resample_by_dimension_groups() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from .transform_accessor import TransformAccessor
 
-        # Resample with dimension grouping to avoid broadcasting
-        resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
-
-        # Combine resampled time variables with non-time variables
-        if non_time_var_names:
-            non_time_dataset = dataset[non_time_var_names]
-            result = xr.merge([resampled_time_dataset, non_time_dataset])
-        else:
-            result = resampled_time_dataset
-
-        # Restore original attributes (xr.merge can drop them)
-        result.attrs.update(original_attrs)
-
-        # Update time-related attributes based on new time index
-        return cls._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+        return TransformAccessor._resample_by_dimension_groups(time_dataset, time, method, **kwargs)
 
     def resample(
         self,
@@ -1510,36 +2170,34 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         **kwargs: Any,
     ) -> FlowSystem:
         """
-        Create a resampled FlowSystem by resampling data along the time dimension (like xr.Dataset.resample()).
-        Only resamples data variables that have a time dimension.
+        Create a resampled FlowSystem by resampling data along the time dimension.
 
-        For power users: Use FlowSystem._dataset_resample() to chain operations on datasets
-        without conversion overhead. See _dataset_sel() documentation.
+        .. deprecated::
+            Use ``flow_system.transform.resample()`` instead. Will be removed in v6.0.0.
 
         Args:
             time: Resampling frequency (e.g., '3h', '2D', '1M')
             method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
-            hours_of_last_timestep: Duration of the last timestep after resampling. If None, computed from the last time interval.
-            hours_of_previous_timesteps: Duration of previous timesteps after resampling. If None, computed from the first time interval.
-                Can be a scalar or array.
+            hours_of_last_timestep: Duration of the last timestep after resampling.
+            hours_of_previous_timesteps: Duration of previous timesteps after resampling.
             **kwargs: Additional arguments passed to xarray.resample()
 
         Returns:
-            FlowSystem: New resampled FlowSystem
+            FlowSystem: New resampled FlowSystem (no solution).
         """
-        if not self.connected_and_transformed:
-            self.connect_and_transform()
-
-        ds = self.to_dataset()
-        ds = self._dataset_resample(
-            ds,
-            freq=time,
+        warnings.warn(
+            f'\nresample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.transform.resample() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.transform.resample(
+            time=time,
             method=method,
             hours_of_last_timestep=hours_of_last_timestep,
             hours_of_previous_timesteps=hours_of_previous_timesteps,
             **kwargs,
         )
-        return self.__class__.from_dataset(ds)
 
     @property
     def connected_and_transformed(self) -> bool:

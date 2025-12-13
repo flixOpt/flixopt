@@ -1,22 +1,10 @@
 # Recipes
 
-**Coming Soon!** 🚧
+Short, focused code snippets showing **how to do specific things** in FlixOpt. Unlike full examples, recipes focus on a single concept.
 
-This section will contain quick, copy-paste ready code snippets for common FlixOpt patterns.
+## Available Recipes
 
----
-
-## What Will Be Here?
-
-Short, focused code snippets showing **how to do specific things** in FlixOpt:
-
-- Common modeling patterns
-- Integration with other tools
-- Performance optimizations
-- Domain-specific solutions
-- Data analysis shortcuts
-
-Unlike full examples, recipes will be focused snippets showing a single concept.
+- [Plotting Custom Data](plotting-custom-data.md) - Create faceted plots with your own xarray data using Plotly Express
 
 ---
 
@@ -37,9 +25,10 @@ Unlike full examples, recipes will be focused snippets showing a single concept.
 
 ## Want to Contribute?
 
-**We need your help!** If you have recurring modeling patterns or clever solutions to share, please contribute via [GitHub issues](https://github.com/flixopt/flixopt/issues) or pull requests.
+If you have recurring modeling patterns or clever solutions to share, please contribute via [GitHub issues](https://github.com/flixopt/flixopt/issues) or pull requests.
 
 Guidelines:
+
 1. Keep it short (< 100 lines of code)
 2. Focus on one specific technique
 3. Add brief explanation and when to use it

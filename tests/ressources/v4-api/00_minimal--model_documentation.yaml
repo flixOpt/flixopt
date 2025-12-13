@@ -1,0 +1,213 @@
+objective: |-
+    Objective:
+    ----------
+    LinearExpression: +1 Costs + 1 Penalty
+    Sense: min
+    Value: 4.0
+termination_condition: optimal
+status: ok
+nvars: 40
+nvarsbin: 0
+nvarscont: 40
+ncons: 25
+variables:
+    Costs(periodic): |-
+        Variable
+        --------
+        Costs(periodic) ∈ [-inf, inf]
+    Costs(temporal): |-
+        Variable
+        --------
+        Costs(temporal) ∈ [-inf, inf]
+    "Costs(temporal)|per_timestep": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Costs(temporal)|per_timestep[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Costs(temporal)|per_timestep[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Costs(temporal)|per_timestep[2020-01-01 02:00:00] ∈ [-inf, inf]
+    Costs: |-
+        Variable
+        --------
+        Costs ∈ [-inf, inf]
+    Penalty: |-
+        Variable
+        --------
+        Penalty ∈ [-inf, inf]
+    "Boiler(Gas)|flow_rate": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Boiler(Gas)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1e+07]
+        [2020-01-01 01:00:00]: Boiler(Gas)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1e+07]
+        [2020-01-01 02:00:00]: Boiler(Gas)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1e+07]
+    "Boiler(Gas)|total_flow_hours": |-
+        Variable
+        --------
+        Boiler(Gas)|total_flow_hours ∈ [0, inf]
+    "Boiler(Heat)|flow_rate": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Boiler(Heat)|flow_rate[2020-01-01 00:00:00] ∈ [0, 50]
+        [2020-01-01 01:00:00]: Boiler(Heat)|flow_rate[2020-01-01 01:00:00] ∈ [0, 50]
+        [2020-01-01 02:00:00]: Boiler(Heat)|flow_rate[2020-01-01 02:00:00] ∈ [0, 50]
+    "Boiler(Heat)|total_flow_hours": |-
+        Variable
+        --------
+        Boiler(Heat)|total_flow_hours ∈ [0, inf]
+    "Sink(Demand)|flow_rate": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Sink(Demand)|flow_rate[2020-01-01 00:00:00] ∈ [30, 30]
+        [2020-01-01 01:00:00]: Sink(Demand)|flow_rate[2020-01-01 01:00:00] ∈ [0, 0]
+        [2020-01-01 02:00:00]: Sink(Demand)|flow_rate[2020-01-01 02:00:00] ∈ [20, 20]
+    "Sink(Demand)|total_flow_hours": |-
+        Variable
+        --------
+        Sink(Demand)|total_flow_hours ∈ [0, inf]
+    "Source(Gas)|flow_rate": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Source(Gas)|flow_rate[2020-01-01 00:00:00] ∈ [0, 1000]
+        [2020-01-01 01:00:00]: Source(Gas)|flow_rate[2020-01-01 01:00:00] ∈ [0, 1000]
+        [2020-01-01 02:00:00]: Source(Gas)|flow_rate[2020-01-01 02:00:00] ∈ [0, 1000]
+    "Source(Gas)|total_flow_hours": |-
+        Variable
+        --------
+        Source(Gas)|total_flow_hours ∈ [0, inf]
+    "Source(Gas)->Costs(temporal)": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Source(Gas)->Costs(temporal)[2020-01-01 00:00:00] ∈ [-inf, inf]
+        [2020-01-01 01:00:00]: Source(Gas)->Costs(temporal)[2020-01-01 01:00:00] ∈ [-inf, inf]
+        [2020-01-01 02:00:00]: Source(Gas)->Costs(temporal)[2020-01-01 02:00:00] ∈ [-inf, inf]
+    "Heat|excess_input": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Heat|excess_input[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Heat|excess_input[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Heat|excess_input[2020-01-01 02:00:00] ∈ [0, inf]
+    "Heat|excess_output": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Heat|excess_output[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Heat|excess_output[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Heat|excess_output[2020-01-01 02:00:00] ∈ [0, inf]
+    "Heat->Penalty": |-
+        Variable
+        --------
+        Heat->Penalty ∈ [-inf, inf]
+    "Gas|excess_input": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Gas|excess_input[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Gas|excess_input[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Gas|excess_input[2020-01-01 02:00:00] ∈ [0, inf]
+    "Gas|excess_output": |-
+        Variable (time: 3)
+        ------------------
+        [2020-01-01 00:00:00]: Gas|excess_output[2020-01-01 00:00:00] ∈ [0, inf]
+        [2020-01-01 01:00:00]: Gas|excess_output[2020-01-01 01:00:00] ∈ [0, inf]
+        [2020-01-01 02:00:00]: Gas|excess_output[2020-01-01 02:00:00] ∈ [0, inf]
+    "Gas->Penalty": |-
+        Variable
+        --------
+        Gas->Penalty ∈ [-inf, inf]
+constraints:
+    Costs(periodic): |-
+        Constraint `Costs(periodic)`
+        ----------------------------
+        +1 Costs(periodic) = -0.0
+    Costs(temporal): |-
+        Constraint `Costs(temporal)`
+        ----------------------------
+        +1 Costs(temporal) - 1 Costs(temporal)|per_timestep[2020-01-01 00:00:00] - 1 Costs(temporal)|per_timestep[2020-01-01 01:00:00] - 1 Costs(temporal)|per_timestep[2020-01-01 02:00:00] = -0.0
+    "Costs(temporal)|per_timestep": |-
+        Constraint `Costs(temporal)|per_timestep`
+        [time: 3]:
+        ----------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Costs(temporal)|per_timestep[2020-01-01 00:00:00] - 1 Source(Gas)->Costs(temporal)[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Costs(temporal)|per_timestep[2020-01-01 01:00:00] - 1 Source(Gas)->Costs(temporal)[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Costs(temporal)|per_timestep[2020-01-01 02:00:00] - 1 Source(Gas)->Costs(temporal)[2020-01-01 02:00:00] = -0.0
+    Costs: |-
+        Constraint `Costs`
+        ------------------
+        +1 Costs - 1 Costs(temporal) - 1 Costs(periodic) = -0.0
+    Penalty: |-
+        Constraint `Penalty`
+        --------------------
+        +1 Penalty - 1 Heat->Penalty - 1 Gas->Penalty = -0.0
+    "Boiler(Gas)|total_flow_hours": |-
+        Constraint `Boiler(Gas)|total_flow_hours`
+        -----------------------------------------
+        +1 Boiler(Gas)|total_flow_hours - 1 Boiler(Gas)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Gas)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Gas)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Boiler(Heat)|total_flow_hours": |-
+        Constraint `Boiler(Heat)|total_flow_hours`
+        ------------------------------------------
+        +1 Boiler(Heat)|total_flow_hours - 1 Boiler(Heat)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Heat)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Heat)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Boiler|conversion_0": |-
+        Constraint `Boiler|conversion_0`
+        [time: 3]:
+        -------------------------------------------
+        [2020-01-01 00:00:00]: +0.5 Boiler(Gas)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Heat)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +0.5 Boiler(Gas)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Heat)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +0.5 Boiler(Gas)|flow_rate[2020-01-01 02:00:00] - 1 Boiler(Heat)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Sink(Demand)|total_flow_hours": |-
+        Constraint `Sink(Demand)|total_flow_hours`
+        ------------------------------------------
+        +1 Sink(Demand)|total_flow_hours - 1 Sink(Demand)|flow_rate[2020-01-01 00:00:00] - 1 Sink(Demand)|flow_rate[2020-01-01 01:00:00] - 1 Sink(Demand)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Source(Gas)|total_flow_hours": |-
+        Constraint `Source(Gas)|total_flow_hours`
+        -----------------------------------------
+        +1 Source(Gas)|total_flow_hours - 1 Source(Gas)|flow_rate[2020-01-01 00:00:00] - 1 Source(Gas)|flow_rate[2020-01-01 01:00:00] - 1 Source(Gas)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Source(Gas)->Costs(temporal)": |-
+        Constraint `Source(Gas)->Costs(temporal)`
+        [time: 3]:
+        ----------------------------------------------------
+        [2020-01-01 00:00:00]: +1 Source(Gas)->Costs(temporal)[2020-01-01 00:00:00] - 0.04 Source(Gas)|flow_rate[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Source(Gas)->Costs(temporal)[2020-01-01 01:00:00] - 0.04 Source(Gas)|flow_rate[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Source(Gas)->Costs(temporal)[2020-01-01 02:00:00] - 0.04 Source(Gas)|flow_rate[2020-01-01 02:00:00] = -0.0
+    "Heat|balance": |-
+        Constraint `Heat|balance`
+        [time: 3]:
+        ------------------------------------
+        [2020-01-01 00:00:00]: +1 Boiler(Heat)|flow_rate[2020-01-01 00:00:00] - 1 Sink(Demand)|flow_rate[2020-01-01 00:00:00] + 1 Heat|excess_input[2020-01-01 00:00:00] - 1 Heat|excess_output[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Boiler(Heat)|flow_rate[2020-01-01 01:00:00] - 1 Sink(Demand)|flow_rate[2020-01-01 01:00:00] + 1 Heat|excess_input[2020-01-01 01:00:00] - 1 Heat|excess_output[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Boiler(Heat)|flow_rate[2020-01-01 02:00:00] - 1 Sink(Demand)|flow_rate[2020-01-01 02:00:00] + 1 Heat|excess_input[2020-01-01 02:00:00] - 1 Heat|excess_output[2020-01-01 02:00:00] = -0.0
+    "Heat->Penalty": |-
+        Constraint `Heat->Penalty`
+        --------------------------
+        +1 Heat->Penalty - 1e+05 Heat|excess_input[2020-01-01 00:00:00] - 1e+05 Heat|excess_input[2020-01-01 01:00:00]... -1e+05 Heat|excess_output[2020-01-01 00:00:00] - 1e+05 Heat|excess_output[2020-01-01 01:00:00] - 1e+05 Heat|excess_output[2020-01-01 02:00:00] = -0.0
+    "Gas|balance": |-
+        Constraint `Gas|balance`
+        [time: 3]:
+        -----------------------------------
+        [2020-01-01 00:00:00]: +1 Source(Gas)|flow_rate[2020-01-01 00:00:00] - 1 Boiler(Gas)|flow_rate[2020-01-01 00:00:00] + 1 Gas|excess_input[2020-01-01 00:00:00] - 1 Gas|excess_output[2020-01-01 00:00:00] = -0.0
+        [2020-01-01 01:00:00]: +1 Source(Gas)|flow_rate[2020-01-01 01:00:00] - 1 Boiler(Gas)|flow_rate[2020-01-01 01:00:00] + 1 Gas|excess_input[2020-01-01 01:00:00] - 1 Gas|excess_output[2020-01-01 01:00:00] = -0.0
+        [2020-01-01 02:00:00]: +1 Source(Gas)|flow_rate[2020-01-01 02:00:00] - 1 Boiler(Gas)|flow_rate[2020-01-01 02:00:00] + 1 Gas|excess_input[2020-01-01 02:00:00] - 1 Gas|excess_output[2020-01-01 02:00:00] = -0.0
+    "Gas->Penalty": |-
+        Constraint `Gas->Penalty`
+        -------------------------
+        +1 Gas->Penalty - 1e+05 Gas|excess_input[2020-01-01 00:00:00] - 1e+05 Gas|excess_input[2020-01-01 01:00:00]... -1e+05 Gas|excess_output[2020-01-01 00:00:00] - 1e+05 Gas|excess_output[2020-01-01 01:00:00] - 1e+05 Gas|excess_output[2020-01-01 02:00:00] = -0.0
+binaries: []
+integers: []
+continuous:
+    - Costs(periodic)
+    - Costs(temporal)
+    - "Costs(temporal)|per_timestep"
+    - Costs
+    - Penalty
+    - "Boiler(Gas)|flow_rate"
+    - "Boiler(Gas)|total_flow_hours"
+    - "Boiler(Heat)|flow_rate"
+    - "Boiler(Heat)|total_flow_hours"
+    - "Sink(Demand)|flow_rate"
+    - "Sink(Demand)|total_flow_hours"
+    - "Source(Gas)|flow_rate"
+    - "Source(Gas)|total_flow_hours"
+    - "Source(Gas)->Costs(temporal)"
+    - "Heat|excess_input"
+    - "Heat|excess_output"
+    - "Heat->Penalty"
+    - "Gas|excess_input"
+    - "Gas|excess_output"
+    - "Gas->Penalty"
+infeasible_constraints: ''

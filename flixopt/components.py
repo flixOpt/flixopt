@@ -180,11 +180,11 @@ class LinearConverter(Component):
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_conversion is not None:
-            self.piecewise_conversion._set_flow_system(flow_system)
+            self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -216,14 +216,13 @@ class LinearConverter(Component):
                         f'({flow.label_full}).'
                     )
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
+    def transform_data(self) -> None:
+        super().transform_data()
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors()
         if self.piecewise_conversion:
             self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data(f'{prefix}|PiecewiseConversion')
+            self.piecewise_conversion.transform_data()
 
     def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
@@ -266,7 +265,9 @@ class Storage(Component):
         charging: Incoming flow for loading the storage.
         discharging: Outgoing flow for unloading the storage.
         capacity_in_flow_hours: Storage capacity in flow-hours (kWh, m³, kg).
-            Scalar for fixed size or InvestParameters for optimization.
+            Scalar for fixed size, InvestParameters for optimization, or None (unbounded).
+            Default: None (unbounded capacity). When using InvestParameters,
+            maximum_size (or fixed_size) must be explicitly set for proper model scaling.
         relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
         relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
         initial_charge_state: Charge at start. Numeric or 'equals_final'. Default: 0.
@@ -367,6 +368,11 @@ class Storage(Component):
         variables enforce mutual exclusivity, increasing solution time but preventing unrealistic
         simultaneous charging and discharging.
 
+        **Unbounded capacity**: When capacity_in_flow_hours is None (default), the storage has
+        unlimited capacity. Note that prevent_simultaneous_charge_and_discharge requires the
+        charging and discharging flows to have explicit sizes. Use prevent_simultaneous_charge_and_discharge=False
+        with unbounded storages, or set flow sizes explicitly.
+
         **Units**: Flow rates and charge states are related by the concept of 'flow hours' (=flow_rate * time).
         With flow rates in kW, the charge state is therefore (usually) kWh.
         With flow rates in m3/h, the charge state is therefore in m3.
@@ -379,7 +385,7 @@ class Storage(Component):
         label: str,
         charging: Flow,
         discharging: Flow,
-        capacity_in_flow_hours: Numeric_PS | InvestParameters,
+        capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None,
         relative_minimum_charge_state: Numeric_TPS = 0,
         relative_maximum_charge_state: Numeric_TPS = 1,
         initial_charge_state: Numeric_PS | Literal['equals_final'] = 0,
@@ -427,49 +433,50 @@ class Storage(Component):
         self.submodel = StorageModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours._set_flow_system(flow_system)
+            self.capacity_in_flow_hours.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
+    def transform_data(self) -> None:
+        super().transform_data()
         self.relative_minimum_charge_state = self._fit_coords(
-            f'{prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
+            f'{self.prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
         )
         self.relative_maximum_charge_state = self._fit_coords(
-            f'{prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
+            f'{self.prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
         )
-        self.eta_charge = self._fit_coords(f'{prefix}|eta_charge', self.eta_charge)
-        self.eta_discharge = self._fit_coords(f'{prefix}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = self._fit_coords(f'{prefix}|relative_loss_per_hour', self.relative_loss_per_hour)
+        self.eta_charge = self._fit_coords(f'{self.prefix}|eta_charge', self.eta_charge)
+        self.eta_discharge = self._fit_coords(f'{self.prefix}|eta_discharge', self.eta_discharge)
+        self.relative_loss_per_hour = self._fit_coords(
+            f'{self.prefix}|relative_loss_per_hour', self.relative_loss_per_hour
+        )
         if not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = self._fit_coords(
-                f'{prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
+                f'{self.prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
             )
         self.minimal_final_charge_state = self._fit_coords(
-            f'{prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
+            f'{self.prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
         )
         self.maximal_final_charge_state = self._fit_coords(
-            f'{prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
+            f'{self.prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
         )
         self.relative_minimum_final_charge_state = self._fit_coords(
-            f'{prefix}|relative_minimum_final_charge_state',
+            f'{self.prefix}|relative_minimum_final_charge_state',
             self.relative_minimum_final_charge_state,
             dims=['period', 'scenario'],
         )
         self.relative_maximum_final_charge_state = self._fit_coords(
-            f'{prefix}|relative_maximum_final_charge_state',
+            f'{self.prefix}|relative_maximum_final_charge_state',
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data(f'{prefix}|InvestParameters')
+            self.capacity_in_flow_hours.transform_data()
         else:
             self.capacity_in_flow_hours = self._fit_coords(
-                f'{prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
+                f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -485,30 +492,57 @@ class Storage(Component):
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
             initial_equals_final = True
 
-        # Use new InvestParameters methods to get capacity bounds
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
-            maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
-        else:
-            maximum_capacity = self.capacity_in_flow_hours
-            minimum_capacity = self.capacity_in_flow_hours
-
-        # Initial capacity should not constraint investment decision
-        minimum_initial_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-        maximum_initial_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
-
-        # Only perform numeric comparisons if not using 'equals_final'
-        if not initial_equals_final:
-            if (self.initial_charge_state > maximum_initial_capacity).any():
+        # Capacity is required when using non-default relative bounds
+        if self.capacity_in_flow_hours is None:
+            if np.any(self.relative_minimum_charge_state > 0):
                 raise PlausibilityError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is constraining the investment decision. Chosse a value above {maximum_initial_capacity}'
+                    f'Storage "{self.label_full}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
+                    f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
                 )
-            if (self.initial_charge_state < minimum_initial_capacity).any():
+            if np.any(self.relative_maximum_charge_state < 1):
                 raise PlausibilityError(
-                    f'{self.label_full}: {self.initial_charge_state=} '
-                    f'is constraining the investment decision. Chosse a value below {minimum_initial_capacity}'
+                    f'Storage "{self.label_full}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
+                    f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
                 )
+            if self.relative_minimum_final_charge_state is not None:
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
+                    f'A capacity is required for relative final charge state constraints.'
+                )
+            if self.relative_maximum_final_charge_state is not None:
+                raise PlausibilityError(
+                    f'Storage "{self.label_full}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
+                    f'A capacity is required for relative final charge state constraints.'
+                )
+
+        # Skip capacity-related checks if capacity is None (unbounded)
+        if self.capacity_in_flow_hours is not None:
+            # Use new InvestParameters methods to get capacity bounds
+            if isinstance(self.capacity_in_flow_hours, InvestParameters):
+                minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
+                maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
+            else:
+                maximum_capacity = self.capacity_in_flow_hours
+                minimum_capacity = self.capacity_in_flow_hours
+
+            # Initial charge state should not constrain investment decision
+            # If initial > (min_cap * rel_max), investment is forced to increase capacity
+            # If initial < (max_cap * rel_min), investment is forced to decrease capacity
+            min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
+            max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+
+            # Only perform numeric comparisons if not using 'equals_final'
+            if not initial_equals_final:
+                if (self.initial_charge_state > max_initial_at_min_capacity).any():
+                    raise PlausibilityError(
+                        f'{self.label_full}: {self.initial_charge_state=} '
+                        f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
+                    )
+                if (self.initial_charge_state < min_initial_at_max_capacity).any():
+                    raise PlausibilityError(
+                        f'{self.label_full}: {self.initial_charge_state=} '
+                        f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
+                    )
 
         if self.balanced:
             if not isinstance(self.charging.size, InvestParameters) or not isinstance(
@@ -518,13 +552,13 @@ class Storage(Component):
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
                 )
 
-            if (self.charging.size.minimum_size > self.discharging.size.maximum_size).any() or (
-                self.charging.size.maximum_size < self.discharging.size.minimum_size
+            if (self.charging.size.minimum_or_fixed_size > self.discharging.size.maximum_or_fixed_size).any() or (
+                self.charging.size.maximum_or_fixed_size < self.discharging.size.minimum_or_fixed_size
             ).any():
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
-                    f'Got: {self.charging.size.minimum_size=}, {self.charging.size.maximum_size=} and '
-                    f'{self.discharging.size.minimum_size=}, {self.discharging.size.maximum_size=}.'
+                    f'Got: {self.charging.size.minimum_or_fixed_size=}, {self.charging.size.maximum_or_fixed_size=} and '
+                    f'{self.discharging.size.minimum_or_fixed_size=}, {self.discharging.size.maximum_or_fixed_size=}.'
                 )
 
     def __repr__(self) -> str:
@@ -705,8 +739,8 @@ class Transmission(Component):
             ).any():
                 raise ValueError(
                     f'Balanced Transmission needs compatible minimum and maximum sizes.'
-                    f'Got: {self.in1.size.minimum_size=}, {self.in1.size.maximum_size=}, {self.in1.size.fixed_size=} and '
-                    f'{self.in2.size.minimum_size=}, {self.in2.size.maximum_size=}, {self.in2.size.fixed_size=}.'
+                    f'Got: {self.in1.size.minimum_or_fixed_size=}, {self.in1.size.maximum_or_fixed_size=} and '
+                    f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
                 )
 
     def create_model(self, model) -> TransmissionModel:
@@ -714,11 +748,10 @@ class Transmission(Component):
         self.submodel = TransmissionModel(model, self)
         return self.submodel
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        super().transform_data(prefix)
-        self.relative_losses = self._fit_coords(f'{prefix}|relative_losses', self.relative_losses)
-        self.absolute_losses = self._fit_coords(f'{prefix}|absolute_losses', self.absolute_losses)
+    def transform_data(self) -> None:
+        super().transform_data()
+        self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
+        self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
@@ -729,6 +762,9 @@ class TransmissionModel(ComponentModel):
             for flow in element.inputs + element.outputs:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         super().__init__(model, element)
 
@@ -936,15 +972,18 @@ class StorageModel(ComponentModel):
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
-        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+        if self.element.capacity_in_flow_hours is None:
+            # Unbounded storage: lower bound is 0, upper bound is infinite
+            return (0, np.inf)
+        elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return (
-                relative_lower_bound * self.element.capacity_in_flow_hours,
-                relative_upper_bound * self.element.capacity_in_flow_hours,
+                relative_lower_bound * self.element.capacity_in_flow_hours.minimum_or_fixed_size,
+                relative_upper_bound * self.element.capacity_in_flow_hours.maximum_or_fixed_size,
             )
         else:
             return (
-                relative_lower_bound * self.element.capacity_in_flow_hours.minimum_size,
-                relative_upper_bound * self.element.capacity_in_flow_hours.maximum_size,
+                relative_lower_bound * self.element.capacity_in_flow_hours,
+                relative_upper_bound * self.element.capacity_in_flow_hours,
             )
 
     @property

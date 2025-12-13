@@ -16,9 +16,11 @@ def get_solutions(optimizations: list, variable: str) -> xr.Dataset:
     dataarrays = []
     for optimization in optimizations:
         if optimization.name == 'Segmented':
+            # SegmentedOptimization requires special handling to remove overlaps
             dataarrays.append(optimization.results.solution_without_overlap(variable).rename(optimization.name))
         else:
-            dataarrays.append(optimization.results.solution[variable].rename(optimization.name))
+            # For Full and Clustered, access solution from the flow_system
+            dataarrays.append(optimization.flow_system.solution[variable].rename(optimization.name))
     return xr.merge(dataarrays, join='outer')
 
 
@@ -67,10 +69,10 @@ if __name__ == '__main__':
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
-        fx.Bus('Strom', imbalance_penalty_per_flow_hour=imbalance_penalty),
-        fx.Bus('Fernwärme', imbalance_penalty_per_flow_hour=imbalance_penalty),
-        fx.Bus('Gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
-        fx.Bus('Kohle', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Strom', carrier='electricity', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', carrier='heat', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', carrier='gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Kohle', carrier='fuel', imbalance_penalty_per_flow_hour=imbalance_penalty),
     )
 
     # Effects
@@ -176,7 +178,7 @@ if __name__ == '__main__':
         a_kwk,
         a_speicher,
     )
-    flow_system.plot_network()
+    flow_system.topology.plot()
 
     # Optimizations
     optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []

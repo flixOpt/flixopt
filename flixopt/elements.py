@@ -20,7 +20,6 @@ from .structure import (
     Element,
     ElementModel,
     FlowSystemModel,
-    Interface,
     register_class_for_io,
 )
 
@@ -93,8 +92,9 @@ class Component(Element):
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
-        super().__init__(label, meta_data=meta_data)
+        super().__init__(label, meta_data=meta_data, color=color)
         self.inputs: list[Flow] = inputs or []
         self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters
@@ -110,21 +110,23 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects and flows."""
-        super()._set_flow_system(flow_system)
-        if self.status_parameters is not None:
-            self.status_parameters._set_flow_system(flow_system)
-        for flow in self.inputs + self.outputs:
-            flow._set_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested Interface objects and flows.
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(prefix)
+            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
+        for flow in self.inputs + self.outputs:
+            flow.link_to_flow_system(flow_system)
+
+    def transform_data(self) -> None:
+        if self.status_parameters is not None:
+            self.status_parameters.transform_data()
 
         for flow in self.inputs + self.outputs:
-            flow.transform_data()  # Flow doesnt need the name_prefix
+            flow.transform_data()
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
@@ -135,6 +137,17 @@ class Component(Element):
 
     def _plausibility_checks(self) -> None:
         self._check_unique_flow_labels()
+
+        # Component with status_parameters requires all flows to have sizes set
+        # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
+        if self.status_parameters is not None:
+            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
+            if flows_without_size:
+                raise PlausibilityError(
+                    f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
+                    f'{flows_without_size}. All flows need explicit sizes when the component uses status_parameters '
+                    f'(required for big-M constraints).'
+                )
 
     def _connect_flows(self):
         # Inputs
@@ -194,6 +207,9 @@ class Bus(Element):
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
+        carrier: Name of the energy/material carrier type (e.g., 'electricity', 'heat', 'gas').
+            Carriers are registered via ``flow_system.add_carrier()`` or available as
+            predefined defaults in CONFIG.Carriers. Used for automatic color assignment in plots.
         imbalance_penalty_per_flow_hour: Penalty costs for bus balance violations.
             When None (default), no imbalance is allowed (hard constraint). When set to a
             value > 0, allows bus imbalances at penalty cost.
@@ -201,30 +217,30 @@ class Bus(Element):
             in results. Only use Python native types.
 
     Examples:
-        Electrical bus with strict balance:
+        Using predefined carrier names:
 
         ```python
-        electricity_bus = Bus(
-            label='main_electrical_bus',
-            imbalance_penalty_per_flow_hour=None,  # No imbalance allowed
-        )
+        electricity_bus = Bus(label='main_grid', carrier='electricity')
+        heat_bus = Bus(label='district_heating', carrier='heat')
+        ```
+
+        Registering custom carriers on FlowSystem:
+
+        ```python
+        import flixopt as fx
+
+        fs = fx.FlowSystem(timesteps)
+        fs.add_carrier(fx.Carrier('biogas', '#228B22', 'kW'))
+        biogas_bus = fx.Bus(label='biogas_network', carrier='biogas')
         ```
 
         Heat network with penalty for imbalances:
 
         ```python
-        heat_network = Bus(
-            label='district_heating_network',
-            imbalance_penalty_per_flow_hour=1000,  # €1000/MWh penalty for imbalance
-        )
-        ```
-
-        Material flow with time-varying penalties:
-
-        ```python
-        material_hub = Bus(
-            label='material_processing_hub',
-            imbalance_penalty_per_flow_hour=waste_disposal_costs,  # Time series
+        heat_bus = Bus(
+            label='district_heating',
+            carrier='heat',
+            imbalance_penalty_per_flow_hour=1000,
         )
         ```
 
@@ -245,6 +261,7 @@ class Bus(Element):
     def __init__(
         self,
         label: str,
+        carrier: str | None = None,
         imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
         **kwargs,
@@ -254,6 +271,7 @@ class Bus(Element):
             kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
         )
         self._validate_kwargs(kwargs)
+        self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
@@ -263,16 +281,18 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested flows."""
-        super()._set_flow_system(flow_system)
-        for flow in self.inputs + self.outputs:
-            flow._set_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested flows.
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
+        for flow in self.inputs + self.outputs:
+            flow.link_to_flow_system(flow_system)
+
+    def transform_data(self) -> None:
         self.imbalance_penalty_per_flow_hour = self._fit_coords(
-            f'{prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
+            f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
@@ -335,7 +355,7 @@ class Flow(Element):
     Args:
         label: Unique flow identifier within its component.
         bus: Bus label this flow connects to.
-        size: Flow capacity. Scalar, InvestParameters, or None (uses CONFIG.Modeling.big).
+        size: Flow capacity. Scalar, InvestParameters, or None (unbounded).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
         relative_maximum: Maximum flow rate as fraction of size. Default: 1.
         load_factor_min: Minimum average utilization (0-1). Default: 0.
@@ -436,7 +456,8 @@ class Flow(Element):
         `relative_maximum` for upper bounds on optimization variables.
 
     Notes:
-        - Default size (CONFIG.Modeling.big) is used when size=None
+        - size=None means unbounded (no capacity constraint)
+        - size must be set when using status_parameters or fixed_relative_profile
         - list inputs for previous_flow_rate are converted to NumPy arrays
         - Flow direction is determined by component input/output designation
 
@@ -451,7 +472,7 @@ class Flow(Element):
         self,
         label: str,
         bus: str,
-        size: Numeric_PS | InvestParameters = None,
+        size: Numeric_PS | InvestParameters | None = None,
         fixed_relative_profile: Numeric_TPS | None = None,
         relative_minimum: Numeric_TPS = 0,
         relative_maximum: Numeric_TPS = 1,
@@ -467,7 +488,7 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = CONFIG.Modeling.big if size is None else size
+        self.size = size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
@@ -499,58 +520,92 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def _set_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects."""
-        super()._set_flow_system(flow_system)
-        if self.status_parameters is not None:
-            self.status_parameters._set_flow_system(flow_system)
-        if isinstance(self.size, Interface):
-            self.size._set_flow_system(flow_system)
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Propagate flow_system reference to nested Interface objects.
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.relative_minimum = self._fit_coords(f'{prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = self._fit_coords(f'{prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = self._fit_coords(f'{prefix}|fixed_relative_profile', self.fixed_relative_profile)
-        self.effects_per_flow_hour = self._fit_effect_coords(prefix, self.effects_per_flow_hour, 'per_flow_hour')
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
+        if self.status_parameters is not None:
+            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
+        if isinstance(self.size, InvestParameters):
+            self.size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
+
+    def transform_data(self) -> None:
+        self.relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self.relative_minimum)
+        self.relative_maximum = self._fit_coords(f'{self.prefix}|relative_maximum', self.relative_maximum)
+        self.fixed_relative_profile = self._fit_coords(
+            f'{self.prefix}|fixed_relative_profile', self.fixed_relative_profile
+        )
+        self.effects_per_flow_hour = self._fit_effect_coords(self.prefix, self.effects_per_flow_hour, 'per_flow_hour')
         self.flow_hours_max = self._fit_coords(
-            f'{prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
+            f'{self.prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
         )
         self.flow_hours_min = self._fit_coords(
-            f'{prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
+            f'{self.prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
         )
         self.flow_hours_max_over_periods = self._fit_coords(
-            f'{prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
+            f'{self.prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
         )
         self.flow_hours_min_over_periods = self._fit_coords(
-            f'{prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
+            f'{self.prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
         )
         self.load_factor_max = self._fit_coords(
-            f'{prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
+            f'{self.prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
         )
         self.load_factor_min = self._fit_coords(
-            f'{prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
+            f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
         if self.status_parameters is not None:
-            self.status_parameters.transform_data(prefix)
+            self.status_parameters.transform_data()
         if isinstance(self.size, InvestParameters):
-            self.size.transform_data(prefix)
-        else:
-            self.size = self._fit_coords(f'{prefix}|size', self.size, dims=['period', 'scenario'])
+            self.size.transform_data()
+        elif self.size is not None:
+            self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
         if (self.relative_minimum > self.relative_maximum).any():
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
-        if not isinstance(self.size, InvestParameters) and (
-            np.any(self.size == CONFIG.Modeling.big) and self.fixed_relative_profile is not None
-        ):  # Default Size --> Most likely by accident
-            logger.warning(
-                f'Flow "{self.label_full}" has no size assigned, but a "fixed_relative_profile". '
-                f'The default size is {CONFIG.Modeling.big}. As "flow_rate = size * fixed_relative_profile", '
-                f'the resulting flow_rate will be very high. To fix this, assign a size to the Flow {self}.'
+        # Size is required when using StatusParameters (for big-M constraints)
+        if self.status_parameters is not None and self.size is None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has status_parameters but no size defined. '
+                f'A size is required when using status_parameters to bound the flow rate.'
+            )
+
+        if self.size is None and self.fixed_relative_profile is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has a fixed_relative_profile but no size defined. '
+                f'A size is required because flow_rate = size * fixed_relative_profile.'
+            )
+
+        # Size is required when using non-default relative bounds (flow_rate = size * relative_bound)
+        if self.size is None and np.any(self.relative_minimum > 0):
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has relative_minimum > 0 but no size defined. '
+                f'A size is required because the lower bound is size * relative_minimum.'
+            )
+
+        if self.size is None and np.any(self.relative_maximum < 1):
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has relative_maximum != 1 but no size defined. '
+                f'A size is required because the upper bound is size * relative_maximum.'
+            )
+
+        # Size is required for load factor constraints (total_flow_hours / size)
+        if self.size is None and self.load_factor_min is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has load_factor_min but no size defined. '
+                f'A size is required because the constraint is total_flow_hours >= size * load_factor_min * hours.'
+            )
+
+        if self.size is None and self.load_factor_max is not None:
+            raise PlausibilityError(
+                f'Flow "{self.label_full}" has load_factor_max but no size defined. '
+                f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
             )
 
         if self.fixed_relative_profile is not None and self.status_parameters is not None:
@@ -816,15 +871,18 @@ class FlowModel(ElementModel):
         if not self.with_status:
             if not self.with_investment:
                 # Basic case without investment and without Status
-                lb = lb_relative * self.element.size
+                if self.element.size is not None:
+                    lb = lb_relative * self.element.size
             elif self.with_investment and self.element.size.mandatory:
                 # With mandatory Investment
                 lb = lb_relative * self.element.size.minimum_or_fixed_size
 
         if self.with_investment:
             ub = ub_relative * self.element.size.maximum_or_fixed_size
-        else:
+        elif self.element.size is not None:
             ub = ub_relative * self.element.size
+        else:
+            ub = np.inf  # Unbounded when size is None
 
         return lb, ub
 
@@ -949,11 +1007,17 @@ class ComponentModel(ElementModel):
             for flow in all_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         if self.element.prevent_simultaneous_flows:
             for flow in self.element.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:

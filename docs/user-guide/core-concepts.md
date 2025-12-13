@@ -31,6 +31,17 @@ $$\sum inputs = \sum outputs$$
 
 This balance constraint is what makes your model physically meaningful — energy can't appear or disappear.
 
+### Carriers
+
+Buses can be assigned a **carrier** — a type of energy or material (electricity, heat, gas, etc.). Carriers enable automatic coloring in plots and help organize your system semantically:
+
+```python
+heat_bus = fx.Bus('HeatNetwork', carrier='heat')  # Uses default heat color
+elec_bus = fx.Bus('Grid', carrier='electricity')
+```
+
+See [Color Management](results-plotting.md#color-management) for details.
+
 ## Flows: What Moves Between Elements
 
 A [`Flow`][flixopt.elements.Flow] represents the movement of energy or material. Every flow connects a component to a bus, with a defined direction.
@@ -127,23 +138,29 @@ Define your system structure, parameters, and time series data.
 
 ### 2. Run the Optimization
 
-Create an [`Optimization`][flixopt.optimization.Optimization] and solve it:
+Optimize your FlowSystem with a solver:
 
 ```python
-optimization = fx.Optimization('my_model', flow_system)
-results = optimization.solve(fx.solvers.HighsSolver())
+flow_system.optimize(fx.solvers.HighsSolver())
 ```
 
 ### 3. Analyze Results
 
-The [`Results`][flixopt.results.Results] object contains all solution data:
+Access solution data directly from the FlowSystem:
 
 ```python
-# Access component results
-boiler_output = results['Boiler'].node_balance()
+# Access component solutions
+boiler = flow_system.components['Boiler']
+print(boiler.solution)
 
 # Get total costs
-total_costs = results.solution['Costs']
+total_costs = flow_system.solution['costs|total']
+
+# Use statistics for aggregated data
+print(flow_system.statistics.flow_hours)
+
+# Plot results
+flow_system.statistics.plot.balance('HeatBus')
 ```
 
 <figure markdown>
@@ -163,6 +180,55 @@ total_costs = results.solution['Costs']
 | **Effect** | Metric to track/optimize | Costs, emissions, energy use |
 | **FlowSystem** | Complete model | Your entire system |
 
+## FlowSystem API at a Glance
+
+The `FlowSystem` is the central object in flixOpt. After building your model, all operations are accessed through the FlowSystem and its **accessors**:
+
+```python
+flow_system = fx.FlowSystem(timesteps)
+flow_system.add_elements(...)
+
+# Optimize
+flow_system.optimize(solver)
+
+# Access results
+flow_system.solution                    # Raw xarray Dataset
+flow_system.statistics.flow_hours       # Aggregated statistics
+flow_system.statistics.plot.balance()   # Visualization
+
+# Transform (returns new FlowSystem)
+fs_subset = flow_system.transform.sel(time=slice(...))
+
+# Inspect structure
+flow_system.topology.plot()
+```
+
+### Accessor Overview
+
+| Accessor | Purpose | Key Methods |
+|----------|---------|-------------|
+| **`solution`** | Raw optimization results | xarray Dataset with all variables |
+| **`statistics`** | Aggregated data | `flow_rates`, `flow_hours`, `sizes`, `charge_states`, `total_effects` |
+| **`statistics.plot`** | Visualization | `balance()`, `heatmap()`, `sankey()`, `effects()`, `storage()` |
+| **`transform`** | Create modified copies | `sel()`, `isel()`, `resample()`, `cluster()` |
+| **`topology`** | Network structure | `plot()`, `start_app()`, `infos()` |
+
+### Element Access
+
+Access elements directly from the FlowSystem:
+
+```python
+# Access by label
+flow_system.components['Boiler']        # Get a component
+flow_system.buses['Heat']               # Get a bus
+flow_system.flows['Boiler(Q_th)']       # Get a flow
+flow_system.effects['costs']            # Get an effect
+
+# Element-specific solutions
+flow_system.components['Boiler'].solution
+flow_system.flows['Boiler(Q_th)'].solution
+```
+
 ## Beyond Energy Systems
 
 While our example used a heating system, flixOpt works for any flow-based optimization:
@@ -177,7 +243,7 @@ While our example used a heating system, flixOpt works for any flow-based optimi
 ## Next Steps
 
 - **[Building Models](building-models/index.md)** — Step-by-step guide to constructing models
-- **[Examples](../examples/index.md)** — Working code for common scenarios
+- **[Examples](../notebooks/index.md)** — Working code for common scenarios
 - **[Mathematical Notation](mathematical-notation/index.md)** — Detailed constraint formulations
 
 ## Advanced: Extending with linopy
@@ -185,12 +251,17 @@ While our example used a heating system, flixOpt works for any flow-based optimi
 flixOpt is built on [linopy](https://github.com/PyPSA/linopy). You can access and extend the underlying optimization model for custom constraints:
 
 ```python
-# Access the linopy model after building
-optimization.do_modeling()
-model = optimization.model
+# Build the model (without solving)
+flow_system.build_model()
+
+# Access the linopy model
+model = flow_system.model
 
 # Add custom constraints using linopy API
 model.add_constraints(...)
+
+# Then solve
+flow_system.solve(fx.solvers.HighsSolver())
 ```
 
 This allows advanced users to add domain-specific constraints while keeping flixOpt's convenience for standard modeling.
