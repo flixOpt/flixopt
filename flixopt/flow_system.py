@@ -577,15 +577,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
 
-        If a solution is present, it will be included in the dataset with variable names
-        prefixed by 'solution|' to avoid conflicts with FlowSystem configuration variables.
-        Solution time coordinates are renamed to 'solution_time' to preserve them
-        independently of the FlowSystem's time coordinates.
+        If a solution is present and `include_solution=True`, it will be included
+        in the dataset with variable names prefixed by 'solution|' to avoid conflicts
+        with FlowSystem configuration variables. Solution time coordinates are renamed
+        to 'solution_time' to preserve them independently of the FlowSystem's time coordinates.
+
+        Args:
+            include_solution: Whether to include the optimization solution in the dataset.
+                Defaults to True. Set to False to get only the FlowSystem structure
+                without solution data (useful for copying or saving templates).
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -596,8 +601,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         ds = super().to_dataset()
 
-        # Include solution data if present
-        if self.solution is not None:
+        # Include solution data if present and requested
+        if include_solution and self.solution is not None:
             # Rename 'time' to 'solution_time' in solution variables to preserve full solution
             # (linopy solution may have extra timesteps, e.g., for final charge states)
             solution_renamed = (
@@ -868,17 +873,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> variant.add_elements(new_component)
             >>> variant.optimize(solver)
         """
-        # Temporarily clear solution to use standard serialization without solution data
-        original_solution = self._solution
-        self._solution = None
-        try:
-            ds = self.to_dataset()
-        finally:
-            self._solution = original_solution
-
-        # Create new FlowSystem from dataset (without solution)
-        new_fs = FlowSystem.from_dataset(ds.copy(deep=True))
-        return new_fs
+        ds = self.to_dataset(include_solution=False)
+        return FlowSystem.from_dataset(ds.copy(deep=True))
 
     def __copy__(self):
         """Support for copy.copy()."""
