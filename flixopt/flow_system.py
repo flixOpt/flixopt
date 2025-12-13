@@ -1028,12 +1028,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _register_missing_carriers(self) -> None:
         """Auto-register carriers from CONFIG for buses that reference unregistered carriers."""
         for bus in self.buses.values():
-            if bus.carrier and bus.carrier not in self._carriers:
-                # Try to get from CONFIG defaults
-                default_carrier = getattr(CONFIG.Carriers, bus.carrier, None)
+            if not bus.carrier:
+                continue
+            carrier_key = bus.carrier.lower()
+            if carrier_key not in self._carriers:
+                # Try to get from CONFIG defaults (try original case first, then lowercase)
+                default_carrier = getattr(CONFIG.Carriers, bus.carrier, None) or getattr(
+                    CONFIG.Carriers, carrier_key, None
+                )
                 if default_carrier is not None:
-                    self._carriers[bus.carrier] = default_carrier
-                    logger.debug(f"Auto-registered carrier '{bus.carrier}' from CONFIG")
+                    self._carriers[carrier_key] = default_carrier
+                    logger.debug(f"Auto-registered carrier '{carrier_key}' from CONFIG")
 
     def _assign_element_colors(self) -> None:
         """Auto-assign colors to elements that don't have explicit colors set.
@@ -1318,7 +1323,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             **solver.options,
         )
 
-        if 'infeasible' in self.model.termination_condition:
+        if self.model.termination_condition in ('infeasible', 'infeasible_or_unbounded'):
             if CONFIG.Solving.compute_infeasibilities:
                 import io
                 from contextlib import redirect_stdout
