@@ -36,7 +36,8 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | Notebook | Description |
 |----------|-------------|
 | [07-Scenarios](07-scenarios-and-periods.ipynb) | Multi-year planning with uncertain demand scenarios |
-| [08-Large-Scale](08-large-scale-optimization.ipynb) | Speed up large problems with resampling and two-stage optimization |
+| [08a-Aggregation](08a-aggregation.ipynb) | Speed up large problems with resampling and two-stage optimization |
+| [08b-Rolling Horizon](08b-rolling-horizon.ipynb) | Decompose large problems into sequential time segments |
 
 ## Results
 
@@ -58,5 +59,6 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | `PiecewiseConversion`, part-load efficiency | Piecewise Conversion |
 | `PiecewiseEffects`, economies of scale | Piecewise Effects |
 | Periods, scenarios, weights | Scenarios |
-| `transform.resample()`, `fix_sizes()` | Large-Scale |
+| `transform.resample()`, `fix_sizes()` | Aggregation |
+| `optimize.rolling_horizon()` | Rolling Horizon |
 | `statistics`, `topology`, plotting | Plotting |

@@ -325,17 +325,27 @@ Clustered optimization uses the new transform accessor:
     # Results in clustered_fs.solution
     ```
 
-### Segmented Optimization (Not Yet Migrated)
+### Segmented / Rolling Horizon Optimization
 
-Segmented optimization still uses the class-based API. A new `optimize.rolling()` method is planned for a future release.
+=== "v4.x (Old)"
+    ```python
+    calc = fx.SegmentedOptimization('model', flow_system,
+                                     timesteps_per_segment=96)
+    calc.do_modeling_and_solve(solver)
+    results = calc.results  # Returns SegmentedResults
+    ```
 
-```python
-# Still use the class-based API (unchanged from v4.x)
-calc = fx.SegmentedOptimization('model', flow_system,
-                                 timesteps_per_segment=96)
-calc.do_modeling_and_solve(solver)
-results = calc.results  # Returns SegmentedResults
-```
+=== "v5.0.0 (New)"
+    ```python
+    # Use optimize.rolling_horizon() method
+    segments = flow_system.optimize.rolling_horizon(
+        solver,
+        horizon=96,  # Timesteps per segment
+        overlap=12,  # Lookahead for storage optimization
+    )
+    # Combined solution on original FlowSystem
+    flow_system.solution['costs'].item()
+    ```
 
 ---
 
