@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from . import __version__
 from . import io as fx_io
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
@@ -625,6 +626,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carrier_ref, _ = carrier._create_reference_structure()
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
+
+        # Add version info
+        ds.attrs['flixopt_version'] = __version__
 
         return ds
 
