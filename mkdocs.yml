@@ -70,6 +70,7 @@ nav:
     - Scaling:
       - Scenarios: notebooks/07-scenarios-and-periods.ipynb
       - Large-Scale: notebooks/08-large-scale-optimization.ipynb
+      - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
 
