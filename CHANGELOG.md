@@ -167,6 +167,24 @@ clustered_fs = flow_system.transform.cluster(params)
 clustered_fs.optimize(solver)
 ```
 
+**Rolling Horizon Optimization**: Decompose large operational problems into sequential segments:
+
+```python
+# Solve with rolling horizon (replaces SegmentedOptimization)
+segments = flow_system.optimize.rolling_horizon(
+    solver,
+    horizon=192,    # Timesteps per segment
+    overlap=48,     # Lookahead for storage optimization
+)
+
+# Combined solution available on original FlowSystem
+total_cost = flow_system.solution['costs'].item()
+
+# Individual segments also available
+for seg in segments:
+    print(seg.solution['costs'].item())
+```
+
 **Solution Persistence**: FlowSystem now stores and persists solutions:
 
 ```python
@@ -299,7 +317,7 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 **Classes removed:**
 - `Calculation`, `FullCalculation` → Use `flow_system.optimize()`
 - `AggregatedCalculation` → Use `flow_system.transform.cluster()` + `optimize()`
-- `SegmentedCalculation` → Use `SegmentedOptimization`
+- `SegmentedCalculation`, `SegmentedOptimization` → Use `flow_system.optimize.rolling_horizon()`
 - `Aggregation` → Use `Clustering`
 - `AggregationParameters` → Use `ClusteringParameters`
 - `AggregationModel` → Use `ClusteringModel`
@@ -380,26 +398,12 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 - Separate docs build and deploy workflow
 - Improved test organization with deprecated tests in separate folder
 
-### 🚧 Not Yet Migrated to New API
-
-**Segmented/Rolling Optimization** - Still uses `SegmentedOptimization` class:
-```python
-# Not yet migrated - use the class-based API
-from flixopt import SegmentedOptimization
-
-calc = SegmentedOptimization('model', flow_system, timesteps_per_segment=96)
-calc.do_modeling_and_solve(solver)
-results = calc.results  # Returns SegmentedResults
-```
-
-**Planned for future release:**
-- `flow_system.optimize.rolling_horizon(solver, horizon, overlap, ...)` - Rolling horizon optimization to replace `SegmentedOptimization`
-
 ### Migration Checklist
 
 | Task | Action |
 |------|--------|
 | Replace `Optimization` class | Use `flow_system.optimize(solver)` |
+| Replace `SegmentedOptimization` class | Use `flow_system.optimize.rolling_horizon(solver, ...)` |
 | Replace `Results` access | Use `flow_system.solution['var_name']` |
 | Update `OnOffParameters` | Rename to `StatusParameters` with new parameter names |
 | Update `on_off_parameters` | Rename to `status_parameters` |
