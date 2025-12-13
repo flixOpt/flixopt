@@ -322,6 +322,11 @@ class Interface:
         transform_data(): Transform data to match FlowSystem dimensions
     """
 
+    # Class-level defaults for attributes set by link_to_flow_system()
+    # These provide type hints and default values without requiring __init__ in subclasses
+    _flow_system: FlowSystem | None = None
+    _prefix: str = ''
+
     def transform_data(self) -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
@@ -340,7 +345,7 @@ class Interface:
     @property
     def prefix(self) -> str:
         """The prefix used for naming transformed data (e.g., 'Boiler(Q_th)|status_parameters')."""
-        return getattr(self, '_prefix', '')
+        return self._prefix
 
     def _sub_prefix(self, name: str) -> str:
         """Build a prefix for a nested interface by appending name to current prefix."""
@@ -399,7 +404,7 @@ class Interface:
             For Elements, this is set during add_elements().
             For parameter classes, this is set recursively when the parent Element is registered.
         """
-        if not hasattr(self, '_flow_system') or self._flow_system is None:
+        if self._flow_system is None:
             raise RuntimeError(
                 f'{self.__class__.__name__} is not linked to a FlowSystem. '
                 f'Ensure the parent element is registered via flow_system.add_elements() first.'
