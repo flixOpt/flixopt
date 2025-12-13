@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -474,12 +474,14 @@ class PiecewiseConversion(Interface):
         self,
         x_flow: str | None = None,
         title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
     ) -> go.Figure:
-        """Plot multi-flow piecewise conversion as X-Y scatter.
+        """Plot multi-flow piecewise conversion with time variation visualization.
 
-        Visualizes the piecewise linear relationships between flows. One flow
-        is plotted on the X-axis, all others on the Y-axis. Each piece is shown
-        as a line segment. For data with periods/scenarios, uses faceting.
+        Visualizes the piecewise linear relationships between flows. Each flow
+        is shown in a separate subplot (faceted by flow). Pieces are distinguished
+        by line dash style. If boundaries vary over time, color shows time progression.
 
         Note:
             Requires FlowSystem to be connected and transformed (call
@@ -488,13 +490,19 @@ class PiecewiseConversion(Interface):
         Args:
             x_flow: Flow label to use for X-axis. Defaults to first flow in dict.
             title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
 
         Returns:
-            Plotly Figure with X-Y scatter showing piecewise segments.
+            Plotly Figure with subplots per flow.
 
         Examples:
             >>> flow_system.connect_and_transform()
             >>> chp.piecewise_conversion.plot(x_flow='Gas', title='CHP Curves')
+            >>> # Select specific time range
+            >>> chp.piecewise_conversion.plot(select={'time': slice(0, 12)})
         """
         if self._flow_system is None:
             raise RuntimeError('Component must be part of a FlowSystem to plot.')
@@ -502,9 +510,9 @@ class PiecewiseConversion(Interface):
             logger.debug('Connecting flow_system for plotting PiecewiseConversion')
             self.flow_system.connect_and_transform()
 
-        flow_labels = list(self.piecewises.keys())
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
 
-        # Use first flow as X-axis by default, or the specified one
+        flow_labels = list(self.piecewises.keys())
         x_label = x_flow if x_flow is not None else flow_labels[0]
         if x_label not in flow_labels:
             raise ValueError(f"x_flow '{x_label}' not found. Available: {flow_labels}")
@@ -515,12 +523,11 @@ class PiecewiseConversion(Interface):
 
         x_piecewise = self.piecewises[x_label]
 
-        # Build xarray Dataset with all piece data, then convert to DataFrame for plotting
+        # Build Dataset with all piece data
         datasets = []
         for y_label in y_flows:
             y_piecewise = self.piecewises[y_label]
             for i, (x_piece, y_piece) in enumerate(zip(x_piecewise, y_piecewise, strict=False)):
-                # Create Dataset with start and end points as a 'point' dimension
                 ds = xr.Dataset(
                     {
                         x_label: xr.concat([x_piece.start, x_piece.end], dim='point'),
@@ -528,33 +535,67 @@ class PiecewiseConversion(Interface):
                     }
                 )
                 ds = ds.assign_coords(point=['start', 'end'])
-                ds['variable'] = y_label
-                ds['piece'] = i
+                ds['flow'] = y_label
+                ds['piece'] = f'Piece {i}'
                 datasets.append(ds)
 
         combined = xr.concat(datasets, dim='trace')
-        combined['trace'] = range(len(datasets))
 
-        # Convert to DataFrame for plotting
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
         df = combined.to_dataframe().reset_index()
 
-        # Determine faceting based on available dimensions
-        facet_col = 'scenario' if 'scenario' in df.columns and df['scenario'].nunique() > 1 else None
-        facet_row = 'period' if 'period' in df.columns and df['period'].nunique() > 1 else None
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[[x_label, 'output']].nunique().max().max() > 1
 
-        fig = px.line(
-            df,
-            x=x_label,
-            y='output',
-            color='variable',
-            line_group='trace',
-            facet_col=facet_col,
-            facet_row=facet_row,
-            title=title,
-            markers=True,
-        )
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
 
-        fig.update_layout(yaxis_title='Output' if len(y_flows) > 1 else y_flows[0])
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'flow', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('flow=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text=x_label)
+
         return fig
 
 
@@ -777,12 +818,17 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.transform_data()
 
-    def plot(self, title: str = '') -> go.Figure:
-        """Plot origin vs effect shares as X-Y scatter.
+    def plot(
+        self,
+        title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
+    ) -> go.Figure:
+        """Plot origin vs effect shares with time variation visualization.
 
         Visualizes the piecewise linear relationships between the origin variable
-        and its effect shares. Origin on X-axis, effect shares on Y-axis.
-        For data with periods/scenarios, uses faceting.
+        and its effect shares. Each effect is shown in a separate subplot (faceted
+        by effect). Pieces are distinguished by line dash style.
 
         Note:
             Requires FlowSystem to be connected and transformed (call
@@ -790,9 +836,13 @@ class PiecewiseEffects(Interface):
 
         Args:
             title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
 
         Returns:
-            Plotly Figure with X-Y scatter showing piecewise segments.
+            Plotly Figure with subplots per effect.
 
         Examples:
             >>> flow_system.connect_and_transform()
@@ -804,11 +854,13 @@ class PiecewiseEffects(Interface):
             logger.debug('Connecting flow_system for plotting PiecewiseEffects')
             self.flow_system.connect_and_transform()
 
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+
         effect_labels = list(self.piecewise_shares.keys())
         if not effect_labels:
             raise ValueError('Need at least one effect share to plot')
 
-        # Build xarray Dataset with all piece data, then convert to DataFrame for plotting
+        # Build Dataset with all piece data
         datasets = []
         for effect_label in effect_labels:
             y_piecewise = self.piecewise_shares[effect_label]
@@ -821,35 +873,66 @@ class PiecewiseEffects(Interface):
                 )
                 ds = ds.assign_coords(point=['start', 'end'])
                 ds['effect'] = effect_label
-                ds['piece'] = i
+                ds['piece'] = f'Piece {i}'
                 datasets.append(ds)
 
         combined = xr.concat(datasets, dim='trace')
-        combined['trace'] = range(len(datasets))
 
-        # Convert to DataFrame for plotting
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
         df = combined.to_dataframe().reset_index()
 
-        # Determine faceting based on available dimensions
-        facet_col = 'scenario' if 'scenario' in df.columns and df['scenario'].nunique() > 1 else None
-        facet_row = 'period' if 'period' in df.columns and df['period'].nunique() > 1 else None
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[['origin', 'share']].nunique().max().max() > 1
 
-        fig = px.line(
-            df,
-            x='origin',
-            y='share',
-            color='effect',
-            line_group='trace',
-            facet_col=facet_col,
-            facet_row=facet_row,
-            title=title,
-            markers=True,
-        )
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
 
-        fig.update_layout(
-            xaxis_title='Origin',
-            yaxis_title='Effect Share' if len(effect_labels) > 1 else effect_labels[0],
-        )
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'effect', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('effect=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text='Origin')
+
         return fig
 
 
