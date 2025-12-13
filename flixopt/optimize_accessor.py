@@ -288,7 +288,7 @@ class OptimizeAccessor:
             if isinstance(target_comp, Storage):
                 var_name = f'{label}|charge_state'
                 if var_name in solution:
-                    target_comp.initial_charge_state = solution[var_name].isel(time=horizon - 1).item()
+                    target_comp.initial_charge_state = solution[var_name].isel(time=horizon).item()
 
     def _check_no_investments(self, segment_fs: FlowSystem) -> None:
         """Check that no InvestParameters are used (not supported in rolling horizon)."""
@@ -327,8 +327,8 @@ class OptimizeAccessor:
         """Combine segment solutions into a single Dataset.
 
         - Time-dependent variables: concatenated with overlap trimming
-        - Effect totals: recomputed from per-timestep values
-        - Other scalars: set to NaN (unknown how to combine)
+        - Effect temporal/total: recomputed from per-timestep values
+        - Other scalars (including periodic): NaN (not meaningful for rolling horizon)
         """
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
@@ -337,7 +337,7 @@ class OptimizeAccessor:
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
 
-        # Step 1: Concatenate all time-dependent variables
+        # Step 1: Time-dependent → concatenate; Scalars → NaN
         for var_name, first_var in first_solution.data_vars.items():
             if 'time' in first_var.dims:
                 arrays = [
@@ -348,24 +348,14 @@ class OptimizeAccessor:
                 ]
                 combined_vars[var_name] = xr.concat(arrays, dim='time')
             else:
-                # Scalar: NaN placeholder (will recompute effects below)
                 combined_vars[var_name] = xr.DataArray(float('nan'))
 
-        # Step 2: Recompute effect totals
+        # Step 2: Recompute effect totals from per-timestep values
         for effect in effect_labels:
             per_ts = f'{effect}(temporal)|per_timestep'
-            temporal = f'{effect}(temporal)'
-            periodic = f'{effect}(periodic)'
-
-            # Temporal = sum of per_timestep
             if per_ts in combined_vars:
-                combined_vars[temporal] = combined_vars[per_ts].sum(dim='time', skipna=True)
-
-            # Periodic = sum across segments (no overlap issue for periodic costs)
-            if periodic in first_solution:
-                combined_vars[periodic] = sum(seg.solution[periodic] for seg in segment_flow_systems)
-
-            # Total = temporal + periodic
-            combined_vars[effect] = combined_vars.get(temporal, 0.0) + combined_vars.get(periodic, 0.0)
+                temporal_sum = combined_vars[per_ts].sum(dim='time', skipna=True)
+                combined_vars[f'{effect}(temporal)'] = temporal_sum
+                combined_vars[effect] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
 
         return xr.Dataset(combined_vars)
