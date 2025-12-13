@@ -37,10 +37,10 @@ class OptimizeAccessor:
         >>> flow_system.optimize(solver)
         >>> print(flow_system.solution)
 
-        Future specialized modes:
+        Rolling horizon optimization:
 
-        >>> flow_system.optimize.clustered(solver, aggregation=params)
-        >>> flow_system.optimize.mga(solver, alternatives=5)
+        >>> segments = flow_system.optimize.rolling_horizon(solver, horizon=168)
+        >>> print(flow_system.solution)  # Combined result
     """
 
     def __init__(self, flow_system: FlowSystem) -> None:
@@ -141,7 +141,7 @@ class OptimizeAccessor:
             Inspect individual segments:
 
             >>> for i, seg in enumerate(segments):
-            ...     print(f'Segment {i}: {seg.solution["costs(total)"].item():.2f}')
+            ...     print(f'Segment {i}: {seg.solution["costs"].item():.2f}')
 
         Note:
             - InvestParameters are not supported as investment decisions require
@@ -181,9 +181,6 @@ class OptimizeAccessor:
         logger.info(f'{"":#^80}')
         logger.info(f'{" Rolling Horizon Optimization ":#^80}')
         logger.info(f'Segments: {n_segments}, Horizon: {horizon}, Overlap: {overlap}')
-
-        # Store original initial values for restoration and state transfer
-        original_initial_values = self._store_initial_values()
 
         # Create and solve segments
         segment_flow_systems: list[FlowSystem] = []
@@ -226,12 +223,9 @@ class OptimizeAccessor:
         finally:
             progress_bar.close()
 
-        # Combine solutions and store on original FlowSystem
-        combined_solution = self._combine_solutions(segment_flow_systems, horizon)
-        self._fs._solution = combined_solution
-
-        # Restore original initial values
-        self._restore_initial_values(original_initial_values)
+        # Combine segment solutions
+        logger.info('Combining segment solutions...')
+        self._finalize_solution(segment_flow_systems, horizon)
 
         logger.info(f'Rolling horizon optimization completed: {n_segments} segments solved.')
 
@@ -249,35 +243,6 @@ class OptimizeAccessor:
                 break
         return segments
 
-    def _store_initial_values(self) -> dict:
-        """Store original initial values for later restoration."""
-        from .components import Storage
-
-        values = {}
-        for flow in self._fs.flows.values():
-            values[f'flow|{flow.label_full}'] = flow.previous_flow_rate
-
-        for comp in self._fs.components.values():
-            if isinstance(comp, Storage):
-                values[f'storage|{comp.label_full}'] = comp.initial_charge_state
-
-        return values
-
-    def _restore_initial_values(self, values: dict) -> None:
-        """Restore original initial values after rolling horizon."""
-        from .components import Storage
-
-        for flow in self._fs.flows.values():
-            key = f'flow|{flow.label_full}'
-            if key in values:
-                flow.previous_flow_rate = values[key]
-
-        for comp in self._fs.components.values():
-            if isinstance(comp, Storage):
-                key = f'storage|{comp.label_full}'
-                if key in values:
-                    comp.initial_charge_state = values[key]
-
     def _transfer_state(
         self,
         source_fs: FlowSystem,
@@ -286,7 +251,6 @@ class OptimizeAccessor:
         nr_of_previous_values: int,
     ) -> None:
         """Transfer final state from source segment to target segment."""
-
         from .components import Storage
 
         # Transfer flow rates (for uptime/downtime tracking)
@@ -316,7 +280,6 @@ class OptimizeAccessor:
             charge_var = f'{source_comp.label_full}|charge_state'
             if charge_var in source_fs.solution:
                 # Get charge state at the end of the non-overlap portion
-                # Use horizon index (0-indexed, so horizon-1 is last non-overlap)
                 charge_state = source_fs.solution[charge_var].isel(time=horizon - 1).values.item()
                 target_comp.initial_charge_state = charge_state
 
@@ -337,54 +300,82 @@ class OptimizeAccessor:
                 f'Use standard optimize() for problems with investments.'
             )
 
-    def _combine_solutions(self, segment_flow_systems: list[FlowSystem], horizon: int) -> xr.Dataset:
-        """Combine segment solutions, trimming overlaps."""
+    def _finalize_solution(
+        self,
+        segment_flow_systems: list[FlowSystem],
+        horizon: int,
+    ) -> None:
+        """Combine segment solutions and compute derived values directly (no re-solve)."""
+        # Combine all solution variables from segments
+        combined_solution = self._combine_solutions(segment_flow_systems, horizon)
+
+        # Assign combined solution to the original FlowSystem
+        self._fs._solution = combined_solution
+
+    def _combine_solutions(
+        self,
+        segment_flow_systems: list[FlowSystem],
+        horizon: int,
+    ) -> xr.Dataset:
+        """Combine segment solutions into a single Dataset, recomputing effect totals."""
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
 
-        # Get all variable names from first segment
+        combined_vars: dict[str, xr.DataArray] = {}
         var_names = list(segment_flow_systems[0].solution.data_vars)
 
-        # Identify effect names for special handling
-        effect_labels = {e.label for e in self._fs.effects.values()}
+        # Identify effect-related variables for later recomputation
+        effect_totals = {}  # effect_name -> will be recomputed
+        temporal_effects = {}  # effect_name(temporal) -> will be recomputed
 
-        combined_vars = {}
         for var_name in var_names:
-            arrays = []
-            for i, seg_fs in enumerate(segment_flow_systems):
-                da = seg_fs.solution[var_name]
+            first_var = segment_flow_systems[0].solution[var_name]
 
-                # Check if this variable has a time dimension
-                if 'time' in da.dims:
+            if 'time' in first_var.dims:
+                # Time-dependent variable: concatenate segments, trimming overlaps
+                arrays = []
+                for i, seg_fs in enumerate(segment_flow_systems):
+                    da = seg_fs.solution[var_name]
+                    # Trim overlap for all segments except the last
                     if i < len(segment_flow_systems) - 1:
-                        # Not the last segment: trim to horizon (exclude overlap)
                         da = da.isel(time=slice(None, horizon))
-                    # Last segment: keep all timesteps
-                arrays.append(da)
-
-            # Concatenate along time if time dimension exists
-            if 'time' in segment_flow_systems[0].solution[var_name].dims:
+                    arrays.append(da)
                 combined_vars[var_name] = xr.concat(arrays, dim='time')
             else:
-                # For non-time scalars, just take the last value for now
-                # Effect totals will be recalculated below
-                combined_vars[var_name] = arrays[-1]
-
-        # Recalculate effect totals from combined per-timestep data
-        for effect_label in effect_labels:
-            per_timestep_key = f'{effect_label}(temporal)|per_timestep'
-            temporal_key = f'{effect_label}(temporal)'
-            total_key = effect_label
-
-            if per_timestep_key in combined_vars:
-                # Recalculate temporal sum from per-timestep values
-                combined_vars[temporal_key] = combined_vars[per_timestep_key].sum()
-
-                # Recalculate total (temporal + periodic)
-                periodic_key = f'{effect_label}(periodic)'
-                if periodic_key in combined_vars:
-                    combined_vars[total_key] = combined_vars[temporal_key] + combined_vars[periodic_key]
+                # Scalar variable: check if it's an effect total that needs recomputation
+                if var_name.endswith('(temporal)'):
+                    # Will recompute from per_timestep values
+                    effect_name = var_name.replace('(temporal)', '')
+                    temporal_effects[effect_name] = var_name
+                elif var_name.endswith('(periodic)'):
+                    # Sum periodic costs from all segments (no overlap trimming for periodic)
+                    combined_vars[var_name] = sum(seg_fs.solution[var_name] for seg_fs in segment_flow_systems)
+                elif '(' not in var_name and any(f'{var_name}(temporal)|per_timestep' in v for v in var_names):
+                    # This is an effect total - will recompute after we have temporal + periodic
+                    effect_totals[var_name] = True
                 else:
-                    combined_vars[total_key] = combined_vars[temporal_key]
+                    # Other scalar variables: take from last segment or sum as appropriate
+                    # For most scalars, the last segment's value is representative
+                    combined_vars[var_name] = segment_flow_systems[-1].solution[var_name]
+
+        # Recompute temporal effect totals from per-timestep values
+        for effect_name, temporal_var_name in temporal_effects.items():
+            per_timestep_name = f'{effect_name}(temporal)|per_timestep'
+            if per_timestep_name in combined_vars:
+                # Sum per-timestep values, ignoring NaN (final time point)
+                per_timestep = combined_vars[per_timestep_name]
+                temporal_total = per_timestep.sum(dim='time', skipna=True)
+                combined_vars[temporal_var_name] = temporal_total
+
+        # Recompute total effect values (temporal + periodic)
+        for effect_name in effect_totals:
+            temporal_var = f'{effect_name}(temporal)'
+            periodic_var = f'{effect_name}(periodic)'
+            total = xr.DataArray(0.0)
+            if temporal_var in combined_vars:
+                total = total + combined_vars[temporal_var]
+            if periodic_var in combined_vars:
+                total = total + combined_vars[periodic_var]
+            combined_vars[effect_name] = total
 
         return xr.Dataset(combined_vars)
