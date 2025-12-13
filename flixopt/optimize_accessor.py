@@ -199,26 +199,36 @@ class OptimizeAccessor:
             for i, (start_idx, end_idx) in progress_bar:
                 progress_bar.set_description(f'Segment {i + 1}/{n_segments} (timesteps {start_idx}-{end_idx})')
 
-                # Create segment FlowSystem
-                segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
-
-                # Transfer state from previous segment
-                if i > 0 and nr_of_previous_values > 0:
-                    self._transfer_state(
-                        source_fs=segment_flow_systems[i - 1],
-                        target_fs=segment_fs,
-                        horizon=horizon,
-                        nr_of_previous_values=nr_of_previous_values,
-                    )
-
-                # Build and solve (suppress output when progress bar is shown)
+                # Suppress output when progress bar is shown (including logger and solver)
                 if CONFIG.Solving.log_to_console:
-                    with suppress_output():
-                        segment_fs.build_model()
-                        if i == 0:
-                            self._check_no_investments(segment_fs)
-                        segment_fs.solve(solver)
+                    # Temporarily raise logger level to suppress INFO messages
+                    original_level = logger.level
+                    logger.setLevel(logging.WARNING)
+                    try:
+                        with suppress_output():
+                            segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
+                            if i > 0 and nr_of_previous_values > 0:
+                                self._transfer_state(
+                                    source_fs=segment_flow_systems[i - 1],
+                                    target_fs=segment_fs,
+                                    horizon=horizon,
+                                    nr_of_previous_values=nr_of_previous_values,
+                                )
+                            segment_fs.build_model()
+                            if i == 0:
+                                self._check_no_investments(segment_fs)
+                            segment_fs.solve(solver)
+                    finally:
+                        logger.setLevel(original_level)
                 else:
+                    segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
+                    if i > 0 and nr_of_previous_values > 0:
+                        self._transfer_state(
+                            source_fs=segment_flow_systems[i - 1],
+                            target_fs=segment_fs,
+                            horizon=horizon,
+                            nr_of_previous_values=nr_of_previous_values,
+                        )
                     segment_fs.build_model()
                     if i == 0:
                         self._check_no_investments(segment_fs)
