@@ -305,23 +305,37 @@ df = flow_system.solution.to_dataframe()
 
 ## Segmented & Clustered Optimization
 
-The new API also applies to advanced optimization modes:
+### Clustered Optimization (Migrated)
+
+Clustered optimization uses the new transform accessor:
 
 === "v4.x (Old)"
     ```python
-    calc = fx.SegmentedOptimization('model', flow_system,
-                                     timesteps_per_segment=96)
+    calc = fx.ClusteredOptimization('model', flow_system,
+                                     fx.ClusteringParameters(...))
     calc.do_modeling_and_solve(solver)
     results = calc.results
     ```
 
 === "v5.0.0 (New)"
     ```python
-    # Use transform accessor for segmented optimization
-    flow_system.transform.segment(timesteps_per_segment=96)
-    flow_system.optimize(solver)
-    # Results in flow_system.solution
+    # Use transform accessor for clustering
+    clustered_fs = flow_system.transform.cluster(fx.ClusteringParameters(...))
+    clustered_fs.optimize(solver)
+    # Results in clustered_fs.solution
     ```
+
+### Segmented Optimization (Not Yet Migrated)
+
+Segmented optimization still uses the class-based API. A new `optimize.rolling()` method is planned for a future release.
+
+```python
+# Still use the class-based API (unchanged from v4.x)
+calc = fx.SegmentedOptimization('model', flow_system,
+                                 timesteps_per_segment=96)
+calc.do_modeling_and_solve(solver)
+results = calc.results  # Returns SegmentedResults
+```
 
 ---
 

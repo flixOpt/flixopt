@@ -380,6 +380,21 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 - Separate docs build and deploy workflow
 - Improved test organization with deprecated tests in separate folder
 
+### 🚧 Not Yet Migrated to New API
+
+**Segmented/Rolling Optimization** - Still uses `SegmentedOptimization` class:
+```python
+# Not yet migrated - use the class-based API
+from flixopt import SegmentedOptimization
+
+calc = SegmentedOptimization('model', flow_system, timesteps_per_segment=96)
+calc.do_modeling_and_solve(solver)
+results = calc.results  # Returns SegmentedResults
+```
+
+**Planned for future release:**
+- `flow_system.optimize.rolling(solver, ...)` - Rolling horizon optimization to replace `SegmentedOptimization`
+
 ### Migration Checklist
 
 | Task | Action |
