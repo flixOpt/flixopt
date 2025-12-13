@@ -65,7 +65,7 @@ full = [
     "pyvis==0.3.2",  # Visualizing FlowSystem Network
     "tsam >= 2.3.1, < 3",   # Time series aggregation
     "scipy >= 1.15.1, < 2", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
-    "gurobipy >= 10.0.0, < 13",
+    "gurobipy >= 10.0.0, < 14; python_version < '3.14'",  # No Python 3.14 wheels yet (expected Q1 2026)
     "dash >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
     "dash-cytoscape >= 1.0.0, < 2",  # Visualizing FlowSystem Network as app
     "dash-daq >= 0.6.0, < 1",  # Visualizing FlowSystem Network as app
@@ -84,7 +84,7 @@ dev = [
     "pyvis==0.3.2",
     "tsam==2.3.9",
     "scipy==1.15.1",
-    "gurobipy==12.0.3",
+    "gurobipy==12.0.3; python_version < '3.14'",  # No Python 3.14 wheels yet
     "dash==3.3.0",
     "dash-cytoscape==1.0.2",
     "dash-daq==0.6.0",
