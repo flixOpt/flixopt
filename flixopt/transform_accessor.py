@@ -275,7 +275,7 @@ class TransformAccessor:
         periods = list(self._fs.periods) if self._fs.periods is not None else [None]
         scenarios = list(self._fs.scenarios) if self._fs.scenarios is not None else [None]
 
-        ds = self._fs.to_dataset()
+        ds = self._fs.to_dataset().copy(deep=True)  # Deep copy to allow in-place modifications
         clustering_results: dict[tuple, Clustering] = {}
 
         # Cluster each period x scenario combination independently
@@ -330,7 +330,7 @@ class TransformAccessor:
                         # Get the original data array to update
                         original_da = ds[name]
                         # Create aggregated data array
-                        agg_da = DataConverter.to_dataarray(series, {'time': ds_slice.coords['time']})
+                        agg_da = DataConverter.to_dataarray(series, {'time': ds_slice.indexes['time']})
 
                         # Update the slice in the full dataset
                         if selector:
