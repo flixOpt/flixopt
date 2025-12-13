@@ -147,6 +147,10 @@ class TopologyAccessor:
         self._component_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
 
+        # Cached unit mappings (lazily initialized)
+        self._carrier_units: dict[str, str] | None = None
+        self._effect_units: dict[str, str] | None = None
+
     @property
     def carrier_colors(self) -> dict[str, str]:
         """Cached mapping of carrier name to hex color.
@@ -202,6 +206,38 @@ class TopologyAccessor:
                     if color:
                         self._bus_colors[label] = color
         return self._bus_colors
+
+    @property
+    def carrier_units(self) -> dict[str, str]:
+        """Cached mapping of carrier name to unit string.
+
+        Returns:
+            Dict mapping carrier names (lowercase) to unit strings.
+            Carriers without a unit defined return an empty string.
+
+        Examples:
+            >>> fs.topology.carrier_units
+            {'electricity': 'kW', 'heat': 'kW', 'gas': 'kW'}
+        """
+        if self._carrier_units is None:
+            self._carrier_units = {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
+        return self._carrier_units
+
+    @property
+    def effect_units(self) -> dict[str, str]:
+        """Cached mapping of effect label to unit string.
+
+        Returns:
+            Dict mapping effect labels to unit strings.
+            Effects without a unit defined return an empty string.
+
+        Examples:
+            >>> fs.topology.effect_units
+            {'costs': '€', 'CO2': 'kg'}
+        """
+        if self._effect_units is None:
+            self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
+        return self._effect_units
 
     def infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         """
