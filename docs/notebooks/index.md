@@ -21,7 +21,15 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | Notebook | Description |
 |----------|-------------|
 | [05-Multi-Carrier](05-multi-carrier-system.ipynb) | Hospital with CHP producing both electricity and heat |
-| [06-Piecewise](06-piecewise-efficiency.ipynb) | Heat pump with temperature-dependent COP and part-load curves |
+| [10-Transmission](10-transmission.ipynb) | Connect sites with pipelines or cables, including losses and bidirectional flow |
+
+## Non-Linear Modeling
+
+| Notebook | Description |
+|----------|-------------|
+| [06a-Time-Varying](06a-time-varying-parameters.ipynb) | Heat pump with temperature-dependent COP |
+| [06b-Piecewise Conversion](06b-piecewise-conversion.ipynb) | Gas engine with load-dependent efficiency curves |
+| [06c-Piecewise Effects](06c-piecewise-effects.ipynb) | Economies of scale in investment costs |
 
 ## Scaling
 
@@ -45,7 +53,10 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | `InvestParameters`, optimal sizing | Sizing |
 | `StatusParameters`, startup costs | Constraints |
 | Multi-carrier, CHP | Multi-Carrier |
-| `Piecewise`, variable efficiency | Piecewise |
+| `Transmission`, losses, bidirectional | Transmission |
+| Time-varying `conversion_factors` | Time-Varying Parameters |
+| `PiecewiseConversion`, part-load efficiency | Piecewise Conversion |
+| `PiecewiseEffects`, economies of scale | Piecewise Effects |
 | Periods, scenarios, weights | Scenarios |
 | `transform.resample()`, `fix_sizes()` | Large-Scale |
 | `statistics`, `topology`, plotting | Plotting |

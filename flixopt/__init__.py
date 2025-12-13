@@ -31,6 +31,7 @@ from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
+from .plot_result import PlotResult
 
 __all__ = [
     'TimeSeriesData',
@@ -58,6 +59,7 @@ __all__ = [
     'PiecewiseConversion',
     'PiecewiseEffects',
     'ClusteringParameters',
+    'PlotResult',
     'plotting',
     'results',
     'linear_converters',

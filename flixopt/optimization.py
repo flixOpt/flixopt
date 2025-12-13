@@ -469,7 +469,8 @@ class ClusteredOptimization(Optimization):
         )
 
         self.clustering.cluster()
-        self.clustering.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'clustering.html')
+        result = self.clustering.plot(show=CONFIG.Plotting.default_show)
+        result.to_html(self.folder / 'clustering.html')
         if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.clustering.aggregated_data.items():

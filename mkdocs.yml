@@ -23,7 +23,9 @@ nav:
   - User Guide:
     - Overview: user-guide/index.md
     - Core Concepts: user-guide/core-concepts.md
-    - Building Models: user-guide/building-models/index.md
+    - Building Models:
+      - Overview: user-guide/building-models/index.md
+      - Choosing Components: user-guide/building-models/choosing-components.md
     - Running Optimizations: user-guide/optimization/index.md
     - Analyzing Results: user-guide/results/index.md
     - Plotting Results: user-guide/results-plotting.md
@@ -60,7 +62,11 @@ nav:
       - Constraints: notebooks/04-operational-constraints.ipynb
     - Advanced:
       - Multi-Carrier: notebooks/05-multi-carrier-system.ipynb
-      - Piecewise: notebooks/06-piecewise-efficiency.ipynb
+      - Transmission: notebooks/10-transmission.ipynb
+    - Non-Linear Modeling:
+      - Time-Varying Parameters: notebooks/06a-time-varying-parameters.ipynb
+      - Piecewise Conversion: notebooks/06b-piecewise-conversion.ipynb
+      - Piecewise Effects: notebooks/06c-piecewise-effects.ipynb
     - Scaling:
       - Scenarios: notebooks/07-scenarios-and-periods.ipynb
       - Large-Scale: notebooks/08-large-scale-optimization.ipynb

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -32,10 +31,9 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
+from .plot_result import PlotResult
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -172,58 +170,6 @@ def _heatmap_figure(
         imshow_args['animation_frame'] = animation_frame
 
     return px.imshow(**imshow_args)
-
-
-@dataclass
-class PlotResult:
-    """Container returned by all plot methods. Holds both data and figure.
-
-    Attributes:
-        data: Prepared xarray Dataset used for the plot.
-        figure: Plotly figure object.
-    """
-
-    data: xr.Dataset
-    figure: go.Figure
-
-    def _repr_html_(self) -> str:
-        """Return HTML representation for Jupyter notebook display."""
-        return self.figure.to_html(full_html=False, include_plotlyjs='cdn')
-
-    def show(self) -> PlotResult:
-        """Display the figure. Returns self for chaining."""
-        self.figure.show()
-        return self
-
-    def update(self, **layout_kwargs: Any) -> PlotResult:
-        """Update figure layout. Returns self for chaining."""
-        self.figure.update_layout(**layout_kwargs)
-        return self
-
-    def update_traces(self, **trace_kwargs: Any) -> PlotResult:
-        """Update figure traces. Returns self for chaining."""
-        self.figure.update_traces(**trace_kwargs)
-        return self
-
-    def to_html(self, path: str | Path) -> PlotResult:
-        """Save figure as interactive HTML. Returns self for chaining."""
-        self.figure.write_html(str(path))
-        return self
-
-    def to_image(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Save figure as static image. Returns self for chaining."""
-        self.figure.write_image(str(path), **kwargs)
-        return self
-
-    def to_csv(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Export the underlying data to CSV. Returns self for chaining."""
-        self.data.to_dataframe().to_csv(path, **kwargs)
-        return self
-
-    def to_netcdf(self, path: str | Path, **kwargs: Any) -> PlotResult:
-        """Export the underlying data to netCDF. Returns self for chaining."""
-        self.data.to_netcdf(path, **kwargs)
-        return self
 
 
 # --- Helper functions ---
@@ -454,6 +400,28 @@ class StatisticsAccessor:
         return self._fs.topology.bus_colors
 
     @property
+    def carrier_units(self) -> dict[str, str]:
+        """Cached mapping of carrier name to unit string.
+
+        Delegates to topology accessor for centralized unit caching.
+
+        Returns:
+            Dict mapping carrier names (lowercase) to unit strings.
+        """
+        return self._fs.topology.carrier_units
+
+    @property
+    def effect_units(self) -> dict[str, str]:
+        """Cached mapping of effect label to unit string.
+
+        Delegates to topology accessor for centralized unit caching.
+
+        Returns:
+            Dict mapping effect labels to unit strings.
+        """
+        return self._fs.topology.effect_units
+
+    @property
     def plot(self) -> StatisticsPlotAccessor:
         """Access plotting methods for statistics.
 
@@ -472,19 +440,23 @@ class StatisticsAccessor:
     def flow_rates(self) -> xr.Dataset:
         """All flow rates as a Dataset with flow labels as variable names.
 
-        Each variable has a 'carrier' attribute indicating the carrier type
-        of the bus it connects to (e.g., 'heat', 'electricity', 'gas').
+        Each variable has attributes:
+            - 'carrier': carrier type (e.g., 'heat', 'electricity', 'gas')
+            - 'unit': carrier unit (e.g., 'kW')
         """
         self._require_solution()
         if self._flow_rates is None:
             flow_rate_vars = [v for v in self._fs.solution.data_vars if v.endswith('|flow_rate')]
             flow_carriers = self._fs.flow_carriers  # Cached lookup
+            carrier_units = self.carrier_units  # Cached lookup
             data_vars = {}
             for v in flow_rate_vars:
                 flow_label = v.replace('|flow_rate', '')
                 da = self._fs.solution[v].copy()
-                # Add carrier as attribute (from cached mapping)
-                da.attrs['carrier'] = flow_carriers.get(flow_label)
+                # Add carrier and unit as attributes
+                carrier = flow_carriers.get(flow_label)
+                da.attrs['carrier'] = carrier
+                da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
                 data_vars[flow_label] = da
             self._flow_rates = xr.Dataset(data_vars)
         return self._flow_rates
@@ -493,18 +465,22 @@ class StatisticsAccessor:
     def flow_hours(self) -> xr.Dataset:
         """All flow hours (energy) as a Dataset with flow labels as variable names.
 
-        Each variable has a 'carrier' attribute indicating the carrier type
-        of the bus it connects to (e.g., 'heat', 'electricity', 'gas').
+        Each variable has attributes:
+            - 'carrier': carrier type (e.g., 'heat', 'electricity', 'gas')
+            - 'unit': energy unit (e.g., 'kWh', 'm3/s*h')
         """
         self._require_solution()
         if self._flow_hours is None:
             hours = self._fs.hours_per_timestep
             flow_rates = self.flow_rates
-            # Multiply and preserve carrier attributes
+            # Multiply and preserve/transform attributes
             data_vars = {}
             for var in flow_rates.data_vars:
                 da = flow_rates[var] * hours
                 da.attrs['carrier'] = flow_rates[var].attrs.get('carrier')
+                # Convert power unit to energy unit (e.g., 'kW' -> 'kWh', 'm3/s' -> 'm3/s*h')
+                power_unit = flow_rates[var].attrs.get('unit', '')
+                da.attrs['unit'] = f'{power_unit}*h' if power_unit else ''
                 data_vars[var] = da
             self._flow_hours = xr.Dataset(data_vars)
         return self._flow_hours
@@ -823,7 +799,10 @@ class StatisticsAccessor:
                 contributor_arrays.append(share_total.expand_dims(contributor=[contributor]))
 
             # Concatenate all contributors for this effect
-            ds[effect] = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
+            da = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
+            # Add unit attribute from effect definition
+            da.attrs['unit'] = self.effect_units.get(effect, '')
+            ds[effect] = da
 
         # Add groupby coordinates for contributor dimension
         ds = ds.assign_coords(
@@ -1453,10 +1432,16 @@ class StatisticsPlotAccessor:
         if colors is None:
             colors = self._get_color_map_for_balance(node, list(ds.data_vars))
 
+        # Get unit label from first data variable's attributes
+        unit_label = ''
+        if ds.data_vars:
+            first_var = next(iter(ds.data_vars))
+            unit_label = ds[first_var].attrs.get('unit', '')
+
         fig = _create_stacked_bar(
             ds,
             colors=colors,
-            title=f'{node} ({unit})',
+            title=f'{node} [{unit_label}]' if unit_label else node,
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
             **plotly_kwargs,
@@ -1566,10 +1551,16 @@ class StatisticsPlotAccessor:
                 color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
             colors = color_map
 
+        # Get unit label from carrier or first data variable
+        unit_label = ''
+        if ds.data_vars:
+            first_var = next(iter(ds.data_vars))
+            unit_label = ds[first_var].attrs.get('unit', '')
+
         fig = _create_stacked_bar(
             ds,
             colors=colors,
-            title=f'{carrier.capitalize()} Balance ({unit})',
+            title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
             **plotly_kwargs,
@@ -1768,10 +1759,16 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
 
+        # Get unit label from first data variable's attributes
+        unit_label = ''
+        if ds.data_vars:
+            first_var = next(iter(ds.data_vars))
+            unit_label = ds[first_var].attrs.get('unit', '')
+
         fig = _create_line(
             ds,
             colors=colors,
-            title=f'Flows ({unit})',
+            title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
             **plotly_kwargs,
@@ -1929,10 +1926,16 @@ class StatisticsPlotAccessor:
 
         actual_facet_col, actual_facet_row = _resolve_facets(result_ds, facet_col, facet_row)
 
+        # Get unit label from first data variable's attributes
+        unit_label = ''
+        if ds.data_vars:
+            first_var = next(iter(ds.data_vars))
+            unit_label = ds[first_var].attrs.get('unit', '')
+
         fig = _create_line(
             result_ds,
             colors=colors,
-            title='Duration Curve',
+            title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
             **plotly_kwargs,
@@ -2062,9 +2065,14 @@ class StatisticsPlotAccessor:
         else:
             color_map = None
 
-        # Build title
+        # Build title with unit if single effect
         effect_label = effect if effect else 'Effects'
-        title = f'{effect_label} ({aspect}) by {by}'
+        if effect and effect in effects_ds:
+            unit_label = effects_ds[effect].attrs.get('unit', '')
+            title = f'{effect_label} [{unit_label}]' if unit_label else effect_label
+        else:
+            title = effect_label
+        title = f'{title} ({aspect}) by {by}'
 
         fig = px.bar(
             df,

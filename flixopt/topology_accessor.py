@@ -14,9 +14,11 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
 import plotly.graph_objects as go
+import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .plot_result import PlotResult
 
 if TYPE_CHECKING:
     import pyvis
@@ -145,6 +147,10 @@ class TopologyAccessor:
         self._component_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
 
+        # Cached unit mappings (lazily initialized)
+        self._carrier_units: dict[str, str] | None = None
+        self._effect_units: dict[str, str] | None = None
+
     @property
     def carrier_colors(self) -> dict[str, str]:
         """Cached mapping of carrier name to hex color.
@@ -201,6 +207,38 @@ class TopologyAccessor:
                         self._bus_colors[label] = color
         return self._bus_colors
 
+    @property
+    def carrier_units(self) -> dict[str, str]:
+        """Cached mapping of carrier name to unit string.
+
+        Returns:
+            Dict mapping carrier names (lowercase) to unit strings.
+            Carriers without a unit defined return an empty string.
+
+        Examples:
+            >>> fs.topology.carrier_units
+            {'electricity': 'kW', 'heat': 'kW', 'gas': 'kW'}
+        """
+        if self._carrier_units is None:
+            self._carrier_units = {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
+        return self._carrier_units
+
+    @property
+    def effect_units(self) -> dict[str, str]:
+        """Cached mapping of effect label to unit string.
+
+        Returns:
+            Dict mapping effect labels to unit strings.
+            Effects without a unit defined return an empty string.
+
+        Examples:
+            >>> fs.topology.effect_units
+            {'costs': '€', 'CO2': 'kg'}
+        """
+        if self._effect_units is None:
+            self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
+        return self._effect_units
+
     def infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         """
         Get network topology information as dictionaries.
@@ -253,7 +291,7 @@ class TopologyAccessor:
         colors: ColorType | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
-    ) -> go.Figure:
+    ) -> PlotResult:
         """
         Visualize the network structure as a Sankey diagram using Plotly.
 
@@ -273,7 +311,8 @@ class TopologyAccessor:
             **plotly_kwargs: Additional arguments passed to Plotly layout.
 
         Returns:
-            Plotly Figure with the Sankey diagram.
+            PlotResult containing the Sankey diagram figure and topology data
+            (source, target, value for each link).
 
         Examples:
             >>> flow_system.topology.plot()
@@ -397,12 +436,23 @@ class TopologyAccessor:
         title = plotly_kwargs.pop('title', 'Flow System Topology')
         fig.update_layout(title=title, **plotly_kwargs)
 
+        # Build xarray Dataset with topology data
+        data = xr.Dataset(
+            {
+                'source': ('link', links['source']),
+                'target': ('link', links['target']),
+                'value': ('link', links['value']),
+            },
+            coords={'link': links['label']},
+        )
+        result = PlotResult(data=data, figure=fig)
+
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
-            fig.show()
+            result.show()
 
-        return fig
+        return result
 
     def plot_legacy(
         self,

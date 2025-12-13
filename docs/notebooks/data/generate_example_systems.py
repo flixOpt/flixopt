@@ -52,6 +52,10 @@ def create_simple_system() -> fx.FlowSystem:
     gas_price = np.where((hour_of_day >= 6) & (hour_of_day <= 22), 0.08, 0.05)
 
     fs = fx.FlowSystem(timesteps)
+    fs.add_carriers(
+        fx.Carrier('gas', '#3498db', 'kW'),
+        fx.Carrier('heat', '#e74c3c', 'kW'),
+    )
     fs.add_elements(
         fx.Bus('Gas', carrier='gas'),
         fx.Bus('Heat', carrier='heat'),
@@ -116,6 +120,11 @@ def create_complex_system() -> fx.FlowSystem:
     gas_co2 = 0.2
 
     fs = fx.FlowSystem(timesteps)
+    fs.add_carriers(
+        fx.Carrier('gas', '#3498db', 'kW'),
+        fx.Carrier('electricity', '#f1c40f', 'kW'),
+        fx.Carrier('heat', '#e74c3c', 'kW'),
+    )
     fs.add_elements(
         # Buses
         fx.Bus('Gas', carrier='gas'),
@@ -265,7 +274,10 @@ def create_multiperiod_system() -> fx.FlowSystem:
         scenarios=scenarios,
         scenario_weights=scenario_weights,
     )
-
+    fs.add_carriers(
+        fx.Carrier('gas', '#3498db', 'kW'),
+        fx.Carrier('heat', '#e74c3c', 'kW'),
+    )
     fs.add_elements(
         fx.Bus('Gas', carrier='gas'),
         fx.Bus('Heat', carrier='heat'),
