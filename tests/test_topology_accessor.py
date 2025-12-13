@@ -68,30 +68,31 @@ class TestTopologyPlot:
     """Tests for topology.plot() method (Sankey-based)."""
 
     def test_plot_returns_plotly_figure(self, flow_system):
-        """Test that plot() returns a Plotly Figure."""
+        """Test that plot() returns a PlotResult with Plotly Figure."""
         result = flow_system.topology.plot(show=False)
-        assert isinstance(result, go.Figure)
+        assert hasattr(result, 'figure')
+        assert isinstance(result.figure, go.Figure)
 
     def test_plot_contains_sankey_trace(self, flow_system):
         """Test that the figure contains a Sankey trace."""
-        fig = flow_system.topology.plot(show=False)
-        assert len(fig.data) == 1
-        assert isinstance(fig.data[0], go.Sankey)
+        result = flow_system.topology.plot(show=False)
+        assert len(result.figure.data) == 1
+        assert isinstance(result.figure.data[0], go.Sankey)
 
     def test_plot_has_correct_title(self, flow_system):
         """Test that the figure has the correct title."""
-        fig = flow_system.topology.plot(show=False)
-        assert fig.layout.title.text == 'Flow System Topology'
+        result = flow_system.topology.plot(show=False)
+        assert result.figure.layout.title.text == 'Flow System Topology'
 
     def test_plot_with_custom_title(self, flow_system):
         """Test that custom title can be passed via plotly_kwargs."""
-        fig = flow_system.topology.plot(show=False, title='Custom Title')
-        assert fig.layout.title.text == 'Custom Title'
+        result = flow_system.topology.plot(show=False, title='Custom Title')
+        assert result.figure.layout.title.text == 'Custom Title'
 
     def test_plot_contains_all_nodes(self, flow_system):
         """Test that the Sankey contains all buses and components as nodes."""
-        fig = flow_system.topology.plot(show=False)
-        sankey = fig.data[0]
+        result = flow_system.topology.plot(show=False)
+        sankey = result.figure.data[0]
         node_labels = set(sankey.node.label)
 
         # All buses should be in nodes
@@ -104,8 +105,8 @@ class TestTopologyPlot:
 
     def test_plot_contains_all_flows_as_links(self, flow_system):
         """Test that all flows are represented as links."""
-        fig = flow_system.topology.plot(show=False)
-        sankey = fig.data[0]
+        result = flow_system.topology.plot(show=False)
+        sankey = result.figure.data[0]
         link_labels = set(sankey.link.label)
 
         # All flows should be represented as links

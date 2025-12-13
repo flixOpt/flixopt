@@ -859,13 +859,13 @@ button:focus-visible {
 .jupyter-wrapper .jp-InputArea pre {
   margin: 0;
   padding: 0.6rem 0.8rem;
-  font-size: 0.72rem;
+  font-size: 0.55rem;
   line-height: 1.4;
 }
 
 /* Output cells */
 .jupyter-wrapper .jp-OutputArea pre {
-  font-size: 0.7rem;
+  font-size: 0.55rem;
   margin: 0;
 }
 
@@ -888,7 +888,7 @@ button:focus-visible {
 
 /* Tables in notebooks */
 .jupyter-wrapper table {
-  font-size: 0.7rem;
+  font-size: 0.55rem;
   margin: 0;
   border-collapse: collapse;
 }
