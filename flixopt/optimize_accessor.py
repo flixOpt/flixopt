@@ -15,6 +15,7 @@ import xarray as xr
 from tqdm import tqdm
 
 from .config import CONFIG
+from .io import suppress_output
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -210,14 +211,19 @@ class OptimizeAccessor:
                         nr_of_previous_values=nr_of_previous_values,
                     )
 
-                # Build and solve
-                segment_fs.build_model()
+                # Build and solve (suppress output when progress bar is shown)
+                if CONFIG.Solving.log_to_console:
+                    with suppress_output():
+                        segment_fs.build_model()
+                        if i == 0:
+                            self._check_no_investments(segment_fs)
+                        segment_fs.solve(solver)
+                else:
+                    segment_fs.build_model()
+                    if i == 0:
+                        self._check_no_investments(segment_fs)
+                    segment_fs.solve(solver)
 
-                # Check for investments (only on first segment)
-                if i == 0:
-                    self._check_no_investments(segment_fs)
-
-                segment_fs.solve(solver)
                 segment_flow_systems.append(segment_fs)
 
         finally:
