@@ -711,9 +711,10 @@ def _rename_keys_recursive(
             # Process the value recursively
             new_value = _rename_keys_recursive(value, key_renames, value_renames, child_skip_flow_renames)
 
-            # Check if this key has value renames
-            if key in value_renames and isinstance(new_value, str):
-                new_value = value_renames[key].get(new_value, new_value)
+            # Check if this key has value renames (lookup by renamed key, fallback to old key)
+            vr_key = new_key if new_key in value_renames else key
+            if vr_key in value_renames and isinstance(new_value, str):
+                new_value = value_renames[vr_key].get(new_value, new_value)
 
             # Handle __class__ values - rename class names
             if key == '__class__' and isinstance(new_value, str):

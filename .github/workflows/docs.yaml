@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.10"
           enable-cache: true
@@ -69,7 +69,7 @@ jobs:
   deploy:
     name: Deploy documentation
     needs: build
-    if: ${{ inputs.deploy == true }}
+    if: ${{ inputs.deploy == true && inputs.version != '' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -78,7 +78,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.10"
           enable-cache: true

@@ -532,7 +532,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         new_scenario_index = dataset.indexes.get('scenario')
         if new_scenario_index is None or len(new_scenario_index) <= 1:
-            dataset.attrs.pop('scenario_weights')
+            dataset.attrs.pop('scenario_weights', None)
 
         return dataset
 
@@ -817,8 +817,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             DeprecationWarning,
             stacklevel=2,
         )
-        import json
-
         from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
 
         folder = pathlib.Path(folder)
@@ -1131,7 +1129,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             # Define and register custom carriers
             biogas = fx.Carrier('biogas', '#228B22', 'kW', 'Biogas fuel')
-            fs.add_carrier(biogas)
+            fs.add_carriers(biogas)
 
             # Now buses can reference this carrier by name
             bus = fx.Bus('BioGasNetwork', carrier='biogas')
@@ -1331,7 +1329,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                     self.model.print_infeasibilities()
 
                 infeasibilities = f.getvalue()
-                logger.error('Sucessfully extracted infeasibilities: \n%s', infeasibilities)
+                logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
             raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
 
         # Store solution on FlowSystem for direct Element access
@@ -1590,6 +1588,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Visualizes the network structure of a FlowSystem using PyVis.
         """
+        warnings.warn(
+            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use flow_system.topology.plot() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.topology.plot_legacy(path=path, controls=controls, show=show)
 
     def start_network_app(self) -> None:

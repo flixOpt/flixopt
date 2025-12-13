@@ -13,7 +13,7 @@ title: Home
 <p>Model, optimize, and analyze complex energy systems with a powerful Python framework designed for flexibility and performance.</p>
 
 <p class="hero-buttons">
-  <a href="home/installation/" class="md-button md-button--primary">🚀 Get Started</a>
+  <a href="home/installation.md" class="md-button md-button--primary">🚀 Get Started</a>
   <a href="notebooks/" class="md-button">💡 View Examples</a>
   <a href="https://github.com/flixOpt/flixopt" class="md-button" target="_blank" rel="noopener noreferrer">⭐ GitHub</a>
 </p>
@@ -24,7 +24,7 @@ title: Home
 
 <div class="grid cards" markdown>
 
-- :rocket: **[Getting Started](home/installation/)**
+- :rocket: **[Getting Started](home/installation.md)**
 
     ---
 
@@ -54,7 +54,7 @@ title: Home
 
     Understand the mathematical formulations behind the framework
 
-- :material-road: **[Roadmap](roadmap/)**
+- :material-road: **[Roadmap](roadmap.md)**
 
     ---
 
@@ -125,7 +125,7 @@ title: Home
 <h3>Ready to optimize your energy system?</h3>
 
 <p>
-  <a href="home/installation/" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
+  <a href="home/installation.md" class="md-button md-button--primary md-button--lg">▶️ Start Building</a>
 </p>
 
 </div>

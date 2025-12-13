@@ -792,8 +792,8 @@ class CONFIG:
         Optimizes settings for notebook usage:
         - Sets plotly renderer to 'notebook' for inline display
         - Disables automatic plot.show() calls (notebooks display via _repr_html_)
-        - Enables INFO-level console logging
-        - Disables solver console output (too verbose for notebooks)
+        - Enables SUCCESS-level console logging
+        - Enables solver console output and main results logging
 
         Examples:
             ```python
@@ -818,7 +818,7 @@ class CONFIG:
         # Light logging - SUCCESS level without too much noise
         cls.Logging.enable_console('SUCCESS')
 
-        # Disable solver console output (too verbose for notebooks)
+        # Enable solver console output and main results logging
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
 

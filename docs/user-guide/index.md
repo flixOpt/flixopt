@@ -65,7 +65,7 @@ This guide follows a sequential learning path:
 ### Reference
 
 - [Mathematical Notation](mathematical-notation/index.md) - Detailed specifications
-- [API Reference](../api-reference/index.md) - Complete class documentation
+- [API Reference](../api-reference/) - Complete class documentation
 - [Examples](../notebooks/index.md) - Working code to learn from
 
 ### Help

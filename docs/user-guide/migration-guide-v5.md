@@ -24,7 +24,7 @@ v5.0.0 introduces a streamlined API for optimization and results access. The key
 
 ### Optimization API
 
-The `Optimization` class is removed. Use `FlowSystem.optimize()` directly.
+The `Optimization` class is **deprecated** and will be removed in v6.0.0. Use `FlowSystem.optimize()` directly.
 
 === "v4.x (Old)"
     ```python
