@@ -504,9 +504,7 @@ class PiecewiseConversion(Interface):
             >>> # Select specific time range
             >>> chp.piecewise_conversion.plot(select={'time': slice(0, 12)})
         """
-        if self._flow_system is None:
-            raise RuntimeError('Component must be part of a FlowSystem to plot.')
-        if not self._flow_system.connected_and_transformed:
+        if not self.flow_system.connected_and_transformed:
             logger.debug('Connecting flow_system for plotting PiecewiseConversion')
             self.flow_system.connect_and_transform()
 
@@ -848,9 +846,7 @@ class PiecewiseEffects(Interface):
             >>> flow_system.connect_and_transform()
             >>> invest_params.piecewise_effects_of_investment.plot(title='Investment Effects')
         """
-        if self._flow_system is None:
-            raise RuntimeError('Component must be part of a FlowSystem to plot.')
-        if not self._flow_system.connected_and_transformed:
+        if not self.flow_system.connected_and_transformed:
             logger.debug('Connecting flow_system for plotting PiecewiseEffects')
             self.flow_system.connect_and_transform()
 
