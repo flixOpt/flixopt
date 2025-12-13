@@ -270,91 +270,162 @@ class Clustering:
         return np.array(idx_var1), np.array(idx_var2)
 
 
+def _parse_cluster_duration(duration: str | float) -> float:
+    """Convert cluster duration to hours.
+
+    Args:
+        duration: Either a pandas-style duration string ('1D', '24h', '6h')
+                  or a numeric value in hours.
+
+    Returns:
+        Duration in hours.
+
+    Examples:
+        >>> _parse_cluster_duration('1D')
+        24.0
+        >>> _parse_cluster_duration('6h')
+        6.0
+        >>> _parse_cluster_duration(24)
+        24.0
+    """
+    import pandas as pd
+
+    if isinstance(duration, (int, float)):
+        return float(duration)
+
+    # Parse pandas-style duration strings
+    td = pd.Timedelta(duration)
+    return td.total_seconds() / 3600
+
+
 class ClusteringParameters:
+    """Parameters for time series clustering.
+
+    This class configures how time series data is clustered into representative
+    segments using the tsam (time series aggregation module) package.
+
+    Note:
+        The term "cluster" here refers to clustering time segments (e.g., typical days),
+        not to be confused with the FlowSystem's "period" dimension (e.g., years).
+
+    Args:
+        n_clusters: Number of clusters to create (e.g., 8 typical days).
+        cluster_duration: Duration of each cluster segment. Can be a pandas-style
+            string ('1D', '24h', '6h') or a numeric value in hours.
+        aggregate_data: If True, aggregate time series data and fix all time-dependent
+            variables. If False, only fix binary variables. Default is True.
+        include_storage: Whether to include storage flows in clustering constraints.
+            If other flows are fixed, fixing storage flows is usually not required.
+            Default is True.
+        flexibility_percent: Maximum percentage (0-100) of binary values that can
+            deviate from the clustered pattern. Default is 0 (no flexibility).
+        flexibility_penalty: Penalty added to objective for each deviation.
+            Only applies when flexibility_percent > 0. Default is 0.
+        time_series_for_high_peaks: List of TimeSeriesData to force inclusion of
+            segments with high values.
+        time_series_for_low_peaks: List of TimeSeriesData to force inclusion of
+            segments with low values.
+
+    Examples:
+        Basic usage (8 typical days):
+
+        >>> clustered_fs = flow_system.transform.cluster(
+        ...     n_clusters=8,
+        ...     cluster_duration='1D',
+        ... )
+
+        With all options:
+
+        >>> clustered_fs = flow_system.transform.cluster(
+        ...     n_clusters=8,
+        ...     cluster_duration=24,  # 24 hours = 1 day
+        ...     aggregate_data=True,
+        ...     include_storage=True,
+        ...     flexibility_percent=5,
+        ...     flexibility_penalty=100,
+        ...     time_series_for_high_peaks=[heat_demand_ts],
+        ... )
+    """
+
     def __init__(
         self,
-        hours_per_period: float,
-        nr_of_periods: int,
-        fix_storage_flows: bool,
-        aggregate_data_and_fix_non_binary_vars: bool,
-        percentage_of_period_freedom: float = 0,
-        penalty_of_period_freedom: float = 0,
+        n_clusters: int,
+        cluster_duration: str | float,
+        aggregate_data: bool = True,
+        include_storage: bool = True,
+        flexibility_percent: float = 0,
+        flexibility_penalty: float = 0,
         time_series_for_high_peaks: list[TimeSeriesData] | None = None,
         time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
-        """
-        Initializes clustering parameters for time series data
-
-        Args:
-            hours_per_period: Duration of each period in hours.
-            nr_of_periods: Number of typical periods to use in the aggregation.
-            fix_storage_flows: Whether to aggregate storage flows (load/unload); if other flows
-                are fixed, fixing storage flows is usually not required.
-            aggregate_data_and_fix_non_binary_vars: Whether to aggregate all time series data, which allows to fix all time series variables (like flow_rate),
-                or only fix binary variables. If False non time_series data is changed!! If True, the mathematical Problem
-                is simplified even further.
-            percentage_of_period_freedom: Specifies the maximum percentage (0–100) of binary values within each period
-                that can deviate as "free variables", chosen by the solver (default is 0).
-                This allows binary variables to be 'partly equated' between aggregated periods.
-            penalty_of_period_freedom: The penalty associated with each "free variable"; defaults to 0. Added to Penalty
-            time_series_for_high_peaks: List of TimeSeriesData to use for explicitly selecting periods with high values.
-            time_series_for_low_peaks: List of TimeSeriesData to use for explicitly selecting periods with low values.
-        """
-        self.hours_per_period = hours_per_period
-        self.nr_of_periods = nr_of_periods
-        self.fix_storage_flows = fix_storage_flows
-        self.aggregate_data_and_fix_non_binary_vars = aggregate_data_and_fix_non_binary_vars
-        self.percentage_of_period_freedom = percentage_of_period_freedom
-        self.penalty_of_period_freedom = penalty_of_period_freedom
+        self.n_clusters = n_clusters
+        self.cluster_duration_hours = _parse_cluster_duration(cluster_duration)
+        self.aggregate_data = aggregate_data
+        self.include_storage = include_storage
+        self.flexibility_percent = flexibility_percent
+        self.flexibility_penalty = flexibility_penalty
         self.time_series_for_high_peaks: list[TimeSeriesData] = time_series_for_high_peaks or []
         self.time_series_for_low_peaks: list[TimeSeriesData] = time_series_for_low_peaks or []
 
     @property
-    def use_extreme_periods(self):
-        return self.time_series_for_high_peaks or self.time_series_for_low_peaks
+    def use_extreme_periods(self) -> bool:
+        """Whether extreme segment selection is enabled."""
+        return bool(self.time_series_for_high_peaks or self.time_series_for_low_peaks)
 
     @property
     def labels_for_high_peaks(self) -> list[str]:
+        """Names of time series used for high peak selection."""
         return [ts.name for ts in self.time_series_for_high_peaks]
 
     @property
     def labels_for_low_peaks(self) -> list[str]:
+        """Names of time series used for low peak selection."""
         return [ts.name for ts in self.time_series_for_low_peaks]
-
-    @property
-    def use_low_peaks(self) -> bool:
-        return bool(self.time_series_for_low_peaks)
 
 
 class ClusteringModel(Submodel):
-    """The ClusteringModel holds equations and variables related to the Clustering of a FlowSystem.
-    It creates Equations that equates indices of variables, and introduces penalties related to binary variables, that
-    escape the equation to their related binaries in other periods"""
+    """Model that adds clustering constraints to equate variables across clustered time segments.
+
+    Creates equations that equate variable values at corresponding time indices within the same cluster,
+    and optionally allows binary variables to deviate with a penalty.
+    """
 
     def __init__(
         self,
         model: FlowSystemModel,
         clustering_parameters: ClusteringParameters,
         flow_system: FlowSystem,
-        clustering_data: Clustering,
+        clustering_data: Clustering | dict[tuple, Clustering],
         components_to_clusterize: list[Component] | None,
     ):
         """
-        Modeling-Element for "index-equating"-equations
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            clustering_parameters: Parameters controlling clustering behavior.
+            flow_system: The FlowSystem being optimized.
+            clustering_data: Either a single Clustering object (simple case) or a dict
+                mapping (period_label, scenario_label) tuples to Clustering objects
+                (multi-dimensional case).
+            components_to_clusterize: Components to apply clustering to. If None, all components.
         """
         super().__init__(model, label_of_element='Clustering', label_of_model='Clustering')
         self.flow_system = flow_system
         self.clustering_parameters = clustering_parameters
-        self.clustering_data = clustering_data
         self.components_to_clusterize = components_to_clusterize
+
+        # Handle both single and multi-dimensional clustering
+        if isinstance(clustering_data, dict):
+            self.clustering_data_dict = clustering_data
+            self.is_multi_dimensional = True
+        else:
+            self.clustering_data_dict = {(None, None): clustering_data}
+            self.is_multi_dimensional = False
 
     def do_modeling(self):
         if not self.components_to_clusterize:
-            components = self.flow_system.components.values()
+            components = list(self.flow_system.components.values())
         else:
-            components = [component for component in self.components_to_clusterize]
-
-        indices = self.clustering_data.get_equation_indices(skip_first_index_of_period=True)
+            components = list(self.components_to_clusterize)
 
         time_variables: set[str] = {
             name for name in self._model.variables if 'time' in self._model.variables[name].dims
@@ -363,69 +434,101 @@ class ClusteringModel(Submodel):
         binary_time_variables: set[str] = time_variables & binary_variables
 
         for component in components:
-            if isinstance(component, Storage) and not self.clustering_parameters.fix_storage_flows:
-                continue  # Fix Nothing in The Storage
+            if isinstance(component, Storage) and not self.clustering_parameters.include_storage:
+                continue  # Skip storage if not included
 
             all_variables_of_component = set(component.submodel.variables)
 
-            if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
+            if self.clustering_parameters.aggregate_data:
                 relevant_variables = component.submodel.variables[all_variables_of_component & time_variables]
             else:
                 relevant_variables = component.submodel.variables[all_variables_of_component & binary_time_variables]
-            for variable in relevant_variables:
-                self._equate_indices(component.submodel.variables[variable], indices)
 
-        penalty = self.clustering_parameters.penalty_of_period_freedom
-        if (self.clustering_parameters.percentage_of_period_freedom > 0) and penalty != 0:
+            for variable in relevant_variables:
+                self._equate_indices_multi_dimensional(component.submodel.variables[variable])
+
+        # Add penalty for flexibility deviations
+        penalty = self.clustering_parameters.flexibility_penalty
+        if self.clustering_parameters.flexibility_percent > 0 and penalty != 0:
             from .effects import PENALTY_EFFECT_LABEL
 
             for variable_name in self.variables_direct:
                 variable = self.variables_direct[variable_name]
-                # Sum correction variables over all dimensions to get periodic penalty contribution
                 self._model.effects.add_share_to_effects(
-                    name='Aggregation',
+                    name='Clustering',
                     expressions={PENALTY_EFFECT_LABEL: (variable * penalty).sum('time')},
                     target='periodic',
                 )
 
-    def _equate_indices(self, variable: linopy.Variable, indices: tuple[np.ndarray, np.ndarray]) -> None:
-        assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!!'
-        length = len(indices[0])
+    def _equate_indices_multi_dimensional(self, variable: linopy.Variable) -> None:
+        """Equate indices across clustered segments, handling multi-dimensional cases."""
+        var_dims = set(variable.dims)
+        has_period = 'period' in var_dims
+        has_scenario = 'scenario' in var_dims
 
-        # Gleichung:
-        # eq1: x(p1,t) - x(p3,t) = 0 # wobei p1 und p3 im gleichen Cluster sind und t = 0..N_p
+        for (period_label, scenario_label), clustering in self.clustering_data_dict.items():
+            indices = clustering.get_equation_indices(skip_first_index_of_period=True)
+
+            if len(indices[0]) == 0:
+                continue  # No constraints needed for this cluster
+
+            # Build selector for this period/scenario combination
+            selector = {}
+            if has_period and period_label is not None:
+                selector['period'] = period_label
+            if has_scenario and scenario_label is not None:
+                selector['scenario'] = scenario_label
+
+            # Select variable slice for this dimension combination
+            if selector:
+                var_slice = variable.sel(**selector)
+            else:
+                var_slice = variable
+
+            # Create constraint name with dimension info
+            dim_suffix = ''
+            if period_label is not None:
+                dim_suffix += f'_p{period_label}'
+            if scenario_label is not None:
+                dim_suffix += f'_s{scenario_label}'
+
+            # Equate indices within this slice
+            self._equate_indices(var_slice, indices, dim_suffix, variable.name)
+
+    def _equate_indices(
+        self,
+        variable: linopy.Variable,
+        indices: tuple[np.ndarray, np.ndarray],
+        dim_suffix: str = '',
+        original_var_name: str | None = None,
+    ) -> None:
+        """Add constraints to equate variable values at corresponding cluster indices."""
+        assert len(indices[0]) == len(indices[1]), 'The length of the indices must match!'
+        length = len(indices[0])
+        var_name = original_var_name or variable.name
+
+        # Main constraint: x(cluster_a, t) - x(cluster_b, t) = 0
         con = self.add_constraints(
             variable.isel(time=indices[0]) - variable.isel(time=indices[1]) == 0,
-            short_name=f'equate_indices|{variable.name}',
+            short_name=f'equate_indices{dim_suffix}|{var_name}',
         )
 
-        # Korrektur: (bisher nur für Binärvariablen:)
-        if (
-            variable.name in self._model.variables.binaries
-            and self.clustering_parameters.percentage_of_period_freedom > 0
-        ):
+        # Add correction variables for binary flexibility
+        if var_name in self._model.variables.binaries and self.clustering_parameters.flexibility_percent > 0:
             sel = variable.isel(time=indices[0])
             coords = {d: sel.indexes[d] for d in sel.dims}
-            var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1|{variable.name}')
+            var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1{dim_suffix}|{var_name}')
+            var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0{dim_suffix}|{var_name}')
 
-            var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0|{variable.name}')
-
-            # equation extends ...
-            # --> On(p3) can be 0/1 independent of On(p1,t)!
-            # eq1: On(p1,t) - On(p3,t) + K1(p3,t) - K0(p3,t) = 0
-            # --> correction On(p3) can be:
-            #  On(p1,t) = 1 -> On(p3) can be 0 -> K0=1 (,K1=0)
-            #  On(p1,t) = 0 -> On(p3) can be 1 -> K1=1 (,K0=1)
+            # Extend equation to allow deviation: On(a,t) - On(b,t) + K1 - K0 = 0
             con.lhs += 1 * var_k1 - 1 * var_k0
 
-            # interlock var_k1 and var_K2:
-            # eq: var_k0(t)+var_k1(t) <= 1
-            self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1|{variable.name}')
+            # Interlock K0 and K1: can't both be 1
+            self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1{dim_suffix}|{var_name}')
 
-            # Begrenzung der Korrektur-Anzahl:
-            # eq: sum(K) <= n_Corr_max
-            limit = int(np.floor(self.clustering_parameters.percentage_of_period_freedom / 100 * length))
+            # Limit total corrections
+            limit = int(np.floor(self.clustering_parameters.flexibility_percent / 100 * length))
             self.add_constraints(
                 var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
-                short_name=f'limit_corrections|{variable.name}',
+                short_name=f'limit_corrections{dim_suffix}|{var_name}',
             )

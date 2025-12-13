@@ -1282,11 +1282,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         from .clustering import ClusteringModel
 
         info = self._clustering_info
+
+        # Handle both simple (single Clustering) and multi-dimensional (dict) cases
+        clustering_data = info.get('clustering_results') or info.get('clustering')
+
         clustering_model = ClusteringModel(
             model=self.model,
             clustering_parameters=info['parameters'],
             flow_system=self,
-            clustering_data=info['clustering'],
+            clustering_data=clustering_data,
             components_to_clusterize=info['components_to_clusterize'],
         )
         clustering_model.do_modeling()
