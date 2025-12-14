@@ -201,7 +201,7 @@ class TransformAccessor:
         logger.info(f'{" Clustering TimeSeries Data ":#^80}')
 
         # Get dataset representation
-        ds = self._fs.to_dataset()
+        ds = self._fs.to_dataset(include_solution=False)
         temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
 
         # Perform clustering
@@ -275,7 +275,7 @@ class TransformAccessor:
         periods = list(self._fs.periods) if self._fs.periods is not None else [None]
         scenarios = list(self._fs.scenarios) if self._fs.scenarios is not None else [None]
 
-        ds = self._fs.to_dataset().copy(deep=True)  # Deep copy to allow in-place modifications
+        ds = self._fs.to_dataset(include_solution=False).copy(deep=True)  # Deep copy to allow in-place modifications
         clustering_results: dict[tuple, Clustering] = {}
 
         # Cluster each period x scenario combination independently
