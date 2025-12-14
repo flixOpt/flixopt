@@ -289,7 +289,7 @@ class TransformAccessor:
                     selector['scenario'] = scenario_label
 
                 if selector:
-                    ds_slice = ds.sel(**selector)
+                    ds_slice = ds.sel(**selector, drop=True)
                 else:
                     ds_slice = ds
 
