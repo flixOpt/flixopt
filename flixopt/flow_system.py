@@ -1050,7 +1050,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         from .color_processing import process_colors
 
         # Collect elements without colors (components only - buses use carrier colors)
-        elements_without_colors = [comp.label for comp in self.components.values() if comp.color is None]
+        # Use label_full for consistent keying with ElementContainer
+        elements_without_colors = [comp.label_full for comp in self.components.values() if comp.color is None]
 
         if not elements_without_colors:
             return
@@ -1060,9 +1061,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         color_mapping = process_colors(colorscale, elements_without_colors)
 
         # Assign colors to elements
-        for label, color in color_mapping.items():
-            self.components[label].color = color
-            logger.debug(f"Auto-assigned color '{color}' to component '{label}'")
+        for label_full, color in color_mapping.items():
+            self.components[label_full].color = color
+            logger.debug(f"Auto-assigned color '{color}' to component '{label_full}'")
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -1281,16 +1282,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Add clustering constraints to the model."""
         from .clustering import ClusteringModel
 
-        info = self._clustering_info
-
-        # Handle both simple (single Clustering) and multi-dimensional (dict) cases
-        clustering_data = info.get('clustering_results') or info.get('clustering')
+        info = self._clustering_info or {}
+        required_keys = {'parameters', 'clustering', 'components_to_clusterize'}
+        missing_keys = required_keys - set(info)
+        if missing_keys:
+            raise KeyError(f'_clustering_info missing required keys: {sorted(missing_keys)}')
 
         clustering_model = ClusteringModel(
             model=self.model,
             clustering_parameters=info['parameters'],
             flow_system=self,
-            clustering_data=clustering_data,
+            clustering_data=info['clustering'],
             components_to_clusterize=info['components_to_clusterize'],
         )
         clustering_model.do_modeling()
