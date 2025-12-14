@@ -1,3 +1,5 @@
+import importlib.util
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,6 +12,8 @@ from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
 from .conftest import create_linopy_model
+
+GUROBI_AVAILABLE = importlib.util.find_spec('gurobipy') is not None
 
 
 @pytest.fixture
@@ -289,6 +293,7 @@ def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scena
         assert model.variables[var].dims in [('time', 'scenario'), ('scenario',), ()]
 
 
+@pytest.mark.skipif(not GUROBI_AVAILABLE, reason='Gurobi solver not installed')
 def test_full_scenario_optimization(flow_system_piecewise_conversion_scenarios):
     """Test a full optimization with scenarios and verify results."""
     scenarios = flow_system_piecewise_conversion_scenarios.scenarios
@@ -325,6 +330,7 @@ def test_io_persistence(flow_system_piecewise_conversion_scenarios, tmp_path):
     np.testing.assert_allclose(original_objective, flow_system_2.solution['objective'].item(), rtol=0.001)
 
 
+@pytest.mark.skipif(not GUROBI_AVAILABLE, reason='Gurobi solver not installed')
 def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     """Test scenario selection/subsetting functionality."""
     flow_system_full = flow_system_piecewise_conversion_scenarios
