@@ -1,9 +1,10 @@
-"""Generate example FlowSystem files for the plotting notebook.
+"""Generate example FlowSystem files for notebooks.
 
-This script creates three FlowSystems of varying complexity:
+This script creates FlowSystems of varying complexity:
 1. simple_system - Basic heat system (boiler + storage + sink)
 2. complex_system - Multi-carrier with multiple effects and piecewise efficiency
 3. multiperiod_system - System with periods and scenarios
+4. district_heating_system - Real-world district heating data (from Zeitreihen2020.csv)
 
 Run this script to regenerate the example data files.
 """
@@ -229,6 +230,121 @@ def create_complex_system() -> fx.FlowSystem:
     return fs
 
 
+def create_district_heating_system() -> fx.FlowSystem:
+    """Create a district heating system using real-world data.
+
+    Based on Zeitreihen2020.csv data:
+    - One month of data at 15-minute resolution
+    - CHP, boiler, storage, and grid connections
+    - Investment optimization for sizing
+
+    Used by: 08a-aggregation, 08b-rolling-horizon, 08c-clustering notebooks
+    """
+    # Load real data (relative to examples/resources)
+    data_path = Path(__file__).parent.parent.parent.parent / 'examples' / 'resources' / 'Zeitreihen2020.csv'
+    data = pd.read_csv(data_path, index_col=0, parse_dates=True).sort_index()
+    data = data['2020-01-01':'2020-01-31 23:45:00']  # One month
+    data.index.name = 'time'
+
+    timesteps = data.index
+    electricity_demand = data['P_Netz/MW'].to_numpy()
+    heat_demand = data['Q_Netz/MW'].to_numpy()
+    electricity_price = data['Strompr.€/MWh'].to_numpy()
+    gas_price = data['Gaspr.€/MWh'].to_numpy()
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_elements(
+        # Buses
+        fx.Bus('Electricity'),
+        fx.Bus('Heat'),
+        fx.Bus('Gas'),
+        fx.Bus('Coal'),
+        # Effects
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+        # CHP unit with investment
+        fx.linear_converters.CHP(
+            'CHP',
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
+            electrical_flow=fx.Flow('P_el', bus='Electricity', size=200),
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=100,
+                    maximum_size=300,
+                    effects_of_investment_per_size={'costs': 10},
+                ),
+                relative_minimum=0.3,
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Coal'),
+        ),
+        # Gas Boiler with investment
+        fx.linear_converters.Boiler(
+            'Boiler',
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=0,
+                    maximum_size=150,
+                    effects_of_investment_per_size={'costs': 5},
+                ),
+                relative_minimum=0.1,
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+        ),
+        # Thermal Storage with investment
+        fx.Storage(
+            'Storage',
+            capacity_in_flow_hours=fx.InvestParameters(
+                minimum_size=0,
+                maximum_size=1000,
+                effects_of_investment_per_size={'costs': 0.5},
+            ),
+            initial_charge_state=0,
+            eta_charge=1,
+            eta_discharge=1,
+            relative_loss_per_hour=0.001,
+            charging=fx.Flow('Charge', size=137, bus='Heat'),
+            discharging=fx.Flow('Discharge', size=158, bus='Heat'),
+        ),
+        # Fuel sources
+        fx.Source(
+            'GasGrid',
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
+        ),
+        fx.Source(
+            'CoalSupply',
+            outputs=[fx.Flow('Q_Coal', bus='Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
+        ),
+        # Electricity grid
+        fx.Source(
+            'GridBuy',
+            outputs=[
+                fx.Flow(
+                    'P_el',
+                    bus='Electricity',
+                    size=1000,
+                    effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3},
+                )
+            ],
+        ),
+        fx.Sink(
+            'GridSell',
+            inputs=[fx.Flow('P_el', bus='Electricity', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))],
+        ),
+        # Demands
+        fx.Sink('HeatDemand', inputs=[fx.Flow('Q_th', bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
+        fx.Sink(
+            'ElecDemand', inputs=[fx.Flow('P_el', bus='Electricity', size=1, fixed_relative_profile=electricity_demand)]
+        ),
+    )
+    return fs
+
+
 def create_multiperiod_system() -> fx.FlowSystem:
     """Create a system with multiple periods and scenarios.
 
@@ -322,6 +438,7 @@ def main():
         ('simple_system', create_simple_system),
         ('complex_system', create_complex_system),
         ('multiperiod_system', create_multiperiod_system),
+        ('district_heating_system', create_district_heating_system),
     ]
 
     for name, create_func in systems:
