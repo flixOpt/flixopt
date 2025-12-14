@@ -362,6 +362,7 @@ class TransformAccessor:
         # Store clustering info for later use
         clustered_fs._clustering_info = {
             'parameters': params,
+            'clustering': clustering_results,  # Required by _add_clustering_constraints
             'clustering_results': clustering_results,  # Dict of Clustering objects per dimension
             'components_to_clusterize': components_to_clusterize,
             'original_fs': self._fs,
