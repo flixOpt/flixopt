@@ -236,7 +236,8 @@ class Clustering:
         clusters = self.tsam.clusterPeriodNoOccur.keys()
         index_vectors = {cluster: [] for cluster in clusters}
 
-        period_length = len(self.tsam.stepIdx)
+        # Use actual timesteps per period, not segment count
+        period_length = int(self.hours_per_period / self.hours_per_time_step)
         total_steps = len(self.tsam.timeSeries)
 
         for period, cluster_id in enumerate(self.tsam.clusterOrder):
@@ -279,6 +280,48 @@ class Clustering:
                 idx_var2.extend(other_vector[:min_len])
 
         # Convert lists to numpy arrays
+        return np.array(idx_var1), np.array(idx_var2)
+
+    def get_segment_equation_indices(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Generates pairs of indices for intra-segment equalization.
+
+        When segmentation is enabled, all timesteps within the same segment should have
+        equal values. This method returns index pairs where each timestep in a segment
+        is paired with the first timestep of that segment.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Two arrays of indices. For each pair (i, j),
+                variable[i] should equal variable[j].
+
+        Note:
+            Only generates constraints when n_segments is set. Returns empty arrays otherwise.
+        """
+        if self.n_segments is None:
+            return np.array([]), np.array([])
+
+        idx_var1 = []
+        idx_var2 = []
+
+        period_length = int(self.hours_per_period / self.hours_per_time_step)
+        segment_duration_dict = self.tsam.segmentDurationDict['Segment Duration']
+
+        for period_idx, cluster_id in enumerate(self.tsam.clusterOrder):
+            period_offset = period_idx * period_length
+            start_step = 0
+
+            for seg_idx in range(self.n_segments):
+                # Get duration for this (cluster, segment)
+                duration = segment_duration_dict[(cluster_id, seg_idx)]
+
+                # Equate all timesteps in this segment to the first timestep
+                first_ts = period_offset + start_step
+                for step in range(1, duration):
+                    idx_var1.append(first_ts)
+                    idx_var2.append(period_offset + start_step + step)
+
+                start_step += duration
+
         return np.array(idx_var1), np.array(idx_var2)
 
 
@@ -495,11 +538,6 @@ class ClusteringModel(Submodel):
         has_scenario = 'scenario' in var_dims
 
         for (period_label, scenario_label), clustering in self.clustering_data_dict.items():
-            indices = clustering.get_equation_indices(skip_first_index_of_period=True)
-
-            if len(indices[0]) == 0:
-                continue  # No constraints needed for this cluster
-
             # Build selector for this period/scenario combination
             selector = {}
             if has_period and period_label is not None:
@@ -520,8 +558,15 @@ class ClusteringModel(Submodel):
             if scenario_label is not None:
                 dim_suffix += f'_s{scenario_label}'
 
-            # Equate indices within this slice
-            self._equate_indices(var_slice, indices, dim_suffix, variable.name)
+            # 1. Inter-period clustering constraints (equate timesteps across periods in same cluster)
+            cluster_indices = clustering.get_equation_indices(skip_first_index_of_period=True)
+            if len(cluster_indices[0]) > 0:
+                self._equate_indices(var_slice, cluster_indices, dim_suffix + '_cluster', variable.name)
+
+            # 2. Intra-segment constraints (equate timesteps within same segment)
+            segment_indices = clustering.get_segment_equation_indices()
+            if len(segment_indices[0]) > 0:
+                self._equate_indices(var_slice, segment_indices, dim_suffix + '_segment', variable.name)
 
     def _equate_indices(
         self,
