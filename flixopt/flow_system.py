@@ -631,37 +631,30 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self._clustering_info is not None:
             from .clustering import ClusteringIndices, ClusteringParameters
 
-            clustering_data = {}
-
             # Serialize parameters
             params = self._clustering_info.get('parameters')
             if isinstance(params, ClusteringParameters):
                 params_ref, _ = params._create_reference_structure()
-                clustering_data['parameters'] = params_ref
+                ds.attrs['_clustering_params'] = json.dumps(params_ref)
 
-            # Serialize equation indices from Clustering objects
-            clustering_dict = self._clustering_info.get('clustering', {})
-            indices_list = []
-            if isinstance(clustering_dict, dict):
-                # Multi-dimensional: {(period, scenario): Clustering}
-                for (period, scenario), clustering in clustering_dict.items():
-                    indices = ClusteringIndices.from_clustering(clustering, period, scenario)
-                    indices_ref, _ = indices._create_reference_structure()
-                    indices_list.append(indices_ref)
-            else:
-                # Single Clustering object
-                indices = ClusteringIndices.from_clustering(clustering_dict)
-                indices_ref, _ = indices._create_reference_structure()
-                indices_list.append(indices_ref)
-
-            clustering_data['indices'] = indices_list
-
-            # Store component labels to clusterize (not the component objects)
+            # Store component labels to clusterize
             components = self._clustering_info.get('components_to_clusterize')
             if components:
-                clustering_data['component_labels'] = [c.label for c in components]
+                ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
 
-            ds.attrs['clustering_info'] = json.dumps(clustering_data)
+            # Store equation indices as DataArrays (efficient binary storage)
+            clustering_obj = self._clustering_info.get('clustering')
+            if clustering_obj is not None:
+                if isinstance(clustering_obj, dict):
+                    # Multi-dimensional: {(period, scenario): Clustering}
+                    # For now, only support single clustering (most common case)
+                    clustering_obj = next(iter(clustering_obj.values()))
+
+                indices = ClusteringIndices.from_clustering(clustering_obj)
+                ds['_clustering_cluster_idx_i'] = xr.DataArray(indices.cluster_idx_i, dims=['_cluster_eq'])
+                ds['_clustering_cluster_idx_j'] = xr.DataArray(indices.cluster_idx_j, dims=['_cluster_eq'])
+                ds['_clustering_segment_idx_i'] = xr.DataArray(indices.segment_idx_i, dims=['_segment_eq'])
+                ds['_clustering_segment_idx_j'] = xr.DataArray(indices.segment_idx_j, dims=['_segment_eq'])
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -758,42 +751,38 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 flow_system._carriers.add(carrier)
 
         # Restore clustering info if present
-        if 'clustering_info' in reference_structure:
+        if '_clustering_params' in reference_structure:
             from .clustering import ClusteringIndices
 
-            clustering_data = json.loads(reference_structure['clustering_info'])
-
             # Restore parameters
-            params = None
-            if 'parameters' in clustering_data:
-                params = cls._resolve_reference_structure(clustering_data['parameters'], {})
+            params = cls._resolve_reference_structure(json.loads(reference_structure['_clustering_params']), {})
 
-            # Restore indices
-            indices_dict = {}
-            for indices_ref in clustering_data.get('indices', []):
-                indices = cls._resolve_reference_structure(indices_ref, {})
-                if isinstance(indices, ClusteringIndices):
-                    key = (indices.period, indices.scenario)
-                    indices_dict[key] = indices
+            # Restore indices from DataArrays
+            indices = ClusteringIndices(
+                cluster_idx_i=ds['_clustering_cluster_idx_i'].values if '_clustering_cluster_idx_i' in ds else None,
+                cluster_idx_j=ds['_clustering_cluster_idx_j'].values if '_clustering_cluster_idx_j' in ds else None,
+                segment_idx_i=ds['_clustering_segment_idx_i'].values if '_clustering_segment_idx_i' in ds else None,
+                segment_idx_j=ds['_clustering_segment_idx_j'].values if '_clustering_segment_idx_j' in ds else None,
+            )
 
             # Restore component references
-            component_labels = clustering_data.get('component_labels', [])
             components_to_clusterize = None
-            if component_labels:
+            if '_clustering_components' in reference_structure:
+                component_labels = json.loads(reference_structure['_clustering_components'])
                 components_to_clusterize = [
                     flow_system.components[label] for label in component_labels if label in flow_system.components
                 ]
 
             flow_system._clustering_info = {
                 'parameters': params,
-                'clustering_indices': indices_dict,  # ClusteringIndices instead of Clustering
+                'clustering_indices': {(None, None): indices},  # ClusteringIndices keyed by (period, scenario)
                 'components_to_clusterize': components_to_clusterize,
-                'restored_from_file': True,  # Flag to indicate this was loaded, not computed
+                'restored_from_file': True,
             }
             logger.info(
-                f'Restored clustering info: n_clusters={params.n_clusters}, '
-                f'duration={params.cluster_duration}, n_segments={params.n_segments}. '
-                f'Clustering constraints will be recreated from stored indices.'
+                f'Restored clustering: n_clusters={params.n_clusters}, duration={params.cluster_duration}, '
+                f'n_segments={params.n_segments}, {len(indices.cluster_idx_i)} cluster + '
+                f'{len(indices.segment_idx_i)} segment equations.'
             )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
