@@ -504,6 +504,10 @@ class ClusteringModel(Submodel):
         binary_variables: set[str] = set(self._model.variables.binaries)
         binary_time_variables: set[str] = time_variables & binary_variables
 
+        # Group variables by dimension signature: (has_period, has_scenario, is_binary)
+        # This allows creating batched constraints with a 'variable' dimension
+        variable_groups: dict[tuple[bool, bool, bool], dict[str, linopy.Variable]] = {}
+
         for component in components:
             if isinstance(component, Storage) and not self.clustering_parameters.include_storage:
                 continue  # Skip storage if not included
@@ -511,12 +515,26 @@ class ClusteringModel(Submodel):
             all_variables_of_component = set(component.submodel.variables)
 
             if self.clustering_parameters.aggregate_data:
-                relevant_variables = component.submodel.variables[all_variables_of_component & time_variables]
+                relevant_var_names = all_variables_of_component & time_variables
             else:
-                relevant_variables = component.submodel.variables[all_variables_of_component & binary_time_variables]
+                relevant_var_names = all_variables_of_component & binary_time_variables
 
-            for variable in relevant_variables:
-                self._equate_indices_multi_dimensional(component.submodel.variables[variable])
+            for var_name in relevant_var_names:
+                variable = component.submodel.variables[var_name]
+                var_dims = set(variable.dims)
+                key = ('period' in var_dims, 'scenario' in var_dims, var_name in binary_variables)
+                variable_groups.setdefault(key, {})[var_name] = variable
+
+        # Process each group with batched constraint creation
+        # Binary variables are handled separately with per-variable constraints (simpler, avoids dimension conflicts)
+        for (has_period, has_scenario, is_binary), variables in variable_groups.items():
+            if is_binary:
+                # Handle binaries individually to avoid dimension conflicts with correction variables
+                for variable in variables.values():
+                    self._equate_indices_multi_dimensional(variable)
+            else:
+                # Batch continuous variables for efficiency
+                self._equate_indices_batched(variables, has_period, has_scenario)
 
         # Add penalty for flexibility deviations
         penalty = self.clustering_parameters.flexibility_penalty
@@ -525,14 +543,103 @@ class ClusteringModel(Submodel):
 
             for variable_name in self.variables_direct:
                 variable = self.variables_direct[variable_name]
+                # Correction vars use eq_idx dimension (not time) to avoid duplicate coord issues
+                sum_dim = 'eq_idx' if 'eq_idx' in variable.dims else 'time'
                 self._model.effects.add_share_to_effects(
                     name='Clustering',
-                    expressions={PENALTY_EFFECT_LABEL: (variable * penalty).sum('time')},
+                    expressions={PENALTY_EFFECT_LABEL: (variable * penalty).sum(sum_dim)},
                     target='periodic',
                 )
 
+    def _equate_indices_batched(
+        self,
+        variables: dict[str, linopy.Variable],
+        has_period: bool,
+        has_scenario: bool,
+    ) -> None:
+        """Create batched constraints for a group of continuous variables.
+
+        Instead of creating one constraint per variable, this method creates a single constraint
+        with a 'variable' dimension, reducing the number of constraint objects.
+
+        Args:
+            variables: Dict mapping variable names to linopy Variables.
+            has_period: Whether these variables have a 'period' dimension.
+            has_scenario: Whether these variables have a 'scenario' dimension.
+        """
+
+        # Create group suffix for unique constraint names
+        group_suffix = f'_{"P" if has_period else ""}{"S" if has_scenario else ""}'
+        if group_suffix == '_':
+            group_suffix = '_base'
+
+        for (period_label, scenario_label), clustering in self.clustering_data_dict.items():
+            # Build selector for this period/scenario combination
+            selector = {}
+            if has_period and period_label is not None:
+                selector['period'] = period_label
+            if has_scenario and scenario_label is not None:
+                selector['scenario'] = scenario_label
+
+            # Create constraint name suffix with dimension info
+            dim_suffix = group_suffix
+            if period_label is not None:
+                dim_suffix += f'_p{period_label}'
+            if scenario_label is not None:
+                dim_suffix += f'_s{scenario_label}'
+
+            # 1. Inter-period clustering constraints
+            cluster_indices = clustering.get_equation_indices(skip_first_index_of_period=True)
+            if len(cluster_indices[0]) > 0:
+                self._create_batched_constraint(variables, selector, cluster_indices, f'{dim_suffix}_cluster')
+
+            # 2. Intra-segment constraints
+            segment_indices = clustering.get_segment_equation_indices()
+            if len(segment_indices[0]) > 0:
+                self._create_batched_constraint(variables, selector, segment_indices, f'{dim_suffix}_segment')
+
+    def _create_batched_constraint(
+        self,
+        variables: dict[str, linopy.Variable],
+        selector: dict,
+        indices: tuple[np.ndarray, np.ndarray],
+        dim_suffix: str,
+    ) -> None:
+        """Create a single constraint with 'variable' dimension for multiple variables.
+
+        Args:
+            variables: Dict mapping variable names to linopy Variables.
+            selector: Dict for selecting period/scenario slice (e.g., {'period': 2024}).
+            indices: Tuple of (idx_a, idx_b) arrays for equating timesteps.
+            dim_suffix: Suffix for constraint name (e.g., '_cluster' or '_p2024_cluster').
+        """
+        import linopy
+
+        # Build list of expressions, each expanded with variable dimension
+        lhs_parts = []
+
+        for var_name, variable in variables.items():
+            # Select period/scenario slice if needed
+            var_slice = variable.sel(**selector) if selector else variable
+
+            # Create difference expression: var[idx_a] - var[idx_b]
+            diff = var_slice.isel(time=indices[0]) - var_slice.isel(time=indices[1])
+
+            # Expand dims to add 'variable' dimension
+            lhs_parts.append(diff.expand_dims(variable=[var_name]))
+
+        # Merge all expressions along 'variable' dimension
+        combined_lhs = linopy.merge(*lhs_parts, dim='variable')
+
+        # Create single constraint for all variables
+        self.add_constraints(combined_lhs == 0, short_name=f'equate_indices{dim_suffix}')
+
     def _equate_indices_multi_dimensional(self, variable: linopy.Variable) -> None:
-        """Equate indices across clustered segments, handling multi-dimensional cases."""
+        """Equate indices across clustered segments, handling multi-dimensional cases.
+
+        Note: This method is kept for backwards compatibility but is no longer used
+        by the default do_modeling(). Use _equate_indices_batched() instead.
+        """
         var_dims = set(variable.dims)
         has_period = 'period' in var_dims
         has_scenario = 'scenario' in var_dims
@@ -588,13 +695,22 @@ class ClusteringModel(Submodel):
 
         # Add correction variables for binary flexibility
         if var_name in self._model.variables.binaries and self.clustering_parameters.flexibility_percent > 0:
-            sel = variable.isel(time=indices[0])
-            coords = {d: sel.indexes[d] for d in sel.dims}
-            var_k1 = self.add_variables(binary=True, coords=coords, short_name=f'correction1{dim_suffix}|{var_name}')
-            var_k0 = self.add_variables(binary=True, coords=coords, short_name=f'correction0{dim_suffix}|{var_name}')
+            # Use integer indices for correction variables to avoid duplicate datetime coords
+            # (indices[0] can have duplicates since same timestep may be compared to multiple others)
+            coords = [np.arange(length)]
+            dims = ['eq_idx']
+            var_k1 = self.add_variables(
+                binary=True, coords=coords, dims=dims, short_name=f'correction1{dim_suffix}|{var_name}'
+            )
+            var_k0 = self.add_variables(
+                binary=True, coords=coords, dims=dims, short_name=f'correction0{dim_suffix}|{var_name}'
+            )
 
             # Extend equation to allow deviation: On(a,t) - On(b,t) + K1 - K0 = 0
-            con.lhs += 1 * var_k1 - 1 * var_k0
+            # Rename constraint's time dim to eq_idx for alignment, then rename back
+            lhs_renamed = con.lhs.rename({'time': 'eq_idx'})
+            new_lhs = lhs_renamed + 1 * var_k1 - 1 * var_k0
+            con.lhs = new_lhs.rename({'eq_idx': 'time'})
 
             # Interlock K0 and K1: can't both be 1
             self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1{dim_suffix}|{var_name}')
@@ -602,6 +718,6 @@ class ClusteringModel(Submodel):
             # Limit total corrections
             limit = int(np.floor(self.clustering_parameters.flexibility_percent / 100 * length))
             self.add_constraints(
-                var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
+                var_k0.sum(dim='eq_idx') + var_k1.sum(dim='eq_idx') <= limit,
                 short_name=f'limit_corrections{dim_suffix}|{var_name}',
             )
