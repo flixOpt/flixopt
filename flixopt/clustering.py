@@ -498,11 +498,7 @@ class ClusteringModel(Submodel):
         else:
             components = list(self.components_to_clusterize)
 
-        time_variables: set[str] = {
-            name for name in self._model.variables if 'time' in self._model.variables[name].dims
-        }
         binary_variables: set[str] = set(self._model.variables.binaries)
-        binary_time_variables: set[str] = time_variables & binary_variables
 
         # Group variables by dimension signature: (has_period, has_scenario, is_binary)
         # This allows creating batched constraints with a 'variable' dimension
@@ -512,15 +508,29 @@ class ClusteringModel(Submodel):
             if isinstance(component, Storage) and not self.clustering_parameters.include_storage:
                 continue  # Skip storage if not included
 
-            all_variables_of_component = set(component.submodel.variables)
+            # Only equalize specific variable types:
+            # - flow_rate: main continuous decision variables
+            # - status: binary on/off variables (only if aggregate_data=False or binary flexibility)
+            relevant_var_names: list[str] = []
 
+            # Always include flow_rate variables when aggregate_data=True
             if self.clustering_parameters.aggregate_data:
-                relevant_var_names = all_variables_of_component & time_variables
-            else:
-                relevant_var_names = all_variables_of_component & binary_time_variables
+                for flow in component.inputs + component.outputs:
+                    flow_rate_name = f'{flow.label_full}|flow_rate'
+                    if flow_rate_name in component.submodel.variables:
+                        relevant_var_names.append(flow_rate_name)
+
+            # Include status variables (binary on/off) when needed
+            if not self.clustering_parameters.aggregate_data or self.clustering_parameters.flexibility_percent > 0:
+                for flow in component.inputs + component.outputs:
+                    status_name = f'{flow.label_full}|status'
+                    if status_name in component.submodel.variables:
+                        relevant_var_names.append(status_name)
 
             for var_name in relevant_var_names:
                 variable = component.submodel.variables[var_name]
+                if 'time' not in variable.dims:
+                    continue  # Skip non-time variables
                 var_dims = set(variable.dims)
                 key = ('period' in var_dims, 'scenario' in var_dims, var_name in binary_variables)
                 variable_groups.setdefault(key, {})[var_name] = variable
