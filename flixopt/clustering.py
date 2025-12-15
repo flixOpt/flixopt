@@ -284,6 +284,65 @@ class Clustering:
         # Convert lists to numpy arrays
         return np.array(idx_var1), np.array(idx_var2)
 
+    def get_equation_groups(self, skip_first_index_of_period: bool = True) -> list[list[int]]:
+        """Get groups of timestep indices that should be equal (inter-cluster).
+
+        Each group contains timesteps at the same position within periods of the same cluster.
+        E.g., if cluster 0 has periods [0-95] and [192-287], position 5 gives group [5, 197].
+
+        Args:
+            skip_first_index_of_period: Skip first timestep of each period (for storage continuity).
+
+        Returns:
+            List of groups, where each group is a list of timestep indices to equate.
+        """
+        groups = []
+
+        for index_vectors in self.get_cluster_indices().values():
+            if len(index_vectors) <= 1:
+                continue
+
+            # Determine the length and starting offset
+            start_offset = 1 if skip_first_index_of_period else 0
+            min_len = min(len(v) for v in index_vectors) - start_offset
+
+            # Create a group for each position across all periods in this cluster
+            for pos in range(min_len):
+                group = [int(v[pos + start_offset]) for v in index_vectors]
+                if len(group) > 1:
+                    groups.append(group)
+
+        return groups
+
+    def get_segment_equation_groups(self) -> list[list[int]]:
+        """Get groups of timestep indices that should be equal (intra-segment).
+
+        Each group contains all timesteps within the same segment.
+
+        Returns:
+            List of groups, where each group is a list of timestep indices to equate.
+        """
+        if self.n_segments is None:
+            return []
+
+        groups = []
+        period_length = int(self.hours_per_period / self.hours_per_time_step)
+        segment_duration_dict = self.tsam.segmentDurationDict['Segment Duration']
+
+        for period_idx, cluster_id in enumerate(self.tsam.clusterOrder):
+            period_offset = period_idx * period_length
+            start_step = 0
+
+            for seg_idx in range(self.n_segments):
+                duration = segment_duration_dict[(cluster_id, seg_idx)]
+                if duration > 1:
+                    # Group all timesteps in this segment
+                    group = [period_offset + start_step + step for step in range(duration)]
+                    groups.append(group)
+                start_step += duration
+
+        return groups
+
     def get_segment_equation_indices(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Generates pairs of indices for intra-segment equalization.
@@ -465,62 +524,68 @@ class ClusteringIndices(Interface):
     This class stores the precomputed indices from tsam clustering, allowing
     clustering constraints to be recreated without re-running tsam.
 
-    Each index pair `(i, j)` in `cluster_equations` or `segment_equations` means:
-    "equate var[i] == var[j]" - i.e., the variable values at timesteps i and j must be equal.
+    Each group in `cluster_groups` or `segment_groups` contains timestep indices
+    that should all be equal: e.g., `[0, 96, 192]` means `var[0] == var[96] == var[192]`.
 
     Args:
-        cluster_equations: List of (i, j) pairs for inter-cluster equality constraints.
-        segment_equations: List of (i, j) pairs for intra-segment equality constraints.
+        cluster_groups: List of groups for inter-cluster equality constraints.
+            Each group is a list of timestep indices that should be equal.
+        segment_groups: List of groups for intra-segment equality constraints.
         period: Period label this clustering applies to (None for single-period).
         scenario: Scenario label this clustering applies to (None for single-scenario).
     """
 
     def __init__(
         self,
-        cluster_equations: list[list[int]] | None = None,
-        segment_equations: list[list[int]] | None = None,
+        cluster_groups: list[list[int]] | None = None,
+        segment_groups: list[list[int]] | None = None,
         period: str | int | None = None,
         scenario: str | None = None,
     ):
-        self.cluster_equations = cluster_equations or []
-        self.segment_equations = segment_equations or []
+        self.cluster_groups = cluster_groups or []
+        self.segment_groups = segment_groups or []
         self.period = period
         self.scenario = scenario
 
     @classmethod
     def from_clustering(cls, clustering: Clustering, period=None, scenario=None) -> ClusteringIndices:
         """Create from a Clustering object by extracting equation indices."""
-        cluster_idx = clustering.get_equation_indices(skip_first_index_of_period=True)
-        segment_idx = clustering.get_segment_equation_indices()
-
-        # Convert parallel arrays to list of pairs: [(i, j), (i, j), ...]
-        cluster_equations = (
-            list(zip(cluster_idx[0].tolist(), cluster_idx[1].tolist(), strict=False)) if len(cluster_idx[0]) > 0 else []
-        )
-        segment_equations = (
-            list(zip(segment_idx[0].tolist(), segment_idx[1].tolist(), strict=False)) if len(segment_idx[0]) > 0 else []
-        )
-
         return cls(
-            cluster_equations=cluster_equations,
-            segment_equations=segment_equations,
+            cluster_groups=clustering.get_equation_groups(skip_first_index_of_period=True),
+            segment_groups=clustering.get_segment_equation_groups(),
             period=period,
             scenario=scenario,
         )
 
     def get_cluster_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get cluster equation indices as parallel numpy arrays."""
-        if not self.cluster_equations:
-            return np.array([]), np.array([])
-        idx_i, idx_j = zip(*self.cluster_equations, strict=False)
-        return np.array(idx_i), np.array(idx_j)
+        """Get cluster equation indices as parallel numpy arrays for constraint creation."""
+        return self._groups_to_indices(self.cluster_groups)
 
     def get_segment_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get segment equation indices as parallel numpy arrays."""
-        if not self.segment_equations:
-            return np.array([]), np.array([])
-        idx_i, idx_j = zip(*self.segment_equations, strict=False)
-        return np.array(idx_i), np.array(idx_j)
+        """Get segment equation indices as parallel numpy arrays for constraint creation."""
+        return self._groups_to_indices(self.segment_groups)
+
+    @staticmethod
+    def _groups_to_indices(groups: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
+        """Convert groups to parallel index arrays for constraint creation.
+
+        Each group [a, b, c, d] generates pairs: (a,b), (a,c), (a,d)
+        i.e., equate all elements to the first element of the group.
+        """
+        if not groups:
+            return np.array([], dtype=int), np.array([], dtype=int)
+
+        idx_a = []
+        idx_b = []
+        for group in groups:
+            if len(group) < 2:
+                continue
+            first = group[0]
+            for other in group[1:]:
+                idx_a.append(first)
+                idx_b.append(other)
+
+        return np.array(idx_a, dtype=int), np.array(idx_b, dtype=int)
 
 
 class ClusteringModel(Submodel):
