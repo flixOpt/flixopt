@@ -627,6 +627,42 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
+        # Include clustering info if present
+        if self._clustering_info is not None:
+            from .clustering import ClusteringIndices, ClusteringParameters
+
+            clustering_data = {}
+
+            # Serialize parameters
+            params = self._clustering_info.get('parameters')
+            if isinstance(params, ClusteringParameters):
+                params_ref, _ = params._create_reference_structure()
+                clustering_data['parameters'] = params_ref
+
+            # Serialize equation indices from Clustering objects
+            clustering_dict = self._clustering_info.get('clustering', {})
+            indices_list = []
+            if isinstance(clustering_dict, dict):
+                # Multi-dimensional: {(period, scenario): Clustering}
+                for (period, scenario), clustering in clustering_dict.items():
+                    indices = ClusteringIndices.from_clustering(clustering, period, scenario)
+                    indices_ref, _ = indices._create_reference_structure()
+                    indices_list.append(indices_ref)
+            else:
+                # Single Clustering object
+                indices = ClusteringIndices.from_clustering(clustering_dict)
+                indices_ref, _ = indices._create_reference_structure()
+                indices_list.append(indices_ref)
+
+            clustering_data['indices'] = indices_list
+
+            # Store component labels to clusterize (not the component objects)
+            components = self._clustering_info.get('components_to_clusterize')
+            if components:
+                clustering_data['component_labels'] = [c.label for c in components]
+
+            ds.attrs['clustering_info'] = json.dumps(clustering_data)
+
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
@@ -720,6 +756,45 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
+
+        # Restore clustering info if present
+        if 'clustering_info' in reference_structure:
+            from .clustering import ClusteringIndices
+
+            clustering_data = json.loads(reference_structure['clustering_info'])
+
+            # Restore parameters
+            params = None
+            if 'parameters' in clustering_data:
+                params = cls._resolve_reference_structure(clustering_data['parameters'], {})
+
+            # Restore indices
+            indices_dict = {}
+            for indices_ref in clustering_data.get('indices', []):
+                indices = cls._resolve_reference_structure(indices_ref, {})
+                if isinstance(indices, ClusteringIndices):
+                    key = (indices.period, indices.scenario)
+                    indices_dict[key] = indices
+
+            # Restore component references
+            component_labels = clustering_data.get('component_labels', [])
+            components_to_clusterize = None
+            if component_labels:
+                components_to_clusterize = [
+                    flow_system.components[label] for label in component_labels if label in flow_system.components
+                ]
+
+            flow_system._clustering_info = {
+                'parameters': params,
+                'clustering_indices': indices_dict,  # ClusteringIndices instead of Clustering
+                'components_to_clusterize': components_to_clusterize,
+                'restored_from_file': True,  # Flag to indicate this was loaded, not computed
+            }
+            logger.info(
+                f'Restored clustering info: n_clusters={params.n_clusters}, '
+                f'duration={params.cluster_duration}, n_segments={params.n_segments}. '
+                f'Clustering constraints will be recreated from stored indices.'
+            )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1283,17 +1358,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         from .clustering import ClusteringModel
 
         info = self._clustering_info or {}
-        required_keys = {'parameters', 'clustering', 'components_to_clusterize'}
-        missing_keys = required_keys - set(info)
-        if missing_keys:
-            raise KeyError(f'_clustering_info missing required keys: {sorted(missing_keys)}')
+
+        # Check for required keys - support both fresh clustering and restored from file
+        if 'clustering' in info:
+            # Fresh clustering with Clustering objects
+            clustering_data = info['clustering']
+        elif 'clustering_indices' in info:
+            # Restored from file with ClusteringIndices objects
+            clustering_data = info['clustering_indices']
+        else:
+            raise KeyError(
+                '_clustering_info missing required key: either "clustering" (fresh) or "clustering_indices" (restored)'
+            )
+
+        if 'parameters' not in info:
+            raise KeyError('_clustering_info missing required key: "parameters"')
 
         clustering_model = ClusteringModel(
             model=self.model,
             clustering_parameters=info['parameters'],
             flow_system=self,
-            clustering_data=info['clustering'],
-            components_to_clusterize=info['components_to_clusterize'],
+            clustering_data=clustering_data,
+            components_to_clusterize=info.get('components_to_clusterize'),
         )
         clustering_model.do_modeling()
 

@@ -25,7 +25,9 @@ from .config import CONFIG
 from .plot_result import PlotResult
 from .structure import (
     FlowSystemModel,
+    Interface,
     Submodel,
+    register_class_for_io,
 )
 
 if TYPE_CHECKING:
@@ -353,7 +355,8 @@ def _parse_cluster_duration(duration: str | float) -> float:
     return td.total_seconds() / 3600
 
 
-class ClusteringParameters:
+@register_class_for_io
+class ClusteringParameters(Interface):
     """Parameters for time series clustering.
 
     This class configures how time series data is clustered into representative
@@ -424,6 +427,7 @@ class ClusteringParameters:
         time_series_for_low_peaks: list[TimeSeriesData] | None = None,
     ):
         self.n_clusters = n_clusters
+        self.cluster_duration = cluster_duration  # Store original for serialization
         self.cluster_duration_hours = _parse_cluster_duration(cluster_duration)
         self.n_segments = n_segments
         self.aggregate_data = aggregate_data
@@ -452,6 +456,71 @@ class ClusteringParameters:
     def labels_for_low_peaks(self) -> list[str]:
         """Names of time series used for low peak selection."""
         return [ts.name for ts in self.time_series_for_low_peaks]
+
+
+@register_class_for_io
+class ClusteringIndices(Interface):
+    """Stores computed clustering equation indices for serialization.
+
+    This class stores the precomputed indices from tsam clustering, allowing
+    clustering constraints to be recreated without re-running tsam.
+
+    Each index pair `(i, j)` in `cluster_equations` or `segment_equations` means:
+    "equate var[i] == var[j]" - i.e., the variable values at timesteps i and j must be equal.
+
+    Args:
+        cluster_equations: List of (i, j) pairs for inter-cluster equality constraints.
+        segment_equations: List of (i, j) pairs for intra-segment equality constraints.
+        period: Period label this clustering applies to (None for single-period).
+        scenario: Scenario label this clustering applies to (None for single-scenario).
+    """
+
+    def __init__(
+        self,
+        cluster_equations: list[list[int]] | None = None,
+        segment_equations: list[list[int]] | None = None,
+        period: str | int | None = None,
+        scenario: str | None = None,
+    ):
+        self.cluster_equations = cluster_equations or []
+        self.segment_equations = segment_equations or []
+        self.period = period
+        self.scenario = scenario
+
+    @classmethod
+    def from_clustering(cls, clustering: Clustering, period=None, scenario=None) -> ClusteringIndices:
+        """Create from a Clustering object by extracting equation indices."""
+        cluster_idx = clustering.get_equation_indices(skip_first_index_of_period=True)
+        segment_idx = clustering.get_segment_equation_indices()
+
+        # Convert parallel arrays to list of pairs: [(i, j), (i, j), ...]
+        cluster_equations = (
+            list(zip(cluster_idx[0].tolist(), cluster_idx[1].tolist(), strict=False)) if len(cluster_idx[0]) > 0 else []
+        )
+        segment_equations = (
+            list(zip(segment_idx[0].tolist(), segment_idx[1].tolist(), strict=False)) if len(segment_idx[0]) > 0 else []
+        )
+
+        return cls(
+            cluster_equations=cluster_equations,
+            segment_equations=segment_equations,
+            period=period,
+            scenario=scenario,
+        )
+
+    def get_cluster_indices(self) -> tuple[np.ndarray, np.ndarray]:
+        """Get cluster equation indices as parallel numpy arrays."""
+        if not self.cluster_equations:
+            return np.array([]), np.array([])
+        idx_i, idx_j = zip(*self.cluster_equations, strict=False)
+        return np.array(idx_i), np.array(idx_j)
+
+    def get_segment_indices(self) -> tuple[np.ndarray, np.ndarray]:
+        """Get segment equation indices as parallel numpy arrays."""
+        if not self.segment_equations:
+            return np.array([]), np.array([])
+        idx_i, idx_j = zip(*self.segment_equations, strict=False)
+        return np.array(idx_i), np.array(idx_j)
 
 
 class ClusteringModel(Submodel):
@@ -531,13 +600,23 @@ class ClusteringModel(Submodel):
                         binary_vars[piece.inside_piece.name] = piece.inside_piece
 
         # Create constraints for each clustering (period/scenario combination)
-        for (period, scenario), clustering in self.clustering_data_dict.items():
+        for (period, scenario), clustering_or_indices in self.clustering_data_dict.items():
             suffix = self._make_suffix(period, scenario)
 
-            for constraint_type, indices in [
-                ('cluster', clustering.get_equation_indices(skip_first_index_of_period=True)),
-                ('segment', clustering.get_segment_equation_indices()),
-            ]:
+            # Support both Clustering objects (fresh) and ClusteringIndices (restored from file)
+            if isinstance(clustering_or_indices, ClusteringIndices):
+                indices_pairs = [
+                    ('cluster', clustering_or_indices.get_cluster_indices()),
+                    ('segment', clustering_or_indices.get_segment_indices()),
+                ]
+            else:
+                # Original Clustering object
+                indices_pairs = [
+                    ('cluster', clustering_or_indices.get_equation_indices(skip_first_index_of_period=True)),
+                    ('segment', clustering_or_indices.get_segment_equation_indices()),
+                ]
+
+            for constraint_type, indices in indices_pairs:
                 if len(indices[0]) == 0:
                     continue
 
