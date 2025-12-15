@@ -20,9 +20,11 @@ import flixopt as fx
 # Output directory (same as this script)
 try:
     OUTPUT_DIR = Path(__file__).parent
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'examples' / 'resources'
 except NameError:
     # Running in notebook context (e.g., mkdocs-jupyter)
     OUTPUT_DIR = Path('docs/notebooks/data')
+    DATA_DIR = Path('examples/resources')
 
 
 def create_simple_system() -> fx.FlowSystem:
@@ -241,8 +243,8 @@ def create_district_heating_system() -> fx.FlowSystem:
 
     Used by: 08a-aggregation, 08b-rolling-horizon, 08c-clustering notebooks
     """
-    # Load real data (relative to examples/resources)
-    data_path = Path(__file__).parent.parent.parent.parent / 'examples' / 'resources' / 'Zeitreihen2020.csv'
+    # Load real data
+    data_path = DATA_DIR / 'Zeitreihen2020.csv'
     data = pd.read_csv(data_path, index_col=0, parse_dates=True).sort_index()
     data = data['2020-01-01':'2020-01-31 23:45:00']  # One month
     data.index.name = 'time'
@@ -358,7 +360,7 @@ def create_operational_system() -> fx.FlowSystem:
     Used by: 08b-rolling-horizon notebook
     """
     # Load real data
-    data_path = Path(__file__).parent.parent.parent.parent / 'examples' / 'resources' / 'Zeitreihen2020.csv'
+    data_path = DATA_DIR / 'Zeitreihen2020.csv'
     data = pd.read_csv(data_path, index_col=0, parse_dates=True).sort_index()
     data = data['2020-01-01':'2020-01-14 23:45:00']  # Two weeks
     data.index.name = 'time'
