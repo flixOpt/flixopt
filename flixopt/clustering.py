@@ -526,13 +526,22 @@ class ClusteringModel(Submodel):
                 status_name = f'{flow.label_full}|status'
                 if status_name in component.submodel.variables:
                     relevant_var_names.append(status_name)
-                # Piecewise segment selection
-                inside_piece_name = f'{flow.label_full}|inside_piece'
-                if inside_piece_name in component.submodel.variables:
-                    relevant_var_names.append(inside_piece_name)
+
+            # Piecewise segment binaries (inside_piece for each piece)
+            piecewise_model = getattr(component.submodel, 'piecewise_conversion', None)
+            if piecewise_model is not None:
+                for piece in piecewise_model.pieces:
+                    if piece.inside_piece is not None:
+                        relevant_var_names.append(piece.inside_piece.name)
 
             for var_name in relevant_var_names:
-                variable = component.submodel.variables[var_name]
+                # Look up variable - first in component submodel, then in model
+                if var_name in component.submodel.variables:
+                    variable = component.submodel.variables[var_name]
+                elif var_name in self._model.variables:
+                    variable = self._model.variables[var_name]
+                else:
+                    continue  # Variable not found
                 if 'time' not in variable.dims:
                     continue  # Skip non-time variables
                 var_dims = set(variable.dims)
@@ -631,6 +640,7 @@ class ClusteringModel(Submodel):
 
         # Build list of expressions, each expanded with variable dimension
         lhs_parts = []
+        length = len(indices[0])
 
         for var_name, variable in variables.items():
             # Select period/scenario slice if needed
@@ -639,8 +649,13 @@ class ClusteringModel(Submodel):
             # Create difference expression: var[idx_a] - var[idx_b]
             diff = var_slice.isel(time=indices[0]) - var_slice.isel(time=indices[1])
 
+            # Rename time dimension to eq_idx and assign integer coordinates
+            # (indices[0] can have duplicates, causing duplicate datetime coords)
+            diff_renamed = diff.rename({'time': 'eq_idx'})
+            diff_renamed = diff_renamed.assign_coords(eq_idx=np.arange(length))
+
             # Expand dims to add 'variable' dimension
-            lhs_parts.append(diff.expand_dims(variable=[var_name]))
+            lhs_parts.append(diff_renamed.expand_dims(variable=[var_name]))
 
         # Merge all expressions along 'variable' dimension
         combined_lhs = linopy.merge(*lhs_parts, dim='variable')
@@ -701,16 +716,17 @@ class ClusteringModel(Submodel):
         length = len(indices[0])
         var_name = original_var_name or variable.name
 
-        # Main constraint: x(cluster_a, t) - x(cluster_b, t) = 0
-        con = self.add_constraints(
-            variable.isel(time=indices[0]) - variable.isel(time=indices[1]) == 0,
-            short_name=f'equate_indices{dim_suffix}|{var_name}',
-        )
+        # Create constraint expression: x(cluster_a, t) - x(cluster_b, t)
+        # indices[0] can have duplicate values (same timestep compared to multiple others),
+        # so we use eq_idx dimension with integer coordinates to avoid duplicate datetime coords
+        lhs = variable.isel(time=indices[0]) - variable.isel(time=indices[1])
+
+        # Rename time dimension to eq_idx and assign integer coordinates
+        lhs_renamed = lhs.rename({'time': 'eq_idx'})
+        lhs_renamed = lhs_renamed.assign_coords(eq_idx=np.arange(length))
 
         # Add correction variables for binary flexibility
         if var_name in self._model.variables.binaries and self.clustering_parameters.flexibility_percent > 0:
-            # Use integer indices for correction variables to avoid duplicate datetime coords
-            # (indices[0] can have duplicates since same timestep may be compared to multiple others)
             coords = [np.arange(length)]
             dims = ['eq_idx']
             var_k1 = self.add_variables(
@@ -721,10 +737,7 @@ class ClusteringModel(Submodel):
             )
 
             # Extend equation to allow deviation: On(a,t) - On(b,t) + K1 - K0 = 0
-            # Rename constraint's time dim to eq_idx for alignment, then rename back
-            lhs_renamed = con.lhs.rename({'time': 'eq_idx'})
-            new_lhs = lhs_renamed + 1 * var_k1 - 1 * var_k0
-            con.lhs = new_lhs.rename({'eq_idx': 'time'})
+            lhs_renamed = lhs_renamed + 1 * var_k1 - 1 * var_k0
 
             # Interlock K0 and K1: can't both be 1
             self.add_constraints(var_k0 + var_k1 <= 1, short_name=f'lock_k0_and_k1{dim_suffix}|{var_name}')
@@ -735,3 +748,6 @@ class ClusteringModel(Submodel):
                 var_k0.sum(dim='eq_idx') + var_k1.sum(dim='eq_idx') <= limit,
                 short_name=f'limit_corrections{dim_suffix}|{var_name}',
             )
+
+        # Add the main constraint
+        self.add_constraints(lhs_renamed == 0, short_name=f'equate_indices{dim_suffix}|{var_name}')
