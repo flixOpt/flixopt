@@ -510,22 +510,26 @@ class ClusteringModel(Submodel):
 
             # Only equalize specific variable types:
             # - flow_rate: main continuous decision variables
-            # - status: binary on/off variables (only if aggregate_data=False or binary flexibility)
+            # - status: binary on/off variables
+            # - inside_piece: binary for piecewise segment selection
             relevant_var_names: list[str] = []
 
-            # Always include flow_rate variables when aggregate_data=True
-            if self.clustering_parameters.aggregate_data:
-                for flow in component.inputs + component.outputs:
+            for flow in component.inputs + component.outputs:
+                if self.clustering_parameters.aggregate_data:
+                    # Continuous flow rate
                     flow_rate_name = f'{flow.label_full}|flow_rate'
                     if flow_rate_name in component.submodel.variables:
                         relevant_var_names.append(flow_rate_name)
 
-            # Include status variables (binary on/off) when needed
-            if not self.clustering_parameters.aggregate_data or self.clustering_parameters.flexibility_percent > 0:
-                for flow in component.inputs + component.outputs:
-                    status_name = f'{flow.label_full}|status'
-                    if status_name in component.submodel.variables:
-                        relevant_var_names.append(status_name)
+                # Binary variables - always include for better solver presolve
+                # On/off status
+                status_name = f'{flow.label_full}|status'
+                if status_name in component.submodel.variables:
+                    relevant_var_names.append(status_name)
+                # Piecewise segment selection
+                inside_piece_name = f'{flow.label_full}|inside_piece'
+                if inside_piece_name in component.submodel.variables:
+                    relevant_var_names.append(inside_piece_name)
 
             for var_name in relevant_var_names:
                 variable = component.submodel.variables[var_name]
