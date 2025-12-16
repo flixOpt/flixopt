@@ -518,49 +518,225 @@ class ClusteringParameters(Interface):
 
 
 class ClusteringIndices:
-    """Stores computed clustering equation indices for serialization.
+    """Stores clustering group assignments for timesteps.
 
-    Stores pairs of timestep indices (i, j) where var[i] must equal var[j].
-    Uses numpy arrays for efficient storage in NetCDF.
+    Each timestep is assigned to a cluster group and optionally a segment group.
+    Timesteps in the same group should have equal variable values.
+
+    The group assignments are stored as integer arrays where:
+    - A value >= 0 indicates the group ID
+    - A value of -1 indicates "not in any group" (no equalization)
 
     Args:
-        cluster_idx_i: First indices for inter-cluster equality constraints.
-        cluster_idx_j: Second indices for inter-cluster equality constraints.
-        segment_idx_i: First indices for intra-segment equality constraints.
-        segment_idx_j: Second indices for intra-segment equality constraints.
+        cluster_groups: Array of shape (n_timesteps,) mapping each timestep to
+            a cluster group ID. Timesteps with the same group ID (except -1)
+            will be equalized.
+        segment_groups: Array of shape (n_timesteps,) mapping each timestep to
+            a segment group ID. Timesteps with the same group ID (except -1)
+            will be equalized.
     """
 
     def __init__(
         self,
-        cluster_idx_i: np.ndarray | None = None,
-        cluster_idx_j: np.ndarray | None = None,
-        segment_idx_i: np.ndarray | None = None,
-        segment_idx_j: np.ndarray | None = None,
+        cluster_groups: np.ndarray | None = None,
+        segment_groups: np.ndarray | None = None,
     ):
-        self.cluster_idx_i = cluster_idx_i if cluster_idx_i is not None else np.array([], dtype=np.int32)
-        self.cluster_idx_j = cluster_idx_j if cluster_idx_j is not None else np.array([], dtype=np.int32)
-        self.segment_idx_i = segment_idx_i if segment_idx_i is not None else np.array([], dtype=np.int32)
-        self.segment_idx_j = segment_idx_j if segment_idx_j is not None else np.array([], dtype=np.int32)
+        self.cluster_groups = cluster_groups if cluster_groups is not None else np.array([], dtype=np.int32)
+        self.segment_groups = segment_groups if segment_groups is not None else np.array([], dtype=np.int32)
 
     @classmethod
     def from_clustering(cls, clustering: Clustering) -> ClusteringIndices:
-        """Create from a Clustering object by extracting equation indices."""
-        cluster_idx = clustering.get_equation_indices(skip_first_index_of_period=True)
-        segment_idx = clustering.get_segment_equation_indices()
-        return cls(
-            cluster_idx_i=cluster_idx[0].astype(np.int32),
-            cluster_idx_j=cluster_idx[1].astype(np.int32),
-            segment_idx_i=segment_idx[0].astype(np.int32),
-            segment_idx_j=segment_idx[1].astype(np.int32),
-        )
+        """Create from a Clustering object by extracting group assignments."""
+        n_timesteps = clustering.nr_of_time_steps
+        period_length = int(clustering.hours_per_period / clustering.hours_per_time_step)
+
+        # Build cluster groups: cluster_id * period_length + position_in_period
+        # Skip first timestep of each period for storage continuity
+        cluster_groups = np.full(n_timesteps, -1, dtype=np.int32)
+        for period_idx, cluster_id in enumerate(clustering.tsam.clusterOrder):
+            start_idx = period_idx * period_length
+            # Skip first timestep (position 0) for storage continuity
+            for pos in range(1, period_length):
+                ts_idx = start_idx + pos
+                if ts_idx < n_timesteps:
+                    cluster_groups[ts_idx] = cluster_id * period_length + pos
+
+        # Build segment groups
+        segment_groups = np.full(n_timesteps, -1, dtype=np.int32)
+        if clustering.n_segments is not None:
+            segment_counter = 0
+            segment_duration_dict = clustering.tsam.segmentDurationDict['Segment Duration']
+
+            for period_idx, cluster_id in enumerate(clustering.tsam.clusterOrder):
+                period_offset = period_idx * period_length
+                start_step = 0
+
+                for seg_idx in range(clustering.n_segments):
+                    duration = segment_duration_dict[(cluster_id, seg_idx)]
+                    # All timesteps in this segment get the same group ID
+                    for step in range(duration):
+                        ts_idx = period_offset + start_step + step
+                        if ts_idx < n_timesteps:
+                            segment_groups[ts_idx] = segment_counter
+                    segment_counter += 1
+                    start_step += duration
+
+        return cls(cluster_groups=cluster_groups, segment_groups=segment_groups)
+
+    @classmethod
+    def from_tsam(
+        cls,
+        aggregation: tsam.TimeSeriesAggregation,
+        hours_per_timestep: float,
+        hours_per_period: float,
+        skip_first_index_of_period: bool = True,
+    ) -> ClusteringIndices:
+        """Create from a tsam TimeSeriesAggregation object directly.
+
+        This allows users to run tsam on a subset of their time series data
+        (e.g., only key drivers like prices and demands) and then apply the
+        resulting clustering to a full FlowSystem.
+
+        Args:
+            aggregation: A tsam TimeSeriesAggregation object after calling
+                createTypicalPeriods().
+            hours_per_timestep: Duration of each timestep in hours (must match
+                the resolution used when creating the tsam aggregation).
+            hours_per_period: Duration of each period in hours (must match
+                hoursPerPeriod used when creating the tsam aggregation).
+            skip_first_index_of_period: Skip first timestep of each period when
+                creating inter-cluster constraints. Default True (recommended
+                for correct storage state transitions).
+
+        Returns:
+            ClusteringIndices with group assignments for constraint generation.
+
+        Examples:
+            >>> import tsam.timeseriesaggregation as tsam
+            >>> import pandas as pd
+            >>>
+            >>> # Create subset DataFrame with key time series
+            >>> subset_df = pd.DataFrame(
+            ...     {
+            ...         'electricity_price': prices,
+            ...         'heat_demand': demand,
+            ...     },
+            ...     index=timesteps,
+            ... )
+            >>>
+            >>> # Run tsam clustering
+            >>> aggregation = tsam.TimeSeriesAggregation(
+            ...     subset_df,
+            ...     noTypicalPeriods=8,
+            ...     hoursPerPeriod=24,
+            ...     resolution=1,  # 1-hour timesteps
+            ... )
+            >>> aggregation.createTypicalPeriods()
+            >>>
+            >>> # Convert to ClusteringIndices
+            >>> indices = ClusteringIndices.from_tsam(
+            ...     aggregation,
+            ...     hours_per_timestep=1,
+            ...     hours_per_period=24,
+            ... )
+            >>>
+            >>> # Apply to FlowSystem
+            >>> clustered_fs = flow_system.transform.add_clustering(indices)
+
+            With inner-period segmentation:
+
+            >>> aggregation = tsam.TimeSeriesAggregation(
+            ...     subset_df,
+            ...     noTypicalPeriods=8,
+            ...     hoursPerPeriod=24,
+            ...     resolution=1,
+            ...     segmentation=True,
+            ...     noSegments=4,
+            ... )
+            >>> aggregation.createTypicalPeriods()
+            >>> indices = ClusteringIndices.from_tsam(aggregation, 1, 24)
+        """
+        if not TSAM_AVAILABLE:
+            raise ImportError("The 'tsam' package is required. Install it with 'pip install tsam'.")
+
+        period_length = int(hours_per_period / hours_per_timestep)
+        n_timesteps = len(aggregation.timeSeries)
+
+        # Build cluster groups: cluster_id * period_length + position_in_period
+        cluster_groups = np.full(n_timesteps, -1, dtype=np.int32)
+        start_pos = 1 if skip_first_index_of_period else 0
+
+        for period_idx, cluster_id in enumerate(aggregation.clusterOrder):
+            start_idx = period_idx * period_length
+            for pos in range(start_pos, period_length):
+                ts_idx = start_idx + pos
+                if ts_idx < n_timesteps:
+                    cluster_groups[ts_idx] = cluster_id * period_length + pos
+
+        # Build segment groups
+        segment_groups = np.full(n_timesteps, -1, dtype=np.int32)
+        if aggregation.segmentation and hasattr(aggregation, 'segmentDurationDict'):
+            segment_counter = 0
+            n_segments = aggregation.noSegments
+            segment_duration_dict = aggregation.segmentDurationDict['Segment Duration']
+
+            for period_idx, cluster_id in enumerate(aggregation.clusterOrder):
+                period_offset = period_idx * period_length
+                start_step = 0
+
+                for seg_idx in range(n_segments):
+                    duration = segment_duration_dict[(cluster_id, seg_idx)]
+                    # All timesteps in this segment get the same group ID
+                    for step in range(duration):
+                        ts_idx = period_offset + start_step + step
+                        if ts_idx < n_timesteps:
+                            segment_groups[ts_idx] = segment_counter
+                    segment_counter += 1
+                    start_step += duration
+
+        return cls(cluster_groups=cluster_groups, segment_groups=segment_groups)
 
     def get_cluster_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get cluster equation indices as parallel numpy arrays."""
-        return self.cluster_idx_i, self.cluster_idx_j
+        """Get cluster equation indices as parallel numpy arrays.
+
+        Converts group assignments to pairs (i, j) where var[i] == var[j].
+        Returns indices for all pairs within each group.
+        """
+        return self._groups_to_pairs(self.cluster_groups)
 
     def get_segment_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get segment equation indices as parallel numpy arrays."""
-        return self.segment_idx_i, self.segment_idx_j
+        """Get segment equation indices as parallel numpy arrays.
+
+        Converts group assignments to pairs (i, j) where var[i] == var[j].
+        Returns indices for all pairs within each group.
+        """
+        return self._groups_to_pairs(self.segment_groups)
+
+    @staticmethod
+    def _groups_to_pairs(groups: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Convert group assignments to equation pairs.
+
+        For each group with members [a, b, c, ...], generates pairs:
+        (a, b), (a, c), ... to equate all members to the first.
+        """
+        if len(groups) == 0:
+            return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
+
+        # Find unique groups (excluding -1)
+        unique_groups = np.unique(groups)
+        unique_groups = unique_groups[unique_groups >= 0]
+
+        idx_i, idx_j = [], []
+        for group_id in unique_groups:
+            members = np.where(groups == group_id)[0]
+            if len(members) > 1:
+                # Equate all members to the first
+                first = members[0]
+                for other in members[1:]:
+                    idx_i.append(first)
+                    idx_j.append(other)
+
+        return np.array(idx_i, dtype=np.int32), np.array(idx_j, dtype=np.int32)
 
 
 class ClusteringModel(Submodel):
@@ -575,31 +751,22 @@ class ClusteringModel(Submodel):
         model: FlowSystemModel,
         clustering_parameters: ClusteringParameters,
         flow_system: FlowSystem,
-        clustering_data: Clustering | dict[tuple, Clustering],
-        components_to_clusterize: list[Component] | None,
+        clustering_indices: ClusteringIndices,
+        components_to_clusterize: list[Component] | None = None,
     ):
         """
         Args:
             model: The FlowSystemModel to add constraints to.
             clustering_parameters: Parameters controlling clustering behavior.
             flow_system: The FlowSystem being optimized.
-            clustering_data: Either a single Clustering object (simple case) or a dict
-                mapping (period_label, scenario_label) tuples to Clustering objects
-                (multi-dimensional case).
+            clustering_indices: Precomputed equation indices (from Clustering or user-provided).
             components_to_clusterize: Components to apply clustering to. If None, all components.
         """
         super().__init__(model, label_of_element='Clustering', label_of_model='Clustering')
         self.flow_system = flow_system
         self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
-
-        # Handle both single and multi-dimensional clustering
-        if isinstance(clustering_data, dict):
-            self.clustering_data_dict = clustering_data
-            self.is_multi_dimensional = True
-        else:
-            self.clustering_data_dict = {(None, None): clustering_data}
-            self.is_multi_dimensional = False
+        self.clustering_indices = clustering_indices
 
     def do_modeling(self):
         """Create equality constraints for clustered time indices.
@@ -639,94 +806,57 @@ class ClusteringModel(Submodel):
                     if piece.inside_piece is not None:
                         binary_vars[piece.inside_piece.name] = piece.inside_piece
 
-        # Create constraints for each clustering (period/scenario combination)
-        for (period, scenario), clustering_or_indices in self.clustering_data_dict.items():
-            suffix = self._make_suffix(period, scenario)
+        # Create constraints from clustering indices
+        indices = self.clustering_indices
 
-            # Support both Clustering objects (fresh) and ClusteringIndices (restored from file)
-            if isinstance(clustering_or_indices, ClusteringIndices):
-                indices_pairs = [
-                    ('cluster', clustering_or_indices.get_cluster_indices()),
-                    ('segment', clustering_or_indices.get_segment_indices()),
-                ]
-            else:
-                # Original Clustering object
-                indices_pairs = [
-                    ('cluster', clustering_or_indices.get_equation_indices(skip_first_index_of_period=True)),
-                    ('segment', clustering_or_indices.get_segment_equation_indices()),
-                ]
+        for constraint_type, idx_pair in [
+            ('cluster', indices.get_cluster_indices()),
+            ('segment', indices.get_segment_indices()),
+        ]:
+            if len(idx_pair[0]) == 0:
+                continue
 
-            for constraint_type, indices in indices_pairs:
-                if len(indices[0]) == 0:
-                    continue
+            # Batch continuous variables into single constraint
+            if continuous_vars:
+                self._add_equality_constraint(continuous_vars, idx_pair, f'base_{constraint_type}')
 
-                # Batch continuous variables into single constraint
-                if continuous_vars:
-                    self._add_equality_constraint(
-                        continuous_vars, indices, period, scenario, f'{suffix}_{constraint_type}'
-                    )
-
-                # Individual constraints for binaries (needed for flexibility correction vars)
-                for var in binary_vars.values():
-                    self._add_equality_constraint(
-                        {var.name: var},
-                        indices,
-                        period,
-                        scenario,
-                        f'{suffix}_{constraint_type}|{var.name}',
-                        allow_flexibility=True,
-                    )
+            # Individual constraints for binaries (needed for flexibility correction vars)
+            for var in binary_vars.values():
+                self._add_equality_constraint(
+                    {var.name: var}, idx_pair, f'base_{constraint_type}|{var.name}', allow_flexibility=True
+                )
 
         # Add penalty for flexibility deviations
         self._add_flexibility_penalty()
-
-    def _make_suffix(self, period, scenario) -> str:
-        """Create constraint name suffix from period/scenario labels."""
-        parts = []
-        if period is not None:
-            parts.append(f'p{period}')
-        if scenario is not None:
-            parts.append(f's{scenario}')
-        return '_'.join(parts) if parts else 'base'
 
     def _add_equality_constraint(
         self,
         variables: dict[str, linopy.Variable],
         indices: tuple[np.ndarray, np.ndarray],
-        period,
-        scenario,
         suffix: str,
         allow_flexibility: bool = False,
     ) -> None:
-        """Add equality constraint: var[idx_a] == var[idx_b] for all index pairs.
+        """Add equality constraint: var[idx_i] == var[idx_j] for all index pairs.
 
         Args:
             variables: Variables to constrain (batched if multiple).
-            indices: Tuple of (idx_a, idx_b) arrays - timesteps to equate.
-            period: Period label for selecting variable slice (or None).
-            scenario: Scenario label for selecting variable slice (or None).
+            indices: Tuple of (idx_i, idx_j) arrays - timesteps to equate.
             suffix: Constraint name suffix.
             allow_flexibility: If True, add correction variables for binaries.
         """
         import linopy
 
-        idx_a, idx_b = indices
-        n_equations = len(idx_a)
+        idx_i, idx_j = indices
+        n_equations = len(idx_i)
 
         # Build constraint expression for each variable
         expressions = []
         for name, var in variables.items():
-            # Select period/scenario slice if variable has those dimensions
-            if period is not None and 'period' in var.dims:
-                var = var.sel(period=period)
-            if scenario is not None and 'scenario' in var.dims:
-                var = var.sel(scenario=scenario)
-
             if 'time' not in var.dims:
                 continue
 
-            # Compute difference: var[idx_a] - var[idx_b]
-            diff = var.isel(time=idx_a) - var.isel(time=idx_b)
+            # Compute difference: var[idx_i] - var[idx_j]
+            diff = var.isel(time=idx_i) - var.isel(time=idx_j)
 
             # Replace time dim with integer eq_idx (avoids duplicate datetime coords)
             diff = diff.rename({'time': 'eq_idx'}).assign_coords(eq_idx=np.arange(n_equations))

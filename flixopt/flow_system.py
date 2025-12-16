@@ -642,19 +642,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if components:
                 ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
 
-            # Store equation indices as DataArrays (efficient binary storage)
+            # Store group assignments as DataArrays (efficient binary storage)
+            # Get or create ClusteringIndices
             clustering_obj = self._clustering_info.get('clustering')
+            indices_dict = self._clustering_info.get('clustering_indices')
+
             if clustering_obj is not None:
                 if isinstance(clustering_obj, dict):
-                    # Multi-dimensional: {(period, scenario): Clustering}
-                    # For now, only support single clustering (most common case)
                     clustering_obj = next(iter(clustering_obj.values()))
-
                 indices = ClusteringIndices.from_clustering(clustering_obj)
-                ds['_clustering_cluster_idx_i'] = xr.DataArray(indices.cluster_idx_i, dims=['_cluster_eq'])
-                ds['_clustering_cluster_idx_j'] = xr.DataArray(indices.cluster_idx_j, dims=['_cluster_eq'])
-                ds['_clustering_segment_idx_i'] = xr.DataArray(indices.segment_idx_i, dims=['_segment_eq'])
-                ds['_clustering_segment_idx_j'] = xr.DataArray(indices.segment_idx_j, dims=['_segment_eq'])
+            elif indices_dict is not None:
+                indices = next(iter(indices_dict.values()))
+            else:
+                indices = None
+
+            if indices is not None:
+                ds['_clustering_cluster_groups'] = xr.DataArray(
+                    indices.cluster_groups, dims=['time'], coords={'time': self.timesteps}
+                )
+                ds['_clustering_segment_groups'] = xr.DataArray(
+                    indices.segment_groups, dims=['time'], coords={'time': self.timesteps}
+                )
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -757,12 +765,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Restore parameters
             params = cls._resolve_reference_structure(json.loads(reference_structure['_clustering_params']), {})
 
-            # Restore indices from DataArrays
+            # Restore group assignments from DataArrays
             indices = ClusteringIndices(
-                cluster_idx_i=ds['_clustering_cluster_idx_i'].values if '_clustering_cluster_idx_i' in ds else None,
-                cluster_idx_j=ds['_clustering_cluster_idx_j'].values if '_clustering_cluster_idx_j' in ds else None,
-                segment_idx_i=ds['_clustering_segment_idx_i'].values if '_clustering_segment_idx_i' in ds else None,
-                segment_idx_j=ds['_clustering_segment_idx_j'].values if '_clustering_segment_idx_j' in ds else None,
+                cluster_groups=ds['_clustering_cluster_groups'].values if '_clustering_cluster_groups' in ds else None,
+                segment_groups=ds['_clustering_segment_groups'].values if '_clustering_segment_groups' in ds else None,
             )
 
             # Restore component references
@@ -779,10 +785,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'components_to_clusterize': components_to_clusterize,
                 'restored_from_file': True,
             }
+            n_cluster_groups = len(np.unique(indices.cluster_groups[indices.cluster_groups >= 0]))
+            n_segment_groups = len(np.unique(indices.segment_groups[indices.segment_groups >= 0]))
             logger.info(
                 f'Restored clustering: n_clusters={params.n_clusters}, duration={params.cluster_duration}, '
-                f'n_segments={params.n_segments}, {len(indices.cluster_idx_i)} cluster + '
-                f'{len(indices.segment_idx_i)} segment equations.'
+                f'n_segments={params.n_segments}, {n_cluster_groups} cluster groups + '
+                f'{n_segment_groups} segment groups.'
             )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
@@ -1344,30 +1352,35 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_clustering_constraints(self) -> None:
         """Add clustering constraints to the model."""
-        from .clustering import ClusteringModel
+        from .clustering import ClusteringIndices, ClusteringModel
 
         info = self._clustering_info or {}
 
-        # Check for required keys - support both fresh clustering and restored from file
-        if 'clustering' in info:
-            # Fresh clustering with Clustering objects
-            clustering_data = info['clustering']
-        elif 'clustering_indices' in info:
-            # Restored from file with ClusteringIndices objects
-            clustering_data = info['clustering_indices']
+        if 'parameters' not in info:
+            raise KeyError('_clustering_info missing required key: "parameters"')
+
+        # Get or create ClusteringIndices
+        if 'clustering_indices' in info:
+            # Restored from file - use directly
+            indices_dict = info['clustering_indices']
+            # Get the single ClusteringIndices (for now, only support single clustering)
+            clustering_indices = next(iter(indices_dict.values()))
+        elif 'clustering' in info:
+            # Fresh clustering - convert Clustering to ClusteringIndices
+            clustering_obj = info['clustering']
+            if isinstance(clustering_obj, dict):
+                clustering_obj = next(iter(clustering_obj.values()))
+            clustering_indices = ClusteringIndices.from_clustering(clustering_obj)
         else:
             raise KeyError(
                 '_clustering_info missing required key: either "clustering" (fresh) or "clustering_indices" (restored)'
             )
 
-        if 'parameters' not in info:
-            raise KeyError('_clustering_info missing required key: "parameters"')
-
         clustering_model = ClusteringModel(
             model=self.model,
             clustering_parameters=info['parameters'],
             flow_system=self,
-            clustering_data=clustering_data,
+            clustering_indices=clustering_indices,
             components_to_clusterize=info.get('components_to_clusterize'),
         )
         clustering_model.do_modeling()

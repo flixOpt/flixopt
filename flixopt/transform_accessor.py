@@ -17,7 +17,7 @@ import xarray as xr
 if TYPE_CHECKING:
     import numpy as np
 
-    from .clustering import ClusteringParameters
+    from .clustering import ClusteringIndices, ClusteringParameters
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -398,6 +398,96 @@ class TransformAccessor:
             logger.info('All Clustering weights were set to 1')
 
         return weights
+
+    def add_clustering(
+        self,
+        indices: ClusteringIndices,
+        parameters: ClusteringParameters | None = None,
+        components_to_clusterize: list | None = None,
+    ) -> FlowSystem:
+        """Add clustering constraints using externally computed indices.
+
+        This method allows applying clustering to a FlowSystem using indices
+        computed outside of flixopt. This is useful when:
+        - You want to cluster based on a subset of time series data (faster tsam)
+        - You have custom clustering logic or algorithms
+        - You want to reuse clustering results across multiple FlowSystems
+
+        The clustering indices define equality constraints that equate variable values
+        at specific timestep pairs. For example, if indices specify (10, 50), then
+        for all clustered variables: var[10] == var[50].
+
+        Args:
+            indices: ClusteringIndices object with precomputed equation indices.
+                Use ClusteringIndices.from_tsam() to create from tsam results.
+            parameters: Optional ClusteringParameters. If None, default parameters
+                are created (no flexibility, include storage). Required parameters
+                like n_clusters and cluster_duration are only used for metadata.
+            components_to_clusterize: Components to apply clustering to.
+                If None, all components are clustered.
+
+        Returns:
+            A new FlowSystem with clustering constraints configured.
+
+        Examples:
+            External clustering with tsam on subset of data:
+
+            >>> import tsam.timeseriesaggregation as tsam
+            >>> # Extract subset of timeseries for clustering
+            >>> subset_df = pd.DataFrame(
+            ...     {
+            ...         'price': flow_system['prices'].values,
+            ...         'demand': flow_system['heat_demand'].values,
+            ...     },
+            ...     index=flow_system.timesteps,
+            ... )
+            >>>
+            >>> # Run tsam on subset
+            >>> aggregation = tsam.TimeSeriesAggregation(subset_df, noTypicalPeriods=8, hoursPerPeriod=24)
+            >>> aggregation.createTypicalPeriods()
+            >>>
+            >>> # Convert to ClusteringIndices
+            >>> from flixopt.clustering import ClusteringIndices
+            >>> indices = ClusteringIndices.from_tsam(aggregation)
+            >>>
+            >>> # Apply to FlowSystem
+            >>> clustered_fs = flow_system.transform.add_clustering(indices)
+            >>> clustered_fs.optimize(solver)
+
+            With custom parameters:
+
+            >>> from flixopt.clustering import ClusteringParameters, ClusteringIndices
+            >>> params = ClusteringParameters(
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
+            ...     flexibility_percent=5,  # Allow 5% binary deviation
+            ... )
+            >>> clustered_fs = flow_system.transform.add_clustering(indices, parameters=params)
+        """
+        from .clustering import ClusteringIndices, ClusteringParameters
+
+        # Validate indices type
+        if not isinstance(indices, ClusteringIndices):
+            raise TypeError(f'indices must be ClusteringIndices, got {type(indices).__name__}')
+
+        # Create default parameters if not provided
+        if parameters is None:
+            parameters = ClusteringParameters(
+                n_clusters=None,  # Unknown when using external indices
+                cluster_duration=1.0,  # Placeholder - not used for constraint generation
+            )
+
+        # Create a copy of the FlowSystem to avoid modifying the original
+        clustered_fs = self._fs.copy()
+
+        # Store clustering info
+        clustered_fs._clustering_info = {
+            'parameters': parameters,
+            'clustering_indices': {(None, None): indices},  # Single clustering
+            'components_to_clusterize': components_to_clusterize,
+        }
+
+        return clustered_fs
 
     def sel(
         self,

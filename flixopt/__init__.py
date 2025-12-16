@@ -15,7 +15,7 @@ except (PackageNotFoundError, TypeError):
 # Import commonly used classes and functions
 from . import linear_converters, plotting, results, solvers
 from .carrier import Carrier, CarrierContainer
-from .clustering import ClusteringParameters
+from .clustering import ClusteringIndices, ClusteringParameters
 from .components import (
     LinearConverter,
     Sink,
@@ -58,6 +58,7 @@ __all__ = [
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
+    'ClusteringIndices',
     'ClusteringParameters',
     'PlotResult',
     'plotting',
