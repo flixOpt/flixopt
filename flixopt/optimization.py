@@ -422,12 +422,10 @@ class ClusteredOptimization(Optimization):
         self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Clustering Submodel after modeling the rest
-        # Convert Clustering to ClusteringIndices via tsam
-        from .clustering import ClusteringIndices
-
-        clustering_indices = ClusteringIndices.from_tsam(self.clustering.tsam)
+        # Populate clustering indices from tsam
+        self.clustering_parameters.populate_from_tsam(self.clustering.tsam)
         self.clustering_model = ClusteringModel(
-            self.model, self.clustering_parameters, self.flow_system, clustering_indices, self.components_to_clusterize
+            self.model, self.clustering_parameters, self.flow_system, self.components_to_clusterize
         )
         self.clustering_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)

@@ -17,7 +17,7 @@ import xarray as xr
 if TYPE_CHECKING:
     import numpy as np
 
-    from .clustering import ClusteringIndices, ClusteringParameters
+    from .clustering import ClusteringParameters
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -401,11 +401,10 @@ class TransformAccessor:
 
     def add_clustering(
         self,
-        indices: ClusteringIndices,
-        parameters: ClusteringParameters | None = None,
+        parameters: ClusteringParameters,
         components_to_clusterize: list | None = None,
     ) -> FlowSystem:
-        """Add clustering constraints using externally computed indices.
+        """Add clustering constraints using ClusteringParameters with pre-set indices.
 
         This method allows applying clustering to a FlowSystem using indices
         computed outside of flixopt. This is useful when:
@@ -414,15 +413,12 @@ class TransformAccessor:
         - You want to reuse clustering results across multiple FlowSystems
 
         The clustering indices define equality constraints that equate variable values
-        at specific timestep pairs. For example, if indices specify (10, 50), then
-        for all clustered variables: var[10] == var[50].
+        at specific timestep pairs. The parameters must have `cluster_order` and
+        `period_length` set (either directly or via `populate_from_tsam()`).
 
         Args:
-            indices: ClusteringIndices object with precomputed equation indices.
-                Use ClusteringIndices.from_tsam() to create from tsam results.
-            parameters: Optional ClusteringParameters. If None, default parameters
-                are created (no flexibility, include storage). Required parameters
-                like n_clusters and cluster_duration are only used for metadata.
+            parameters: ClusteringParameters with clustering indices set.
+                Must have `cluster_order` and `period_length` populated.
             components_to_clusterize: Components to apply clustering to.
                 If None, all components are clustered.
 
@@ -446,35 +442,37 @@ class TransformAccessor:
             >>> aggregation = tsam.TimeSeriesAggregation(subset_df, noTypicalPeriods=8, hoursPerPeriod=24)
             >>> aggregation.createTypicalPeriods()
             >>>
-            >>> # Convert to ClusteringIndices
-            >>> from flixopt.clustering import ClusteringIndices
-            >>> indices = ClusteringIndices.from_tsam(aggregation)
+            >>> # Create parameters and populate from tsam
+            >>> params = fx.ClusteringParameters(n_clusters=8, cluster_duration='1D')
+            >>> params.populate_from_tsam(aggregation)
             >>>
             >>> # Apply to FlowSystem
-            >>> clustered_fs = flow_system.transform.add_clustering(indices)
+            >>> clustered_fs = flow_system.transform.add_clustering(params)
             >>> clustered_fs.optimize(solver)
 
-            With custom parameters:
+            With pre-computed cluster assignments:
 
-            >>> from flixopt.clustering import ClusteringParameters, ClusteringIndices
-            >>> params = ClusteringParameters(
+            >>> import xarray as xr
+            >>> params = fx.ClusteringParameters(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
+            ...     cluster_order=xr.DataArray([0, 1, 2, 0, 1, 2, 0, 1], dims=['cluster_period']),
+            ...     period_length=24,
             ...     flexibility_percent=5,  # Allow 5% binary deviation
             ... )
-            >>> clustered_fs = flow_system.transform.add_clustering(indices, parameters=params)
+            >>> clustered_fs = flow_system.transform.add_clustering(params)
         """
-        from .clustering import ClusteringIndices, ClusteringParameters
+        from .clustering import ClusteringParameters
 
-        # Validate indices type
-        if not isinstance(indices, ClusteringIndices):
-            raise TypeError(f'indices must be ClusteringIndices, got {type(indices).__name__}')
+        # Validate parameters type
+        if not isinstance(parameters, ClusteringParameters):
+            raise TypeError(f'parameters must be ClusteringParameters, got {type(parameters).__name__}')
 
-        # Create default parameters if not provided
-        if parameters is None:
-            parameters = ClusteringParameters(
-                n_clusters=None,  # Unknown when using external indices
-                cluster_duration=1.0,  # Placeholder - not used for constraint generation
+        # Validate that indices are set
+        if not parameters.has_indices:
+            raise ValueError(
+                'ClusteringParameters must have indices set. '
+                'Either provide cluster_order/period_length directly or call populate_from_tsam().'
             )
 
         # Create a copy of the FlowSystem to avoid modifying the original
@@ -483,7 +481,6 @@ class TransformAccessor:
         # Store clustering info
         clustered_fs._clustering_info = {
             'parameters': parameters,
-            'clustering_indices': {(None, None): indices},  # Single clustering
             'components_to_clusterize': components_to_clusterize,
         }
 

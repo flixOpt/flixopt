@@ -448,6 +448,15 @@ class ClusteringParameters(Interface):
             segments with high values.
         time_series_for_low_peaks: List of TimeSeriesData to force inclusion of
             segments with low values.
+        cluster_order: Pre-computed cluster assignments. DataArray of shape (cluster_period,)
+            specifying which cluster each period belongs to. If provided, tsam clustering
+            is skipped.
+        period_length: Number of timesteps per clustering-period. Required if cluster_order
+            is provided.
+        segment_assignment: Pre-computed segment assignments. DataArray of shape (cluster, position)
+            specifying segment ID for each position. Optional.
+        skip_first_of_period: Whether to skip the first timestep of each period for storage
+            constraints (to maintain inter-period continuity). Default is True.
 
     Examples:
         Basic usage (8 typical days):
@@ -465,13 +474,15 @@ class ClusteringParameters(Interface):
         ...     n_segments=4,  # Reduce 24h to 4 segments per day
         ... )
 
-        Segmentation only (no clustering, just reduce to 4 segments per day):
+        With pre-computed cluster assignments (external clustering):
 
-        >>> clustered_fs = flow_system.transform.cluster(
-        ...     n_clusters=None,  # Skip clustering
+        >>> params = fx.ClusteringParameters(
+        ...     n_clusters=8,
         ...     cluster_duration='1D',
-        ...     n_segments=4,
+        ...     cluster_order=xr.DataArray([0, 1, 2, 0, 1, ...], dims=['cluster_period']),
+        ...     period_length=24,
         ... )
+        >>> clustered_fs = flow_system.transform.cluster(parameters=params)
     """
 
     def __init__(
@@ -485,7 +496,14 @@ class ClusteringParameters(Interface):
         flexibility_penalty: float = 0,
         time_series_for_high_peaks: list[TimeSeriesData] | None = None,
         time_series_for_low_peaks: list[TimeSeriesData] | None = None,
+        # Clustering indices (optional - computed from tsam if not provided)
+        cluster_order: xr.DataArray | None = None,
+        period_length: int | None = None,
+        segment_assignment: xr.DataArray | None = None,
+        skip_first_of_period: bool = True,
     ):
+        import xarray as xr
+
         self.n_clusters = n_clusters
         self.cluster_duration = cluster_duration  # Store original for serialization
         self.cluster_duration_hours = _parse_cluster_duration(cluster_duration)
@@ -496,6 +514,39 @@ class ClusteringParameters(Interface):
         self.flexibility_penalty = flexibility_penalty
         self.time_series_for_high_peaks: list[TimeSeriesData] = time_series_for_high_peaks or []
         self.time_series_for_low_peaks: list[TimeSeriesData] = time_series_for_low_peaks or []
+        self.skip_first_of_period = skip_first_of_period
+
+        # Clustering indices - ensure DataArrays have names for IO
+        if cluster_order is not None:
+            if isinstance(cluster_order, xr.DataArray):
+                self.cluster_order = (
+                    cluster_order.rename('cluster_order') if cluster_order.name is None else cluster_order
+                )
+            else:
+                self.cluster_order = xr.DataArray(cluster_order, dims=['cluster_period'], name='cluster_order')
+        else:
+            self.cluster_order = None
+
+        self.period_length = int(period_length) if period_length is not None else None
+
+        if segment_assignment is not None:
+            if isinstance(segment_assignment, xr.DataArray):
+                self.segment_assignment = (
+                    segment_assignment.rename('segment_assignment')
+                    if segment_assignment.name is None
+                    else segment_assignment
+                )
+            else:
+                self.segment_assignment = xr.DataArray(
+                    segment_assignment, dims=['cluster', 'position'], name='segment_assignment'
+                )
+        else:
+            self.segment_assignment = None
+
+    @property
+    def has_indices(self) -> bool:
+        """Whether clustering indices have been computed/provided."""
+        return self.cluster_order is not None and self.period_length is not None
 
     @property
     def use_extreme_periods(self) -> bool:
@@ -517,83 +568,27 @@ class ClusteringParameters(Interface):
         """Names of time series used for low peak selection."""
         return [ts.name for ts in self.time_series_for_low_peaks]
 
-
-@register_class_for_io
-class ClusteringIndices(Interface):
-    """Compact storage for clustering assignments.
-
-    Stores clustering in a compact format:
-    - `cluster_order`: DataArray (cluster_period,) - which cluster each period belongs to
-    - `segment_assignment`: DataArray (cluster, position) - segment ID per position in cluster
-
-    For 365 days with 24h periods: stores 365 + 8×24 = 557 values instead of 8760.
-
-    Args:
-        cluster_order: DataArray of shape (cluster_period,) with cluster IDs.
-        period_length: Number of timesteps per clustering-period.
-        segment_assignment: Optional DataArray (cluster, position) with segment IDs.
-        skip_first_of_period: Skip first timestep for storage continuity.
-    """
-
-    def __init__(
-        self,
-        cluster_order: xr.DataArray,
-        period_length: int,
-        segment_assignment: xr.DataArray | None = None,
-        skip_first_of_period: bool = True,
-    ):
-        import xarray as xr
-
-        if isinstance(cluster_order, xr.DataArray):
-            self.cluster_order = cluster_order.rename('cluster_order') if cluster_order.name is None else cluster_order
-        else:
-            self.cluster_order = xr.DataArray(cluster_order, dims=['cluster_period'], name='cluster_order')
-
-        self.period_length = int(period_length)
-        self.skip_first_of_period = skip_first_of_period
-
-        if segment_assignment is not None and isinstance(segment_assignment, xr.DataArray):
-            self.segment_assignment = (
-                segment_assignment.rename('segment_assignment')
-                if segment_assignment.name is None
-                else segment_assignment
-            )
-        else:
-            self.segment_assignment = segment_assignment
-
-    @classmethod
-    def from_tsam(
-        cls,
-        aggregation: tsam.TimeSeriesAggregation,
-        skip_first_of_period: bool = True,
-    ) -> ClusteringIndices:
-        """Create from a tsam TimeSeriesAggregation object.
+    def populate_from_tsam(self, aggregation: tsam.TimeSeriesAggregation) -> None:
+        """Populate clustering indices from a tsam TimeSeriesAggregation object.
 
         Args:
             aggregation: tsam object after calling createTypicalPeriods().
-            skip_first_of_period: Skip first timestep of each period (for storage).
-
-        Examples:
-            >>> aggregation = tsam.TimeSeriesAggregation(df, noTypicalPeriods=8, hoursPerPeriod=24)
-            >>> aggregation.createTypicalPeriods()
-            >>> indices = ClusteringIndices.from_tsam(aggregation)
         """
         import xarray as xr
 
         if not TSAM_AVAILABLE:
             raise ImportError("The 'tsam' package is required. Install with 'pip install tsam'.")
 
-        period_length = int(aggregation.hoursPerPeriod / aggregation.resolution)
-        cluster_order = xr.DataArray(aggregation.clusterOrder, dims=['cluster_period'], name='cluster_order')
+        self.period_length = int(aggregation.hoursPerPeriod / aggregation.resolution)
+        self.cluster_order = xr.DataArray(aggregation.clusterOrder, dims=['cluster_period'], name='cluster_order')
 
         # Build segment assignment if segmentation is used
-        segment_assignment = None
         if aggregation.segmentation and hasattr(aggregation, 'segmentDurationDict'):
             n_clusters = aggregation.noTypicalPeriods
             segment_duration_dict = aggregation.segmentDurationDict['Segment Duration']
 
             # Build (cluster, position) -> segment_id mapping
-            arr = np.zeros((n_clusters, period_length), dtype=np.int32)
+            arr = np.zeros((n_clusters, self.period_length), dtype=np.int32)
             for cluster_id in range(n_clusters):
                 pos = 0
                 for seg_idx in range(aggregation.noSegments):
@@ -601,12 +596,17 @@ class ClusteringIndices(Interface):
                     arr[cluster_id, pos : pos + duration] = seg_idx
                     pos += duration
 
-            segment_assignment = xr.DataArray(arr, dims=['cluster', 'position'], name='segment_assignment')
-
-        return cls(cluster_order, period_length, segment_assignment, skip_first_of_period)
+            self.segment_assignment = xr.DataArray(arr, dims=['cluster', 'position'], name='segment_assignment')
 
     def get_cluster_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get inter-cluster equation pairs (i, j) where var[i] == var[j]."""
+        """Get inter-cluster equation pairs (i, j) where var[i] == var[j].
+
+        Returns:
+            Tuple of (idx_i, idx_j) arrays of timestep indices to equate.
+        """
+        if self.cluster_order is None or self.period_length is None:
+            raise ValueError('Clustering indices not set. Call populate_from_tsam() first or provide cluster_order.')
+
         cluster_to_periods: dict[int, list[int]] = {}
         for period_idx, cluster_id in enumerate(self.cluster_order.values):
             cluster_to_periods.setdefault(int(cluster_id), []).append(period_idx)
@@ -627,9 +627,16 @@ class ClusteringIndices(Interface):
         return np.array(idx_i, dtype=np.int32), np.array(idx_j, dtype=np.int32)
 
     def get_segment_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get intra-segment equation pairs (i, j) where var[i] == var[j]."""
+        """Get intra-segment equation pairs (i, j) where var[i] == var[j].
+
+        Returns:
+            Tuple of (idx_i, idx_j) arrays of timestep indices to equate.
+        """
         if self.segment_assignment is None:
             return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
+
+        if self.cluster_order is None or self.period_length is None:
+            raise ValueError('Clustering indices not set. Call populate_from_tsam() first or provide cluster_order.')
 
         idx_i, idx_j = [], []
         seg_arr = self.segment_assignment.values  # (cluster, position)
@@ -662,22 +669,19 @@ class ClusteringModel(Submodel):
         model: FlowSystemModel,
         clustering_parameters: ClusteringParameters,
         flow_system: FlowSystem,
-        clustering_indices: ClusteringIndices,
         components_to_clusterize: list[Component] | None = None,
     ):
         """
         Args:
             model: The FlowSystemModel to add constraints to.
-            clustering_parameters: Parameters controlling clustering behavior.
+            clustering_parameters: Parameters controlling clustering behavior (must have indices populated).
             flow_system: The FlowSystem being optimized.
-            clustering_indices: Precomputed equation indices (from Clustering or user-provided).
             components_to_clusterize: Components to apply clustering to. If None, all components.
         """
         super().__init__(model, label_of_element='Clustering', label_of_model='Clustering')
         self.flow_system = flow_system
         self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
-        self.clustering_indices = clustering_indices
 
     def do_modeling(self):
         """Create equality constraints for clustered time indices.
@@ -687,6 +691,11 @@ class ClusteringModel(Submodel):
         - status: binary on/off variables (individual constraints)
         - inside_piece: piecewise segment binaries (individual constraints)
         """
+        if not self.clustering_parameters.has_indices:
+            raise ValueError(
+                'ClusteringParameters must have indices populated. '
+                'Call populate_from_tsam() or provide cluster_order/period_length directly.'
+            )
 
         components = self.components_to_clusterize or list(self.flow_system.components.values())
 
@@ -717,12 +726,12 @@ class ClusteringModel(Submodel):
                     if piece.inside_piece is not None:
                         binary_vars[piece.inside_piece.name] = piece.inside_piece
 
-        # Create constraints from clustering indices
-        indices = self.clustering_indices
+        # Create constraints from clustering parameters
+        params = self.clustering_parameters
 
         for constraint_type, idx_pair in [
-            ('cluster', indices.get_cluster_indices()),
-            ('segment', indices.get_segment_indices()),
+            ('cluster', params.get_cluster_indices()),
+            ('segment', params.get_segment_indices()),
         ]:
             if len(idx_pair[0]) == 0:
                 continue

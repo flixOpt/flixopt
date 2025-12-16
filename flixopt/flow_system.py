@@ -629,11 +629,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Include clustering info if present
         if self._clustering_info is not None:
-            from .clustering import ClusteringIndices, ClusteringParameters
+            from .clustering import ClusteringParameters
 
-            # Serialize parameters using Interface pattern
+            # Ensure parameters have indices populated before saving
             params = self._clustering_info.get('parameters')
             if isinstance(params, ClusteringParameters):
+                # Populate indices from tsam if not already set
+                if not params.has_indices:
+                    clustering_obj = self._clustering_info.get('clustering')
+                    if clustering_obj is not None:
+                        if isinstance(clustering_obj, dict):
+                            clustering_obj = next(iter(clustering_obj.values()))
+                        params.populate_from_tsam(clustering_obj.tsam)
+
+                # Serialize parameters (now includes indices) using Interface pattern
                 params_ref, params_arrays = params._create_reference_structure()
                 ds.attrs['_clustering_params'] = json.dumps(params_ref)
                 ds.update(params_arrays)
@@ -642,24 +651,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             components = self._clustering_info.get('components_to_clusterize')
             if components:
                 ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
-
-            # Serialize ClusteringIndices using Interface pattern
-            clustering_obj = self._clustering_info.get('clustering')
-            indices_dict = self._clustering_info.get('clustering_indices')
-
-            if clustering_obj is not None:
-                if isinstance(clustering_obj, dict):
-                    clustering_obj = next(iter(clustering_obj.values()))
-                indices = ClusteringIndices.from_tsam(clustering_obj.tsam)
-            elif indices_dict is not None:
-                indices = next(iter(indices_dict.values()))
-            else:
-                indices = None
-
-            if indices is not None:
-                indices_ref, indices_arrays = indices._create_reference_structure()
-                ds.attrs['_clustering_indices'] = json.dumps(indices_ref)
-                ds.update(indices_arrays)
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -756,20 +747,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 flow_system._carriers.add(carrier)
 
         # Restore clustering info if present (using Interface pattern)
-        if '_clustering_params' in reference_structure or '_clustering_indices' in reference_structure:
-            # Restore parameters
-            params = None
-            if '_clustering_params' in reference_structure:
-                params = cls._resolve_reference_structure(
-                    json.loads(reference_structure['_clustering_params']), arrays_dict
-                )
-
-            # Restore ClusteringIndices using Interface pattern
-            indices = None
-            if '_clustering_indices' in reference_structure:
-                indices = cls._resolve_reference_structure(
-                    json.loads(reference_structure['_clustering_indices']), arrays_dict
-                )
+        if '_clustering_params' in reference_structure:
+            # Restore parameters (now includes indices via Interface pattern)
+            params = cls._resolve_reference_structure(
+                json.loads(reference_structure['_clustering_params']), arrays_dict
+            )
 
             # Restore component references
             components_to_clusterize = None
@@ -781,16 +763,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             flow_system._clustering_info = {
                 'parameters': params,
-                'clustering_indices': {(None, None): indices} if indices else {},
                 'components_to_clusterize': components_to_clusterize,
                 'restored_from_file': True,
             }
-            if indices:
-                n_cluster_periods = len(indices.cluster_order)
-                n_clusters = int(indices.cluster_order.max()) + 1
+            if params.has_indices:
+                n_cluster_periods = len(params.cluster_order)
+                n_clusters = int(params.cluster_order.max()) + 1
                 logger.info(
                     f'Restored clustering: {n_clusters} clusters, '
-                    f'{n_cluster_periods} periods, period_length={indices.period_length}.'
+                    f'{n_cluster_periods} periods, period_length={params.period_length}.'
                 )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
@@ -1352,35 +1333,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_clustering_constraints(self) -> None:
         """Add clustering constraints to the model."""
-        from .clustering import ClusteringIndices, ClusteringModel
+        from .clustering import ClusteringModel
 
         info = self._clustering_info or {}
 
         if 'parameters' not in info:
             raise KeyError('_clustering_info missing required key: "parameters"')
 
-        # Get or create ClusteringIndices
-        if 'clustering_indices' in info:
-            # Restored from file - use directly
-            indices_dict = info['clustering_indices']
-            # Get the single ClusteringIndices (for now, only support single clustering)
-            clustering_indices = next(iter(indices_dict.values()))
-        elif 'clustering' in info:
-            # Fresh clustering - convert Clustering to ClusteringIndices via tsam
+        parameters = info['parameters']
+
+        # Populate indices from tsam if not already set
+        if not parameters.has_indices:
+            if 'clustering' not in info:
+                raise KeyError(
+                    '_clustering_info missing "clustering" and parameters have no indices. '
+                    'Either provide cluster_order/period_length or run transform.cluster() first.'
+                )
             clustering_obj = info['clustering']
             if isinstance(clustering_obj, dict):
                 clustering_obj = next(iter(clustering_obj.values()))
-            clustering_indices = ClusteringIndices.from_tsam(clustering_obj.tsam)
-        else:
-            raise KeyError(
-                '_clustering_info missing required key: either "clustering" (fresh) or "clustering_indices" (restored)'
-            )
+            parameters.populate_from_tsam(clustering_obj.tsam)
 
         clustering_model = ClusteringModel(
             model=self.model,
-            clustering_parameters=info['parameters'],
+            clustering_parameters=parameters,
             flow_system=self,
-            clustering_indices=clustering_indices,
             components_to_clusterize=info.get('components_to_clusterize'),
         )
         clustering_model.do_modeling()
