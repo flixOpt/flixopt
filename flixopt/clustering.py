@@ -518,164 +518,97 @@ class ClusteringParameters(Interface):
         return [ts.name for ts in self.time_series_for_low_peaks]
 
 
-class ClusteringIndices:
+@register_class_for_io
+class ClusteringIndices(Interface):
     """Compact storage for clustering assignments.
 
-    Stores clustering information in a compact format using:
-    - `cluster_order`: Which cluster each clustering-period (e.g., day) belongs to
-    - `period_length`: Number of timesteps per clustering-period
-    - `segment_durations`: Optional segment durations per cluster (for inner-period segmentation)
+    Stores clustering in a compact format:
+    - `cluster_order`: DataArray (cluster_period,) - which cluster each period belongs to
+    - `segment_assignment`: DataArray (cluster, position) - segment ID per position in cluster
 
-    This is much more compact than storing per-timestep assignments:
-    - For 365 days: 365 values instead of 8760
-
-    The cluster_order can optionally have period/scenario dimensions for multi-dimensional
-    FlowSystems, where the integer values are reused across dimensions.
+    For 365 days with 24h periods: stores 365 + 8×24 = 557 values instead of 8760.
 
     Args:
-        cluster_order: Array of shape (n_cluster_periods,) or DataArray with additional
-            period/scenario dimensions. Values are cluster IDs (0 to n_clusters-1).
-        period_length: Number of timesteps per clustering-period (e.g., 24 for daily).
-        segment_durations: Optional dict mapping (cluster_id, segment_idx) to duration,
-            or 2D array of shape (n_clusters, n_segments) with durations.
-        skip_first_of_period: Whether to skip the first timestep of each period
-            when generating inter-cluster constraints (for storage continuity).
+        cluster_order: DataArray of shape (cluster_period,) with cluster IDs.
+        period_length: Number of timesteps per clustering-period.
+        segment_assignment: Optional DataArray (cluster, position) with segment IDs.
+        skip_first_of_period: Skip first timestep for storage continuity.
     """
 
     def __init__(
         self,
-        cluster_order: np.ndarray,
+        cluster_order: xr.DataArray,
         period_length: int,
-        segment_durations: dict[tuple[int, int], int] | np.ndarray | None = None,
+        segment_assignment: xr.DataArray | None = None,
         skip_first_of_period: bool = True,
     ):
-        self.cluster_order = np.asarray(cluster_order, dtype=np.int32)
-        self.period_length = period_length
+        import xarray as xr
+
+        if isinstance(cluster_order, xr.DataArray):
+            self.cluster_order = cluster_order.rename('cluster_order') if cluster_order.name is None else cluster_order
+        else:
+            self.cluster_order = xr.DataArray(cluster_order, dims=['cluster_period'], name='cluster_order')
+
+        self.period_length = int(period_length)
         self.skip_first_of_period = skip_first_of_period
 
-        # Normalize segment_durations to dict format
-        if segment_durations is None:
-            self.segment_durations: dict[tuple[int, int], int] | None = None
-        elif isinstance(segment_durations, dict):
-            self.segment_durations = segment_durations
+        if segment_assignment is not None and isinstance(segment_assignment, xr.DataArray):
+            self.segment_assignment = (
+                segment_assignment.rename('segment_assignment')
+                if segment_assignment.name is None
+                else segment_assignment
+            )
         else:
-            # Convert 2D array to dict
-            arr = np.asarray(segment_durations)
-            self.segment_durations = {(i, j): int(arr[i, j]) for i in range(arr.shape[0]) for j in range(arr.shape[1])}
-
-    @property
-    def n_cluster_periods(self) -> int:
-        """Number of clustering-periods (e.g., days)."""
-        return len(self.cluster_order)
-
-    @property
-    def n_clusters(self) -> int:
-        """Number of unique clusters."""
-        return int(np.max(self.cluster_order)) + 1
-
-    @property
-    def n_timesteps(self) -> int:
-        """Total number of timesteps."""
-        return self.n_cluster_periods * self.period_length
-
-    @property
-    def n_segments(self) -> int | None:
-        """Number of segments per cluster, or None if no segmentation."""
-        if self.segment_durations is None:
-            return None
-        # Get max segment index + 1
-        return max(seg_idx for _, seg_idx in self.segment_durations.keys()) + 1
-
-    @classmethod
-    def from_clustering(cls, clustering: Clustering) -> ClusteringIndices:
-        """Create from a Clustering object."""
-        period_length = int(clustering.hours_per_period / clustering.hours_per_time_step)
-
-        # Extract segment durations if segmentation is used
-        segment_durations = None
-        if clustering.n_segments is not None:
-            segment_durations = dict(clustering.tsam.segmentDurationDict['Segment Duration'])
-
-        return cls(
-            cluster_order=np.array(clustering.tsam.clusterOrder, dtype=np.int32),
-            period_length=period_length,
-            segment_durations=segment_durations,
-            skip_first_of_period=True,
-        )
+            self.segment_assignment = segment_assignment
 
     @classmethod
     def from_tsam(
         cls,
         aggregation: tsam.TimeSeriesAggregation,
-        hours_per_timestep: float | None = None,
-        hours_per_period: float | None = None,
         skip_first_of_period: bool = True,
     ) -> ClusteringIndices:
-        """Create from a tsam TimeSeriesAggregation object directly.
-
-        This allows users to run tsam on a subset of their time series data
-        (e.g., only key drivers like prices and demands) and then apply the
-        resulting clustering to a full FlowSystem.
+        """Create from a tsam TimeSeriesAggregation object.
 
         Args:
-            aggregation: A tsam TimeSeriesAggregation object after calling
-                createTypicalPeriods().
-            hours_per_timestep: Duration of each timestep in hours. If None,
-                uses aggregation.resolution.
-            hours_per_period: Duration of each period in hours. If None,
-                uses aggregation.hoursPerPeriod.
-            skip_first_of_period: Skip first timestep of each period when
-                creating inter-cluster constraints. Default True (recommended
-                for correct storage state transitions).
-
-        Returns:
-            ClusteringIndices with compact cluster assignments.
+            aggregation: tsam object after calling createTypicalPeriods().
+            skip_first_of_period: Skip first timestep of each period (for storage).
 
         Examples:
-            >>> import tsam.timeseriesaggregation as tsam
-            >>>
-            >>> # Run tsam on subset of data
-            >>> aggregation = tsam.TimeSeriesAggregation(subset_df, noTypicalPeriods=8, hoursPerPeriod=24, resolution=1)
+            >>> aggregation = tsam.TimeSeriesAggregation(df, noTypicalPeriods=8, hoursPerPeriod=24)
             >>> aggregation.createTypicalPeriods()
-            >>>
-            >>> # Convert to ClusteringIndices (auto-detects parameters)
             >>> indices = ClusteringIndices.from_tsam(aggregation)
-            >>>
-            >>> # Apply to FlowSystem
-            >>> clustered_fs = flow_system.transform.add_clustering(indices)
         """
+        import xarray as xr
+
         if not TSAM_AVAILABLE:
-            raise ImportError("The 'tsam' package is required. Install it with 'pip install tsam'.")
+            raise ImportError("The 'tsam' package is required. Install with 'pip install tsam'.")
 
-        # Auto-detect parameters from aggregation
-        if hours_per_timestep is None:
-            hours_per_timestep = aggregation.resolution
-        if hours_per_period is None:
-            hours_per_period = aggregation.hoursPerPeriod
+        period_length = int(aggregation.hoursPerPeriod / aggregation.resolution)
+        cluster_order = xr.DataArray(aggregation.clusterOrder, dims=['cluster_period'], name='cluster_order')
 
-        period_length = int(hours_per_period / hours_per_timestep)
-
-        # Extract segment durations if segmentation is used
-        segment_durations = None
+        # Build segment assignment if segmentation is used
+        segment_assignment = None
         if aggregation.segmentation and hasattr(aggregation, 'segmentDurationDict'):
-            segment_durations = dict(aggregation.segmentDurationDict['Segment Duration'])
+            n_clusters = aggregation.noTypicalPeriods
+            segment_duration_dict = aggregation.segmentDurationDict['Segment Duration']
 
-        return cls(
-            cluster_order=np.array(aggregation.clusterOrder, dtype=np.int32),
-            period_length=period_length,
-            segment_durations=segment_durations,
-            skip_first_of_period=skip_first_of_period,
-        )
+            # Build (cluster, position) -> segment_id mapping
+            arr = np.zeros((n_clusters, period_length), dtype=np.int32)
+            for cluster_id in range(n_clusters):
+                pos = 0
+                for seg_idx in range(aggregation.noSegments):
+                    duration = segment_duration_dict[(cluster_id, seg_idx)]
+                    arr[cluster_id, pos : pos + duration] = seg_idx
+                    pos += duration
+
+            segment_assignment = xr.DataArray(arr, dims=['cluster', 'position'], name='segment_assignment')
+
+        return cls(cluster_order, period_length, segment_assignment, skip_first_of_period)
 
     def get_cluster_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get inter-cluster equation indices as parallel numpy arrays.
-
-        Returns pairs (i, j) where var[i] == var[j] for timesteps at the same
-        position within periods belonging to the same cluster.
-        """
-        # Group periods by cluster
+        """Get inter-cluster equation pairs (i, j) where var[i] == var[j]."""
         cluster_to_periods: dict[int, list[int]] = {}
-        for period_idx, cluster_id in enumerate(self.cluster_order):
+        for period_idx, cluster_id in enumerate(self.cluster_order.values):
             cluster_to_periods.setdefault(int(cluster_id), []).append(period_idx)
 
         idx_i, idx_j = [], []
@@ -684,87 +617,37 @@ class ClusteringIndices:
         for periods in cluster_to_periods.values():
             if len(periods) <= 1:
                 continue
-            # Equate all periods to the first one at each position
             first_period = periods[0]
             for pos in range(start_pos, self.period_length):
                 first_ts = first_period * self.period_length + pos
                 for other_period in periods[1:]:
-                    other_ts = other_period * self.period_length + pos
                     idx_i.append(first_ts)
-                    idx_j.append(other_ts)
+                    idx_j.append(other_period * self.period_length + pos)
 
         return np.array(idx_i, dtype=np.int32), np.array(idx_j, dtype=np.int32)
 
     def get_segment_indices(self) -> tuple[np.ndarray, np.ndarray]:
-        """Get intra-segment equation indices as parallel numpy arrays.
-
-        Returns pairs (i, j) where var[i] == var[j] for timesteps within
-        the same segment (when segmentation is enabled).
-        """
-        if self.segment_durations is None:
+        """Get intra-segment equation pairs (i, j) where var[i] == var[j]."""
+        if self.segment_assignment is None:
             return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
 
         idx_i, idx_j = [], []
-        n_segments = self.n_segments
+        seg_arr = self.segment_assignment.values  # (cluster, position)
 
-        for period_idx, cluster_id in enumerate(self.cluster_order):
+        for period_idx, cluster_id in enumerate(self.cluster_order.values):
             period_offset = period_idx * self.period_length
-            start_step = 0
+            segment_ids = seg_arr[int(cluster_id)]  # (position,)
 
-            for seg_idx in range(n_segments):
-                duration = self.segment_durations[(int(cluster_id), seg_idx)]
-                # Equate all timesteps in segment to the first
-                first_ts = period_offset + start_step
-                for step in range(1, duration):
-                    idx_i.append(first_ts)
-                    idx_j.append(period_offset + start_step + step)
-                start_step += duration
+            # Group positions by segment
+            for seg_id in np.unique(segment_ids):
+                positions = np.where(segment_ids == seg_id)[0]
+                if len(positions) > 1:
+                    first_ts = period_offset + positions[0]
+                    for pos in positions[1:]:
+                        idx_i.append(first_ts)
+                        idx_j.append(period_offset + pos)
 
         return np.array(idx_i, dtype=np.int32), np.array(idx_j, dtype=np.int32)
-
-    def to_dataarray(self, time_index: pd.DatetimeIndex | None = None) -> xr.DataArray:
-        """Convert cluster_order to a DataArray for storage.
-
-        Args:
-            time_index: Optional time index to derive cluster_period coordinates.
-                If provided, uses the start time of each period as coordinate.
-
-        Returns:
-            DataArray with cluster assignments, shape (n_cluster_periods,).
-        """
-        import xarray as xr
-
-        if time_index is not None and len(time_index) >= self.n_cluster_periods * self.period_length:
-            # Use start of each period as coordinate
-            coords = {'cluster_period': time_index[:: self.period_length][: self.n_cluster_periods]}
-        else:
-            coords = {'cluster_period': np.arange(self.n_cluster_periods)}
-
-        return xr.DataArray(
-            self.cluster_order,
-            dims=['cluster_period'],
-            coords=coords,
-            attrs={'period_length': self.period_length, 'skip_first_of_period': self.skip_first_of_period},
-        )
-
-    def segment_durations_to_dataarray(self) -> xr.DataArray | None:
-        """Convert segment_durations to a DataArray for storage.
-
-        Returns:
-            DataArray of shape (n_clusters, n_segments), or None if no segmentation.
-        """
-        import xarray as xr
-
-        if self.segment_durations is None:
-            return None
-
-        n_clusters = self.n_clusters
-        n_segments = self.n_segments
-        arr = np.zeros((n_clusters, n_segments), dtype=np.int32)
-        for (cluster_id, seg_idx), duration in self.segment_durations.items():
-            arr[cluster_id, seg_idx] = duration
-
-        return xr.DataArray(arr, dims=['cluster', 'segment'])
 
 
 class ClusteringModel(Submodel):
