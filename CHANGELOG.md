@@ -51,6 +51,66 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.1.0] - Upcoming
+
+**Summary**: This release improves the time series clustering (tsam) integration with a simplified keyword-based API.
+
+### ✨ Added
+
+**Improved Clustering API**: The new `transform.cluster()` method provides a clean, keyword-based interface:
+
+```python
+# Cluster into 8 typical days
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+)
+clustered_fs.optimize(solver)
+
+# With peak preservation
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    time_series_for_high_peaks=[heat_demand_ts],
+)
+```
+
+### 💥 Breaking Changes
+
+**ClusteringParameters API Changed**: The `ClusteringParameters` class has new parameter names:
+
+| Old Parameter | New Parameter |
+|---------------|---------------|
+| `hours_per_period` | `cluster_duration` (accepts '1D', '24h', or hours) |
+| `nr_of_periods` | `n_clusters` |
+| `fix_storage_flows` | `include_storage` |
+| `aggregate_data_and_fix_non_binary_vars` | `aggregate_data` |
+| `percentage_of_period_freedom` | `flexibility_percent` |
+| `penalty_of_period_freedom` | `flexibility_penalty` |
+
+**Migration Example**:
+
+```python
+# Old (v5.0):
+params = fx.ClusteringParameters(
+    hours_per_period=24,
+    nr_of_periods=8,
+    fix_storage_flows=True,
+    aggregate_data_and_fix_non_binary_vars=True,
+)
+clustered_fs = flow_system.transform.cluster(params)
+
+# New (v5.1):
+clustered_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    include_storage=True,
+    aggregate_data=True,
+)
+```
+
+---
+
 ## [Upcoming] - v5.0.0
 
 **Summary**: This is a major release that fundamentally reimagines how users interact with flixopt. The new **FlowSystem-centric API** dramatically simplifies workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **removes all deprecated items from v4.x**.
