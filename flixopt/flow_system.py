@@ -1366,11 +1366,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Get the single ClusteringIndices (for now, only support single clustering)
             clustering_indices = next(iter(indices_dict.values()))
         elif 'clustering' in info:
-            # Fresh clustering - convert Clustering to ClusteringIndices
+            # Fresh clustering - convert Clustering to ClusteringIndices via tsam
             clustering_obj = info['clustering']
             if isinstance(clustering_obj, dict):
                 clustering_obj = next(iter(clustering_obj.values()))
-            clustering_indices = ClusteringIndices.from_clustering(clustering_obj)
+            clustering_indices = ClusteringIndices.from_tsam(clustering_obj.tsam)
         else:
             raise KeyError(
                 '_clustering_info missing required key: either "clustering" (fresh) or "clustering_indices" (restored)'
