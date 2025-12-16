@@ -642,7 +642,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if components:
                 ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
 
-            # Store group assignments as DataArrays (efficient binary storage)
+            # Store clustering indices in compact format
             # Get or create ClusteringIndices
             clustering_obj = self._clustering_info.get('clustering')
             indices_dict = self._clustering_info.get('clustering_indices')
@@ -657,12 +657,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 indices = None
 
             if indices is not None:
-                ds['_clustering_cluster_groups'] = xr.DataArray(
-                    indices.cluster_groups, dims=['time'], coords={'time': self.timesteps}
-                )
-                ds['_clustering_segment_groups'] = xr.DataArray(
-                    indices.segment_groups, dims=['time'], coords={'time': self.timesteps}
-                )
+                # Store cluster_order (compact: n_cluster_periods instead of n_timesteps)
+                ds['_clustering_cluster_order'] = indices.to_dataarray(self.timesteps)
+
+                # Store segment durations if segmentation is used
+                segment_da = indices.segment_durations_to_dataarray()
+                if segment_da is not None:
+                    ds['_clustering_segment_durations'] = segment_da
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -765,11 +766,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Restore parameters
             params = cls._resolve_reference_structure(json.loads(reference_structure['_clustering_params']), {})
 
-            # Restore group assignments from DataArrays
-            indices = ClusteringIndices(
-                cluster_groups=ds['_clustering_cluster_groups'].values if '_clustering_cluster_groups' in ds else None,
-                segment_groups=ds['_clustering_segment_groups'].values if '_clustering_segment_groups' in ds else None,
-            )
+            # Restore from compact format
+            if '_clustering_cluster_order' in ds:
+                cluster_order_da = ds['_clustering_cluster_order']
+                period_length = int(cluster_order_da.attrs.get('period_length', 24))
+                skip_first = cluster_order_da.attrs.get('skip_first_of_period', True)
+
+                # Restore segment durations if present
+                segment_durations = None
+                if '_clustering_segment_durations' in ds:
+                    segment_da = ds['_clustering_segment_durations']
+                    segment_durations = segment_da.values  # 2D array
+
+                indices = ClusteringIndices(
+                    cluster_order=cluster_order_da.values,
+                    period_length=period_length,
+                    segment_durations=segment_durations,
+                    skip_first_of_period=skip_first,
+                )
+            else:
+                # Fallback for old format - shouldn't normally happen
+                indices = None
 
             # Restore component references
             components_to_clusterize = None
@@ -781,17 +798,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             flow_system._clustering_info = {
                 'parameters': params,
-                'clustering_indices': {(None, None): indices},  # ClusteringIndices keyed by (period, scenario)
+                'clustering_indices': {(None, None): indices} if indices else {},
                 'components_to_clusterize': components_to_clusterize,
                 'restored_from_file': True,
             }
-            n_cluster_groups = len(np.unique(indices.cluster_groups[indices.cluster_groups >= 0]))
-            n_segment_groups = len(np.unique(indices.segment_groups[indices.segment_groups >= 0]))
-            logger.info(
-                f'Restored clustering: n_clusters={params.n_clusters}, duration={params.cluster_duration}, '
-                f'n_segments={params.n_segments}, {n_cluster_groups} cluster groups + '
-                f'{n_segment_groups} segment groups.'
-            )
+            if indices:
+                logger.info(
+                    f'Restored clustering: n_clusters={indices.n_clusters}, '
+                    f'n_cluster_periods={indices.n_cluster_periods}, '
+                    f'period_length={indices.period_length}, '
+                    f'n_segments={indices.n_segments}.'
+                )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
