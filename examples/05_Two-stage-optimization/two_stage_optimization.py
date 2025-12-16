@@ -67,8 +67,8 @@ if __name__ == '__main__':
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
             status_parameters=fx.StatusParameters(effects_per_startup=1_000, min_uptime=10, min_downtime=10),
-            electrical_flow=fx.Flow('P_el', bus='Strom'),
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+            electrical_flow=fx.Flow('P_el', bus='Strom', size=110),  # Size required for status_parameters
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=290),  # Size required for status_parameters
             fuel_flow=fx.Flow(
                 'Q_fu',
                 bus='Kohle',

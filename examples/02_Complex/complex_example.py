@@ -97,8 +97,8 @@ if __name__ == '__main__':
     # 3. Define CHP with Piecewise Conversion
     # This CHP unit uses piecewise conversion for more dynamic behavior over time
     P_el = fx.Flow('P_el', bus='Strom', size=60, previous_flow_rate=20)
-    Q_th = fx.Flow('Q_th', bus='Fernwärme')
-    Q_fu = fx.Flow('Q_fu', bus='Gas')
+    Q_th = fx.Flow('Q_th', bus='Fernwärme', size=100)  # Size required for status_parameters
+    Q_fu = fx.Flow('Q_fu', bus='Gas', size=200)  # Size required for status_parameters
     piecewise_conversion = fx.PiecewiseConversion(
         {
             P_el.label: fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
