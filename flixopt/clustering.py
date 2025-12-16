@@ -7,14 +7,10 @@ from __future__ import annotations
 
 import copy
 import logging
-import pathlib
 import timeit
-import warnings as _warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-from .config import DEPRECATION_REMOVAL_VERSION
 
 try:
     import tsam.timeseriesaggregation as tsam
@@ -26,6 +22,7 @@ except ImportError:
 from .color_processing import process_colors
 from .components import Storage
 from .config import CONFIG
+from .plot_result import PlotResult
 from .structure import (
     FlowSystemModel,
     Submodel,
@@ -34,7 +31,6 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
     import pandas as pd
-    import plotly.graph_objects as go
 
     from .core import Scalar, TimeSeriesData
     from .elements import Component
@@ -147,8 +143,28 @@ class Clustering:
     def use_extreme_periods(self):
         return self.time_series_for_high_peaks or self.time_series_for_low_peaks
 
-    def plot(self, colormap: str | None = None, show: bool = True, save: pathlib.Path | None = None) -> go.Figure:
-        from . import plotting
+    def plot(self, colormap: str | None = None, show: bool | None = None) -> PlotResult:
+        """Plot original vs aggregated data comparison.
+
+        Visualizes the original time series (dashed lines) overlaid with
+        the aggregated/clustered time series (solid lines) for comparison.
+
+        Args:
+            colormap: Colorscale name for the time series colors.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the comparison figure and underlying data.
+
+        Examples:
+            >>> clustering.cluster()
+            >>> clustering.plot()
+            >>> clustering.plot(colormap='Set2', show=False).to_html('clustering.html')
+        """
+        import plotly.express as px
+        import xarray as xr
 
         df_org = self.original_data.copy().rename(
             columns={col: f'Original - {col}' for col in self.original_data.columns}
@@ -159,10 +175,17 @@ class Clustering:
         colors = list(
             process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(df_org.columns)).values()
         )
-        fig = plotting.with_plotly(df_org.to_xarray(), 'line', colors=colors, xlabel='Time in h')
+
+        # Create line plot for original data (dashed)
+        index_name = df_org.index.name or 'index'
+        df_org_long = df_org.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig.data:
-            trace.update(dict(line=dict(dash='dash')))
-        fig2 = plotting.with_plotly(df_agg.to_xarray(), 'line', colors=colors, xlabel='Time in h')
+            trace.update(line=dict(dash='dash'))
+
+        # Add aggregated data (solid lines)
+        df_agg_long = df_agg.reset_index().melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
         for trace in fig2.data:
             fig.add_trace(trace)
 
@@ -172,16 +195,21 @@ class Clustering:
             yaxis_title='Value',
         )
 
-        plotting.export_figure(
-            figure_like=fig,
-            default_path=pathlib.Path('aggregated data.html'),
-            default_filetype='.html',
-            user_path=save,
-            show=show,
-            save=save is not None,
+        # Build xarray Dataset with both original and aggregated data
+        data = xr.Dataset(
+            {
+                'original': self.original_data.to_xarray().to_array(dim='variable'),
+                'aggregated': self.aggregated_data.to_xarray().to_array(dim='variable'),
+            }
         )
+        result = PlotResult(data=data, figure=fig)
 
-        return fig
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
     def get_cluster_indices(self) -> dict[str, list[np.ndarray]]:
         """
@@ -401,39 +429,3 @@ class ClusteringModel(Submodel):
                 var_k0.sum(dim='time') + var_k1.sum(dim='time') <= limit,
                 short_name=f'limit_corrections|{variable.name}',
             )
-
-
-# ===== Deprecated aliases for backward compatibility =====
-
-
-def _create_deprecation_warning(old_name: str, new_name: str):
-    """Helper to create a deprecation warning"""
-    _warnings.warn(
-        f"'{old_name}' is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use '{new_name}' instead.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
-class Aggregation(Clustering):
-    """Deprecated: Use Clustering instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('Aggregation', 'Clustering')
-        super().__init__(*args, **kwargs)
-
-
-class AggregationParameters(ClusteringParameters):
-    """Deprecated: Use ClusteringParameters instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('AggregationParameters', 'ClusteringParameters')
-        super().__init__(*args, **kwargs)
-
-
-class AggregationModel(ClusteringModel):
-    """Deprecated: Use ClusteringModel instead."""
-
-    def __init__(self, *args, **kwargs):
-        _create_deprecation_warning('AggregationModel', 'ClusteringModel')
-        super().__init__(*args, **kwargs)

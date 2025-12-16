@@ -1,19 +1,20 @@
 """
-This module contains classes to collect Parameters for the Investment and OnOff decisions.
+This module contains classes to collect Parameters for the Investment and Status decisions.
 These are tightly connected to features.py
 """
 
 from __future__ import annotations
 
 import logging
-import warnings
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import xarray as xr
 
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
+from .plot_result import PlotResult
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -75,16 +76,22 @@ class Piece(Interface):
         self.end = end
         self.has_time_dim = False
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
         dims = None if self.has_time_dim else ['period', 'scenario']
-        self.start = self._fit_coords(f'{name_prefix}|start', self.start, dims=dims)
-        self.end = self._fit_coords(f'{name_prefix}|end', self.end, dims=dims)
+        self.start = self._fit_coords(f'{self.prefix}|start', self.start, dims=dims)
+        self.end = self._fit_coords(f'{self.prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
 class Piecewise(Interface):
-    """
-    Define a Piecewise, consisting of a list of Pieces.
+    """Define piecewise linear approximations for modeling non-linear relationships.
+
+    Enables modeling of non-linear relationships through piecewise linear segments
+    while maintaining problem linearity. Consists of a collection of Pieces that
+    define valid ranges for variables.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
 
     Args:
         pieces: list of Piece objects defining the linear segments. The arrangement
@@ -221,15 +228,15 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piece objects."""
-        super()._set_flow_system(flow_system)
-        for piece in self.pieces:
-            piece._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
+        super().link_to_flow_system(flow_system, prefix)
         for i, piece in enumerate(self.pieces):
-            piece.transform_data(f'{name_prefix}|Piece{i}')
+            piece.link_to_flow_system(flow_system, self._sub_prefix(f'Piece{i}'))
+
+    def transform_data(self) -> None:
+        for piece in self.pieces:
+            piece.transform_data()
 
 
 @register_class_for_io
@@ -414,7 +421,7 @@ class PiecewiseConversion(Interface):
         operate in certain ranges (e.g., minimum loads, unstable regions).
 
         **Discrete Modes**: Use pieces with identical start/end values to model
-        equipment with fixed operating points (e.g., on/off, discrete speeds).
+        equipment with fixed operating points (e.g., on/inactive, discrete speeds).
 
         **Efficiency Changes**: Coordinate input and output pieces to reflect
         changing conversion efficiency across operating ranges.
@@ -453,15 +460,151 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
-        for piecewise in self.piecewises.values():
-            piecewise._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
+        super().link_to_flow_system(flow_system, prefix)
         for name, piecewise in self.piecewises.items():
-            piecewise.transform_data(f'{name_prefix}|{name}')
+            piecewise.link_to_flow_system(flow_system, self._sub_prefix(name))
+
+    def transform_data(self) -> None:
+        for piecewise in self.piecewises.values():
+            piecewise.transform_data()
+
+    def plot(
+        self,
+        x_flow: str | None = None,
+        title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
+        show: bool | None = None,
+    ) -> PlotResult:
+        """Plot multi-flow piecewise conversion with time variation visualization.
+
+        Visualizes the piecewise linear relationships between flows. Each flow
+        is shown in a separate subplot (faceted by flow). Pieces are distinguished
+        by line dash style. If boundaries vary over time, color shows time progression.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            x_flow: Flow label to use for X-axis. Defaults to first flow in dict.
+            title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying piecewise data.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> chp.piecewise_conversion.plot(x_flow='Gas', title='CHP Curves')
+            >>> # Select specific time range
+            >>> chp.piecewise_conversion.plot(select={'time': slice(0, 12)})
+        """
+        if not self.flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseConversion')
+            self.flow_system.connect_and_transform()
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+
+        flow_labels = list(self.piecewises.keys())
+        x_label = x_flow if x_flow is not None else flow_labels[0]
+        if x_label not in flow_labels:
+            raise ValueError(f"x_flow '{x_label}' not found. Available: {flow_labels}")
+
+        y_flows = [label for label in flow_labels if label != x_label]
+        if not y_flows:
+            raise ValueError('Need at least two flows to plot')
+
+        x_piecewise = self.piecewises[x_label]
+
+        # Build Dataset with all piece data
+        datasets = []
+        for y_label in y_flows:
+            y_piecewise = self.piecewises[y_label]
+            for i, (x_piece, y_piece) in enumerate(zip(x_piecewise, y_piecewise, strict=False)):
+                ds = xr.Dataset(
+                    {
+                        x_label: xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'output': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['flow'] = y_label
+                ds['piece'] = f'Piece {i}'
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
+        df = combined.to_dataframe().reset_index()
+
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[[x_label, 'output']].nunique().max().max() > 1
+
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
+
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'flow', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x=x_label,
+                y='output',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='flow' if len(y_flows) > 1 else None,
+                title=title or 'Piecewise Conversion',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('flow=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text=x_label)
+
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
@@ -671,17 +814,142 @@ class PiecewiseEffects(Interface):
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
-        super()._set_flow_system(flow_system)
-        self.piecewise_origin._set_flow_system(flow_system)
-        for piecewise in self.piecewise_shares.values():
-            piecewise._set_flow_system(flow_system)
-
-    def transform_data(self, name_prefix: str = '') -> None:
-        self.piecewise_origin.transform_data(f'{name_prefix}|PiecewiseEffects|origin')
+        super().link_to_flow_system(flow_system, prefix)
+        self.piecewise_origin.link_to_flow_system(flow_system, self._sub_prefix('origin'))
         for effect, piecewise in self.piecewise_shares.items():
-            piecewise.transform_data(f'{name_prefix}|PiecewiseEffects|{effect}')
+            piecewise.link_to_flow_system(flow_system, self._sub_prefix(effect))
+
+    def transform_data(self) -> None:
+        self.piecewise_origin.transform_data()
+        for piecewise in self.piecewise_shares.values():
+            piecewise.transform_data()
+
+    def plot(
+        self,
+        title: str = '',
+        select: dict[str, Any] | None = None,
+        colorscale: str | None = None,
+        show: bool | None = None,
+    ) -> PlotResult:
+        """Plot origin vs effect shares with time variation visualization.
+
+        Visualizes the piecewise linear relationships between the origin variable
+        and its effect shares. Each effect is shown in a separate subplot (faceted
+        by effect). Pieces are distinguished by line dash style.
+
+        Note:
+            Requires FlowSystem to be connected and transformed (call
+            flow_system.connect_and_transform() first).
+
+        Args:
+            title: Plot title.
+            select: xarray-style selection dict to filter data,
+                e.g. {'time': slice('2024-01-01', '2024-01-02')}.
+            colorscale: Colorscale name for time coloring (e.g., 'RdYlBu_r', 'viridis').
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying piecewise data.
+
+        Examples:
+            >>> flow_system.connect_and_transform()
+            >>> invest_params.piecewise_effects_of_investment.plot(title='Investment Effects')
+        """
+        if not self.flow_system.connected_and_transformed:
+            logger.debug('Connecting flow_system for plotting PiecewiseEffects')
+            self.flow_system.connect_and_transform()
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+
+        effect_labels = list(self.piecewise_shares.keys())
+        if not effect_labels:
+            raise ValueError('Need at least one effect share to plot')
+
+        # Build Dataset with all piece data
+        datasets = []
+        for effect_label in effect_labels:
+            y_piecewise = self.piecewise_shares[effect_label]
+            for i, (x_piece, y_piece) in enumerate(zip(self.piecewise_origin, y_piecewise, strict=False)):
+                ds = xr.Dataset(
+                    {
+                        'origin': xr.concat([x_piece.start, x_piece.end], dim='point'),
+                        'share': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                    }
+                )
+                ds = ds.assign_coords(point=['start', 'end'])
+                ds['effect'] = effect_label
+                ds['piece'] = f'Piece {i}'
+                datasets.append(ds)
+
+        combined = xr.concat(datasets, dim='trace')
+
+        # Apply selection if provided
+        if select:
+            valid_select = {k: v for k, v in select.items() if k in combined.dims or k in combined.coords}
+            if valid_select:
+                combined = combined.sel(valid_select)
+
+        df = combined.to_dataframe().reset_index()
+
+        # Check if values vary over time
+        has_time = 'time' in df.columns
+        varies_over_time = False
+        if has_time:
+            varies_over_time = df.groupby(['trace', 'point'])[['origin', 'share']].nunique().max().max() > 1
+
+        if varies_over_time:
+            # Time-varying: color by time, dash by piece
+            df['time_idx'] = df.groupby('time').ngroup()
+            df['line_id'] = df['trace'].astype(str) + '_' + df['time_idx'].astype(str)
+            n_times = df['time_idx'].nunique()
+            colors = px.colors.sample_colorscale(colorscale, n_times)
+
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                color='time_idx',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+                color_discrete_sequence=colors,
+            )
+        else:
+            # Static: dash by piece
+            if has_time:
+                df = df.groupby(['trace', 'point', 'effect', 'piece']).first().reset_index()
+            df['line_id'] = df['trace'].astype(str)
+
+            fig = px.line(
+                df,
+                x='origin',
+                y='share',
+                line_dash='piece',
+                line_group='line_id',
+                facet_col='effect' if len(effect_labels) > 1 else None,
+                title=title or 'Piecewise Effects',
+                markers=True,
+            )
+
+        # Clean up facet titles and axis labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.replace('effect=', '')))
+        fig.update_yaxes(title_text='')
+        fig.update_xaxes(title_text='Origin')
+
+        result = PlotResult(data=combined, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            result.show()
+
+        return result
 
 
 @register_class_for_io
@@ -707,14 +975,13 @@ class InvestParameters(Interface):
         - **Divestment Effects**: Penalties for not investing (demolition, opportunity costs)
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [InvestParameters](../user-guide/mathematical-notation/features/InvestParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         fixed_size: Creates binary decision at this exact size. None allows continuous sizing.
         minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
-        maximum_size: Upper bound for continuous sizing. Default: CONFIG.Modeling.big.
+        maximum_size: Upper bound for continuous sizing. Required if fixed_size is not set.
             Ignored if fixed_size is specified.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
@@ -730,18 +997,6 @@ class InvestParameters(Interface):
             Dict: {'effect_name': value}.
         linked_periods: Describes which periods are linked. 1 means linked, 0 means size=0. None means no linked periods.
             For convenience, pass a tuple containing the first and last period (2025, 2039), linking them and those in between
-
-    Deprecated Args:
-        fix_effects: **Deprecated**. Use `effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        specific_effects: **Deprecated**. Use `effects_of_investment_per_size` instead.
-            Will be removed in version 5.0.0.
-        divest_effects: **Deprecated**. Use `effects_of_retirement` instead.
-            Will be removed in version 5.0.0.
-        piecewise_effects: **Deprecated**. Use `piecewise_effects_of_investment` instead.
-            Will be removed in version 5.0.0.
-        optional: DEPRECATED. Use `mandatory` instead. Opposite of `mandatory`.
-            Will be removed in version 5.0.0.
 
     Cost Annualization Requirements:
         All cost values must be properly weighted to match the optimization model's time horizon.
@@ -899,36 +1154,7 @@ class InvestParameters(Interface):
         effects_of_retirement: Effect_PS | Numeric_PS | None = None,
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: Numeric_PS | tuple[int, int] | None = None,
-        **kwargs,
     ):
-        # Handle deprecated parameters using centralized helper
-        effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'fix_effects', 'effects_of_investment', effects_of_investment
-        )
-        effects_of_investment_per_size = self._handle_deprecated_kwarg(
-            kwargs, 'specific_effects', 'effects_of_investment_per_size', effects_of_investment_per_size
-        )
-        effects_of_retirement = self._handle_deprecated_kwarg(
-            kwargs, 'divest_effects', 'effects_of_retirement', effects_of_retirement
-        )
-        piecewise_effects_of_investment = self._handle_deprecated_kwarg(
-            kwargs, 'piecewise_effects', 'piecewise_effects_of_investment', piecewise_effects_of_investment
-        )
-        # For mandatory parameter with non-None default, disable conflict checking
-        if 'optional' in kwargs:
-            warnings.warn(
-                'Deprecated parameter "optional" used. Check conflicts with new parameter "mandatory" manually! '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        mandatory = self._handle_deprecated_kwarg(
-            kwargs, 'optional', 'mandatory', mandatory, transform=lambda x: not x, check_conflict=False
-        )
-
-        # Validate any remaining unexpected kwargs
-        self._validate_kwargs(kwargs)
-
         self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
         self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
         self.fixed_size = fixed_size
@@ -938,30 +1164,36 @@ class InvestParameters(Interface):
         )
         self.piecewise_effects_of_investment = piecewise_effects_of_investment
         self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size if maximum_size is not None else CONFIG.Modeling.big  # default maximum
+        self.maximum_size = maximum_size
         self.linked_periods = linked_periods
 
-    def _set_flow_system(self, flow_system) -> None:
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
-        super()._set_flow_system(flow_system)
+        super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment._set_flow_system(flow_system)
+            self.piecewise_effects_of_investment.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseEffects'))
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    def transform_data(self) -> None:
+        # Validate that either fixed_size or maximum_size is set
+        if self.fixed_size is None and self.maximum_size is None:
+            raise ValueError(
+                f'InvestParameters in "{self.prefix}" requires either fixed_size or maximum_size to be set. '
+                f'An upper bound is needed to properly scale the optimization model.'
+            )
         self.effects_of_investment = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_investment,
             suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
         self.effects_of_retirement = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_retirement,
             suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
         self.effects_of_investment_per_size = self._fit_effect_coords(
-            prefix=name_prefix,
+            prefix=self.prefix,
             effect_values=self.effects_of_investment_per_size,
             suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
@@ -969,13 +1201,13 @@ class InvestParameters(Interface):
 
         if self.piecewise_effects_of_investment is not None:
             self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data(f'{name_prefix}|PiecewiseEffects')
+            self.piecewise_effects_of_investment.transform_data()
 
         self.minimum_size = self._fit_coords(
-            f'{name_prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
         )
         self.maximum_size = self._fit_coords(
-            f'{name_prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
         )
         # Convert tuple (first_period, last_period) to DataArray if needed
         if isinstance(self.linked_periods, (tuple, list)):
@@ -1002,77 +1234,9 @@ class InvestParameters(Interface):
             logger.debug(f'Computed {self.linked_periods=}')
 
         self.linked_periods = self._fit_coords(
-            f'{name_prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
+            f'{self.prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
-        self.fixed_size = self._fit_coords(f'{name_prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
-
-    @property
-    def optional(self) -> bool:
-        """DEPRECATED: Use 'mandatory' property instead. Returns the opposite of 'mandatory'."""
-        import warnings
-
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return not self.mandatory
-
-    @optional.setter
-    def optional(self, value: bool):
-        """DEPRECATED: Use 'mandatory' property instead. Sets the opposite of the given value to 'mandatory'."""
-        warnings.warn(
-            f"Property 'optional' is deprecated. Use 'mandatory' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.mandatory = not value
-
-    @property
-    def fix_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment instead."""
-        warnings.warn(
-            f'The fix_effects property is deprecated. Use effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment
-
-    @property
-    def specific_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_investment_per_size instead."""
-        warnings.warn(
-            f'The specific_effects property is deprecated. Use effects_of_investment_per_size instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_investment_per_size
-
-    @property
-    def divest_effects(self) -> Effect_PS | Numeric_PS:
-        """Deprecated property. Use effects_of_retirement instead."""
-        warnings.warn(
-            f'The divest_effects property is deprecated. Use effects_of_retirement instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.effects_of_retirement
-
-    @property
-    def piecewise_effects(self) -> PiecewiseEffects | None:
-        """Deprecated property. Use piecewise_effects_of_investment instead."""
-        warnings.warn(
-            f'The piecewise_effects property is deprecated. Use piecewise_effects_of_investment instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.piecewise_effects_of_investment
+        self.fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
 
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
@@ -1116,19 +1280,19 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
-class OnOffParameters(Interface):
-    """Define operational constraints and effects for binary on/off equipment behavior.
+class StatusParameters(Interface):
+    """Define operational constraints and effects for binary status equipment behavior.
 
-    This class models equipment that operates in discrete states (on/off) rather than
+    This class models equipment that operates in discrete states (active/inactive) rather than
     continuous operation, capturing realistic operational constraints and associated
     costs. It handles complex equipment behavior including startup costs, minimum
     run times, cycling limitations, and maintenance scheduling requirements.
 
     Key Modeling Capabilities:
-        **Switching Costs**: One-time costs for starting equipment (fuel, wear, labor)
-        **Runtime Constraints**: Minimum and maximum continuous operation periods
-        **Cycling Limits**: Maximum number of starts to prevent excessive wear
-        **Operating Hours**: Total runtime limits and requirements over time horizon
+        **Startup Costs**: One-time costs for starting equipment (fuel, wear, labor)
+        **Runtime Constraints**: Minimum and maximum continuous operation periods (uptime/downtime)
+        **Cycling Limits**: Maximum number of startups to prevent excessive wear
+        **Operating Hours**: Total active hours limits and requirements over time horizon
 
     Typical Equipment Applications:
         - **Power Plants**: Combined cycle units, steam turbines with startup costs
@@ -1138,46 +1302,45 @@ class OnOffParameters(Interface):
         - **Process Equipment**: Compressors, pumps with operational constraints
 
     Mathematical Formulation:
-        See the complete mathematical model in the documentation:
-        [OnOffParameters](../user-guide/mathematical-notation/features/OnOffParameters.md)
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
 
     Args:
-        effects_per_switch_on: Costs or impacts incurred for each transition from
-            off state (var_on=0) to on state (var_on=1). Represents startup costs,
+        effects_per_startup: Costs or impacts incurred for each transition from
+            inactive state (status=0) to active state (status=1). Represents startup costs,
             wear and tear, or other switching impacts. Dictionary mapping effect
             names to values (e.g., {'cost': 500, 'maintenance_hours': 2}).
-        effects_per_running_hour: Ongoing costs or impacts while equipment operates
-            in the on state. Includes fuel costs, labor, consumables, or emissions.
+        effects_per_active_hour: Ongoing costs or impacts while equipment operates
+            in the active state. Includes fuel costs, labor, consumables, or emissions.
             Dictionary mapping effect names to hourly values (e.g., {'fuel_cost': 45}).
-        on_hours_min: Minimum total operating hours per period.
+        active_hours_min: Minimum total active hours across the entire time horizon per period.
             Ensures equipment meets minimum utilization requirements or contractual
             obligations (e.g., power purchase agreements, maintenance schedules).
-        on_hours_max: Maximum total operating hours per period.
+        active_hours_max: Maximum total active hours across the entire time horizon per period.
             Limits equipment usage due to maintenance schedules, fuel availability,
             environmental permits, or equipment lifetime constraints.
-        consecutive_on_hours_min: Minimum continuous operating duration once started.
+        min_uptime: Minimum continuous operating duration once started (unit commitment term).
             Models minimum run times due to thermal constraints, process stability,
             or efficiency considerations. Can be time-varying to reflect different
             constraints across the planning horizon.
-        consecutive_on_hours_max: Maximum continuous operating duration in one campaign.
+        max_uptime: Maximum continuous operating duration in one campaign (unit commitment term).
             Models mandatory maintenance intervals, process batch sizes, or
             equipment thermal limits requiring periodic shutdowns.
-        consecutive_off_hours_min: Minimum continuous shutdown duration between operations.
+        min_downtime: Minimum continuous shutdown duration between operations (unit commitment term).
             Models cooling periods, maintenance requirements, or process constraints
             that prevent immediate restart after shutdown.
-        consecutive_off_hours_max: Maximum continuous shutdown duration before mandatory
+        max_downtime: Maximum continuous shutdown duration before mandatory
             restart. Models equipment preservation, process stability, or contractual
             requirements for minimum activity levels.
-        switch_on_max: Maximum number of startup operations per period.
+        startup_limit: Maximum number of startup operations across the time horizon per period..
             Limits equipment cycling to reduce wear, maintenance costs, or comply
             with operational constraints (e.g., grid stability requirements).
-        force_switch_on: When True, creates switch-on variables even without explicit
-            switch_on_max constraint. Useful for tracking or reporting startup
+        force_startup_tracking: When True, creates startup variables even without explicit
+            startup_limit constraint. Useful for tracking or reporting startup
             events without enforcing limits.
 
     Note:
         **Time Series Boundary Handling**: The final time period constraints for
-        consecutive_on_hours_min/max and consecutive_off_hours_min/max are not
+        min_uptime/max_uptime and min_downtime/max_downtime are not
         enforced, allowing the optimization to end with ongoing campaigns that
         may be shorter than the specified minimums or longer than maximums.
 
@@ -1185,105 +1348,105 @@ class OnOffParameters(Interface):
         Combined cycle power plant with startup costs and minimum run time:
 
         ```python
-        power_plant_operation = OnOffParameters(
-            effects_per_switch_on={
+        power_plant_operation = StatusParameters(
+            effects_per_startup={
                 'startup_cost': 25000,  # €25,000 per startup
                 'startup_fuel': 150,  # GJ natural gas for startup
                 'startup_time': 4,  # Hours to reach full output
                 'maintenance_impact': 0.1,  # Fractional life consumption
             },
-            effects_per_running_hour={
-                'fixed_om': 125,  # Fixed O&M costs while running
+            effects_per_active_hour={
+                'fixed_om': 125,  # Fixed O&M costs while active
                 'auxiliary_power': 2.5,  # MW parasitic loads
             },
-            consecutive_on_hours_min=8,  # Minimum 8-hour run once started
-            consecutive_off_hours_min=4,  # Minimum 4-hour cooling period
-            on_hours_max=6000,  # Annual operating limit
+            min_uptime=8,  # Minimum 8-hour run once started
+            min_downtime=4,  # Minimum 4-hour cooling period
+            active_hours_max=6000,  # Annual operating limit
         )
         ```
 
         Industrial batch process with cycling limits:
 
         ```python
-        batch_reactor = OnOffParameters(
-            effects_per_switch_on={
+        batch_reactor = StatusParameters(
+            effects_per_startup={
                 'setup_cost': 1500,  # Labor and materials for startup
                 'catalyst_consumption': 5,  # kg catalyst per batch
                 'cleaning_chemicals': 200,  # L cleaning solution
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'steam': 2.5,  # t/h process steam
                 'electricity': 150,  # kWh electrical load
                 'cooling_water': 50,  # m³/h cooling water
             },
-            consecutive_on_hours_min=12,  # Minimum batch size (12 hours)
-            consecutive_on_hours_max=24,  # Maximum batch size (24 hours)
-            consecutive_off_hours_min=6,  # Cleaning and setup time
-            switch_on_max=200,  # Maximum 200 batches per period
-            on_hours_max=4000,  # Maximum production time
+            min_uptime=12,  # Minimum batch size (12 hours)
+            max_uptime=24,  # Maximum batch size (24 hours)
+            min_downtime=6,  # Cleaning and setup time
+            startup_limit=200,  # Maximum 200 batches per period
+            active_hours_max=4000,  # Maximum production time
         )
         ```
 
         HVAC system with thermostat control and maintenance:
 
         ```python
-        hvac_operation = OnOffParameters(
-            effects_per_switch_on={
+        hvac_operation = StatusParameters(
+            effects_per_startup={
                 'compressor_wear': 0.5,  # Hours of compressor life per start
                 'inrush_current': 15,  # kW peak demand on startup
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'electricity': 25,  # kW electrical consumption
                 'maintenance': 0.12,  # €/hour maintenance reserve
             },
-            consecutive_on_hours_min=1,  # Minimum 1-hour run to avoid cycling
-            consecutive_off_hours_min=0.5,  # 30-minute minimum off time
-            switch_on_max=2000,  # Limit cycling for compressor life
-            on_hours_min=2000,  # Minimum operation for humidity control
-            on_hours_max=5000,  # Maximum operation for energy budget
+            min_uptime=1,  # Minimum 1-hour run to avoid cycling
+            min_downtime=0.5,  # 30-minute minimum inactive time
+            startup_limit=2000,  # Limit cycling for compressor life
+            active_hours_min=2000,  # Minimum operation for humidity control
+            active_hours_max=5000,  # Maximum operation for energy budget
         )
         ```
 
         Backup generator with testing and maintenance requirements:
 
         ```python
-        backup_generator = OnOffParameters(
-            effects_per_switch_on={
+        backup_generator = StatusParameters(
+            effects_per_startup={
                 'fuel_priming': 50,  # L diesel for system priming
                 'wear_factor': 1.0,  # Start cycles impact on maintenance
                 'testing_labor': 2,  # Hours technician time per test
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'fuel_consumption': 180,  # L/h diesel consumption
                 'emissions_permit': 15,  # € emissions allowance cost
                 'noise_penalty': 25,  # € noise compliance cost
             },
-            consecutive_on_hours_min=0.5,  # Minimum test duration (30 min)
-            consecutive_off_hours_max=720,  # Maximum 30 days between tests
-            switch_on_max=52,  # Weekly testing limit
-            on_hours_min=26,  # Minimum annual testing (0.5h × 52)
-            on_hours_max=200,  # Maximum runtime (emergencies + tests)
+            min_uptime=0.5,  # Minimum test duration (30 min)
+            max_downtime=720,  # Maximum 30 days between tests
+            startup_limit=52,  # Weekly testing limit
+            active_hours_min=26,  # Minimum annual testing (0.5h × 52)
+            active_hours_max=200,  # Maximum runtime (emergencies + tests)
         )
         ```
 
         Peak shaving battery with cycling degradation:
 
         ```python
-        battery_cycling = OnOffParameters(
-            effects_per_switch_on={
+        battery_cycling = StatusParameters(
+            effects_per_startup={
                 'cycle_degradation': 0.01,  # % capacity loss per cycle
                 'inverter_startup': 0.5,  # kWh losses during startup
             },
-            effects_per_running_hour={
+            effects_per_active_hour={
                 'standby_losses': 2,  # kW standby consumption
                 'cooling': 5,  # kW thermal management
                 'inverter_losses': 8,  # kW conversion losses
             },
-            consecutive_on_hours_min=1,  # Minimum discharge duration
-            consecutive_on_hours_max=4,  # Maximum continuous discharge
-            consecutive_off_hours_min=1,  # Minimum rest between cycles
-            switch_on_max=365,  # Daily cycling limit
-            force_switch_on=True,  # Track all cycling events
+            min_uptime=1,  # Minimum discharge duration
+            max_uptime=4,  # Maximum continuous discharge
+            min_downtime=1,  # Minimum rest between cycles
+            startup_limit=365,  # Daily cycling limit
+            force_startup_tracking=True,  # Track all cycling events
         )
         ```
 
@@ -1299,160 +1462,73 @@ class OnOffParameters(Interface):
 
     def __init__(
         self,
-        effects_per_switch_on: Effect_TPS | Numeric_TPS | None = None,
-        effects_per_running_hour: Effect_TPS | Numeric_TPS | None = None,
-        on_hours_min: Numeric_PS | None = None,
-        on_hours_max: Numeric_PS | None = None,
-        consecutive_on_hours_min: Numeric_TPS | None = None,
-        consecutive_on_hours_max: Numeric_TPS | None = None,
-        consecutive_off_hours_min: Numeric_TPS | None = None,
-        consecutive_off_hours_max: Numeric_TPS | None = None,
-        switch_on_max: Numeric_PS | None = None,
-        force_switch_on: bool = False,
-        **kwargs,
+        effects_per_startup: Effect_TPS | Numeric_TPS | None = None,
+        effects_per_active_hour: Effect_TPS | Numeric_TPS | None = None,
+        active_hours_min: Numeric_PS | None = None,
+        active_hours_max: Numeric_PS | None = None,
+        min_uptime: Numeric_TPS | None = None,
+        max_uptime: Numeric_TPS | None = None,
+        min_downtime: Numeric_TPS | None = None,
+        max_downtime: Numeric_TPS | None = None,
+        startup_limit: Numeric_PS | None = None,
+        force_startup_tracking: bool = False,
     ):
-        # Handle deprecated parameters
-        on_hours_min = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_min', 'on_hours_min', on_hours_min)
-        on_hours_max = self._handle_deprecated_kwarg(kwargs, 'on_hours_total_max', 'on_hours_max', on_hours_max)
-        switch_on_max = self._handle_deprecated_kwarg(kwargs, 'switch_on_total_max', 'switch_on_max', switch_on_max)
-        self._validate_kwargs(kwargs)
+        self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
+        self.effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
+        self.active_hours_min = active_hours_min
+        self.active_hours_max = active_hours_max
+        self.min_uptime = min_uptime
+        self.max_uptime = max_uptime
+        self.min_downtime = min_downtime
+        self.max_downtime = max_downtime
+        self.startup_limit = startup_limit
+        self.force_startup_tracking: bool = force_startup_tracking
 
-        self.effects_per_switch_on = effects_per_switch_on if effects_per_switch_on is not None else {}
-        self.effects_per_running_hour = effects_per_running_hour if effects_per_running_hour is not None else {}
-        self.on_hours_min = on_hours_min
-        self.on_hours_max = on_hours_max
-        self.consecutive_on_hours_min = consecutive_on_hours_min
-        self.consecutive_on_hours_max = consecutive_on_hours_max
-        self.consecutive_off_hours_min = consecutive_off_hours_min
-        self.consecutive_off_hours_max = consecutive_off_hours_max
-        self.switch_on_max = switch_on_max
-        self.force_switch_on: bool = force_switch_on
-
-    def transform_data(self, name_prefix: str = '') -> None:
-        self.effects_per_switch_on = self._fit_effect_coords(
-            prefix=name_prefix,
-            effect_values=self.effects_per_switch_on,
-            suffix='per_switch_on',
+    def transform_data(self) -> None:
+        self.effects_per_startup = self._fit_effect_coords(
+            prefix=self.prefix,
+            effect_values=self.effects_per_startup,
+            suffix='per_startup',
         )
-        self.effects_per_running_hour = self._fit_effect_coords(
-            prefix=name_prefix,
-            effect_values=self.effects_per_running_hour,
-            suffix='per_running_hour',
+        self.effects_per_active_hour = self._fit_effect_coords(
+            prefix=self.prefix,
+            effect_values=self.effects_per_active_hour,
+            suffix='per_active_hour',
         )
-        self.consecutive_on_hours_min = self._fit_coords(
-            f'{name_prefix}|consecutive_on_hours_min', self.consecutive_on_hours_min
+        self.min_uptime = self._fit_coords(f'{self.prefix}|min_uptime', self.min_uptime)
+        self.max_uptime = self._fit_coords(f'{self.prefix}|max_uptime', self.max_uptime)
+        self.min_downtime = self._fit_coords(f'{self.prefix}|min_downtime', self.min_downtime)
+        self.max_downtime = self._fit_coords(f'{self.prefix}|max_downtime', self.max_downtime)
+        self.active_hours_max = self._fit_coords(
+            f'{self.prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
         )
-        self.consecutive_on_hours_max = self._fit_coords(
-            f'{name_prefix}|consecutive_on_hours_max', self.consecutive_on_hours_max
+        self.active_hours_min = self._fit_coords(
+            f'{self.prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
         )
-        self.consecutive_off_hours_min = self._fit_coords(
-            f'{name_prefix}|consecutive_off_hours_min', self.consecutive_off_hours_min
-        )
-        self.consecutive_off_hours_max = self._fit_coords(
-            f'{name_prefix}|consecutive_off_hours_max', self.consecutive_off_hours_max
-        )
-        self.on_hours_max = self._fit_coords(
-            f'{name_prefix}|on_hours_max', self.on_hours_max, dims=['period', 'scenario']
-        )
-        self.on_hours_min = self._fit_coords(
-            f'{name_prefix}|on_hours_min', self.on_hours_min, dims=['period', 'scenario']
-        )
-        self.switch_on_max = self._fit_coords(
-            f'{name_prefix}|switch_on_max', self.switch_on_max, dims=['period', 'scenario']
+        self.startup_limit = self._fit_coords(
+            f'{self.prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
         )
 
     @property
-    def use_off(self) -> bool:
-        """Proxy: whether OFF variable is required"""
-        return self.use_consecutive_off_hours
+    def use_uptime_tracking(self) -> bool:
+        """Determines whether a Variable for uptime (consecutive active hours) is needed or not"""
+        return any(param is not None for param in [self.min_uptime, self.max_uptime])
 
     @property
-    def use_consecutive_on_hours(self) -> bool:
-        """Determines whether a Variable for consecutive on hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_on_hours_min, self.consecutive_on_hours_max])
+    def use_downtime_tracking(self) -> bool:
+        """Determines whether a Variable for downtime (consecutive inactive hours) is needed or not"""
+        return any(param is not None for param in [self.min_downtime, self.max_downtime])
 
     @property
-    def use_consecutive_off_hours(self) -> bool:
-        """Determines whether a Variable for consecutive off hours is needed or not"""
-        return any(param is not None for param in [self.consecutive_off_hours_min, self.consecutive_off_hours_max])
-
-    @property
-    def use_switch_on(self) -> bool:
-        """Determines whether a variable for switch_on is needed or not"""
-        if self.force_switch_on:
+    def use_startup_tracking(self) -> bool:
+        """Determines whether a variable for startup is needed or not"""
+        if self.force_startup_tracking:
             return True
 
         return any(
             self._has_value(param)
             for param in [
-                self.effects_per_switch_on,
-                self.switch_on_max,
+                self.effects_per_startup,
+                self.startup_limit,
             ]
         )
-
-    # Backwards compatible properties (deprecated)
-    @property
-    def on_hours_total_min(self):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_min
-
-    @on_hours_total_min.setter
-    def on_hours_total_min(self, value):
-        """DEPRECATED: Use 'on_hours_min' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_min' is deprecated. Use 'on_hours_min' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_min = value
-
-    @property
-    def on_hours_total_max(self):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.on_hours_max
-
-    @on_hours_total_max.setter
-    def on_hours_total_max(self, value):
-        """DEPRECATED: Use 'on_hours_max' property instead."""
-        warnings.warn(
-            f"Property 'on_hours_total_max' is deprecated. Use 'on_hours_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.on_hours_max = value
-
-    @property
-    def switch_on_total_max(self):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.switch_on_max
-
-    @switch_on_total_max.setter
-    def switch_on_total_max(self, value):
-        """DEPRECATED: Use 'switch_on_max' property instead."""
-        warnings.warn(
-            f"Property 'switch_on_total_max' is deprecated. Use 'switch_on_max' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.switch_on_max = value

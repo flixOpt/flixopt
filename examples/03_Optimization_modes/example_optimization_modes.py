@@ -16,9 +16,11 @@ def get_solutions(optimizations: list, variable: str) -> xr.Dataset:
     dataarrays = []
     for optimization in optimizations:
         if optimization.name == 'Segmented':
+            # SegmentedOptimization requires special handling to remove overlaps
             dataarrays.append(optimization.results.solution_without_overlap(variable).rename(optimization.name))
         else:
-            dataarrays.append(optimization.results.solution[variable].rename(optimization.name))
+            # For Full and Clustered, access solution from the flow_system
+            dataarrays.append(optimization.flow_system.solution[variable].rename(optimization.name))
     return xr.merge(dataarrays, join='outer')
 
 
@@ -41,7 +43,7 @@ if __name__ == '__main__':
         penalty_of_period_freedom=0,
     )
     keep_extreme_periods = True
-    excess_penalty = 1e5  # or set to None if not needed
+    imbalance_penalty = 1e5  # or set to None if not needed
 
     # Data Import
     data_import = pd.read_csv(
@@ -67,10 +69,10 @@ if __name__ == '__main__':
 
     flow_system = fx.FlowSystem(timesteps)
     flow_system.add_elements(
-        fx.Bus('Strom', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Fernwärme', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Gas', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Kohle', excess_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Strom', carrier='electricity', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', carrier='heat', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', carrier='gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Kohle', carrier='fuel', imbalance_penalty_per_flow_hour=imbalance_penalty),
     )
 
     # Effects
@@ -91,7 +93,7 @@ if __name__ == '__main__':
             size=95,
             relative_minimum=12 / 95,
             previous_flow_rate=20,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=1000),
+            status_parameters=fx.StatusParameters(effects_per_startup=1000),
         ),
     )
 
@@ -100,7 +102,7 @@ if __name__ == '__main__':
         'BHKW2',
         thermal_efficiency=0.58,
         electrical_efficiency=0.22,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=24000),
+        status_parameters=fx.StatusParameters(effects_per_startup=24000),
         electrical_flow=fx.Flow('P_el', bus='Strom', size=200),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=200),
         fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
@@ -176,7 +178,7 @@ if __name__ == '__main__':
         a_kwk,
         a_speicher,
     )
-    flow_system.plot_network()
+    flow_system.topology.plot()
 
     # Optimizations
     optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []

@@ -505,12 +505,16 @@
    Home Page Inline Styles (moved from docs/index.md)
    ========================================================================= */
 
+/* Center home page content when navigation is hidden */
+/* Remove this rule as it conflicts with TOC layout */
+
 .hero-section {
   text-align: center;
   padding: 4rem 2rem 3rem 2rem;
   background: linear-gradient(135deg, rgba(0, 150, 136, 0.1) 0%, rgba(0, 121, 107, 0.1) 100%);
   border-radius: 1rem;
-  margin-bottom: 3rem;
+  margin: 0 auto 3rem auto;
+  max-width: 1200px;
 }
 
 .hero-section h1 {
@@ -558,47 +562,6 @@
   margin-top: 2rem;
 }
 
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-  margin: 3rem 0;
-}
-
-.feature-card {
-  padding: 2rem;
-  border-radius: 0.75rem;
-  background: var(--md-code-bg-color);
-  border: 1px solid var(--md-default-fg-color--lightest);
-  transition: all 0.3s ease;
-  text-align: center;
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-  border-color: var(--md-primary-fg-color);
-}
-
-.feature-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.feature-card h3 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  font-size: 1.25rem;
-}
-
-.feature-card p {
-  color: var(--md-default-fg-color--light);
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
 .stats-banner {
   display: flex;
   justify-content: space-around;
@@ -631,45 +594,14 @@
 }
 
 .architecture-section {
-  margin: 4rem 0;
+  margin: 4rem auto;
   padding: 2rem;
   background: var(--md-code-bg-color);
   border-radius: 0.75rem;
+  max-width: 1200px;
 }
 
-.quick-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 3rem 0;
-}
 
-.quick-link-card {
-  padding: 1.5rem;
-  border-left: 4px solid var(--md-primary-fg-color);
-  background: var(--md-code-bg-color);
-  border-radius: 0.5rem;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: block;
-}
-
-.quick-link-card:hover {
-  background: var(--md-default-fg-color--lightest);
-  transform: translateX(4px);
-}
-
-.quick-link-card h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.1rem;
-  color: var(--md-primary-fg-color);
-}
-
-.quick-link-card p {
-  margin: 0;
-  color: var(--md-default-fg-color--light);
-  font-size: 0.9rem;
-}
 
 @media screen and (max-width: 768px) {
   .hero-section h1 {
@@ -683,10 +615,6 @@
   .hero-buttons {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .feature-grid {
-    grid-template-columns: 1fr;
   }
 
   .stats-banner {
@@ -836,30 +764,211 @@ button:focus-visible {
 }
 
 /* ============================================================================
+   Color Swatches for Carrier Documentation
+   ========================================================================= */
+
+/* Inline color swatch - a small colored square */
+.color-swatch {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 0.3em;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .color-swatch {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================================================
+   Jupyter Notebook Styling (syncs with dark/light theme)
+   ========================================================================= */
+
+/* Override Jupyter notebook syntax highlighting to match Material theme */
+/* Use Material's CSS variables for consistent colors */
+.highlight-ipynb { background: var(--md-code-bg-color) !important; color: var(--md-code-fg-color) !important; }
+
+/* Comments */
+.highlight-ipynb .c, .highlight-ipynb .c1, .highlight-ipynb .ch,
+.highlight-ipynb .cm, .highlight-ipynb .cp, .highlight-ipynb .cpf,
+.highlight-ipynb .cs { color: var(--md-code-hl-comment-color, var(--md-default-fg-color--light)) !important; font-style: italic; }
+
+/* Keywords */
+.highlight-ipynb .k, .highlight-ipynb .kc, .highlight-ipynb .kd,
+.highlight-ipynb .kn, .highlight-ipynb .kp, .highlight-ipynb .kr,
+.highlight-ipynb .kt { color: var(--md-code-hl-keyword-color, #3f6ec6) !important; }
+
+/* Strings */
+.highlight-ipynb .s, .highlight-ipynb .s1, .highlight-ipynb .s2,
+.highlight-ipynb .sa, .highlight-ipynb .sb, .highlight-ipynb .sc,
+.highlight-ipynb .sd, .highlight-ipynb .se, .highlight-ipynb .sh,
+.highlight-ipynb .si, .highlight-ipynb .sl, .highlight-ipynb .sr,
+.highlight-ipynb .ss, .highlight-ipynb .sx { color: var(--md-code-hl-string-color, #1c7d4d) !important; }
+
+/* Numbers */
+.highlight-ipynb .m, .highlight-ipynb .mb, .highlight-ipynb .mf,
+.highlight-ipynb .mh, .highlight-ipynb .mi, .highlight-ipynb .mo,
+.highlight-ipynb .il { color: var(--md-code-hl-number-color, #d52a2a) !important; }
+
+/* Functions */
+.highlight-ipynb .nf, .highlight-ipynb .fm { color: var(--md-code-hl-function-color, #a846b9) !important; }
+
+/* Constants/Builtins */
+.highlight-ipynb .nb, .highlight-ipynb .bp,
+.highlight-ipynb .kc { color: var(--md-code-hl-constant-color, #6e59d9) !important; }
+
+/* Special */
+.highlight-ipynb .nc, .highlight-ipynb .ne, .highlight-ipynb .nd,
+.highlight-ipynb .ni { color: var(--md-code-hl-special-color, #db1457) !important; }
+
+/* Names/variables */
+.highlight-ipynb .n, .highlight-ipynb .nn, .highlight-ipynb .na,
+.highlight-ipynb .nv, .highlight-ipynb .no { color: var(--md-code-hl-name-color, var(--md-code-fg-color)) !important; }
+
+/* Operators */
+.highlight-ipynb .o, .highlight-ipynb .ow { color: var(--md-code-hl-operator-color, var(--md-default-fg-color--light)) !important; }
+
+/* Punctuation */
+.highlight-ipynb .p, .highlight-ipynb .pm { color: var(--md-code-hl-punctuation-color, var(--md-default-fg-color--light)) !important; }
+
+/* Errors */
+.highlight-ipynb .err { color: var(--md-code-hl-special-color, #db1457) !important; }
+
+/* Notebook container */
+.jupyter-wrapper {
+  margin: 1rem 0;
+}
+
+/* Code cell styling - clean and modern */
+.jupyter-wrapper .jp-CodeCell {
+  border-radius: 0.4rem;
+  margin: 0.5rem 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  overflow: hidden;
+}
+
+/* Input cells (code) */
+.jupyter-wrapper .jp-CodeCell .jp-InputArea {
+  background-color: var(--md-code-bg-color);
+  border: none;
+}
+
+.jupyter-wrapper .jp-InputArea pre {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.55rem;
+  line-height: 1.4;
+}
+
+/* Output cells */
+.jupyter-wrapper .jp-OutputArea pre {
+  font-size: 0.55rem;
+  margin: 0;
+}
+
+/* Cell prompts (In [1]:, Out [1]:) - hide for cleaner look */
+.jupyter-wrapper .jp-InputPrompt,
+.jupyter-wrapper .jp-OutputPrompt {
+  display: none;
+}
+
+/* Markdown cells - blend with page, no background */
+.jupyter-wrapper .jp-MarkdownCell {
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+.jupyter-wrapper .jp-RenderedMarkdown {
+  padding: 0.5rem 0;
+}
+
+/* Tables in notebooks */
+.jupyter-wrapper table {
+  font-size: 0.55rem;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.jupyter-wrapper table th,
+.jupyter-wrapper table td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.jupyter-wrapper table th {
+  background-color: var(--md-default-fg-color--lightest);
+  font-weight: 600;
+}
+
+/* Images and plots */
+.jupyter-wrapper .jp-RenderedImage img,
+.jupyter-wrapper .jp-RenderedImage svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-CodeCell {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper table th,
+[data-md-color-scheme="slate"] .jupyter-wrapper table td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Plotly charts - ensure proper sizing */
+.jupyter-wrapper .plotly-graph-div {
+  margin: 0 auto;
+}
+
+/* Error output styling */
+.jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.05);
+  color: #c7254e;
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+}
+
+[data-md-color-scheme="slate"] .jupyter-wrapper .jp-RenderedText[data-mime-type="application/vnd.jupyter.stderr"] {
+  background-color: rgba(255, 0, 0, 0.15);
+  color: #ff6b6b;
+}
+
+/* ============================================================================
    Footer Alignment Fix
    ========================================================================= */
 
-/* Align footer with content width */
-.md-footer-meta__inner,
-.md-footer__inner {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding-left: 1.2rem;
-  padding-right: 1.2rem;
+/* Hide the social media footer section */
+.md-footer-meta {
+  display: none;
+}
+
+/* Footer navigation content matches page width */
+.md-footer .md-grid {
+  max-width: 1300px !important;
+  padding-left: 1.2rem !important;
+  padding-right: 1.2rem !important;
 }
 
 @media screen and (min-width: 76.25em) {
-  .md-footer-meta__inner,
-  .md-footer__inner {
-    padding-left: 1rem;
-    padding-right: 1rem;
+  .md-footer .md-grid {
+    padding-left: 1rem !important;
   }
 }
 
 @media screen and (min-width: 100em) {
-  .md-footer-meta__inner,
-  .md-footer__inner {
-    padding-left: 2rem;
-    padding-right: 2rem;
+  .md-footer .md-grid {
+    padding-left: 2rem !important;
   }
 }

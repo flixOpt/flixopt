@@ -8,7 +8,6 @@ which are then transformed into the internal data structure.
 from __future__ import annotations
 
 import logging
-import warnings
 from collections import deque
 from typing import TYPE_CHECKING, Literal
 
@@ -16,7 +15,6 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .config import DEPRECATION_REMOVAL_VERSION
 from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
@@ -34,16 +32,15 @@ PENALTY_EFFECT_LABEL = 'Penalty'
 
 @register_class_for_io
 class Effect(Element):
-    """
-    Represents system-wide impacts like costs, emissions, resource consumption, or other effects.
+    """Represents system-wide impacts like costs, emissions, or resource consumption.
 
-    Effects capture the broader impacts of system operation and investment decisions beyond
-    the primary energy/material flows. Each Effect accumulates contributions from Components,
-    Flows, and other system elements. One Effect is typically chosen as the optimization
-    objective, while others can serve as constraints or tracking metrics.
+    Effects quantify impacts aggregating contributions from Elements across the FlowSystem.
+    One Effect serves as the optimization objective, while others can be constrained or tracked.
+    Supports operational and investment contributions, cross-effect relationships (e.g., carbon
+    pricing), and flexible constraint formulation.
 
-    Effects support comprehensive modeling including operational and investment contributions,
-    cross-effect relationships (e.g., carbon pricing), and flexible constraint formulation.
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
 
     Args:
         label: The label of the Element. Used to identify it in the FlowSystem.
@@ -190,7 +187,7 @@ class Effect(Element):
         self,
         label: str,
         unit: str,
-        description: str,
+        description: str = '',
         meta_data: dict | None = None,
         is_standard: bool = False,
         is_objective: bool = False,
@@ -207,7 +204,6 @@ class Effect(Element):
         maximum_total: Numeric_PS | None = None,
         minimum_over_periods: Numeric_S | None = None,
         maximum_over_periods: Numeric_S | None = None,
-        **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
         self.unit = unit
@@ -229,23 +225,6 @@ class Effect(Element):
         self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
         self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
 
-        # Handle backwards compatibility for deprecated parameters using centralized helper
-        minimum_temporal = self._handle_deprecated_kwarg(
-            kwargs, 'minimum_operation', 'minimum_temporal', minimum_temporal
-        )
-        maximum_temporal = self._handle_deprecated_kwarg(
-            kwargs, 'maximum_operation', 'maximum_temporal', maximum_temporal
-        )
-        minimum_periodic = self._handle_deprecated_kwarg(kwargs, 'minimum_invest', 'minimum_periodic', minimum_periodic)
-        maximum_periodic = self._handle_deprecated_kwarg(kwargs, 'maximum_invest', 'maximum_periodic', maximum_periodic)
-        minimum_per_hour = self._handle_deprecated_kwarg(
-            kwargs, 'minimum_operation_per_hour', 'minimum_per_hour', minimum_per_hour
-        )
-        maximum_per_hour = self._handle_deprecated_kwarg(
-            kwargs, 'maximum_operation_per_hour', 'maximum_per_hour', maximum_per_hour
-        )
-        self._validate_kwargs(kwargs)
-
         # Set attributes directly
         self.minimum_temporal = minimum_temporal
         self.maximum_temporal = maximum_temporal
@@ -258,227 +237,56 @@ class Effect(Element):
         self.minimum_over_periods = minimum_over_periods
         self.maximum_over_periods = maximum_over_periods
 
-    # Backwards compatible properties (deprecated)
-    @property
-    def minimum_operation(self):
-        """DEPRECATED: Use 'minimum_temporal' property instead."""
-        warnings.warn(
-            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_temporal
+    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+        """Link this effect to a FlowSystem.
 
-    @minimum_operation.setter
-    def minimum_operation(self, value):
-        """DEPRECATED: Use 'minimum_temporal' property instead."""
-        warnings.warn(
-            f"Property 'minimum_operation' is deprecated. Use 'minimum_temporal' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_temporal = value
+        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        """
+        super().link_to_flow_system(flow_system, self.label_full)
 
-    @property
-    def maximum_operation(self):
-        """DEPRECATED: Use 'maximum_temporal' property instead."""
-        warnings.warn(
-            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_temporal
-
-    @maximum_operation.setter
-    def maximum_operation(self, value):
-        """DEPRECATED: Use 'maximum_temporal' property instead."""
-        warnings.warn(
-            f"Property 'maximum_operation' is deprecated. Use 'maximum_temporal' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_temporal = value
-
-    @property
-    def minimum_invest(self):
-        """DEPRECATED: Use 'minimum_periodic' property instead."""
-        warnings.warn(
-            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_periodic
-
-    @minimum_invest.setter
-    def minimum_invest(self, value):
-        """DEPRECATED: Use 'minimum_periodic' property instead."""
-        warnings.warn(
-            f"Property 'minimum_invest' is deprecated. Use 'minimum_periodic' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_periodic = value
-
-    @property
-    def maximum_invest(self):
-        """DEPRECATED: Use 'maximum_periodic' property instead."""
-        warnings.warn(
-            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_periodic
-
-    @maximum_invest.setter
-    def maximum_invest(self, value):
-        """DEPRECATED: Use 'maximum_periodic' property instead."""
-        warnings.warn(
-            f"Property 'maximum_invest' is deprecated. Use 'maximum_periodic' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_periodic = value
-
-    @property
-    def minimum_operation_per_hour(self):
-        """DEPRECATED: Use 'minimum_per_hour' property instead."""
-        warnings.warn(
-            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_per_hour
-
-    @minimum_operation_per_hour.setter
-    def minimum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'minimum_per_hour' property instead."""
-        warnings.warn(
-            f"Property 'minimum_operation_per_hour' is deprecated. Use 'minimum_per_hour' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_per_hour = value
-
-    @property
-    def maximum_operation_per_hour(self):
-        """DEPRECATED: Use 'maximum_per_hour' property instead."""
-        warnings.warn(
-            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_per_hour
-
-    @maximum_operation_per_hour.setter
-    def maximum_operation_per_hour(self, value):
-        """DEPRECATED: Use 'maximum_per_hour' property instead."""
-        warnings.warn(
-            f"Property 'maximum_operation_per_hour' is deprecated. Use 'maximum_per_hour' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_per_hour = value
-
-    @property
-    def minimum_total_per_period(self):
-        """DEPRECATED: Use 'minimum_total' property instead."""
-        warnings.warn(
-            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.minimum_total
-
-    @minimum_total_per_period.setter
-    def minimum_total_per_period(self, value):
-        """DEPRECATED: Use 'minimum_total' property instead."""
-        warnings.warn(
-            f"Property 'minimum_total_per_period' is deprecated. Use 'minimum_total' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.minimum_total = value
-
-    @property
-    def maximum_total_per_period(self):
-        """DEPRECATED: Use 'maximum_total' property instead."""
-        warnings.warn(
-            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.maximum_total
-
-    @maximum_total_per_period.setter
-    def maximum_total_per_period(self, value):
-        """DEPRECATED: Use 'maximum_total' property instead."""
-        warnings.warn(
-            f"Property 'maximum_total_per_period' is deprecated. Use 'maximum_total' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.maximum_total = value
-
-    def transform_data(self, name_prefix: str = '') -> None:
-        prefix = '|'.join(filter(None, [name_prefix, self.label_full]))
-        self.minimum_per_hour = self._fit_coords(f'{prefix}|minimum_per_hour', self.minimum_per_hour)
-        self.maximum_per_hour = self._fit_coords(f'{prefix}|maximum_per_hour', self.maximum_per_hour)
+    def transform_data(self) -> None:
+        self.minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self.minimum_per_hour)
+        self.maximum_per_hour = self._fit_coords(f'{self.prefix}|maximum_per_hour', self.maximum_per_hour)
 
         self.share_from_temporal = self._fit_effect_coords(
             prefix=None,
             effect_values=self.share_from_temporal,
-            suffix=f'(temporal)->{prefix}(temporal)',
+            suffix=f'(temporal)->{self.prefix}(temporal)',
             dims=['time', 'period', 'scenario'],
         )
         self.share_from_periodic = self._fit_effect_coords(
             prefix=None,
             effect_values=self.share_from_periodic,
-            suffix=f'(periodic)->{prefix}(periodic)',
+            suffix=f'(periodic)->{self.prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
         self.minimum_temporal = self._fit_coords(
-            f'{prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
         )
         self.maximum_temporal = self._fit_coords(
-            f'{prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
         )
         self.minimum_periodic = self._fit_coords(
-            f'{prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
         )
         self.maximum_periodic = self._fit_coords(
-            f'{prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
         )
         self.minimum_total = self._fit_coords(
-            f'{prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
+            f'{self.prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
         )
         self.maximum_total = self._fit_coords(
-            f'{prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
+            f'{self.prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
         )
         self.minimum_over_periods = self._fit_coords(
-            f'{prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
+            f'{self.prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
         )
         self.maximum_over_periods = self._fit_coords(
-            f'{prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
+            f'{self.prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
         )
         self.period_weights = self._fit_coords(
-            f'{prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
+            f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:
@@ -499,6 +307,16 @@ class Effect(Element):
 
 
 class EffectModel(ElementModel):
+    """Mathematical model implementation for Effects.
+
+    Creates optimization variables and constraints for effect aggregation,
+    including periodic and temporal tracking, cross-effect contributions,
+    and effect bounds.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
+    """
+
     element: Effect  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Effect):
@@ -663,21 +481,16 @@ class EffectCollection(ElementContainer[Effect]):
             Note: a standard effect must be defined when passing scalars or None labels.
         """
 
-        def get_effect_label(eff: Effect | str) -> str:
-            """Temporary function to get the label of an effect and warn for deprecation"""
-            if isinstance(eff, Effect):
-                warnings.warn(
-                    f'The use of effect objects when specifying EffectValues is deprecated. '
-                    f'Use the label of the effect instead. Used effect: {eff.label_full}. '
-                    f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                    UserWarning,
-                    stacklevel=2,
-                )
-                return eff.label
-            elif eff is None:
+        def get_effect_label(eff: str | None) -> str:
+            """Get the label of an effect"""
+            if eff is None:
                 return self.standard_effect.label
-            else:
-                return eff
+            if isinstance(eff, Effect):
+                raise TypeError(
+                    f'Effect objects are no longer accepted when specifying EffectValues. '
+                    f'Use the label string instead. Got: {eff.label_full}'
+                )
+            return eff
 
         if effect_values_user is None:
             return None
@@ -863,7 +676,7 @@ class EffectCollectionModel(Submodel):
             penalty_effect = self.effects._create_penalty_effect()
             # Link to FlowSystem (should already be linked, but ensure it)
             if penalty_effect._flow_system is None:
-                penalty_effect._set_flow_system(self._model.flow_system)
+                penalty_effect.link_to_flow_system(self._model.flow_system)
 
         # Create EffectModel for each effect
         for effect in self.effects.values():

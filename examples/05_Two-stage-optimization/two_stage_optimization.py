@@ -11,6 +11,7 @@ import logging
 import pathlib
 import timeit
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -37,11 +38,12 @@ if __name__ == '__main__':
     gas_price = filtered_data['Gaspr.€/MWh'].to_numpy()
 
     flow_system = fx.FlowSystem(timesteps)
+    # Carriers provide automatic color assignment in plots
     flow_system.add_elements(
-        fx.Bus('Strom'),
-        fx.Bus('Fernwärme'),
-        fx.Bus('Gas'),
-        fx.Bus('Kohle'),
+        fx.Bus('Strom', carrier='electricity'),
+        fx.Bus('Fernwärme', carrier='heat'),
+        fx.Bus('Gas', carrier='gas'),
+        fx.Bus('Kohle', carrier='fuel'),
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
@@ -53,20 +55,18 @@ if __name__ == '__main__':
                 label='Q_fu',
                 bus='Gas',
                 size=fx.InvestParameters(
-                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=500
+                    effects_of_investment_per_size={'costs': 1_000}, minimum_size=10, maximum_size=600
                 ),
                 relative_minimum=0.2,
                 previous_flow_rate=20,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=300),
+                status_parameters=fx.StatusParameters(effects_per_startup=300),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
-            on_off_parameters=fx.OnOffParameters(
-                effects_per_switch_on=1_000, consecutive_on_hours_min=10, consecutive_off_hours_min=10
-            ),
+            status_parameters=fx.StatusParameters(effects_per_startup=1_000, min_uptime=10, min_downtime=10),
             electrical_flow=fx.Flow('P_el', bus='Strom'),
             thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
             fuel_flow=fx.Flow(
@@ -89,8 +89,8 @@ if __name__ == '__main__':
             eta_discharge=1,
             relative_loss_per_hour=0.001,
             prevent_simultaneous_charge_and_discharge=True,
-            charging=fx.Flow('Q_th_load', size=137, bus='Fernwärme'),
-            discharging=fx.Flow('Q_th_unload', size=158, bus='Fernwärme'),
+            charging=fx.Flow('Q_th_load', size=200, bus='Fernwärme'),
+            discharging=fx.Flow('Q_th_unload', size=200, bus='Fernwärme'),
         ),
         fx.Sink(
             'Wärmelast', inputs=[fx.Flow('Q_th_Last', bus='Fernwärme', size=1, fixed_relative_profile=heat_demand)]
@@ -124,34 +124,39 @@ if __name__ == '__main__':
     )
 
     # Separate optimization of flow sizes and dispatch
+    # Stage 1: Optimize sizes using downsampled (2h) data
     start = timeit.default_timer()
     calculation_sizing = fx.Optimization('Sizing', flow_system.resample('2h'))
     calculation_sizing.do_modeling()
     calculation_sizing.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_sizing = timeit.default_timer() - start
 
+    # Stage 2: Optimize dispatch with fixed sizes from Stage 1
     start = timeit.default_timer()
     calculation_dispatch = fx.Optimization('Dispatch', flow_system)
     calculation_dispatch.do_modeling()
-    calculation_dispatch.fix_sizes(calculation_sizing.results.solution)
+    calculation_dispatch.fix_sizes(calculation_sizing.flow_system.solution)
     calculation_dispatch.solve(fx.solvers.HighsSolver(0.1 / 100, 60))
     timer_dispatch = timeit.default_timer() - start
 
-    if (calculation_dispatch.results.sizes().round(5) == calculation_sizing.results.sizes().round(5)).all().item():
+    # Verify sizes were correctly fixed
+    dispatch_sizes = calculation_dispatch.flow_system.statistics.sizes
+    sizing_sizes = calculation_sizing.flow_system.statistics.sizes
+    if np.allclose(dispatch_sizes.to_dataarray(), sizing_sizes.to_dataarray(), rtol=1e-5):
         logger.info('Sizes were correctly equalized')
     else:
         raise RuntimeError('Sizes were not correctly equalized')
 
-    # Optimization of both flow sizes and dispatch together
+    # Combined optimization: optimize both sizes and dispatch together
     start = timeit.default_timer()
     calculation_combined = fx.Optimization('Combined', flow_system)
     calculation_combined.do_modeling()
     calculation_combined.solve(fx.solvers.HighsSolver(0.1 / 100, 600))
     timer_combined = timeit.default_timer() - start
 
-    # Comparison of results
+    # Comparison of results - access solutions from flow_system
     comparison = xr.concat(
-        [calculation_combined.results.solution, calculation_dispatch.results.solution], dim='mode'
+        [calculation_combined.flow_system.solution, calculation_dispatch.flow_system.solution], dim='mode'
     ).assign_coords(mode=['Combined', 'Two-stage'])
     comparison['Duration [s]'] = xr.DataArray([timer_combined, timer_sizing + timer_dispatch], dims='mode')
 

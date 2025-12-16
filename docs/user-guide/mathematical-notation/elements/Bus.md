@@ -1,49 +1,75 @@
-A Bus is a simple nodal balance between its incoming and outgoing flow rates.
+# Bus
 
-$$ \label{eq:bus_balance}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_\text{in}}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i)
-$$
+A Bus is where flows meet and must balance — inputs equal outputs at every timestep.
 
-Optionally, a Bus can have a `excess_penalty_per_flow_hour` parameter, which allows to penaltize the balance for missing or excess flow-rates.
-This is usefull as it handles a possible ifeasiblity gently.
+## Carriers
 
-This changes the balance to
+Buses can optionally be assigned a **carrier** — a type of energy or material (e.g., electricity, heat, gas). Carriers enable:
 
-$$ \label{eq:bus_balance-excess}
-  \sum_{f_\text{in} \in \mathcal{F}_\text{in}} p_{f_ \text{in}}(\text{t}_i) + \phi_\text{in}(\text{t}_i) =
-  \sum_{f_\text{out} \in \mathcal{F}_\text{out}} p_{f_\text{out}}(\text{t}_i) + \phi_\text{out}(\text{t}_i)
-$$
+- **Automatic coloring** in plots based on energy type
+- **Unit tracking** for better result visualization
+- **Semantic grouping** of buses by type
 
-The penalty term is defined as
+```python
+# Assign a carrier by name (uses CONFIG.Carriers defaults)
+heat_bus = fx.Bus('HeatNetwork', carrier='heat')
+elec_bus = fx.Bus('Grid', carrier='electricity')
 
-$$ \label{eq:bus_penalty}
-  s_{b \rightarrow \Phi}(\text{t}_i) =
-      \text a_{b \rightarrow \Phi}(\text{t}_i) \cdot \Delta \text{t}_i
-      \cdot [ \phi_\text{in}(\text{t}_i) + \phi_\text{out}(\text{t}_i) ]
-$$
+# Or register custom carriers on the FlowSystem
+biogas = fx.Carrier('biogas', color='#228B22', unit='kW', description='Biogas fuel')
+flow_system.add_carrier(biogas)
+gas_bus = fx.Bus('BiogasNetwork', carrier='biogas')
+```
 
-With:
-
-- $\mathcal{F}_\text{in}$ and $\mathcal{F}_\text{out}$ being the set of all incoming and outgoing flows
-- $p_{f_\text{in}}(\text{t}_i)$ and $p_{f_\text{out}}(\text{t}_i)$ being the flow-rate at time $\text{t}_i$ for flow $f_\text{in}$ and $f_\text{out}$, respectively
-- $\phi_\text{in}(\text{t}_i)$ and $\phi_\text{out}(\text{t}_i)$ being the missing or excess flow-rate at time $\text{t}_i$, respectively
-- $\text{t}_i$ being the time step
-- $s_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty term
-- $\text a_{b \rightarrow \Phi}(\text{t}_i)$ being the penalty coefficient (`excess_penalty_per_flow_hour`)
+See [Color Management](../../../user-guide/results-plotting.md#color-management) for more on how carriers affect visualization.
 
 ---
 
-## Implementation
+## Basic: Balance Equation
 
-**Python Class:** [`Bus`][flixopt.elements.Bus]
+$$
+\sum_{in} p(t) = \sum_{out} p(t)
+$$
 
-See the API documentation for implementation details and usage examples.
+```python
+heat_bus = fx.Bus(label='heat')
+# All flows connected to this bus must balance
+```
+
+If balance can't be achieved → model is **infeasible**.
 
 ---
 
-## See Also
+## With Imbalance Penalty
 
-- [Flow](../elements/Flow.md) - Definition of flow rates in the balance
-- [Effects, Penalty & Objective](../effects-penalty-objective.md) - How penalties are included in the objective function
-- [Modeling Patterns](../modeling-patterns/index.md) - Mathematical building blocks
+Allow imbalance for debugging or soft constraints:
+
+$$
+\sum_{in} p(t) + \phi_{in}(t) = \sum_{out} p(t) + \phi_{out}(t)
+$$
+
+The slack variables $\phi$ are penalized: $(\phi_{in} + \phi_{out}) \cdot \Delta t \cdot c_\phi$
+
+```python
+heat_bus = fx.Bus(
+    label='heat',
+    imbalance_penalty_per_flow_hour=1e5  # High penalty for imbalance
+)
+```
+
+!!! tip "Debugging"
+    If you see a `virtual_demand` or `virtual_supply` and its non zero in results → your system couldn't meet demand. Check capacities and connections.
+
+---
+
+## Reference
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| $p(t)$ | $\mathbb{R}_{\geq 0}$ | Flow rate of connected flows |
+| $\phi_{in}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual supply (covers shortages) |
+| $\phi_{out}(t)$ | $\mathbb{R}_{\geq 0}$ | Slack: virtual demand (absorbs surplus) |
+| $c_\phi$ | $\mathbb{R}_{\geq 0}$ | Penalty factor (`imbalance_penalty_per_flow_hour`) |
+| $\Delta t$ | $\mathbb{R}_{> 0}$ | Timestep duration (hours) |
+
+**Classes:** [`Bus`][flixopt.elements.Bus], [`BusModel`][flixopt.elements.BusModel]

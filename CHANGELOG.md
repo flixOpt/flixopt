@@ -16,7 +16,7 @@ This contains all commits, PRs, and contributors.
 Therefore, the Changelog should focus on the user-facing changes.
 
 Please remove all irrelevant sections before releasing.
-Please keep the format of the changelog consistent with the other releases, so the extraction for mkdocs works.
+Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 ---
 
 ## [Template] - ????-??-??
@@ -49,37 +49,371 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 ---
 
-## [Unreleased] - ????-??-??
+Until here -->
 
-**Summary**:
+## [Upcoming] - v5.0.0
 
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+**Summary**: This is a major release that fundamentally reimagines how users interact with flixopt. The new **FlowSystem-centric API** dramatically simplifies workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **removes all deprecated items from v4.x**.
+
+!!! tip "Migration Guide"
+
+    See the [Migration Guide v5](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v5/) for step-by-step upgrade instructions.
 
 ### ✨ Added
 
+**FlowSystem-Centric Architecture**: The FlowSystem is now the central hub for all operations:
+
+```python
+import flixopt as fx
+
+# Create and configure your system
+flow_system = fx.FlowSystem(timesteps)
+flow_system.add_elements(boiler, heat_bus, costs)
+
+# Optimize directly on FlowSystem (no more Optimization class!)
+flow_system.optimize(fx.solvers.HighsSolver())
+
+# Access results via solution Dataset
+total_costs = flow_system.solution['costs'].item()
+flow_rate = flow_system.solution['Boiler(Q_th)|flow_rate'].values
+
+# Plot with new accessor API
+flow_system.statistics.plot.balance('HeatBus')
+flow_system.statistics.plot.sankey.flows()
+```
+
+**New Accessor-Based API**: Four accessor patterns provide organized, discoverable interfaces:
+
+| Accessor | Purpose | Example |
+|----------|---------|---------|
+| `flow_system.statistics` | Data access (flow rates, sizes, effects) | `flow_system.statistics.flow_rates` |
+| `flow_system.statistics.plot` | Visualization methods | `flow_system.statistics.plot.balance('Bus')` |
+| `flow_system.transform` | FlowSystem transformations | `flow_system.transform.cluster(params)` |
+| `flow_system.topology` | Network structure & visualization | `flow_system.topology.plot_network()` |
+
+**Statistics Accessor**: Access aggregated results data with clean, consistent naming:
+
+```python
+stats = flow_system.statistics
+
+# Flow data (clean labels, no |flow_rate suffix needed)
+stats.flow_rates['Boiler(Q_th)']
+stats.flow_hours['Boiler(Q_th)']
+stats.sizes['Boiler(Q_th)']
+stats.charge_states['Battery']
+
+# Effect breakdown by contributor
+stats.temporal_effects['costs']   # Per timestep, per contributor
+stats.periodic_effects['costs']   # Investment costs per contributor
+stats.total_effects['costs']      # Total per contributor
+```
+
+**Comprehensive Plotting API**: All plots return `PlotResult` objects with chainable methods:
+
+```python
+# Balance plots for buses and components
+flow_system.statistics.plot.balance('ElectricityBus')
+flow_system.statistics.plot.balance('Boiler', mode='area')
+
+# Storage visualization with charge state
+flow_system.statistics.plot.storage('Battery')
+
+# Heatmaps with automatic time reshaping
+flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate', reshape=('D', 'h'))
+
+# Flow-based Sankey diagrams
+flow_system.statistics.plot.sankey.flows()
+flow_system.statistics.plot.sankey.flows(select={'bus': 'ElectricityBus'})
+
+# Effect contribution Sankey
+flow_system.statistics.plot.sankey.effects('costs')
+
+# Method chaining for customization and export
+flow_system.statistics.plot.balance('Bus') \
+    .update(title='Custom Title', height=600) \
+    .to_html('plot.html') \
+    .to_csv('data.csv') \
+    .show()
+```
+
+**Carrier Management**: New `Carrier` class for consistent styling across visualizations:
+
+```python
+# Define custom carriers
+electricity = fx.Carrier('electricity', '#FFD700', 'kW', 'Electrical power')
+district_heat = fx.Carrier('district_heat', '#FF6B6B', 'kW_th')
+
+# Register with FlowSystem
+flow_system.add_carrier(electricity)
+
+# Use with buses (reference by name)
+elec_bus = fx.Bus('MainGrid', carrier='electricity')
+
+# Or use predefined carriers from CONFIG
+fx.CONFIG.Carriers.electricity
+fx.CONFIG.Carriers.heat
+```
+
+**Transform Accessor**: Transformations that create new FlowSystem instances:
+
+```python
+# Time selection and resampling
+fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
+fs_resampled = flow_system.transform.resample(time='4h', method='mean')
+
+# Clustered optimization
+params = fx.ClusteringParameters(hours_per_period=24, nr_of_periods=8)
+clustered_fs = flow_system.transform.cluster(params)
+clustered_fs.optimize(solver)
+```
+
+**Rolling Horizon Optimization**: Decompose large operational problems into sequential segments:
+
+```python
+# Solve with rolling horizon (replaces SegmentedOptimization)
+segments = flow_system.optimize.rolling_horizon(
+    solver,
+    horizon=192,    # Timesteps per segment
+    overlap=48,     # Lookahead for storage optimization
+)
+
+# Combined solution available on original FlowSystem
+total_cost = flow_system.solution['costs'].item()
+
+# Individual segments also available
+for seg in segments:
+    print(seg.solution['costs'].item())
+```
+
+**Solution Persistence**: FlowSystem now stores and persists solutions:
+
+```python
+# Optimize and save with solution
+flow_system.optimize(solver)
+flow_system.to_netcdf('results/my_model.nc4')
+
+# Load FlowSystem with solution intact
+loaded_fs = fx.FlowSystem.from_netcdf('results/my_model.nc4')
+print(loaded_fs.solution['costs'].item())  # Solution is available!
+
+# Migrate old result files
+fs = fx.FlowSystem.from_old_results('results_folder', 'my_model')
+```
+
+**FlowSystem Locking**: FlowSystem automatically locks after optimization to prevent accidental modifications:
+
+```python
+flow_system.optimize(solver)
+
+# This would raise an error:
+# flow_system.add_elements(new_component)  # Locked!
+
+# Clear solution to unlock for modifications
+flow_system.solution = None  # Now you can modify
+```
+
+**NetCDF Improvements**:
+- Default compression level 5 for smaller files
+- `overwrite=False` parameter to prevent accidental overwrites
+- Solution data included in FlowSystem NetCDF files
+- Automatic name assignment from filename
+
+**PlotResult Class**: All plotting methods return a `PlotResult` object containing both:
+- `data`: An xarray Dataset with the prepared data
+- `figure`: A Plotly Figure object
+
+**Component color parameter**: Components now accept a `color` parameter for consistent visualization styling.
+
 ### 💥 Breaking Changes
+
+**Removed: Optimization and Results Classes** - Use FlowSystem methods instead:
+
+```python
+# Old (v4.x)
+optimization = fx.Optimization('model', flow_system)
+optimization.do_modeling()
+optimization.solve(solver)
+results = optimization.results
+costs = results.model['costs'].solution.item()
+
+# New (v5.0)
+flow_system.optimize(solver)
+costs = flow_system.solution['costs'].item()
+```
+
+**Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
+
+| Old Term | New Term |
+|----------|----------|
+| `OnOffParameters` | `StatusParameters` |
+| `on_off_parameters` | `status_parameters` |
+| `on` variable | `status` |
+| `switch_on` | `startup` |
+| `switch_off` | `shutdown` |
+| `switch_on_nr` | `startup_count` |
+| `on_hours_total` | `active_hours` |
+| `consecutive_on_hours` | `uptime` |
+| `consecutive_off_hours` | `downtime` |
+| `effects_per_switch_on` | `effects_per_startup` |
+| `effects_per_running_hour` | `effects_per_active_hour` |
+| `consecutive_on_hours_min` | `min_uptime` |
+| `consecutive_on_hours_max` | `max_uptime` |
+| `consecutive_off_hours_min` | `min_downtime` |
+| `consecutive_off_hours_max` | `max_downtime` |
+| `switch_on_total_max` | `startup_limit` |
+| `force_switch_on` | `force_startup_tracking` |
+| `on_hours_min` | `active_hours_min` |
+| `on_hours_max` | `active_hours_max` |
+
+**Bus imbalance terminology and default changed**:
+- `excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
+- Default changed from `1e5` to `None` (strict balance)
+- `with_excess` → `allows_imbalance`
+- `excess_input` → `virtual_supply`
+- `excess_output` → `virtual_demand`
+
+**Transform methods moved** from FlowSystem to TransformAccessor:
+
+```python
+# Old (deprecated, still works with warning)
+fs_subset = flow_system.sel(time=slice('2023-01-01', '2023-06-30'))
+
+# New (recommended)
+fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
+```
+
+**Storage charge_state changes**:
+- `charge_state` no longer has an extra timestep
+- Final charge state is now a separate variable: `charge_state|final`
+
+**Effect.description** now defaults to `''` (empty string) instead of `None`.
+
+**Stricter I/O**: NetCDF loading is stricter to prevent silent errors. Missing or corrupted data now raises explicit errors.
+
+**Validation**: Component with `status_parameters` now validates that all flows have sizes (required for big-M constraints).
 
 ### ♻️ Changed
 
+- Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
+- Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
+- Renamed `Bus.with_excess` → `allows_imbalance`
+- Results class deprecated in favor of `flow_system.solution` and `flow_system.statistics`
+- All plotting methods (`flow_rates()`, `flow_hours()`, etc.) deprecated in favor of statistics accessor
+
 ### 🗑️ Deprecated
+
+- `Results` class → Access results via `flow_system.solution` after optimization
+- `results.flow_rates()` → Use `flow_system.statistics.flow_rates`
+- `results.flow_hours()` → Use `flow_system.statistics.flow_hours`
+- `flow_system.sel()` → Use `flow_system.transform.sel()`
+- `flow_system.isel()` → Use `flow_system.transform.isel()`
+- `flow_system.resample()` → Use `flow_system.transform.resample()`
 
 ### 🔥 Removed
 
-### 🐛 Fixed
+**Modules removed:**
+- `calculation.py` module - Use `flow_system.optimize()` instead
 
-### 🔒 Security
+**Classes removed:**
+- `Calculation`, `FullCalculation` → Use `flow_system.optimize()`
+- `AggregatedCalculation` → Use `flow_system.transform.cluster()` + `optimize()`
+- `SegmentedCalculation`, `SegmentedOptimization` → Use `flow_system.optimize.rolling_horizon()`
+- `Aggregation` → Use `Clustering`
+- `AggregationParameters` → Use `ClusteringParameters`
+- `AggregationModel` → Use `ClusteringModel`
+- `CalculationResults` → Use `flow_system.solution`
+- `SegmentedCalculationResults` → Use `SegmentedResults`
+- `OnOffParameters` → Use `StatusParameters`
 
-### 📦 Dependencies
+**Functions removed:**
+- `change_logging_level()` → Use `CONFIG.Logging.enable_console()`
+
+**Properties removed:**
+- `FlowSystem.all_elements` → Use dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`)
+- `FlowSystem.weights` → Use `scenario_weights`
+
+**Features removed:**
+- Passing `Bus` objects directly to `Flow` → Pass bus label string instead and add Bus to FlowSystem
+- Using `Effect` objects in `EffectValues` → Use effect label strings instead
+
+**All deprecated parameters from v4.x removed:**
+
+| Class | Old Parameter | New Parameter |
+|-------|--------------|---------------|
+| TimeSeriesData | `agg_group` | `aggregation_group` |
+| TimeSeriesData | `agg_weight` | `aggregation_weight` |
+| Effect | `minimum_operation` | `minimum_temporal` |
+| Effect | `maximum_operation` | `maximum_temporal` |
+| Effect | `minimum_invest` | `minimum_periodic` |
+| Effect | `maximum_invest` | `maximum_periodic` |
+| Flow | `flow_hours_total_max` | `flow_hours_max` |
+| Flow | `flow_hours_total_min` | `flow_hours_min` |
+| InvestParameters | `fix_effects` | `effects_of_investment` |
+| InvestParameters | `specific_effects` | `effects_of_investment_per_size` |
+| InvestParameters | `divest_effects` | `effects_of_retirement` |
+| InvestParameters | `optional` | `mandatory` (inverted) |
+| Storage | `"lastValueOfSim"` | `"equals_final"` |
+| Source | `source` | `outputs` |
+| Sink | `sink` | `inputs` |
+| LinearConverters | `Q_fu` | `fuel_flow` |
+| LinearConverters | `P_el` | `electrical_flow` |
+| LinearConverters | `Q_th` | `thermal_flow` |
+| LinearConverters | `eta` | `thermal_efficiency` |
+| LinearConverters | `COP` | `cop` |
 
 ### 📝 Docs
 
+**Comprehensive Tutorial Notebooks** - 12 new Jupyter notebooks covering all major use cases:
+
+1. **01-Quickstart** - Minimal working example
+2. **02-Heat System** - District heating with storage
+3. **03-Investment Optimization** - Optimal equipment sizing
+4. **04-Operational Constraints** - Startup costs, uptime/downtime
+5. **05-Multi-Carrier System** - CHP producing electricity and heat
+6. **06a-Time-Varying Parameters** - Temperature-dependent COP
+7. **06b-Piecewise Conversion** - Load-dependent efficiency
+8. **06c-Piecewise Effects** - Economies of scale
+9. **07-Scenarios and Periods** - Multi-year planning
+10. **08-Large-Scale Optimization** - Resampling and two-stage
+11. **09-Plotting and Data Access** - Visualization guide
+12. **10-Transmission** - Connecting sites with pipelines/cables
+
+**New Documentation Pages:**
+- Migration Guide v5 - Step-by-step upgrade instructions
+- Results & Plotting Guide - Comprehensive plotting documentation
+- Building Models Guide - Component selection and modeling patterns
+- FAQ - Common questions and answers
+- Troubleshooting - Problem diagnosis and solutions
+
 ### 👷 Development
 
-### 🚧 Known Issues
+**New Test Suites:**
+- `test_flow_system_locking.py` - FlowSystem locking behavior
+- `test_solution_and_plotting.py` - Statistics accessor and plotting
+- `test_solution_persistence.py` - Solution save/load
+- `test_io_conversion.py` - Old file format conversion
+- `test_topology_accessor.py` - Network visualization
+
+**CI Improvements:**
+- Separate docs build and deploy workflow
+- Improved test organization with deprecated tests in separate folder
+
+### Migration Checklist
+
+| Task | Action |
+|------|--------|
+| Replace `Optimization` class | Use `flow_system.optimize(solver)` |
+| Replace `SegmentedOptimization` class | Use `flow_system.optimize.rolling_horizon(solver, ...)` |
+| Replace `Results` access | Use `flow_system.solution['var_name']` |
+| Update `OnOffParameters` | Rename to `StatusParameters` with new parameter names |
+| Update `on_off_parameters` | Rename to `status_parameters` |
+| Update Bus excess parameters | Use `imbalance_penalty_per_flow_hour` |
+| Update deprecated parameters | See removal table above |
+| Update I/O code | Use `to_netcdf()` / `from_netcdf()` on FlowSystem |
+| Update transform methods | Use `flow_system.transform.sel/isel/resample()` |
+| Migrate old result files | Use `FlowSystem.from_old_results(folder, name)` |
 
 ---
-
-Until here -->
 
 ## [4.3.5] - 2025-11-29
 

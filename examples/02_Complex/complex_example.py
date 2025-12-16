@@ -13,9 +13,8 @@ if __name__ == '__main__':
     # --- Experiment Options ---
     # Configure options for testing various parameters and behaviors
     check_penalty = False
-    excess_penalty = 1e5
+    imbalance_penalty = 1e5
     use_chp_with_piecewise_conversion = True
-    time_indices = None  # Define specific time steps for custom optimizations, or use the entire series
 
     # --- Define Demand and Price Profiles ---
     # Input data for electricity and heat demands, as well as electricity price
@@ -33,10 +32,11 @@ if __name__ == '__main__':
 
     # --- Define Energy Buses ---
     # Represent node balances (inputs=outputs) for the different energy carriers (electricity, heat, gas) in the system
+    # Carriers provide automatic color assignment in plots (yellow for electricity, red for heat, blue for gas)
     flow_system.add_elements(
-        fx.Bus('Strom', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Fernwärme', excess_penalty_per_flow_hour=excess_penalty),
-        fx.Bus('Gas', excess_penalty_per_flow_hour=excess_penalty),
+        fx.Bus('Strom', carrier='electricity', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', carrier='heat', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', carrier='gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
     )
 
     # --- Define Effects ---
@@ -47,12 +47,12 @@ if __name__ == '__main__':
 
     # --- Define Components ---
     # 1. Define Boiler Component
-    # A gas boiler that converts fuel into thermal output, with investment and on-off parameters
+    # A gas boiler that converts fuel into thermal output, with investment and on-inactive parameters
     Gaskessel = fx.linear_converters.Boiler(
         'Kessel',
         thermal_efficiency=0.5,  # Efficiency ratio
-        on_off_parameters=fx.OnOffParameters(
-            effects_per_running_hour={Costs.label: 0, CO2.label: 1000}
+        status_parameters=fx.StatusParameters(
+            effects_per_active_hour={Costs.label: 0, CO2.label: 1000}
         ),  # CO2 emissions per hour
         thermal_flow=fx.Flow(
             label='Q_th',  # Thermal output
@@ -69,14 +69,14 @@ if __name__ == '__main__':
             relative_maximum=1,  # Maximum part load
             previous_flow_rate=50,  # Previous flow rate
             flow_hours_max=1e6,  # Total energy flow limit
-            on_off_parameters=fx.OnOffParameters(
-                on_hours_min=0,  # Minimum operating hours
-                on_hours_max=1000,  # Maximum operating hours
-                consecutive_on_hours_max=10,  # Max consecutive operating hours
-                consecutive_on_hours_min=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
-                consecutive_off_hours_max=10,  # Max consecutive off hours
-                effects_per_switch_on=0.01,  # Cost per switch-on
-                switch_on_max=1000,  # Max number of starts
+            status_parameters=fx.StatusParameters(
+                active_hours_min=0,  # Minimum operating hours
+                active_hours_max=1000,  # Maximum operating hours
+                max_uptime=10,  # Max consecutive operating hours
+                min_uptime=np.array([1, 1, 1, 1, 1, 2, 2, 2, 2]),  # min consecutive operation hours
+                max_downtime=10,  # Max consecutive inactive hours
+                effects_per_startup={Costs.label: 0.01},  # Cost per startup
+                startup_limit=1000,  # Max number of starts
             ),
         ),
         fuel_flow=fx.Flow(label='Q_fu', bus='Gas', size=200),
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         'BHKW2',
         thermal_efficiency=0.5,
         electrical_efficiency=0.4,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
         electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
         fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3, previous_flow_rate=20),  # The CHP was ON previously
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         inputs=[Q_fu],
         outputs=[P_el, Q_th],
         piecewise_conversion=piecewise_conversion,
-        on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+        status_parameters=fx.StatusParameters(effects_per_startup={Costs.label: 0.01}),
     )
 
     # 4. Define Storage Component
@@ -189,22 +189,19 @@ if __name__ == '__main__':
 
     print(flow_system)  # Get a string representation of the FlowSystem
     try:
-        flow_system.start_network_app()  # Start the network app
+        flow_system.topology.start_app()  # Start the network app
     except ImportError as e:
         print(f'Network app requires extra dependencies: {e}')
 
     # --- Solve FlowSystem ---
-    optimization = fx.Optimization('complex example', flow_system, time_indices)
-    optimization.do_modeling()
-
-    optimization.solve(fx.solvers.HighsSolver(0.01, 60))
+    flow_system.optimize(fx.solvers.HighsSolver(0.01, 60))
 
     # --- Results ---
-    # You can analyze results directly or save them to file and reload them later.
-    optimization.results.to_file()
+    # Save the flow system with solution to file for later analysis
+    flow_system.to_netcdf('results/complex_example.nc')
 
-    # But let's plot some results anyway
-    optimization.results.plot_heatmap('BHKW2(Q_th)|flow_rate')
-    optimization.results['BHKW2'].plot_node_balance()
-    optimization.results['Speicher'].plot_charge_state()
-    optimization.results['Fernwärme'].plot_node_balance_pie()
+    # Plot results using the statistics accessor
+    flow_system.statistics.plot.heatmap('BHKW2(Q_th)')  # Flow label - auto-resolves to flow_rate
+    flow_system.statistics.plot.balance('BHKW2')
+    flow_system.statistics.plot.heatmap('Speicher')  # Storage label - auto-resolves to charge_state
+    flow_system.statistics.plot.balance('Fernwärme')

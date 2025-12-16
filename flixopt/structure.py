@@ -6,13 +6,16 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
+import json
 import logging
+import pathlib
 import re
 from dataclasses import dataclass
 from difflib import get_close_matches
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Generic,
     Literal,
     TypeVar,
@@ -28,7 +31,6 @@ from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    import pathlib
     from collections.abc import Collection, ItemsView, Iterator
 
     from .effects import EffectCollectionModel
@@ -108,6 +110,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Add scenario equality constraints after all elements are modeled
         self._add_scenario_equality_constraints()
 
+        # Populate _variable_names and _constraint_names on each Element
+        self._populate_element_variable_names()
+
+    def _populate_element_variable_names(self):
+        """Populate _variable_names and _constraint_names on each Element from its submodel."""
+        for element in self.flow_system.values():
+            if element.submodel is not None:
+                element._variable_names = list(element.submodel.variables)
+                element._constraint_names = list(element.submodel.constraints)
+
     def _add_scenario_equality_for_parameter_type(
         self,
         parameter_type: Literal['flow_rate', 'size'],
@@ -156,29 +168,45 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def solution(self):
+        """Build solution dataset, reindexing to timesteps_extra for consistency."""
         solution = super().solution
         solution['objective'] = self.objective.value
+        # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
-            'Components': {
-                comp.label_full: comp.submodel.results_structure()
-                for comp in sorted(
-                    self.flow_system.components.values(), key=lambda component: component.label_full.upper()
-                )
-            },
-            'Buses': {
-                bus.label_full: bus.submodel.results_structure()
-                for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-            },
-            'Effects': {
-                effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
-            },
-            'Flows': {
-                flow.label_full: flow.submodel.results_structure()
-                for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
-            },
+            'Components': json.dumps(
+                {
+                    comp.label_full: comp.submodel.results_structure()
+                    for comp in sorted(
+                        self.flow_system.components.values(), key=lambda component: component.label_full.upper()
+                    )
+                }
+            ),
+            'Buses': json.dumps(
+                {
+                    bus.label_full: bus.submodel.results_structure()
+                    for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                }
+            ),
+            'Effects': json.dumps(
+                {
+                    effect.label_full: effect.submodel.results_structure()
+                    for effect in sorted(
+                        self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
+                    )
+                }
+            ),
+            'Flows': json.dumps(
+                {
+                    flow.label_full: flow.submodel.results_structure()
+                    for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                }
+            ),
         }
-        return solution.reindex(time=self.flow_system.timesteps_extra)
+        # Ensure solution is always indexed by timesteps_extra for consistency.
+        # Variables without extra timestep data will have NaN at the final timestep.
+        if 'time' in solution.coords and not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+            solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        return solution
 
     @property
     def hours_per_step(self):
@@ -291,14 +319,18 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(name_prefix=''): Transform data to match FlowSystem dimensions
+        transform_data(): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, name_prefix: str = '') -> None:
+    # Class-level defaults for attributes set by link_to_flow_system()
+    # These provide type hints and default values without requiring __init__ in subclasses
+    _flow_system: FlowSystem | None = None
+    _prefix: str = ''
+
+    def transform_data(self) -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
-        Args:
-            name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
+        Uses `self._prefix` (set during `link_to_flow_system()`) to name transformed data.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses
@@ -310,20 +342,53 @@ class Interface:
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
 
-    def _set_flow_system(self, flow_system: FlowSystem) -> None:
-        """Store flow_system reference and propagate to nested Interface objects.
+    @property
+    def prefix(self) -> str:
+        """The prefix used for naming transformed data (e.g., 'Boiler(Q_th)|status_parameters')."""
+        return self._prefix
+
+    def _sub_prefix(self, name: str) -> str:
+        """Build a prefix for a nested interface by appending name to current prefix."""
+        return f'{self._prefix}|{name}' if self._prefix else name
+
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
+        """Link this interface and all nested interfaces to a FlowSystem.
 
         This method is called automatically during element registration to enable
         elements to access FlowSystem properties without passing the reference
-        through every method call.
+        through every method call. It also sets the prefix used for naming
+        transformed data.
 
         Subclasses with nested Interface objects should override this method
-        to explicitly propagate the reference to their nested interfaces.
+        to propagate the link to their nested interfaces by calling
+        `super().link_to_flow_system(flow_system, prefix)` first, then linking
+        nested objects with appropriate prefixes.
 
         Args:
-            flow_system: The FlowSystem that this interface belongs to
+            flow_system: The FlowSystem to link to
+            prefix: The prefix for naming transformed data (e.g., 'Boiler(Q_th)')
+
+        Examples:
+            Override in a subclass with nested interfaces:
+
+            ```python
+            def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+                super().link_to_flow_system(flow_system, prefix)
+                if self.nested_interface is not None:
+                    self.nested_interface.link_to_flow_system(flow_system, f'{prefix}|nested' if prefix else 'nested')
+            ```
+
+            Creating an Interface dynamically during modeling:
+
+            ```python
+            # In a Model class
+            if flow.status_parameters is None:
+                flow.status_parameters = StatusParameters()
+                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.label_full}')
+            ```
         """
         self._flow_system = flow_system
+        self._prefix = prefix
 
     @property
     def flow_system(self) -> FlowSystem:
@@ -339,7 +404,7 @@ class Interface:
             For Elements, this is set during add_elements().
             For parameter classes, this is set recursively when the parent Element is registered.
         """
-        if not hasattr(self, '_flow_system') or self._flow_system is None:
+        if self._flow_system is None:
             raise RuntimeError(
                 f'{self.__class__.__name__} is not linked to a FlowSystem. '
                 f'Ensure the parent element is registered via flow_system.add_elements() first.'
@@ -723,7 +788,34 @@ class Interface:
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
 
                 try:
-                    return nested_class(**resolved_nested_data)
+                    # Get valid constructor parameters for this class
+                    init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
+
+                    # Check for deferred init attributes (defined as class attribute on Element subclasses)
+                    # These are serialized but set after construction, not passed to child __init__
+                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                    deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
+                    constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
+
+                    # Check for unknown parameters - these could be typos or renamed params
+                    unknown_params = set(constructor_data.keys()) - init_params
+                    if unknown_params:
+                        raise TypeError(
+                            f'{class_name}.__init__() got unexpected keyword arguments: {unknown_params}. '
+                            f'This may indicate renamed parameters that need conversion. '
+                            f'Valid parameters are: {init_params - {"self"}}'
+                        )
+
+                    # Create instance with constructor parameters
+                    instance = nested_class(**constructor_data)
+
+                    # Set internal attributes after construction
+                    for attr_name, attr_value in deferred_attrs.items():
+                        setattr(instance, attr_name, attr_value)
+
+                    return instance
+                except TypeError as e:
+                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
                 except Exception as e:
                     raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
             else:
@@ -799,18 +891,29 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the object to a NetCDF file.
 
         Args:
-            path: Path to save the NetCDF file
+            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
             compression: Compression level (0-9)
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
 
         Raises:
+            FileExistsError: If overwrite=False and file already exists.
             ValueError: If serialization fails
             IOError: If file cannot be written
         """
+        path = pathlib.Path(path)
+
+        # Check if file exists (unless overwrite is True)
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             ds = self.to_dataset()
             fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
@@ -961,16 +1064,34 @@ class Element(Interface):
 
     submodel: ElementModel | None
 
-    def __init__(self, label: str, meta_data: dict | None = None):
+    # Attributes that are serialized but set after construction (not passed to child __init__)
+    # These are internal state populated during modeling, not user-facing parameters
+    _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
+
+    def __init__(
+        self,
+        label: str,
+        meta_data: dict | None = None,
+        color: str | None = None,
+        _variable_names: list[str] | None = None,
+        _constraint_names: list[str] | None = None,
+    ):
         """
         Args:
             label: The label of the element
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+            color: Optional color for visualizations (e.g., '#FF6B6B'). If not provided, a color will be automatically assigned during FlowSystem.connect_and_transform().
+            _variable_names: Internal. Variable names for this element (populated after modeling).
+            _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
+        self.color = color
         self.submodel = None
         self._flow_system: FlowSystem | None = None
+        # Variable/constraint names - populated after modeling, serialized for results
+        self._variable_names: list[str] = _variable_names if _variable_names is not None else []
+        self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
@@ -983,6 +1104,40 @@ class Element(Interface):
     @property
     def label_full(self) -> str:
         return self.label
+
+    @property
+    def solution(self) -> xr.Dataset:
+        """Solution data for this element's variables.
+
+        Returns a view into FlowSystem.solution containing only this element's variables.
+
+        Raises:
+            ValueError: If no solution is available (optimization not run or not solved).
+        """
+        if self._flow_system is None:
+            raise ValueError(f'Element "{self.label}" is not linked to a FlowSystem.')
+        if self._flow_system.solution is None:
+            raise ValueError(f'No solution available for "{self.label}". Run optimization first or load results.')
+        if not self._variable_names:
+            raise ValueError(f'No variable names available for "{self.label}". Element may not have been modeled yet.')
+        return self._flow_system.solution[self._variable_names]
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """
+        Override to include _variable_names and _constraint_names in serialization.
+
+        These attributes are defined in Element but may not be in subclass constructors,
+        so we need to add them explicitly.
+        """
+        reference_structure, all_extracted_arrays = super()._create_reference_structure()
+
+        # Always include variable/constraint names for solution access after loading
+        if self._variable_names:
+            reference_structure['_variable_names'] = self._variable_names
+        if self._constraint_names:
+            reference_structure['_constraint_names'] = self._constraint_names
+
+        return reference_structure, all_extracted_arrays
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -1032,16 +1187,20 @@ class ContainerMixin(dict[str, T]):
         elements: list[T] | dict[str, T] | None = None,
         element_type_name: str = 'elements',
         truncate_repr: int | None = None,
+        item_name: str | None = None,
     ):
         """
         Args:
             elements: Initial elements to add (list or dict)
             element_type_name: Name for display (e.g., 'components', 'buses')
             truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
+            item_name: Singular name for error messages (e.g., 'Component', 'Carrier').
+                If None, inferred from first added item's class name.
         """
         super().__init__()
         self._element_type_name = element_type_name
         self._truncate_repr = truncate_repr
+        self._item_name = item_name
 
         if elements is not None:
             if isinstance(elements, dict):
@@ -1063,13 +1222,28 @@ class ContainerMixin(dict[str, T]):
         """
         raise NotImplementedError('Subclasses must implement _get_label()')
 
+    def _get_item_name(self) -> str:
+        """Get the singular item name for error messages.
+
+        Returns the explicitly set item_name, or infers from the first item's class name.
+        Falls back to 'Item' if container is empty and no name was set.
+        """
+        if self._item_name is not None:
+            return self._item_name
+        # Infer from first item's class name
+        if self:
+            first_item = next(iter(self.values()))
+            return first_item.__class__.__name__
+        return 'Item'
+
     def add(self, element: T) -> None:
         """Add an element to the container."""
         label = self._get_label(element)
         if label in self:
+            item_name = element.__class__.__name__
             raise ValueError(
-                f'Element with label "{label}" already exists in {self._element_type_name}. '
-                f'Each element must have a unique label.'
+                f'{item_name} with label "{label}" already exists in {self._element_type_name}. '
+                f'Each {item_name.lower()} must have a unique label.'
             )
         self[label] = element
 
@@ -1100,8 +1274,9 @@ class ContainerMixin(dict[str, T]):
             return super().__getitem__(label)
         except KeyError:
             # Provide helpful error with close matches suggestions
+            item_name = self._get_item_name()
             suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
-            error_msg = f'Element "{label}" not found in {self._element_type_name}.'
+            error_msg = f'{item_name} "{label}" not found in {self._element_type_name}.'
             if suggestions:
                 error_msg += f' Did you mean: {", ".join(suggestions)}?'
             else:

@@ -20,7 +20,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'change_logging_level', 'MultilineFormatter', 'SUCCESS_LEVEL']
+__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL', 'DEPRECATION_REMOVAL_VERSION']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -30,7 +30,7 @@ SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
 # Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '5.0.0'
+DEPRECATION_REMOVAL_VERSION = '6.0.0'
 
 
 class MultilineFormatter(logging.Formatter):
@@ -171,6 +171,7 @@ _DEFAULTS = MappingProxyType(
                 'time_limit_seconds': 300,
                 'log_to_console': True,
                 'log_main_results': True,
+                'compute_infeasibilities': True,
             }
         ),
     }
@@ -526,6 +527,7 @@ class CONFIG:
             time_limit_seconds: Default time limit in seconds for solver runs.
             log_to_console: Whether solver should output to console.
             log_main_results: Whether to log main results after solving.
+            compute_infeasibilities: Whether to compute infeasibility analysis when the model is infeasible.
 
         Examples:
             ```python
@@ -540,6 +542,7 @@ class CONFIG:
         time_limit_seconds: int = _DEFAULTS['solving']['time_limit_seconds']
         log_to_console: bool = _DEFAULTS['solving']['log_to_console']
         log_main_results: bool = _DEFAULTS['solving']['log_main_results']
+        compute_infeasibilities: bool = _DEFAULTS['solving']['compute_infeasibilities']
 
     class Plotting:
         """Plotting configuration.
@@ -572,6 +575,36 @@ class CONFIG:
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
 
+    class Carriers:
+        """Default carrier definitions for common energy types.
+
+        Provides convenient defaults for carriers. Colors are from D3/Plotly palettes.
+
+        Predefined: electricity, heat, gas, hydrogen, fuel, biomass
+
+        Examples:
+            ```python
+            import flixopt as fx
+
+            # Access predefined carriers
+            fx.CONFIG.Carriers.electricity  # Carrier with color '#FECB52'
+            fx.CONFIG.Carriers.heat.color  # '#D62728'
+
+            # Use with buses
+            bus = fx.Bus('Grid', carrier='electricity')
+            ```
+        """
+
+        from .carrier import Carrier
+
+        # Default carriers - colors from D3/Plotly palettes
+        electricity: Carrier = Carrier('electricity', '#FECB52')  # Yellow
+        heat: Carrier = Carrier('heat', '#D62728')  # Red
+        gas: Carrier = Carrier('gas', '#1F77B4')  # Blue
+        hydrogen: Carrier = Carrier('hydrogen', '#9467BD')  # Purple
+        fuel: Carrier = Carrier('fuel', '#8C564B')  # Brown
+        biomass: Carrier = Carrier('biomass', '#2CA02C')  # Green
+
     config_name: str = _DEFAULTS['config_name']
 
     @classmethod
@@ -598,6 +631,16 @@ class CONFIG:
         for key, value in _DEFAULTS['plotting'].items():
             setattr(cls.Plotting, key, value)
 
+        # Reset Carriers to defaults
+        from .carrier import Carrier
+
+        cls.Carriers.electricity = Carrier('electricity', '#FECB52')
+        cls.Carriers.heat = Carrier('heat', '#D62728')
+        cls.Carriers.gas = Carrier('gas', '#1F77B4')
+        cls.Carriers.hydrogen = Carrier('hydrogen', '#9467BD')
+        cls.Carriers.fuel = Carrier('fuel', '#8C564B')
+        cls.Carriers.biomass = Carrier('biomass', '#2CA02C')
+
         cls.config_name = _DEFAULTS['config_name']
 
         # Reset logging to default (silent)
@@ -622,6 +665,7 @@ class CONFIG:
                 'time_limit_seconds': cls.Solving.time_limit_seconds,
                 'log_to_console': cls.Solving.log_to_console,
                 'log_main_results': cls.Solving.log_main_results,
+                'compute_infeasibilities': cls.Solving.compute_infeasibilities,
             },
             'plotting': {
                 'default_show': cls.Plotting.default_show,
@@ -742,6 +786,45 @@ class CONFIG:
         return cls
 
     @classmethod
+    def notebook(cls) -> type[CONFIG]:
+        """Configure for Jupyter notebook environments.
+
+        Optimizes settings for notebook usage:
+        - Sets plotly renderer to 'notebook' for inline display
+        - Disables automatic plot.show() calls (notebooks display via _repr_html_)
+        - Enables SUCCESS-level console logging
+        - Enables solver console output and main results logging
+
+        Examples:
+            ```python
+            # At the start of your notebook
+            import flixopt as fx
+
+            fx.CONFIG.notebook()
+
+            # Now plots display inline automatically
+            flow_system.statistics.plot.balance('Heat')  # Displays inline
+            ```
+        """
+        import plotly.io as pio
+
+        # Set plotly to render inline in notebooks
+        pio.renderers.default = 'notebook'
+        pio.templates.default = 'plotly_white'
+
+        # Disable default show since notebooks render via _repr_html_
+        cls.Plotting.default_show = False
+
+        # Light logging - SUCCESS level without too much noise
+        cls.Logging.enable_console('SUCCESS')
+
+        # Enable solver console output and main results logging
+        cls.Solving.log_to_console = True
+        cls.Solving.log_main_results = True
+
+        return cls
+
+    @classmethod
     def load_from_file(cls, config_file: str | Path) -> type[CONFIG]:
         """Load configuration from YAML file and apply it.
 
@@ -808,23 +891,3 @@ class CONFIG:
             elif hasattr(cls, key) and key != 'logging':
                 # Skip 'logging' as it requires special handling via CONFIG.Logging methods
                 setattr(cls, key, value)
-
-
-def change_logging_level(level_name: str | int) -> None:
-    """Change the logging level for the flixopt logger.
-
-    Args:
-        level_name: The logging level to set (DEBUG, INFO, WARNING, ERROR, CRITICAL or logging constant).
-
-    Examples:
-        >>> change_logging_level('DEBUG')  # deprecated
-        >>> # Use this instead:
-        >>> CONFIG.Logging.enable_console('DEBUG')
-    """
-    warnings.warn(
-        f'change_logging_level is deprecated and will be removed in version {DEPRECATION_REMOVAL_VERSION} '
-        'Use CONFIG.Logging.enable_console(level) instead.',
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    CONFIG.Logging.enable_console(level_name)

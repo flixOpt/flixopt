@@ -7,41 +7,81 @@ site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
+edit_uri: edit/main/docs/
 
 nav:
-  - Home: index.md
+  - Home:
+    - Home: index.md
+    - Getting Started:
+      - Installation: home/installation.md
+      - Quick Start: home/quick-start.md
+    - About:
+      - Users: home/users.md
+      - Citing: home/citing.md
+      - License: home/license.md
+
   - User Guide:
-    - Getting Started: getting-started.md
+    - Overview: user-guide/index.md
     - Core Concepts: user-guide/core-concepts.md
-    - Migration to v3.0.0: user-guide/migration-guide-v3.md
+    - Building Models:
+      - Overview: user-guide/building-models/index.md
+      - Choosing Components: user-guide/building-models/choosing-components.md
+    - Running Optimizations: user-guide/optimization/index.md
+    - Analyzing Results: user-guide/results/index.md
+    - Plotting Results: user-guide/results-plotting.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
-      - Dimensions: user-guide/mathematical-notation/dimensions.md
-      - Elements:
-        - Flow: user-guide/mathematical-notation/elements/Flow.md
-        - Bus: user-guide/mathematical-notation/elements/Bus.md
-        - Storage: user-guide/mathematical-notation/elements/Storage.md
-        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
-      - Features:
-        - InvestParameters: user-guide/mathematical-notation/features/InvestParameters.md
-        - OnOffParameters: user-guide/mathematical-notation/features/OnOffParameters.md
-        - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-      - Effects, Penalty & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
-      - Modeling Patterns:
-        - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
-        - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
-        - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
-        - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
-    - Recipes: user-guide/recipes/index.md
-    - Roadmap: roadmap.md
-  - Examples: examples/
-  - Contribute: contribute.md
+      - Bus: user-guide/mathematical-notation/elements/Bus.md
+      - Flow: user-guide/mathematical-notation/elements/Flow.md
+      - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Storage: user-guide/mathematical-notation/elements/Storage.md
+      - Effects & Dimensions: user-guide/mathematical-notation/effects-and-dimensions.md
+      - Investment: user-guide/mathematical-notation/features/InvestParameters.md
+      - Status: user-guide/mathematical-notation/features/StatusParameters.md
+      - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
+    - Recipes:
+      - user-guide/recipes/index.md
+      - Plotting Custom Data: user-guide/recipes/plotting-custom-data.md
+    - Support:
+      - FAQ: user-guide/faq.md
+      - Troubleshooting: user-guide/troubleshooting.md
+      - Community: user-guide/support.md
+    - Migration & Updates:
+      - Migration Guide v5: user-guide/migration-guide-v5.md
+      - Migration Guide v3: user-guide/migration-guide-v3.md
+      - Release Notes: changelog.md
+      - Roadmap: roadmap.md
+
+  - Examples:
+    - Overview: notebooks/index.md
+    - Basics:
+      - Quickstart: notebooks/01-quickstart.ipynb
+      - Heat System: notebooks/02-heat-system.ipynb
+    - Investment:
+      - Sizing: notebooks/03-investment-optimization.ipynb
+      - Constraints: notebooks/04-operational-constraints.ipynb
+    - Advanced:
+      - Multi-Carrier: notebooks/05-multi-carrier-system.ipynb
+      - Transmission: notebooks/10-transmission.ipynb
+    - Non-Linear Modeling:
+      - Time-Varying Parameters: notebooks/06a-time-varying-parameters.ipynb
+      - Piecewise Conversion: notebooks/06b-piecewise-conversion.ipynb
+      - Piecewise Effects: notebooks/06c-piecewise-effects.ipynb
+    - Scaling:
+      - Scenarios: notebooks/07-scenarios-and-periods.ipynb
+      - Aggregation: notebooks/08a-aggregation.ipynb
+      - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
+    - Results:
+      - Plotting: notebooks/09-plotting-and-data-access.ipynb
+
   - API Reference: api-reference/
-  - Release Notes: changelog/
+
+  - Contributing: contribute.md
 
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
 
   palette:
     # Palette toggle for automatic mode
@@ -128,7 +168,7 @@ markdown_extensions:
   - toc:
       permalink: true
       permalink_title: Anchor link to this section
-      toc_depth: 2
+      toc_depth: 3
       title: On this page
 
   # Code blocks
@@ -147,6 +187,9 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: plotly
+          class: mkdocs-plotly
+          format: !!python/name:mkdocs_plotly_plugin.fences.fence_plotly
 
   # Enhanced content
   - pymdownx.details
@@ -184,6 +227,14 @@ markdown_extensions:
 plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - mkdocs-jupyter:
+      execute: true  # Execute notebooks during build
+      allow_errors: false
+      include_source: true
+      include_requirejs: true
+
+  - plotly
 
   - table-reader
 
@@ -310,6 +361,7 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
+  - javascripts/plotly-instant.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - https://polyfill.io/v3/polyfill.min.js?features=es6
 

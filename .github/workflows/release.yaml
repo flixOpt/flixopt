@@ -80,7 +80,7 @@ jobs:
     name: Run tests
     needs: [check-preparation]
     if: needs.check-preparation.outputs.prepared == 'true'
-    uses: ./.github/workflows/test.yaml
+    uses: ./.github/workflows/tests.yaml
 
   build:
     name: Build package
@@ -188,37 +188,7 @@ jobs:
     name: Deploy documentation
     needs: [create-release]
     if: "!contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')"
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.9.10"
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Extract changelog
-        run: |
-          uv pip install --system packaging
-          python scripts/extract_changelog.py
-
-      - name: Install docs dependencies
-        run: uv pip install --system ".[docs]"
-
-      - name: Configure Git
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-
-      - name: Deploy docs
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          mike deploy --push --update-aliases $VERSION latest
-          mike set-default --push latest
+    uses: ./.github/workflows/docs.yaml
+    with:
+      deploy: true
+      version: ${{ github.ref_name }}

@@ -5,6 +5,7 @@ It helps avoid redundancy and centralizes reusable test logic.
 """
 
 import os
+import warnings
 from collections.abc import Iterable
 
 import linopy.testing
@@ -138,7 +139,7 @@ class Converters:
                     size=50,
                     relative_minimum=5 / 50,
                     relative_maximum=1,
-                    on_off_parameters=fx.OnOffParameters(),
+                    status_parameters=fx.StatusParameters(),
                 ),
                 fuel_flow=fx.Flow('Q_fu', bus='Gas'),
             )
@@ -149,7 +150,7 @@ class Converters:
             return fx.linear_converters.Boiler(
                 'Kessel',
                 thermal_efficiency=0.5,
-                on_off_parameters=fx.OnOffParameters(effects_per_running_hour={'costs': 0, 'CO2': 1000}),
+                status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
                 thermal_flow=fx.Flow(
                     'Q_th',
                     bus='Fernwärme',
@@ -164,14 +165,14 @@ class Converters:
                         mandatory=True,
                         effects_of_investment_per_size={'costs': 10, 'PE': 2},
                     ),
-                    on_off_parameters=fx.OnOffParameters(
-                        on_hours_min=0,
-                        on_hours_max=1000,
-                        consecutive_on_hours_max=10,
-                        consecutive_on_hours_min=1,
-                        consecutive_off_hours_max=10,
-                        effects_per_switch_on=0.01,
-                        switch_on_max=1000,
+                    status_parameters=fx.StatusParameters(
+                        active_hours_min=0,
+                        active_hours_max=1000,
+                        max_uptime=10,
+                        min_uptime=1,
+                        max_downtime=10,
+                        effects_per_startup=0.01,
+                        startup_limit=1000,
                     ),
                     flow_hours_max=1e6,
                 ),
@@ -187,7 +188,7 @@ class Converters:
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
                 electrical_flow=fx.Flow(
-                    'P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()
+                    'P_el', bus='Strom', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
                 ),
                 thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
                 fuel_flow=fx.Flow('Q_fu', bus='Gas'),
@@ -200,7 +201,7 @@ class Converters:
                 'KWK',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
                 electrical_flow=fx.Flow('P_el', bus='Strom', size=60, relative_minimum=5 / 60, previous_flow_rate=10),
                 thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=1e3),
                 fuel_flow=fx.Flow('Q_fu', bus='Gas', size=1e3),
@@ -212,10 +213,10 @@ class Converters:
             """Piecewise converter from flow_system_piecewise_conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -224,7 +225,7 @@ class Converters:
                         'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                     }
                 ),
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
             )
 
         @staticmethod
@@ -232,10 +233,10 @@ class Converters:
             """Segments converter with time-varying piecewise conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Q_fu', bus='Gas')],
+                inputs=[fx.Flow('Q_fu', bus='Gas', size=200)],
                 outputs=[
                     fx.Flow('P_el', bus='Strom', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Q_th', bus='Fernwärme'),
+                    fx.Flow('Q_th', bus='Fernwärme', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -249,7 +250,7 @@ class Converters:
                         'Q_fu': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
                     }
                 ),
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=0.01),
+                status_parameters=fx.StatusParameters(effects_per_startup=0.01),
             )
 
 
@@ -265,7 +266,11 @@ class Storage:
 
         return fx.Storage(
             'Speicher',
-            charging=fx.Flow('Q_th_load', bus='Fernwärme', size=1e4),
+            charging=fx.Flow(
+                'Q_th_load',
+                bus='Fernwärme',
+                size=fx.InvestParameters(fixed_size=1e4, mandatory=True),  # Investment for testing sizes
+            ),
             discharging=fx.Flow('Q_th_unload', bus='Fernwärme', size=1e4),
             capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
@@ -604,17 +609,17 @@ def flow_system_long():
                 size=95,
                 relative_minimum=12 / 95,
                 previous_flow_rate=0,
-                on_off_parameters=fx.OnOffParameters(effects_per_switch_on=1000),
+                status_parameters=fx.StatusParameters(effects_per_startup=1000),
             ),
         ),
         fx.linear_converters.CHP(
             'BHKW2',
-            thermal_efficiency=0.58,
-            electrical_efficiency=0.22,
-            on_off_parameters=fx.OnOffParameters(effects_per_switch_on=24000),
-            electrical_flow=fx.Flow('P_el', bus='Strom'),
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
-            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=288, relative_minimum=87 / 288),
+            thermal_efficiency=(eta_th := 0.58),
+            electrical_efficiency=(eta_el := 0.22),
+            status_parameters=fx.StatusParameters(effects_per_startup=24000),
+            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=(fuel_size := 288), relative_minimum=87 / fuel_size),
+            electrical_flow=fx.Flow('P_el', bus='Strom', size=fuel_size * eta_el),
+            thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=fuel_size * eta_th),
         ),
         fx.Storage(
             'Speicher',
@@ -692,7 +697,10 @@ def assert_almost_equal_numeric(
     actual, desired, err_msg, relative_error_range_in_percent=0.011, absolute_tolerance=1e-7
 ):
     """
-    Custom assertion function for comparing numeric values with relative and absolute tolerances
+    Custom assertion function for comparing numeric values with relative and absolute tolerances.
+
+    Handles the extra timestep in solutions by trimming actual arrays to match desired length
+    when the extra values are NaN (from storage charge_state variables using extra_timestep).
     """
     relative_tol = relative_error_range_in_percent / 100
 
@@ -700,6 +708,20 @@ def assert_almost_equal_numeric(
         delta = abs(relative_tol * desired) if desired != 0 else absolute_tolerance
         assert np.isclose(actual, desired, atol=delta), err_msg
     else:
+        actual = np.asarray(actual)
+        desired = np.asarray(desired)
+        # Handle extra timestep: trim actual to desired length if extra values are NaN
+        if actual.shape != desired.shape and actual.ndim == 1 and desired.ndim == 1:
+            if len(actual) > len(desired):
+                extra = actual[len(desired) :]
+                if np.all(np.isnan(extra)):
+                    # Warn if trimming more than the expected single extra timestep
+                    if len(extra) > 1:
+                        warnings.warn(
+                            f'Trimming {len(extra)} NaN values from actual array (expected 1)',
+                            stacklevel=2,
+                        )
+                    actual = actual[: len(desired)]
         np.testing.assert_allclose(actual, desired, rtol=relative_tol, atol=absolute_tolerance, err_msg=err_msg)
 
 
@@ -724,11 +746,10 @@ def create_linopy_model(flow_system: fx.FlowSystem) -> FlowSystemModel:
         flow_system: The FlowSystem to build the model from.
 
     Returns:
-        FlowSystemModel: The built model from Optimization.do_modeling().
+        FlowSystemModel: The built model from FlowSystem.build_model().
     """
-    optimization = fx.Optimization('GenericName', flow_system)
-    optimization.do_modeling()
-    return optimization.model
+    flow_system.build_model()
+    return flow_system.model
 
 
 def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):

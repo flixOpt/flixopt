@@ -89,7 +89,12 @@ if __name__ == '__main__':
 
     # --- Define Energy Buses ---
     # These represent nodes, where the used medias are balanced (electricity, heat, and gas)
-    flow_system.add_elements(fx.Bus(label='Strom'), fx.Bus(label='Fernwärme'), fx.Bus(label='Gas'))
+    # Carriers provide automatic color assignment in plots (yellow for electricity, red for heat, blue for gas)
+    flow_system.add_elements(
+        fx.Bus(label='Strom', carrier='electricity'),
+        fx.Bus(label='Fernwärme', carrier='heat'),
+        fx.Bus(label='Gas', carrier='gas'),
+    )
 
     # --- Define Effects (Objective and CO2 Emissions) ---
     # Cost effect: used as the optimization objective --> minimizing costs
@@ -120,10 +125,10 @@ if __name__ == '__main__':
         thermal_flow=fx.Flow(
             label='Q_th',
             bus='Fernwärme',
-            size=50,
+            size=100,
             relative_minimum=0.1,
             relative_maximum=1,
-            on_off_parameters=fx.OnOffParameters(),
+            status_parameters=fx.StatusParameters(),
         ),
         fuel_flow=fx.Flow(label='Q_fu', bus='Gas'),
     )
@@ -135,7 +140,7 @@ if __name__ == '__main__':
         thermal_efficiency=0.48,  # Realistic thermal efficiency (48%)
         electrical_efficiency=0.40,  # Realistic electrical efficiency (40%)
         electrical_flow=fx.Flow(
-            'P_el', bus='Strom', size=60, relative_minimum=5 / 60, on_off_parameters=fx.OnOffParameters()
+            'P_el', bus='Strom', size=80, relative_minimum=5 / 80, status_parameters=fx.StatusParameters()
         ),
         thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
         fuel_flow=fx.Flow('Q_fu', bus='Gas'),
@@ -192,35 +197,18 @@ if __name__ == '__main__':
     flow_system.add_elements(costs, CO2, boiler, storage, chp, heat_sink, gas_source, power_sink)
 
     # Visualize the flow system for validation purposes
-    flow_system.plot_network()
+    flow_system.topology.plot()
 
-    # --- Define and Run Calculation ---
-    # Create a calculation object to model the Flow System
-    optimization = fx.Optimization(name='Sim1', flow_system=flow_system)
-    optimization.do_modeling()  # Translate the model to a solvable form, creating equations and Variables
-
-    # --- Solve the Calculation and Save Results ---
-    optimization.solve(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
-
-    optimization.results.setup_colors(
-        {
-            'CHP': 'red',
-            'Greys': ['Gastarif', 'Einspeisung', 'Heat Demand'],
-            'Storage': 'blue',
-            'Boiler': 'orange',
-        }
-    )
-
-    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
+    # --- Define and Solve Optimization ---
+    flow_system.optimize(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=30))
 
     # --- Analyze Results ---
-    optimization.results['Fernwärme'].plot_node_balance(mode='stacked_bar')
-    optimization.results.plot_heatmap('CHP(Q_th)|flow_rate')
-    optimization.results['Storage'].plot_charge_state()
-    optimization.results['Fernwärme'].plot_node_balance_pie(select={'period': 2020, 'scenario': 'Base Case'})
+    # Plotting through statistics accessor - returns PlotResult with .data and .figure
+    flow_system.statistics.plot.heatmap('CHP(Q_th)')  # Flow label - auto-resolves to flow_rate
+    flow_system.statistics.plot.balance('Fernwärme')
+    flow_system.statistics.plot.balance('Storage')
+    flow_system.statistics.plot.heatmap('Storage')  # Storage label - auto-resolves to charge_state
 
-    # Convert the results for the storage component to a dataframe and display
-    df = optimization.results['Storage'].node_balance_with_charge_state()
-
-    # Save results to file for later usage
-    optimization.results.to_file()
+    # Access data as xarray Datasets
+    print(flow_system.statistics.flow_rates)
+    print(flow_system.statistics.charge_states)

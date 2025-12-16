@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import json
 import logging
 import pathlib
 import warnings
@@ -45,6 +46,18 @@ def load_mapping_from_file(path: pathlib.Path) -> dict[str, str | list[str]]:
         ValueError: If file cannot be loaded as JSON or YAML
     """
     return fx_io.load_config_file(path)
+
+
+def _get_solution_attr(solution: xr.Dataset, key: str) -> dict:
+    """Get an attribute from solution, decoding JSON if necessary.
+
+    Solution attrs are stored as JSON strings for netCDF compatibility.
+    This helper handles both JSON strings and dicts (for backward compatibility).
+    """
+    value = solution.attrs.get(key, {})
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 class _FlowSystemRestorationError(Exception):
@@ -209,7 +222,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         summary: dict,
         folder: pathlib.Path | None = None,
         model: linopy.Model | None = None,
-        **kwargs,  # To accept old "flow_system" parameter
     ):
         """Initialize Results with optimization data.
         Usually, this class is instantiated by an Optimization object via `Results.from_optimization()`
@@ -222,28 +234,15 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             summary: Optimization metadata.
             folder: Results storage folder.
             model: Linopy optimization model.
-        Deprecated:
-            flow_system: Use flow_system_data instead.
-
-        Note:
-            The legacy alias `CalculationResults` is deprecated. Use `Results` instead.
         """
-        # Handle potential old "flow_system" parameter for backward compatibility
-        if 'flow_system' in kwargs and flow_system_data is None:
-            flow_system_data = kwargs.pop('flow_system')
-            warnings.warn(
-                "The 'flow_system' parameter is deprecated. Use 'flow_system_data' instead. "
-                "Access is now via '.flow_system_data', while '.flow_system' returns the restored FlowSystem. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-        # Validate that flow_system_data is provided
-        if flow_system_data is None:
-            raise TypeError(
-                "flow_system_data is required (or use deprecated 'flow_system' for backward compatibility)."
-            )
+        warnings.warn(
+            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Access results directly via FlowSystem.solution after optimization, or use the '
+            '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)). '
+            'To load old result files, use FlowSystem.from_old_results(folder, name).',
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         self.solution = solution
         self.flow_system_data = flow_system_data
@@ -254,19 +253,25 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         # Create ResultsContainers for better access patterns
         components_dict = {
-            label: ComponentResults(self, **infos) for label, infos in self.solution.attrs['Components'].items()
+            label: ComponentResults(self, **infos)
+            for label, infos in _get_solution_attr(self.solution, 'Components').items()
         }
         self.components = ResultsContainer(
             elements=components_dict, element_type_name='component results', truncate_repr=10
         )
 
-        buses_dict = {label: BusResults(self, **infos) for label, infos in self.solution.attrs['Buses'].items()}
+        buses_dict = {
+            label: BusResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Buses').items()
+        }
         self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
 
-        effects_dict = {label: EffectResults(self, **infos) for label, infos in self.solution.attrs['Effects'].items()}
+        effects_dict = {
+            label: EffectResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Effects').items()
+        }
         self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
 
-        if 'Flows' not in self.solution.attrs:
+        flows_attr = _get_solution_attr(self.solution, 'Flows')
+        if not flows_attr:
             warnings.warn(
                 'No Data about flows found in the results. This data is only included since v2.2.0. Some functionality '
                 'is not availlable. We recommend to evaluate your results with a version <2.2.0.',
@@ -275,9 +280,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             flows_dict = {}
             self._has_flow_data = False
         else:
-            flows_dict = {
-                label: FlowResults(self, **infos) for label, infos in self.solution.attrs.get('Flows', {}).items()
-            }
+            flows_dict = {label: FlowResults(self, **infos) for label, infos in flows_attr.items()}
             self._has_flow_data = True
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
@@ -409,7 +412,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         def get_all_variable_names(comp: str) -> list[str]:
             """Collect all variables from the component, including flows and flow_hours."""
             comp_object = self.components[comp]
-            var_names = [comp] + list(comp_object._variable_names)
+            var_names = [comp] + list(comp_object.variable_names)
             for flow in comp_object.flows:
                 var_names.extend([flow, f'{flow}|flow_hours'])
             return var_names
@@ -564,21 +567,40 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow rates of each Flow.
 
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
+        .. deprecated::
+            Use `results.plot.all_flow_rates` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate` (DataArray) instead.
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.flow_rates().to_pandas()
-            Get the max or min over time:
-            >>>results.flow_rates().max('time')
-            Sum up the flow rates of flows with the same start and end:
-            >>>results.flow_rates(end='Fernwärme').groupby('start').sum(dim='flow')
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.flow_rates(start='Fernwärme'), results.flow_rates(end='Fernwärme')], dim='flow')
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_flow_rates
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
+        warnings.warn(
+            'results.flow_rates() is deprecated. '
+            'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._flow_rates is None:
@@ -599,6 +621,32 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
     ) -> xr.DataArray:
         """Returns a DataArray containing the flow hours of each Flow.
 
+        .. deprecated::
+            Use `results.plot.all_flow_hours` (Dataset) or
+            `results.flows['FlowLabel'].flow_rate * results.hours_per_timestep` instead.
+
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_flow_hours
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
+
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
 
@@ -618,6 +666,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             >>>xr.concat([results.flow_hours(start='Fernwärme'), results.flow_hours(end='Fernwärme')], dim='flow')
 
         """
+        warnings.warn(
+            'results.flow_hours() is deprecated. '
+            'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._flow_hours is None:
             self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
@@ -630,18 +686,41 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         component: str | list[str] | None = None,
     ) -> xr.DataArray:
         """Returns a dataset with the sizes of the Flows.
-        Args:
-            start: Optional source node(s) to filter by. Can be a single node name or a list of names.
-            end: Optional destination node(s) to filter by. Can be a single node name or a list of names.
-            component: Optional component(s) to filter by. Can be a single component name or a list of names.
 
-        Further usage:
-            Convert the dataarray to a dataframe:
-            >>>results.sizes().to_pandas()
-            To recombine filtered dataarrays, use `xr.concat` with dim 'flow':
-            >>>xr.concat([results.sizes(start='Fernwärme'), results.sizes(end='Fernwärme')], dim='flow')
+        .. deprecated::
+            Use `results.plot.all_sizes` (Dataset) or
+            `results.flows['FlowLabel'].size` (DataArray) instead.
 
+            **Note**: The new API differs from this method:
+
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - No ``'flow'`` dimension - each flow is a separate variable
+            - No filtering parameters - filter using these alternatives::
+
+                # Select specific flows by label
+                ds = results.plot.all_sizes
+                ds[['Boiler(Q_th)', 'CHP(Q_th)']]
+
+                # Filter by substring in label
+                ds[[v for v in ds.data_vars if 'Boiler' in v]]
+
+                # Filter by bus (start/end) - get flows connected to a bus
+                results['Fernwärme'].inputs  # list of input flow labels
+                results['Fernwärme'].outputs  # list of output flow labels
+                ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
+
+                # Filter by component - get flows of a component
+                results['Boiler'].inputs  # list of input flow labels
+                results['Boiler'].outputs  # list of output flow labels
         """
+        warnings.warn(
+            'results.sizes() is deprecated. '
+            'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
+            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._has_flow_data:
             raise ValueError('Flow data is not available in this results object (pre-v2.2.0).')
         if self._sizes is None:
@@ -909,11 +988,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         | Literal['auto']
         | None = 'auto',
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
-        # Deprecated parameters (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-        color_map: str | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -1030,10 +1104,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             facet_cols=facet_cols,
             reshape_time=reshape_time,
             fill=fill,
-            indexer=indexer,
-            heatmap_timeframes=heatmap_timeframes,
-            heatmap_timesteps_per_frame=heatmap_timesteps_per_frame,
-            color_map=color_map,
             **plot_kwargs,
         )
 
@@ -1058,6 +1128,61 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         if path is None:
             path = self.folder / f'{self.name}--network.html'
         return self.flow_system.plot_network(controls=controls, path=path, show=show)
+
+    def to_flow_system(self) -> FlowSystem:
+        """Convert Results to a FlowSystem with solution attached.
+
+        This method migrates results from the deprecated Results format to the
+        new FlowSystem-based format, enabling use of the modern API.
+
+        Note:
+            For loading old results files directly, consider using
+            ``FlowSystem.from_old_results(folder, name)`` instead.
+
+        Returns:
+            FlowSystem: A FlowSystem instance with the solution data attached.
+
+        Caveats:
+            - The linopy model is NOT attached (only the solution data)
+            - Element submodels are NOT recreated (no re-optimization without
+              calling build_model() first)
+            - Variable/constraint names on elements are NOT restored
+
+        Examples:
+            Convert loaded Results to FlowSystem:
+
+            ```python
+            # Load old results
+            results = Results.from_file('results', 'my_optimization')
+
+            # Convert to FlowSystem
+            flow_system = results.to_flow_system()
+
+            # Use new API
+            flow_system.plot.heatmap()
+            flow_system.solution.to_netcdf('solution.nc')
+
+            # Save in new single-file format
+            flow_system.to_netcdf('my_optimization.nc')
+            ```
+        """
+        from flixopt.io import convert_old_dataset
+
+        # Convert flow_system_data to new parameter names
+        convert_old_dataset(self.flow_system_data)
+
+        # Reconstruct FlowSystem from stored data
+        flow_system = FlowSystem.from_dataset(self.flow_system_data)
+
+        # Convert solution attrs from dicts to JSON strings for consistency with new format
+        # The _get_solution_attr helper handles both formats, but we normalize here
+        solution = self.solution.copy()
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+
+        flow_system.solution = solution
+        return flow_system
 
     def to_file(
         self,
@@ -1122,47 +1247,14 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         logger.log(SUCCESS_LEVEL, f'Saved optimization results "{name}" to {paths.model_documentation.parent}')
 
 
-class CalculationResults(Results):
-    """DEPRECATED: Use Results instead.
-
-    Backwards-compatible alias for Results class.
-    All functionality is inherited from Results.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Only warn if directly instantiating CalculationResults (not subclasses)
-        if self.__class__.__name__ == 'CalculationResults':
-            warnings.warn(
-                f'CalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use Results instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().__init__(*args, **kwargs)
-
-    @classmethod
-    def from_calculation(cls, calculation: Optimization) -> CalculationResults:
-        """Create CalculationResults from a Calculation object.
-
-        DEPRECATED: Use Results.from_optimization() instead.
-        Backwards-compatible method that redirects to from_optimization().
-
-        Args:
-            calculation: Calculation object with solved model.
-
-        Returns:
-            CalculationResults: New instance with extracted results.
-        """
-        return cls.from_optimization(calculation)
-
-
 class _ElementResults:
     def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
         self._results = results
         self.label = label
-        self._variable_names = variables
+        self.variable_names = variables
         self._constraint_names = constraints
 
-        self.solution = self._results.solution[self._variable_names]
+        self.solution = self._results.solution[self.variable_names]
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1173,7 +1265,7 @@ class _ElementResults:
         """
         if self._results.model is None:
             raise ValueError('The linopy model is not available.')
-        return self._results.model.variables[self._variable_names]
+        return self._results.model.variables[self.variable_names]
 
     @property
     def constraints(self) -> linopy.Constraints:
@@ -1265,8 +1357,6 @@ class _NodeResults(_ElementResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """
@@ -1367,22 +1457,6 @@ class _NodeResults(_ElementResults):
             >>> fig.update_layout(template='plotly_dark', width=1200, height=600)
             >>> fig.show()
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         if engine not in {'plotly', 'matplotlib'}:
             raise ValueError(f'Engine "{engine}" not supported. Use one of ["plotly", "matplotlib"]')
 
@@ -1450,8 +1524,6 @@ class _NodeResults(_ElementResults):
         show: bool | None = None,
         engine: plotting.PlottingEngine = 'plotly',
         select: dict[FlowSystemDimensions, Any] | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, list[plt.Axes]]:
         """Plot pie chart of flow hours distribution.
@@ -1501,22 +1573,6 @@ class _NodeResults(_ElementResults):
 
             >>> results['Bus'].plot_node_balance_pie(save='figure.png', dpi=600)
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         # Extract dpi for export_figure
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
@@ -1624,8 +1680,6 @@ class _NodeResults(_ElementResults):
         unit_type: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         drop_suffix: bool = False,
         select: dict[FlowSystemDimensions, Any] | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
     ) -> xr.Dataset:
         """
         Returns a dataset with the node balance of the Component or Bus.
@@ -1640,22 +1694,6 @@ class _NodeResults(_ElementResults):
             drop_suffix: Whether to drop the suffix from the variable names.
             select: Optional data selection dict. Supports single values, lists, slices, and index arrays.
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         ds = self.solution[self.inputs + self.outputs]
 
         ds = sanitize_dataset(
@@ -1692,7 +1730,7 @@ class ComponentResults(_NodeResults):
 
     @property
     def is_storage(self) -> bool:
-        return self._charge_state in self._variable_names
+        return self._charge_state in self.variable_names
 
     @property
     def _charge_state(self) -> str:
@@ -1716,8 +1754,6 @@ class ComponentResults(_NodeResults):
         facet_by: str | list[str] | None = 'scenario',
         animate_by: str | None = 'period',
         facet_cols: int | None = None,
-        # Deprecated parameter (kept for backwards compatibility)
-        indexer: dict[FlowSystemDimensions, Any] | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure:
         """Plot storage charge state over time, combined with the node balance with optional faceting and animation.
@@ -1786,22 +1822,6 @@ class ComponentResults(_NodeResults):
 
             >>> results['Storage'].plot_charge_state(save='storage.png', dpi=600)
         """
-        # Handle deprecated indexer parameter
-        if indexer is not None:
-            # Check for conflict with new parameter
-            if select is not None:
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-                )
-
-            warnings.warn(
-                f"The 'indexer' parameter is deprecated and will be removed in a future version. Use 'select' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            select = indexer
-
         # Extract dpi for export_figure
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
@@ -1971,7 +1991,7 @@ class EffectResults(_ElementResults):
         Returns:
             xr.Dataset: Element shares to this effect.
         """
-        return self.solution[[name for name in self._variable_names if name.startswith(f'{element}->')]]
+        return self.solution[[name for name in self.variable_names if name.startswith(f'{element}->')]]
 
 
 class FlowResults(_ElementResults):
@@ -2169,6 +2189,12 @@ class SegmentedResults:
         name: str,
         folder: pathlib.Path | None = None,
     ):
+        warnings.warn(
+            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'A replacement API for segmented optimization will be provided in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.segment_results = segment_results
         self.all_timesteps = all_timesteps
         self.timesteps_per_segment = timesteps_per_segment
@@ -2280,10 +2306,6 @@ class SegmentedResults:
         animate_by: str | None = None,
         facet_cols: int | None = None,
         fill: Literal['ffill', 'bfill'] | None = 'ffill',
-        # Deprecated parameters (kept for backwards compatibility)
-        heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-        heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-        color_map: str | None = None,
         **plot_kwargs: Any,
     ) -> plotly.graph_objs.Figure | tuple[plt.Figure, plt.Axes]:
         """Plot heatmap of variable solution across segments.
@@ -2302,9 +2324,6 @@ class SegmentedResults:
             animate_by: Dimension to animate over (Plotly only).
             facet_cols: Number of columns in the facet grid layout.
             fill: Method to fill missing values: 'ffill' or 'bfill'.
-            heatmap_timeframes: (Deprecated) Use reshape_time instead.
-            heatmap_timesteps_per_frame: (Deprecated) Use reshape_time instead.
-            color_map: (Deprecated) Use colors instead.
             **plot_kwargs: Additional plotting customization options.
                 Common options:
 
@@ -2320,41 +2339,6 @@ class SegmentedResults:
         Returns:
             Figure object.
         """
-        # Handle deprecated parameters
-        if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
-            # Check for conflict with new parameter
-            if reshape_time != 'auto':  # Check if user explicitly set reshape_time
-                raise ValueError(
-                    "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
-                    "and new parameter 'reshape_time'. Use only 'reshape_time'."
-                )
-
-            warnings.warn(
-                "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-                f"Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Override reshape_time if old parameters provided
-            if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
-                reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
-
-        if color_map is not None:
-            # Check for conflict with new parameter
-            if colors is not None:  # Check if user explicitly set colors
-                raise ValueError(
-                    "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
-                )
-
-            warnings.warn(
-                f"The 'color_map' parameter is deprecated. Use 'colors' instead. "
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            colors = color_map
-
         return plot_heatmap(
             data=self.solution_without_overlap(variable_name),
             name=variable_name,
@@ -2412,40 +2396,6 @@ class SegmentedResults:
         logger.info(f'Saved optimization "{name}" to {path}')
 
 
-class SegmentedCalculationResults(SegmentedResults):
-    """DEPRECATED: Use SegmentedResults instead.
-
-    Backwards-compatible alias for SegmentedResults class.
-    All functionality is inherited from SegmentedResults.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Only warn if directly instantiating SegmentedCalculationResults (not subclasses)
-        if self.__class__.__name__ == 'SegmentedCalculationResults':
-            warnings.warn(
-                f'SegmentedCalculationResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-                'Use SegmentedResults instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().__init__(*args, **kwargs)
-
-    @classmethod
-    def from_calculation(cls, calculation: SegmentedOptimization) -> SegmentedCalculationResults:
-        """Create SegmentedCalculationResults from a SegmentedCalculation object.
-
-        DEPRECATED: Use SegmentedResults.from_optimization() instead.
-        Backwards-compatible method that redirects to from_optimization().
-
-        Args:
-            calculation: SegmentedCalculation object with solved model.
-
-        Returns:
-            SegmentedCalculationResults: New instance with extracted results.
-        """
-        return cls.from_optimization(calculation)
-
-
 def plot_heatmap(
     data: xr.DataArray | xr.Dataset,
     name: str | None = None,
@@ -2462,11 +2412,6 @@ def plot_heatmap(
     | Literal['auto']
     | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
-    # Deprecated parameters (kept for backwards compatibility)
-    indexer: dict[str, Any] | None = None,
-    heatmap_timeframes: Literal['YS', 'MS', 'W', 'D', 'h', '15min', 'min'] | None = None,
-    heatmap_timesteps_per_frame: Literal['W', 'D', 'h', '15min', 'min'] | None = None,
-    color_map: str | None = None,
     **plot_kwargs: Any,
 ):
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
@@ -2515,57 +2460,6 @@ def plot_heatmap(
 
         >>> plot_heatmap(dataset, animate_by='variable', reshape_time=('D', 'h'))
     """
-    # Handle deprecated heatmap time parameters
-    if heatmap_timeframes is not None or heatmap_timesteps_per_frame is not None:
-        # Check for conflict with new parameter
-        if reshape_time != 'auto':  # User explicitly set reshape_time
-            raise ValueError(
-                "Cannot use both deprecated parameters 'heatmap_timeframes'/'heatmap_timesteps_per_frame' "
-                "and new parameter 'reshape_time'. Use only 'reshape_time'."
-            )
-
-        warnings.warn(
-            "The 'heatmap_timeframes' and 'heatmap_timesteps_per_frame' parameters are deprecated. "
-            "Use 'reshape_time=(timeframes, timesteps_per_frame)' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # Override reshape_time if both old parameters provided
-        if heatmap_timeframes is not None and heatmap_timesteps_per_frame is not None:
-            reshape_time = (heatmap_timeframes, heatmap_timesteps_per_frame)
-
-    # Handle deprecated color_map parameter
-    if color_map is not None:
-        if colors is not None:  # User explicitly set colors
-            raise ValueError(
-                "Cannot use both deprecated parameter 'color_map' and new parameter 'colors'. Use only 'colors'."
-            )
-
-        warnings.warn(
-            f"The 'color_map' parameter is deprecated. Use 'colors' instead."
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        colors = color_map
-
-    # Handle deprecated indexer parameter
-    if indexer is not None:
-        # Check for conflict with new parameter
-        if select is not None:  # User explicitly set select
-            raise ValueError(
-                "Cannot use both deprecated parameter 'indexer' and new parameter 'select'. Use only 'select'."
-            )
-
-        warnings.warn(
-            f"The 'indexer' parameter is deprecated. Use 'select' instead. "
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        select = indexer
-
     # Convert Dataset to DataArray with 'variable' dimension
     if isinstance(data, xr.Dataset):
         # Extract all data variables from the Dataset

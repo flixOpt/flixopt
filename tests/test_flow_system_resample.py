@@ -172,7 +172,7 @@ def test_converter_resample(complex_fs):
     fs_r = complex_fs.resample('4h', method='mean')
     assert 'boiler' in fs_r.components
     boiler = fs_r.components['boiler']
-    assert hasattr(boiler, 'eta')
+    assert hasattr(boiler, 'thermal_efficiency')
 
 
 def test_invest_resample(complex_fs):
@@ -206,11 +206,10 @@ def test_modeling(with_dim):
     )
 
     fs_r = fs.resample('4h', method='mean')
-    calc = fx.Optimization('test', fs_r)
-    calc.do_modeling()
+    fs_r.build_model()
 
-    assert calc.model is not None
-    assert len(calc.model.variables) > 0
+    assert fs_r.model is not None
+    assert len(fs_r.model.variables) > 0
 
 
 def test_model_structure_preserved():
@@ -225,22 +224,18 @@ def test_model_structure_preserved():
         fx.Source(label='s', outputs=[fx.Flow(label='out', bus='h', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
-    calc_orig = fx.Optimization('orig', fs)
-    calc_orig.do_modeling()
+    fs.build_model()
 
     fs_r = fs.resample('4h', method='mean')
-    calc_r = fx.Optimization('resamp', fs_r)
-    calc_r.do_modeling()
+    fs_r.build_model()
 
     # Same number of variable/constraint types
-    assert len(calc_orig.model.variables) == len(calc_r.model.variables)
-    assert len(calc_orig.model.constraints) == len(calc_r.model.constraints)
+    assert len(fs.model.variables) == len(fs_r.model.variables)
+    assert len(fs.model.constraints) == len(fs_r.model.constraints)
 
     # Same names
-    assert set(calc_orig.model.variables.labels.data_vars.keys()) == set(calc_r.model.variables.labels.data_vars.keys())
-    assert set(calc_orig.model.constraints.labels.data_vars.keys()) == set(
-        calc_r.model.constraints.labels.data_vars.keys()
-    )
+    assert set(fs.model.variables.labels.data_vars.keys()) == set(fs_r.model.variables.labels.data_vars.keys())
+    assert set(fs.model.constraints.labels.data_vars.keys()) == set(fs_r.model.constraints.labels.data_vars.keys())
 
 
 # === Advanced Features ===
@@ -276,8 +271,8 @@ def test_frequencies(freq, exp_len):
     assert len(fs.resample(freq, method='mean').timesteps) == exp_len
 
 
-def test_irregular_timesteps():
-    """Test irregular timesteps."""
+def test_irregular_timesteps_error():
+    """Test that resampling irregular timesteps to finer resolution raises error without fill_gaps."""
     ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
@@ -285,8 +280,26 @@ def test_irregular_timesteps():
         fx.Sink(label='s', inputs=[fx.Flow(label='in', bus='b', fixed_relative_profile=np.ones(3), size=1)])
     )
 
-    fs_r = fs.resample('1h', method='mean')
-    assert len(fs_r.timesteps) > 0
+    with pytest.raises(ValueError, match='Resampling created gaps'):
+        fs.transform.resample('1h', method='mean')
+
+
+def test_irregular_timesteps_with_fill_gaps():
+    """Test that resampling irregular timesteps works with explicit fill_gaps strategy."""
+    ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
+    fs = fx.FlowSystem(ts)
+    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add_elements(
+        fx.Sink(
+            label='s', inputs=[fx.Flow(label='in', bus='b', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)]
+        )
+    )
+
+    # Test with ffill
+    fs_r = fs.transform.resample('1h', method='mean', fill_gaps='ffill')
+    assert len(fs_r.timesteps) == 4
+    # Gap at 02:00 should be filled with previous value (2.0)
+    assert_allclose(fs_r.flows['s(in)'].fixed_relative_profile.values, [1.0, 2.0, 2.0, 4.0])
 
 
 if __name__ == '__main__':

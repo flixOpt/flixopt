@@ -17,7 +17,7 @@ import sys
 import timeit
 import warnings
 from collections import Counter
-from typing import TYPE_CHECKING, Annotated, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
 from tqdm import tqdm
@@ -25,8 +25,8 @@ from tqdm import tqdm
 from . import io as fx_io
 from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
-from .config import CONFIG, SUCCESS_LEVEL
-from .core import DEPRECATION_REMOVAL_VERSION, DataConverter, TimeSeriesData, drop_constant_arrays
+from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
+from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
 from .flow_system import FlowSystem
@@ -85,7 +85,6 @@ def _initialize_optimization_common(
     obj: Any,
     name: str,
     flow_system: FlowSystem,
-    active_timesteps: pd.DatetimeIndex | None = None,
     folder: pathlib.Path | None = None,
     normalize_weights: bool = True,
 ) -> None:
@@ -99,7 +98,6 @@ def _initialize_optimization_common(
         obj: The optimization object being initialized
         name: Name of the optimization
         flow_system: FlowSystem to optimize
-        active_timesteps: DEPRECATED. Use flow_system.sel(time=...) instead
         folder: Directory for saving results
         normalize_weights: Whether to normalize scenario weights
     """
@@ -112,17 +110,6 @@ def _initialize_optimization_common(
         )
         flow_system = flow_system.copy()
 
-    if active_timesteps is not None:
-        warnings.warn(
-            f"The 'active_timesteps' parameter is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. "
-            'Use flow_system.sel(time=timesteps) or flow_system.isel(time=indices) before passing '
-            'the FlowSystem to the Optimization instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        flow_system = flow_system.sel(time=active_timesteps)
-
-    obj._active_timesteps = active_timesteps  # deprecated
     obj.normalize_weights = normalize_weights
 
     flow_system._used_in_optimization = True
@@ -155,7 +142,6 @@ class Optimization:
         flow_system: flow_system which should be optimized
         folder: folder where results should be saved. If None, then the current working directory is used.
         normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
-        active_timesteps: Deprecated. Use FlowSystem.sel(time=...) or FlowSystem.isel(time=...) instead.
 
     Examples:
         Basic usage:
@@ -182,18 +168,20 @@ class Optimization:
         self,
         name: str,
         flow_system: FlowSystem,
-        active_timesteps: Annotated[
-            pd.DatetimeIndex | None,
-            'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
-        ] = None,
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
+        warnings.warn(
+            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use FlowSystem.optimize(solver) or FlowSystem.build_model() + FlowSystem.solve(solver) instead. '
+            'Access results via FlowSystem.solution.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         _initialize_optimization_common(
             self,
             name=name,
             flow_system=flow_system,
-            active_timesteps=active_timesteps,
             folder=folder,
             normalize_weights=normalize_weights,
         )
@@ -280,6 +268,9 @@ class Optimization:
                 f'{" Main Results ":#^80}\n' + fx_io.format_yaml_string(self.main_results, compact_numeric_lists=True),
             )
 
+        # Store solution on FlowSystem for direct Element access
+        self.flow_system.solution = self.model.solution
+
         self.results = Results.from_optimization(self)
 
         return self
@@ -329,15 +320,15 @@ class Optimization:
             'Buses with excess': [
                 {
                     bus.label_full: {
-                        'input': bus.submodel.excess_input.solution.sum('time'),
-                        'output': bus.submodel.excess_output.solution.sum('time'),
+                        'virtual_supply': bus.submodel.virtual_supply.solution.sum('time'),
+                        'virtual_demand': bus.submodel.virtual_demand.solution.sum('time'),
                     }
                 }
                 for bus in self.flow_system.buses.values()
-                if bus.with_excess
+                if bus.allows_imbalance
                 and (
-                    bus.submodel.excess_input.solution.sum().item() > 1e-3
-                    or bus.submodel.excess_output.solution.sum().item() > 1e-3
+                    bus.submodel.virtual_supply.solution.sum().item() > 1e-3
+                    or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
                 )
             ],
         }
@@ -359,16 +350,6 @@ class Optimization:
             'Durations': self.durations,
             'Config': CONFIG.to_dict(),
         }
-
-    @property
-    def active_timesteps(self) -> pd.DatetimeIndex | None:
-        warnings.warn(
-            f'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._active_timesteps
 
     @property
     def modeled(self) -> bool:
@@ -393,7 +374,6 @@ class ClusteredOptimization(Optimization):
         clustering_parameters: Parameters for clustering. See ClusteringParameters class documentation
         components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
             This equalizes variables in the components according to the typical periods computed in the aggregation
-        active_timesteps: DatetimeIndex of timesteps to use for optimization. If None, all timesteps are used
         folder: Folder where results should be saved. If None, current working directory is used
         normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving
 
@@ -408,21 +388,25 @@ class ClusteredOptimization(Optimization):
         flow_system: FlowSystem,
         clustering_parameters: ClusteringParameters,
         components_to_clusterize: list[Component] | None = None,
-        active_timesteps: Annotated[
-            pd.DatetimeIndex | None,
-            'DEPRECATED: Use flow_system.sel(time=...) or flow_system.isel(time=...) instead',
-        ] = None,
         folder: pathlib.Path | None = None,
         normalize_weights: bool = True,
     ):
+        warnings.warn(
+            f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use FlowSystem.transform.cluster(params) followed by FlowSystem.optimize(solver) instead. '
+            'Example: clustered_fs = flow_system.transform.cluster(params); clustered_fs.optimize(solver)',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if flow_system.scenarios is not None:
             raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
         if flow_system.periods is not None:
             raise ValueError('Clustering is not supported for periods yet. Please use Optimization instead.')
-        super().__init__(
+        # Skip parent deprecation warning by calling common init directly
+        _initialize_optimization_common(
+            self,
             name=name,
             flow_system=flow_system,
-            active_timesteps=active_timesteps,
             folder=folder,
             normalize_weights=normalize_weights,
         )
@@ -485,7 +469,8 @@ class ClusteredOptimization(Optimization):
         )
 
         self.clustering.cluster()
-        self.clustering.plot(show=CONFIG.Plotting.default_show, save=self.folder / 'clustering.html')
+        result = self.clustering.plot(show=CONFIG.Plotting.default_show)
+        result.to_html(self.folder / 'clustering.html')
         if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
             ds = self.flow_system.to_dataset()
             for name, series in self.clustering.aggregated_data.items():
@@ -503,26 +488,10 @@ class ClusteredOptimization(Optimization):
         self.flow_system.connect_and_transform()
         self.durations['clustering'] = round(timeit.default_timer() - t_start_agg, 2)
 
-    def _perform_aggregation(self):
-        """Deprecated: Use _perform_clustering instead."""
-        warnings.warn(
-            f'_perform_aggregation is deprecated, use _perform_clustering instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._perform_clustering()
-
     @classmethod
     def calculate_clustering_weights(cls, ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
-
-        # Support both old and new attr names for backward compatibility
-        groups = [
-            da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
-            for da in ds.data_vars.values()
-            if 'clustering_group' in da.attrs or 'aggregation_group' in da.attrs
-        ]
+        groups = [da.attrs.get('clustering_group') for da in ds.data_vars.values() if 'clustering_group' in da.attrs]
         group_counts = Counter(groups)
 
         # Calculate weight for each group (1/count)
@@ -530,30 +499,17 @@ class ClusteredOptimization(Optimization):
 
         weights = {}
         for name, da in ds.data_vars.items():
-            # Try both old and new attr names
-            clustering_group = da.attrs.get('clustering_group', da.attrs.get('aggregation_group'))
+            clustering_group = da.attrs.get('clustering_group')
             group_weight = group_weights.get(clustering_group)
             if group_weight is not None:
                 weights[name] = group_weight
             else:
-                # Try both old and new attr names for weight
-                weights[name] = da.attrs.get('clustering_weight', da.attrs.get('aggregation_weight', 1))
+                weights[name] = da.attrs.get('clustering_weight', 1)
 
         if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
             logger.info('All Clustering weights were set to 1')
 
         return weights
-
-    @classmethod
-    def calculate_aggregation_weights(cls, ds: xr.Dataset) -> dict[str, float]:
-        """Deprecated: Use calculate_clustering_weights instead."""
-        warnings.warn(
-            f'calculate_aggregation_weights is deprecated, use calculate_clustering_weights instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return cls.calculate_clustering_weights(ds)
 
 
 class SegmentedOptimization:
@@ -673,7 +629,6 @@ class SegmentedOptimization:
     durations: dict[str, float]
     model: None  # SegmentedOptimization doesn't use a single model
     normalize_weights: bool
-    _active_timesteps: pd.DatetimeIndex | None
 
     def __init__(
         self,
@@ -684,11 +639,16 @@ class SegmentedOptimization:
         nr_of_previous_values: int = 1,
         folder: pathlib.Path | None = None,
     ):
+        warnings.warn(
+            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'A replacement API for segmented optimization will be provided in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         _initialize_optimization_common(
             self,
             name=name,
             flow_system=flow_system,
-            active_timesteps=None,
             folder=folder,
         )
         self.timesteps_per_segment = timesteps_per_segment
@@ -977,13 +937,3 @@ class SegmentedOptimization:
             'Durations': self.durations,
             'Config': CONFIG.to_dict(),
         }
-
-    @property
-    def active_timesteps(self) -> pd.DatetimeIndex | None:
-        warnings.warn(
-            f'active_timesteps is deprecated. Use flow_system.sel(time=...) or flow_system.isel(time=...) instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._active_timesteps
