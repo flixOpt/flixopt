@@ -51,6 +51,14 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.0.2] - 2025-12-17
+
+### ♻️ Changed
+
+- `statistics.plot.effects()` now defaults to `by=None` for aggregated totals; use `by='component'` for the previous behavior
+
+---
+
 ## [5.0.1] - 2025-12-17
 
 ### 👷 Development
