@@ -1956,7 +1956,7 @@ class StatisticsPlotAccessor:
         aspect: Literal['total', 'temporal', 'periodic'] = 'total',
         *,
         effect: str | None = None,
-        by: Literal['component', 'contributor', 'time'] = 'component',
+        by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
         facet_col: str | None = 'period',
@@ -1970,7 +1970,8 @@ class StatisticsPlotAccessor:
             aspect: Which aspect to plot - 'total', 'temporal', or 'periodic'.
             effect: Specific effect name to plot (e.g., 'costs', 'CO2').
                     If None, plots all effects.
-            by: Group by 'component', 'contributor' (individual flows), or 'time'.
+            by: Group by 'component', 'contributor' (individual flows), 'time',
+                or None to show aggregated totals per effect.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
             facet_col: Dimension for column facets (ignored if not in data).
@@ -1981,8 +1982,9 @@ class StatisticsPlotAccessor:
             PlotResult with effect breakdown data.
 
         Examples:
-            >>> flow_system.statistics.plot.effects()  # Total of all effects by component
+            >>> flow_system.statistics.plot.effects()  # Aggregated totals per effect
             >>> flow_system.statistics.plot.effects(effect='costs')  # Just costs
+            >>> flow_system.statistics.plot.effects(by='component')  # Breakdown by component
             >>> flow_system.statistics.plot.effects(by='contributor')  # By individual flows
             >>> flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
         """
@@ -2027,7 +2029,17 @@ class StatisticsPlotAccessor:
         combined = _apply_selection(combined.to_dataset(name='value'), select)['value']
 
         # Group by the specified dimension
-        if by == 'component':
+        if by is None:
+            # Aggregate totals per effect - sum over all dimensions except effect
+            if 'time' in combined.dims:
+                combined = combined.sum(dim='time')
+            if 'component' in combined.dims:
+                combined = combined.sum(dim='component')
+            if 'contributor' in combined.dims:
+                combined = combined.sum(dim='contributor')
+            x_col = 'effect'
+            color_col = 'effect'
+        elif by == 'component':
             # Sum over time if present
             if 'time' in combined.dims:
                 combined = combined.sum(dim='time')
@@ -2050,7 +2062,7 @@ class StatisticsPlotAccessor:
             x_col = 'time'
             color_col = 'effect' if len(effects_to_plot) > 1 else None
         else:
-            raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', got {by!r}")
+            raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
         # Resolve facets
         actual_facet_col, actual_facet_row = _resolve_facets(combined.to_dataset(name='value'), facet_col, facet_row)
@@ -2072,7 +2084,7 @@ class StatisticsPlotAccessor:
             title = f'{effect_label} [{unit_label}]' if unit_label else effect_label
         else:
             title = effect_label
-        title = f'{title} ({aspect}) by {by}'
+        title = f'{title} ({aspect})' if by is None else f'{title} ({aspect}) by {by}'
 
         fig = px.bar(
             df,
