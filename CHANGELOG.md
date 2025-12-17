@@ -51,6 +51,14 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.0.1] - 2025-12-17
+
+### 👷 Development
+
+- Fixed docs deployment in CI workflow
+
+---
+
 ## [5.0.0] - 2025-12-16
 
 **Summary**: This is a major release that introduces the new **FlowSystem-centric API**, dramatically simplifying workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **deprecates the old Optimization/Results workflow** (to be removed in v6.0.0).
