@@ -1046,8 +1046,8 @@ class TransformAccessor:
 
     def cluster_reduce(
         self,
-        period_duration: str | float,
-        n_typical_periods: int,
+        n_clusters: int,
+        cluster_duration: str | float,
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
@@ -1055,55 +1055,55 @@ class TransformAccessor:
         storage_cyclic: bool = True,
     ) -> FlowSystem:
         """
-        Create a FlowSystem with reduced timesteps using typical periods.
+        Create a FlowSystem with reduced timesteps using typical clusters.
 
         This method creates a new FlowSystem optimized for sizing studies by reducing
-        the number of timesteps to only the typical (representative) periods identified
+        the number of timesteps to only the typical (representative) clusters identified
         through time series aggregation. Unlike `cluster()` which uses equality constraints,
         this method actually reduces the problem size for faster solving.
 
         The method:
         1. Performs time series clustering using tsam
-        2. Extracts only the typical periods (not all original timesteps)
+        2. Extracts only the typical clusters (not all original timesteps)
         3. Applies timestep weighting for accurate cost representation
-        4. Optionally links storage states between periods via boundary variables
+        4. Optionally links storage states between clusters via boundary variables
 
         Use this for initial sizing optimization, then use `fix_sizes()` to re-optimize
         at full resolution for accurate dispatch results.
 
         Args:
-            period_duration: Duration of each period. Can be a pandas-style string
+            n_clusters: Number of clusters (typical segments) to extract (e.g., 8 typical days).
+            cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
-            n_typical_periods: Number of typical periods to extract (e.g., 8 typical days).
             weights: Optional clustering weights per time series. Keys are time series labels.
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
-                periods. **Recommended** for demand time series to capture peak demand days.
-            time_series_for_low_peaks: Time series labels for explicitly selecting low-value periods.
-            storage_inter_period_linking: If True, link storage states between periods using
+                clusters. **Recommended** for demand time series to capture peak demand days.
+            time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
+            storage_inter_period_linking: If True, link storage states between clusters using
                 boundary variables. This preserves long-term storage behavior. Default: True.
             storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end] for storages.
                 Only used when storage_inter_period_linking=True. Default: True.
 
         Returns:
-            A new FlowSystem with reduced timesteps (only typical periods).
-            The FlowSystem has metadata stored in `_typical_periods_info` for weighting.
+            A new FlowSystem with reduced timesteps (only typical clusters).
+            The FlowSystem has metadata stored in `_cluster_info` for weighting.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
-            ValueError: If period_duration is not a multiple of timestep size.
+            ValueError: If cluster_duration is not a multiple of timestep size.
 
         Examples:
             Two-stage sizing optimization:
 
             >>> # Stage 1: Size with reduced timesteps (fast)
             >>> fs_sizing = flow_system.transform.cluster_reduce(
-            ...     period_duration='1D',
-            ...     n_typical_periods=8,
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
             ...     time_series_for_high_peaks=['HeatDemand(Q_th)|fixed_relative_profile'],
             ... )
             >>> fs_sizing.optimize(solver)
             >>>
-            >>> # Apply safety margin (typical periods may smooth peaks)
+            >>> # Apply safety margin (typical clusters may smooth peaks)
             >>> sizes_with_margin = {
             ...     name: float(size.item()) * 1.05 for name, size in fs_sizing.statistics.sizes.items()
             ... }
@@ -1114,19 +1114,19 @@ class TransformAccessor:
 
         Note:
             - This is best suited for initial sizing, not final dispatch optimization
-            - Use `time_series_for_high_peaks` to ensure peak demand periods are captured
+            - Use `time_series_for_high_peaks` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
-            - Storage linking adds SOC_boundary variables to track state between periods
+            - Storage linking adds SOC_boundary variables to track state between clusters
         """
         from .clustering import Clustering
         from .core import DataConverter, TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
-        # Parse period_duration to hours
-        if isinstance(period_duration, str):
-            hours_per_period = pd.Timedelta(period_duration).total_seconds() / 3600
+        # Parse cluster_duration to hours
+        if isinstance(cluster_duration, str):
+            hours_per_cluster = pd.Timedelta(cluster_duration).total_seconds() / 3600
         else:
-            hours_per_period = float(period_duration)
+            hours_per_cluster = float(cluster_duration)
 
         # Validation
         dt_min = float(self._fs.hours_per_timestep.min().item())
@@ -1136,17 +1136,17 @@ class TransformAccessor:
                 f'cluster_reduce() failed due to inconsistent time step sizes: '
                 f'delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        ratio = hours_per_period / dt_max
+        ratio = hours_per_cluster / dt_max
         if not np.isclose(ratio, round(ratio), atol=1e-9):
             raise ValueError(
-                f'The selected period_duration={hours_per_period}h does not match the time '
+                f'The selected cluster_duration={hours_per_cluster}h does not match the time '
                 f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
             )
 
-        timesteps_per_period = int(round(hours_per_period / dt_max))
+        timesteps_per_cluster = int(round(hours_per_cluster / dt_max))
 
         logger.info(f'{"":#^80}')
-        logger.info(f'{" Creating Typical Periods (Reduced Timesteps) ":#^80}')
+        logger.info(f'{" Creating Typical Clusters (Reduced Timesteps) ":#^80}')
 
         # Get dataset representation
         ds = self._fs.to_dataset(include_solution=False)
@@ -1156,8 +1156,8 @@ class TransformAccessor:
         clustering = Clustering(
             original_data=temporaly_changing_ds.to_dataframe(),
             hours_per_time_step=float(dt_min),
-            hours_per_period=hours_per_period,
-            nr_of_periods=n_typical_periods,
+            hours_per_period=hours_per_cluster,
+            nr_of_periods=n_clusters,
             weights=weights or self._calculate_clustering_weights(temporaly_changing_ds),
             time_series_for_high_peaks=time_series_for_high_peaks or [],
             time_series_for_low_peaks=time_series_for_low_peaks or [],
@@ -1169,20 +1169,20 @@ class TransformAccessor:
         cluster_order = clustering.tsam.clusterOrder  # Order in which clusters appear
         cluster_occurrences = clustering.tsam.clusterPeriodNoOccur  # {cluster_id: count}
 
-        # Actual number of typical periods (may differ from requested if peak forcing is used)
-        actual_n_typical_periods = len(cluster_occurrences)
+        # Actual number of clusters (may differ from requested if peak forcing is used)
+        actual_n_clusters = len(cluster_occurrences)
 
-        # Create timestep weights: each typical period timestep represents multiple original timesteps
-        # Weight = number of original periods this typical period represents
+        # Create timestep weights: each typical cluster timestep represents multiple original timesteps
+        # Weight = number of original clusters this typical cluster represents
         timestep_weights = []
-        for typical_period_idx in range(actual_n_typical_periods):
-            weight = cluster_occurrences.get(typical_period_idx, 1)
-            timestep_weights.extend([weight] * timesteps_per_period)
+        for cluster_idx in range(actual_n_clusters):
+            weight = cluster_occurrences.get(cluster_idx, 1)
+            timestep_weights.extend([weight] * timesteps_per_cluster)
 
         timestep_weights = np.array(timestep_weights)
 
         logger.info(f'Reduced from {len(self._fs.timesteps)} to {len(typical_periods_df)} timesteps')
-        logger.info(f'Typical periods: {actual_n_typical_periods} (requested: {n_typical_periods})')
+        logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
         logger.info(f'Cluster occurrences: {cluster_occurrences}')
 
         # Create new time index for typical periods
@@ -1217,20 +1217,20 @@ class TransformAccessor:
         ds_new = ds_new.reindex(time=new_time_index)
 
         # Update metadata
-        ds_new.attrs['timesteps_per_period'] = timesteps_per_period
+        ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
         ds_new.attrs['hours_per_timestep'] = dt_min
 
         # Create new FlowSystem with reduced timesteps
         reduced_fs = FlowSystem.from_dataset(ds_new)
 
-        # Store typical periods info for later use during modeling
-        reduced_fs._typical_periods_info = {
+        # Store cluster info for later use during modeling
+        reduced_fs._cluster_info = {
             'clustering': clustering,
             'timestep_weights': timestep_weights,
             'cluster_order': cluster_order,
             'cluster_occurrences': cluster_occurrences,
-            'n_typical_periods': actual_n_typical_periods,
-            'timesteps_per_period': timesteps_per_period,
+            'n_clusters': actual_n_clusters,
+            'timesteps_per_cluster': timesteps_per_cluster,
             'storage_inter_period_linking': storage_inter_period_linking,
             'storage_cyclic': storage_cyclic,
             'original_fs': self._fs,
@@ -1239,17 +1239,17 @@ class TransformAccessor:
         return reduced_fs
 
     def expand_solution(self) -> FlowSystem:
-        """Expand a reduced (typical periods) FlowSystem back to full original timesteps.
+        """Expand a reduced (clustered) FlowSystem back to full original timesteps.
 
         After solving a FlowSystem created with ``cluster_reduce()``, this method
         disaggregates the FlowSystem by:
-        1. Expanding all time series data from typical periods to full timesteps
-        2. Expanding the solution by mapping each typical period back to all
-           original periods it represents
+        1. Expanding all time series data from typical clusters to full timesteps
+        2. Expanding the solution by mapping each typical cluster back to all
+           original segments it represents
 
         This enables using all existing solution accessors (``statistics``, ``plot``, etc.)
         with full time resolution, where both the data and solution are consistently
-        expanded from the typical periods.
+        expanded from the typical clusters.
 
         Returns:
             FlowSystem: A new FlowSystem with full timesteps and expanded solution.
@@ -1263,8 +1263,8 @@ class TransformAccessor:
 
             >>> # Stage 1: Size with reduced timesteps
             >>> fs_reduced = flow_system.transform.cluster_reduce(
-            ...     period_duration='1D',
-            ...     n_typical_periods=8,
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
             ... )
             >>> fs_reduced.optimize(solver)
             >>>
@@ -1277,11 +1277,11 @@ class TransformAccessor:
             >>> fs_expanded.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 
         Note:
-            The expanded FlowSystem repeats the typical period values for all
-            periods belonging to the same cluster. Both input data and solution
+            The expanded FlowSystem repeats the typical cluster values for all
+            segments belonging to the same cluster. Both input data and solution
             are consistently expanded, so they match. This is an approximation -
             the actual dispatch at full resolution would differ due to
-            intra-period variations in time series data.
+            intra-cluster variations in time series data.
 
             For accurate dispatch results, use ``fix_sizes()`` to fix the sizes
             from the reduced optimization and re-optimize at full resolution.
@@ -1291,40 +1291,40 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate
-        if not hasattr(self._fs, '_typical_periods_info') or self._fs._typical_periods_info is None:
+        if not hasattr(self._fs, '_cluster_info') or self._fs._cluster_info is None:
             raise ValueError(
                 'expand_solution() requires a FlowSystem created with cluster_reduce(). '
-                'This FlowSystem has no typical periods info.'
+                'This FlowSystem has no cluster info.'
             )
 
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        info = self._fs._typical_periods_info
+        info = self._fs._cluster_info
         cluster_order = info['cluster_order']
-        timesteps_per_period = info['timesteps_per_period']
+        timesteps_per_cluster = info['timesteps_per_cluster']
         original_fs: FlowSystem = info['original_fs']
-        n_typical_periods = info['n_typical_periods']
+        n_clusters = info['n_clusters']
 
         # Get original timesteps from the original FlowSystem
         original_timesteps = original_fs.timesteps
         n_original_timesteps = len(original_timesteps)
-        n_reduced_timesteps = n_typical_periods * timesteps_per_period
+        n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
         # Build mapping: for each original timestep, which reduced timestep to copy from
         mapping = np.zeros(n_original_timesteps, dtype=np.int32)
 
         for orig_ts_idx in range(n_original_timesteps):
-            # Which original period does this timestep belong to?
-            orig_period_idx = orig_ts_idx // timesteps_per_period
-            # Position within the period
-            pos_in_period = orig_ts_idx % timesteps_per_period
+            # Which original segment does this timestep belong to?
+            orig_segment_idx = orig_ts_idx // timesteps_per_cluster
+            # Position within the cluster
+            pos_in_cluster = orig_ts_idx % timesteps_per_cluster
 
-            # Which cluster (typical period) does this original period map to?
-            cluster_id = cluster_order[orig_period_idx] if orig_period_idx < len(cluster_order) else 0
+            # Which cluster does this original segment map to?
+            cluster_id = cluster_order[orig_segment_idx] if orig_segment_idx < len(cluster_order) else 0
 
             # The corresponding timestep in the reduced solution
-            reduced_ts_idx = cluster_id * timesteps_per_period + pos_in_period
+            reduced_ts_idx = cluster_id * timesteps_per_cluster + pos_in_cluster
 
             # Ensure we don't exceed reduced solution bounds
             mapping[orig_ts_idx] = min(reduced_ts_idx, n_reduced_timesteps - 1)
@@ -1366,7 +1366,7 @@ class TransformAccessor:
 
         logger.info(
             f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
-            f'({n_typical_periods} typical periods → {len(cluster_order)} original periods)'
+            f'({n_clusters} clusters → {len(cluster_order)} original segments)'
         )
 
         return expanded_fs

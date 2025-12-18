@@ -220,7 +220,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._clustering_info: dict | None = None
 
         # Typical periods info - populated by transform.cluster_reduce()
-        self._typical_periods_info: dict | None = None
+        self._cluster_info: dict | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -1328,8 +1328,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.connect_and_transform()
         self.create_model(normalize_weights)
 
-        # Apply timestep weighting before do_modeling() for typical periods
-        if self._typical_periods_info is not None:
+        # Apply timestep weighting before do_modeling() for cluster_reduce()
+        if self._cluster_info is not None:
             self._apply_timestep_weights()
 
         self.model.do_modeling()
@@ -1339,18 +1339,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._add_clustering_constraints()
 
         # Add typical periods storage modeling if this is a reduced FlowSystem
-        if self._typical_periods_info is not None:
+        if self._cluster_info is not None:
             self._add_typical_periods_modeling()
 
         return self
 
     def _apply_timestep_weights(self) -> None:
-        """Apply timestep weights to the model for typical periods optimization.
+        """Apply timestep weights to the model for cluster_reduce() optimization.
 
         This multiplies operational effects (costs, emissions) by the number of
-        original periods each typical period represents.
+        original segments each typical cluster represents.
         """
-        info = self._typical_periods_info
+        info = self._cluster_info
         if info is None:
             return
 
@@ -1373,7 +1373,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         from .clustering import TypicalPeriodsModel
 
-        info = self._typical_periods_info
+        info = self._cluster_info
         if info is None:
             return
 
@@ -1387,8 +1387,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flow_system=self,
             cluster_order=info['cluster_order'],
             cluster_occurrences=info['cluster_occurrences'],
-            n_typical_periods=info['n_typical_periods'],
-            timesteps_per_period=info['timesteps_per_period'],
+            n_typical_periods=info['n_clusters'],
+            timesteps_per_period=info['timesteps_per_cluster'],
             storage_cyclic=info.get('storage_cyclic', True),
         )
         typical_periods_model.do_modeling()
