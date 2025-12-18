@@ -153,9 +153,7 @@ class TestAggregationInfo:
         info = AggregationInfo(
             result=result,
             original_flow_system=None,  # Would be FlowSystem in practice
-            mode='reduce',
             backend_name='tsam',
         )
 
-        assert info.mode == 'reduce'
         assert info.backend_name == 'tsam'

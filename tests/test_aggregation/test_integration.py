@@ -123,7 +123,6 @@ class TestAggregateMethod:
         fs_agg = fs.transform.aggregate(
             method='tsam',
             n_representatives=2,
-            reduce=True,
             cluster_duration='1D',
         )
 
@@ -154,7 +153,6 @@ class TestSetAggregationMethod:
             fs.transform.set_aggregation(
                 timestep_mapping=mapping,
                 weights=weights,
-                reduce=True,
             )
 
 

@@ -275,14 +275,11 @@ class AggregationInfo:
     Attributes:
         result: The AggregationResult from the aggregation backend.
         original_flow_system: Reference to the FlowSystem before aggregation.
-        mode: Whether aggregation used 'reduce' (fewer timesteps) or
-              'constrain' (same timesteps with equality constraints).
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
     """
 
     result: AggregationResult
     original_flow_system: object  # FlowSystem - avoid circular import
-    mode: str  # 'reduce' or 'constrain'
     backend_name: str = 'unknown'
 
 

@@ -231,9 +231,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
-        # Clustering info - populated by transform.cluster()
-        self._clustering_info: dict | None = None
-
         # Typical periods info - populated by transform.cluster_reduce()
         self._cluster_info: dict | None = None
 
@@ -645,31 +642,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
-        # Include clustering info if present
-        if self._clustering_info is not None:
-            from .clustering import ClusteringParameters
-
-            # Ensure parameters have indices populated before saving
-            params = self._clustering_info.get('parameters')
-            if isinstance(params, ClusteringParameters):
-                # Populate indices from tsam if not already set
-                if not params.has_indices:
-                    clustering_obj = self._clustering_info.get('clustering')
-                    if clustering_obj is not None:
-                        if isinstance(clustering_obj, dict):
-                            clustering_obj = next(iter(clustering_obj.values()))
-                        params.populate_from_tsam(clustering_obj.tsam)
-
-                # Serialize parameters (now includes indices) using Interface pattern
-                params_ref, params_arrays = params._create_reference_structure()
-                ds.attrs['_clustering_params'] = json.dumps(params_ref)
-                ds.update(params_arrays)
-
-            # Store component labels to clusterize
-            components = self._clustering_info.get('components_to_clusterize')
-            if components:
-                ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
-
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
@@ -766,34 +738,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
-
-        # Restore clustering info if present (using Interface pattern)
-        if '_clustering_params' in reference_structure:
-            # Restore parameters (now includes indices via Interface pattern)
-            params = cls._resolve_reference_structure(
-                json.loads(reference_structure['_clustering_params']), arrays_dict
-            )
-
-            # Restore component references
-            components_to_clusterize = None
-            if '_clustering_components' in reference_structure:
-                component_labels = json.loads(reference_structure['_clustering_components'])
-                components_to_clusterize = [
-                    flow_system.components[label] for label in component_labels if label in flow_system.components
-                ]
-
-            flow_system._clustering_info = {
-                'parameters': params,
-                'components_to_clusterize': components_to_clusterize,
-                'restored_from_file': True,
-            }
-            if params.has_indices:
-                n_cluster_periods = len(params.cluster_order)
-                n_clusters = int(params.cluster_order.max()) + 1
-                logger.info(
-                    f'Restored clustering: {n_clusters} clusters, '
-                    f'{n_cluster_periods} periods, period_length={params.period_length}.'
-                )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1348,10 +1292,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.do_modeling()
 
-        # Add clustering constraints if this is a clustered FlowSystem
-        if self._clustering_info is not None:
-            self._add_clustering_constraints()
-
         # Add typical periods storage modeling if this is a reduced FlowSystem
         if self._cluster_info is not None:
             self._add_typical_periods_modeling()
@@ -1414,64 +1354,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             storage_cyclic=info.get('storage_cyclic', True),
         )
         typical_periods_model.do_modeling()
-
-    def _add_clustering_constraints(self) -> None:
-        """Add clustering constraints to the model."""
-        import copy
-
-        from .clustering import ClusteringModel
-
-        info = self._clustering_info or {}
-
-        if 'parameters' not in info:
-            raise KeyError('_clustering_info missing required key: "parameters"')
-
-        base_parameters = info['parameters']
-        clustering_obj = info.get('clustering')
-
-        # Check if this is a multi-period/scenario clustering
-        is_multi_dimensional = isinstance(clustering_obj, dict) and len(clustering_obj) > 1
-
-        if is_multi_dimensional:
-            # For multi-period/scenario, create separate constraints for each combination
-            # Each (period, scenario) has its own clustering with different cluster assignments
-            for (period_label, scenario_label), clustering in clustering_obj.items():
-                # Create a copy of parameters with this period's indices
-                params_copy = copy.copy(base_parameters)
-                params_copy.populate_from_tsam(clustering.tsam)
-
-                # Determine period/scenario selector
-                period_selector = period_label if period_label is not None else None
-                scenario_selector = scenario_label if scenario_label is not None else None
-
-                clustering_model = ClusteringModel(
-                    model=self.model,
-                    clustering_parameters=params_copy,
-                    flow_system=self,
-                    components_to_clusterize=info.get('components_to_clusterize'),
-                    period_selector=period_selector,
-                    scenario_selector=scenario_selector,
-                )
-                clustering_model.do_modeling()
-        else:
-            # Single dimension - use original logic
-            if not base_parameters.has_indices:
-                if clustering_obj is None:
-                    raise KeyError(
-                        '_clustering_info missing "clustering" and parameters have no indices. '
-                        'Either provide cluster_order/period_length or run transform.cluster() first.'
-                    )
-                if isinstance(clustering_obj, dict):
-                    clustering_obj = next(iter(clustering_obj.values()))
-                base_parameters.populate_from_tsam(clustering_obj.tsam)
-
-            clustering_model = ClusteringModel(
-                model=self.model,
-                clustering_parameters=base_parameters,
-                flow_system=self,
-                components_to_clusterize=info.get('components_to_clusterize'),
-            )
-            clustering_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
