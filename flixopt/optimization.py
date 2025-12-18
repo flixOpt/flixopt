@@ -242,6 +242,7 @@ class Optimization:
         self.model.solve(
             log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
@@ -255,7 +256,7 @@ class Optimization:
             from .io import document_linopy_model
 
             document_linopy_model(self.model, paths.model_documentation)
-            self.flow_system.to_netcdf(paths.flow_system)
+            self.flow_system.to_netcdf(paths.flow_system, overwrite=True)
             raise RuntimeError(
                 f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
             )
@@ -393,15 +394,13 @@ class ClusteredOptimization(Optimization):
     ):
         warnings.warn(
             f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use FlowSystem.transform.cluster(params) followed by FlowSystem.optimize(solver) instead. '
-            'Example: clustered_fs = flow_system.transform.cluster(params); clustered_fs.optimize(solver)',
+            'Use FlowSystem.transform.cluster() followed by FlowSystem.optimize(solver) instead. '
+            'Example: clustered_fs = flow_system.transform.cluster(n_clusters=8, cluster_duration="1D"); '
+            'clustered_fs.optimize(solver)',
             DeprecationWarning,
             stacklevel=2,
         )
-        if flow_system.scenarios is not None:
-            raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
-        if flow_system.periods is not None:
-            raise ValueError('Clustering is not supported for periods yet. Please use Optimization instead.')
+        # Note: Multi-period and multi-scenario are now supported via the new transform.cluster() API
         # Skip parent deprecation warning by calling common init directly
         _initialize_optimization_common(
             self,
@@ -424,8 +423,10 @@ class ClusteredOptimization(Optimization):
         self.model = self.flow_system.create_model(self.normalize_weights)
         self.model.do_modeling()
         # Add Clustering Submodel after modeling the rest
+        # Populate clustering indices from tsam
+        self.clustering_parameters.populate_from_tsam(self.clustering.tsam)
         self.clustering_model = ClusteringModel(
-            self.model, self.clustering_parameters, self.flow_system, self.clustering, self.components_to_clusterize
+            self.model, self.clustering_parameters, self.flow_system, self.components_to_clusterize
         )
         self.clustering_model.do_modeling()
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -437,16 +438,16 @@ class ClusteredOptimization(Optimization):
         t_start_agg = timeit.default_timer()
 
         # Validation
-        dt_min = float(self.flow_system.hours_per_timestep.min().item())
-        dt_max = float(self.flow_system.hours_per_timestep.max().item())
+        dt_min = float(self.flow_system.timestep_duration.min().item())
+        dt_max = float(self.flow_system.timestep_duration.max().item())
         if not dt_min == dt_max:
             raise ValueError(
                 f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'
             )
-        ratio = self.clustering_parameters.hours_per_period / dt_max
+        ratio = self.clustering_parameters.cluster_duration_hours / dt_max
         if not np.isclose(ratio, round(ratio), atol=1e-9):
             raise ValueError(
-                f'The selected {self.clustering_parameters.hours_per_period=} does not match the time '
+                f'The selected cluster_duration={self.clustering_parameters.cluster_duration_hours}h does not match the time '
                 f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
             )
 
@@ -461,8 +462,8 @@ class ClusteredOptimization(Optimization):
         self.clustering = Clustering(
             original_data=temporaly_changing_ds.to_dataframe(),
             hours_per_time_step=float(dt_min),
-            hours_per_period=self.clustering_parameters.hours_per_period,
-            nr_of_periods=self.clustering_parameters.nr_of_periods,
+            hours_per_period=self.clustering_parameters.cluster_duration_hours,
+            nr_of_periods=self.clustering_parameters.n_clusters,
             weights=self.calculate_clustering_weights(temporaly_changing_ds),
             time_series_for_high_peaks=self.clustering_parameters.labels_for_high_peaks,
             time_series_for_low_peaks=self.clustering_parameters.labels_for_low_peaks,
@@ -471,7 +472,7 @@ class ClusteredOptimization(Optimization):
         self.clustering.cluster()
         result = self.clustering.plot(show=CONFIG.Plotting.default_show)
         result.to_html(self.folder / 'clustering.html')
-        if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
+        if self.clustering_parameters.aggregate_data:
             ds = self.flow_system.to_dataset()
             for name, series in self.clustering.aggregated_data.items():
                 da = (

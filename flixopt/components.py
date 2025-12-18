@@ -901,7 +901,7 @@ class StorageModel(ComponentModel):
 
         charge_state = self.charge_state
         rel_loss = self.element.relative_loss_per_hour
-        hours_per_step = self._model.hours_per_step
+        timestep_duration = self._model.timestep_duration
         charge_rate = self.element.charging.submodel.flow_rate
         discharge_rate = self.element.discharging.submodel.flow_rate
         eff_charge = self.element.eta_charge
@@ -909,9 +909,9 @@ class StorageModel(ComponentModel):
 
         self.add_constraints(
             charge_state.isel(time=slice(1, None))
-            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** hours_per_step)
-            + charge_rate * eff_charge * hours_per_step
-            - discharge_rate * hours_per_step / eff_discharge,
+            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            + charge_rate * eff_charge * timestep_duration
+            - discharge_rate * timestep_duration / eff_discharge,
             short_name='charge_state',
         )
 

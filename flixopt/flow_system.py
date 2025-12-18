@@ -65,8 +65,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
             Used for calculating sums over periods in multi-period models.
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
-            Period weights are always computed internally from the period index (like hours_per_timestep for time).
+            Period weights are always computed internally from the period index (like timestep_duration for time).
             The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
+        cluster_weight: Weight for each timestep representing cluster representation count.
+            If None (default), all timesteps have weight 1.0. Used by cluster_reduce() to specify
+            how many original timesteps each cluster represents. Combined with timestep_duration
+            via aggregation_weight for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
@@ -170,6 +174,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weight_of_last_period: int | float | None = None,
         scenario_weights: Numeric_S | None = None,
+        cluster_weight: Numeric_TPS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
@@ -181,13 +186,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.timesteps_extra,
             self.hours_of_last_timestep,
             self.hours_of_previous_timesteps,
-            hours_per_timestep,
+            timestep_duration,
         ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+        self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
+
+        # Cluster weight for cluster_reduce optimization (default 1.0)
+        # Represents how many original timesteps each cluster represents
+        self.cluster_weight = self.fit_to_model_coords(
+            'cluster_weight',
+            np.ones(len(self.timesteps)) if cluster_weight is None else cluster_weight,
+            dims=['time'],
+        )
 
         self.scenario_weights = scenario_weights  # Use setter
 
@@ -218,6 +231,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Clustering info - populated by transform.cluster()
         self._clustering_info: dict | None = None
+
+        # Typical periods info - populated by transform.cluster_reduce()
+        self._cluster_info: dict | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -302,11 +318,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
-        """Calculate duration of each timestep as a 1D DataArray."""
+    def calculate_timestep_duration(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
+        """Calculate duration of each timestep in hours as a 1D DataArray."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
-            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
+            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='timestep_duration'
         )
 
     @staticmethod
@@ -377,22 +393,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 Can be a scalar or array.
 
         Returns:
-            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep)
+            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration)
         """
         # Create timesteps with extra step at the end
         timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
 
-        # Calculate hours per timestep
-        hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
+        # Calculate timestep duration
+        timestep_duration = cls.calculate_timestep_duration(timesteps_extra)
 
         # Extract hours_of_last_timestep if not provided
         if hours_of_last_timestep is None:
-            hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
+            hours_of_last_timestep = timestep_duration.isel(time=-1).item()
 
         # Compute hours_of_previous_timesteps (handles both None and provided cases)
         hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
-        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
+        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration
 
     @classmethod
     def _compute_period_metadata(
@@ -437,7 +453,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Update time-related attributes and data variables in dataset based on its time index.
 
-        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and hours_per_timestep
+        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and timestep_duration
         from the dataset's time index when these parameters are None. This ensures time metadata
         stays synchronized with the actual timesteps after operations like resampling or selection.
 
@@ -453,14 +469,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         new_time_index = dataset.indexes.get('time')
         if new_time_index is not None and len(new_time_index) >= 2:
             # Use shared helper to compute all time metadata
-            _, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep = cls._compute_time_metadata(
+            _, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration = cls._compute_time_metadata(
                 new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
             )
 
-            # Update hours_per_timestep DataArray if it exists in the dataset
+            # Update timestep_duration DataArray if it exists in the dataset
             # This prevents stale data after resampling operations
-            if 'hours_per_timestep' in dataset.data_vars:
-                dataset['hours_per_timestep'] = hours_per_timestep
+            if 'timestep_duration' in dataset.data_vars:
+                dataset['timestep_duration'] = timestep_duration
 
         # Update time-related attributes only when new values are provided/computed
         # This preserves existing metadata instead of overwriting with None
@@ -597,7 +613,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
         if not self.connected_and_transformed:
-            logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
+            logger.info('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
         ds = super().to_dataset()
@@ -626,6 +642,31 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carrier_ref, _ = carrier._create_reference_structure()
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
+
+        # Include clustering info if present
+        if self._clustering_info is not None:
+            from .clustering import ClusteringParameters
+
+            # Ensure parameters have indices populated before saving
+            params = self._clustering_info.get('parameters')
+            if isinstance(params, ClusteringParameters):
+                # Populate indices from tsam if not already set
+                if not params.has_indices:
+                    clustering_obj = self._clustering_info.get('clustering')
+                    if clustering_obj is not None:
+                        if isinstance(clustering_obj, dict):
+                            clustering_obj = next(iter(clustering_obj.values()))
+                        params.populate_from_tsam(clustering_obj.tsam)
+
+                # Serialize parameters (now includes indices) using Interface pattern
+                params_ref, params_arrays = params._create_reference_structure()
+                ds.attrs['_clustering_params'] = json.dumps(params_ref)
+                ds.update(params_arrays)
+
+            # Store component labels to clusterize
+            components = self._clustering_info.get('components_to_clusterize')
+            if components:
+                ds.attrs['_clustering_components'] = json.dumps([c.label for c in components])
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -677,6 +718,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
             if 'scenario_weights' in reference_structure
             else None,
+            cluster_weight=cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+            if 'cluster_weight' in reference_structure
+            else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
             name=reference_structure.get('name'),
@@ -720,6 +764,34 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
+
+        # Restore clustering info if present (using Interface pattern)
+        if '_clustering_params' in reference_structure:
+            # Restore parameters (now includes indices via Interface pattern)
+            params = cls._resolve_reference_structure(
+                json.loads(reference_structure['_clustering_params']), arrays_dict
+            )
+
+            # Restore component references
+            components_to_clusterize = None
+            if '_clustering_components' in reference_structure:
+                component_labels = json.loads(reference_structure['_clustering_components'])
+                components_to_clusterize = [
+                    flow_system.components[label] for label in component_labels if label in flow_system.components
+                ]
+
+            flow_system._clustering_info = {
+                'parameters': params,
+                'components_to_clusterize': components_to_clusterize,
+                'restored_from_file': True,
+            }
+            if params.has_indices:
+                n_cluster_periods = len(params.cluster_order)
+                n_clusters = int(params.cluster_order.max()) + 1
+                logger.info(
+                    f'Restored clustering: {n_clusters} clusters, '
+                    f'{n_cluster_periods} periods, period_length={params.period_length}.'
+                )
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1253,6 +1325,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         1. Connecting and transforming all elements (if not already done)
         2. Creating the FlowSystemModel with all variables and constraints
         3. Adding clustering constraints (if this is a clustered FlowSystem)
+        4. Adding typical periods modeling (if this is a reduced FlowSystem)
 
         After calling this method, `self.model` will be available for inspection
         before solving.
@@ -1270,32 +1343,133 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.connect_and_transform()
         self.create_model(normalize_weights)
+
         self.model.do_modeling()
 
         # Add clustering constraints if this is a clustered FlowSystem
         if self._clustering_info is not None:
             self._add_clustering_constraints()
 
+        # Add typical periods storage modeling if this is a reduced FlowSystem
+        if self._cluster_info is not None:
+            self._add_typical_periods_modeling()
+
         return self
+
+    def _apply_timestep_weights(self) -> None:
+        """Apply timestep weights to the model for cluster_reduce() optimization.
+
+        .. deprecated::
+            This method is deprecated. Cluster weights are now stored directly on FlowSystem
+            as `cluster_weight` and accessed via `FlowSystemModel.cluster_weight` and
+            `FlowSystemModel.aggregation_weight`.
+        """
+        warnings.warn(
+            '_apply_timestep_weights() is deprecated. Cluster weights are now stored directly '
+            'on FlowSystem as `cluster_weight` and accessed via FlowSystemModel.cluster_weight.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        info = self._cluster_info
+        if info is None:
+            return
+
+        timestep_weights = info['timestep_weights']
+
+        # Store timestep weights on the model for backward compatibility
+        self.model.timestep_weights = xr.DataArray(
+            timestep_weights,
+            coords={'time': self.timesteps},
+            dims=['time'],
+            name='timestep_weights',
+        )
+        logger.info(f'Applied timestep weights for typical periods: sum={sum(timestep_weights)}')
+
+    def _add_typical_periods_modeling(self) -> None:
+        """Add storage inter-period linking for typical periods optimization.
+
+        Creates SOC_boundary variables that link storage states between sequential
+        periods in the original time series, using the delta SOC from typical periods.
+        """
+        from .clustering import TypicalPeriodsModel
+
+        info = self._cluster_info
+        if info is None:
+            return
+
+        if not info.get('storage_inter_period_linking', True):
+            logger.info('Storage inter-period linking disabled')
+            return
+
+        # Create typical periods model for storage linking
+        typical_periods_model = TypicalPeriodsModel(
+            model=self.model,
+            flow_system=self,
+            cluster_order=info['cluster_order'],
+            cluster_occurrences=info['cluster_occurrences'],
+            n_typical_periods=info['n_clusters'],
+            timesteps_per_period=info['timesteps_per_cluster'],
+            storage_cyclic=info.get('storage_cyclic', True),
+        )
+        typical_periods_model.do_modeling()
 
     def _add_clustering_constraints(self) -> None:
         """Add clustering constraints to the model."""
+        import copy
+
         from .clustering import ClusteringModel
 
         info = self._clustering_info or {}
-        required_keys = {'parameters', 'clustering', 'components_to_clusterize'}
-        missing_keys = required_keys - set(info)
-        if missing_keys:
-            raise KeyError(f'_clustering_info missing required keys: {sorted(missing_keys)}')
 
-        clustering_model = ClusteringModel(
-            model=self.model,
-            clustering_parameters=info['parameters'],
-            flow_system=self,
-            clustering_data=info['clustering'],
-            components_to_clusterize=info['components_to_clusterize'],
-        )
-        clustering_model.do_modeling()
+        if 'parameters' not in info:
+            raise KeyError('_clustering_info missing required key: "parameters"')
+
+        base_parameters = info['parameters']
+        clustering_obj = info.get('clustering')
+
+        # Check if this is a multi-period/scenario clustering
+        is_multi_dimensional = isinstance(clustering_obj, dict) and len(clustering_obj) > 1
+
+        if is_multi_dimensional:
+            # For multi-period/scenario, create separate constraints for each combination
+            # Each (period, scenario) has its own clustering with different cluster assignments
+            for (period_label, scenario_label), clustering in clustering_obj.items():
+                # Create a copy of parameters with this period's indices
+                params_copy = copy.copy(base_parameters)
+                params_copy.populate_from_tsam(clustering.tsam)
+
+                # Determine period/scenario selector
+                period_selector = period_label if period_label is not None else None
+                scenario_selector = scenario_label if scenario_label is not None else None
+
+                clustering_model = ClusteringModel(
+                    model=self.model,
+                    clustering_parameters=params_copy,
+                    flow_system=self,
+                    components_to_clusterize=info.get('components_to_clusterize'),
+                    period_selector=period_selector,
+                    scenario_selector=scenario_selector,
+                )
+                clustering_model.do_modeling()
+        else:
+            # Single dimension - use original logic
+            if not base_parameters.has_indices:
+                if clustering_obj is None:
+                    raise KeyError(
+                        '_clustering_info missing "clustering" and parameters have no indices. '
+                        'Either provide cluster_order/period_length or run transform.cluster() first.'
+                    )
+                if isinstance(clustering_obj, dict):
+                    clustering_obj = next(iter(clustering_obj.values()))
+                base_parameters.populate_from_tsam(clustering_obj.tsam)
+
+            clustering_model = ClusteringModel(
+                model=self.model,
+                clustering_parameters=base_parameters,
+                flow_system=self,
+                components_to_clusterize=info.get('components_to_clusterize'),
+            )
+            clustering_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
@@ -1326,6 +1500,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.solve(
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
 

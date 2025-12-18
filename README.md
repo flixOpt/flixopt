@@ -49,12 +49,12 @@ import flixopt as fx
 flow_system = fx.FlowSystem(timesteps)
 flow_system.add_elements(buses, components, effects)
 
-# 2. Create and solve
-optimization = fx.Optimization("MyModel", flow_system)
-optimization.solve(fx.solvers.HighsSolver())
+# 2. Optimize
+flow_system.optimize(fx.solvers.HighsSolver())
 
 # 3. Analyze results
-optimization.results.solution
+flow_system.solution        # Raw xarray Dataset
+flow_system.statistics      # Convenient analysis accessor
 ```
 
 **Get started with real examples:**
@@ -72,7 +72,7 @@ optimization.results.solution
 ```python
 # Basic single-period model
 flow_system = fx.FlowSystem(timesteps)
-boiler = fx.Boiler("Boiler", eta=0.9, ...)
+boiler = fx.linear_converters.Boiler("Boiler", eta=0.9, ...)
 ```
 
 **Add complexity incrementally:**
