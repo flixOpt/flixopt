@@ -1,5 +1,7 @@
 *.pyc
 *.log
+*.nc4
+*.nc
 results/
 .idea/
 .venv/

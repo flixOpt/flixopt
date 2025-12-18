@@ -20,4 +20,4 @@ repos:
     rev: 0.8.2
     hooks:
       - id: nbstripout
-        files: ^docs/examples.*\.ipynb$
+        files: ^docs/.*\.ipynb$
