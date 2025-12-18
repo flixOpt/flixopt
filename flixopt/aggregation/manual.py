@@ -26,14 +26,15 @@ class ManualBackend:
 
     Args:
         timestep_mapping: Mapping from original timesteps to representative indices.
-            DataArray with dims [original_time] or [original_time, period, scenario].
+            DataArray with dims [original_time].
             Values should be integers in range [0, n_representatives).
         representative_weights: Weight for each representative timestep.
-            DataArray with dims [time] or [time, period, scenario].
+            DataArray with dims [time].
             Typically equals count of original timesteps each representative covers.
-        cluster_structure: Optional cluster structure for storage inter-period linking.
+            This becomes the cluster_weight in the FlowSystem.
+        cluster_structure: Optional cluster structure for storage inter-cluster linking.
             If not provided and timesteps_per_cluster is given, will be inferred from mapping.
-        timesteps_per_cluster: Number of timesteps per cluster period.
+        timesteps_per_cluster: Number of timesteps per cluster (e.g., 24 for daily clusters).
             Required to infer cluster_structure if not explicitly provided.
 
     Example:

@@ -1,11 +1,18 @@
 """
-Base classes and data structures for time series aggregation.
+Base classes and data structures for time series aggregation (clustering).
 
 This module provides an abstraction layer for time series aggregation that
-supports multiple backends (TSAM, manual/external, etc.) while maintaining
-proper handling of multi-dimensional data (period, scenario dimensions).
+supports multiple backends (TSAM, manual/external, etc.).
 
-All data structures use xarray for consistent multi-dimensional support.
+Terminology:
+- "cluster" = a group of similar time chunks (e.g., similar days grouped together)
+- "typical period" = a representative time chunk for a cluster (TSAM terminology)
+- "cluster duration" = the length of each time chunk (e.g., 24h for daily clustering)
+
+Note: This is separate from the model's "period" dimension (years/months) and
+"scenario" dimension. The aggregation operates on the 'time' dimension.
+
+All data structures use xarray for consistent handling of coordinates.
 """
 
 from __future__ import annotations
@@ -19,29 +26,28 @@ import xarray as xr
 
 @dataclass
 class ClusterStructure:
-    """Structure information for inter-period storage linking.
+    """Structure information for inter-cluster storage linking.
 
     This class captures the hierarchical structure of time series clustering,
     which is needed for proper storage state-of-charge tracking across
     typical periods when using cluster_reduce().
 
-    All arrays use xarray DataArrays to properly handle multi-dimensional
-    cases (period, scenario dimensions).
+    Note: "original_period" here refers to the original time chunks before
+    clustering (e.g., 365 original days), NOT the model's "period" dimension
+    (years/months). Each original time chunk gets assigned to a cluster.
 
     Attributes:
-        cluster_order: Maps original periods to cluster IDs.
-            dims: [original_period] or [original_period, period, scenario]
-            Each value indicates which typical period (cluster) the original
-            period belongs to.
-        cluster_occurrences: Count of how many original periods each cluster represents.
-            dims: [cluster] or [cluster, period, scenario]
+        cluster_order: Maps each original time chunk index to its cluster ID.
+            dims: [original_period] where original_period indexes the time chunks
+            (e.g., days) before clustering. Values are cluster indices (0 to n_clusters-1).
+        cluster_occurrences: Count of how many original time chunks each cluster represents.
+            dims: [cluster]
         n_clusters: Number of distinct clusters (typical periods).
-            Can be int (same for all) or DataArray (varies by period/scenario).
-        timesteps_per_cluster: Number of timesteps in each cluster period.
+        timesteps_per_cluster: Number of timesteps in each cluster (e.g., 24 for daily).
 
     Example:
         For 365 days clustered into 8 typical days:
-        - cluster_order: shape (365,), values 0-7
+        - cluster_order: shape (365,), values 0-7 indicating which cluster each day belongs to
         - cluster_occurrences: shape (8,), e.g., [45, 46, 46, 46, 46, 45, 45, 46]
         - n_clusters: 8
         - timesteps_per_cluster: 24 (for hourly data)
@@ -107,22 +113,19 @@ class AggregationResult:
     """Universal result from any time series aggregation method.
 
     This dataclass captures all information needed to:
-    1. Transform a FlowSystem to use aggregated timesteps
+    1. Transform a FlowSystem to use aggregated (clustered) timesteps
     2. Expand a solution back to original resolution
     3. Properly weight results for statistics
 
-    All arrays use xarray DataArrays to properly handle multi-dimensional
-    cases (period, scenario dimensions).
-
     Attributes:
         timestep_mapping: Maps each original timestep to its representative index.
-            dims: [original_time] or [original_time, period, scenario]
+            dims: [original_time]
             Values are indices into the representative timesteps (0 to n_representatives-1).
         n_representatives: Number of representative timesteps after aggregation.
-            Can be int (same for all) or DataArray (varies by period/scenario).
         representative_weights: Weight for each representative timestep.
-            dims: [time] or [time, period, scenario]
+            dims: [time]
             Typically equals the number of original timesteps each representative covers.
+            Used as cluster_weight in the FlowSystem.
         aggregated_data: Time series data aggregated to representative timesteps.
             Optional - some backends may not aggregate data.
         cluster_structure: Hierarchical clustering structure for storage linking.
@@ -131,7 +134,7 @@ class AggregationResult:
             Optional - useful for expand_solution().
 
     Example:
-        For 8760 hourly timesteps -> 192 representative timesteps (8 days x 24h):
+        For 8760 hourly timesteps clustered into 192 representative timesteps (8 clusters x 24h):
         - timestep_mapping: shape (8760,), values 0-191
         - n_representatives: 192
         - representative_weights: shape (192,), summing to 8760
@@ -218,11 +221,8 @@ class Aggregator(Protocol):
     """Protocol that any aggregation backend must implement.
 
     This protocol defines the interface for time series aggregation backends.
-    Implementations can use any aggregation algorithm (TSAM, sklearn k-means,
+    Implementations can use any clustering algorithm (TSAM, sklearn k-means,
     hierarchical clustering, etc.) as long as they return an AggregationResult.
-
-    The input data is an xarray Dataset to properly handle multi-dimensional
-    time series with period and scenario dimensions.
 
     Example implementation:
         class MyAggregator:
@@ -232,7 +232,7 @@ class Aggregator(Protocol):
                 n_representatives: int,
                 **kwargs
             ) -> AggregationResult:
-                # Custom aggregation logic
+                # Custom clustering logic
                 ...
                 return AggregationResult(
                     timestep_mapping=mapping,
@@ -247,14 +247,14 @@ class Aggregator(Protocol):
         n_representatives: int,
         **kwargs,
     ) -> AggregationResult:
-        """Perform time series aggregation.
+        """Perform time series aggregation (clustering).
 
         Args:
             data: Input time series data as xarray Dataset.
-                Must have 'time' dimension. May also have 'period' and/or
-                'scenario' dimensions for multi-dimensional optimization.
-            n_representatives: Target number of representative timesteps.
-            **kwargs: Backend-specific options.
+                Must have 'time' dimension.
+            n_representatives: Target number of representative timesteps
+                (n_clusters * timesteps_per_cluster).
+            **kwargs: Backend-specific options (e.g., cluster_duration).
 
         Returns:
             AggregationResult containing mapping, weights, and optionally

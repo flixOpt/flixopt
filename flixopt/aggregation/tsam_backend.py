@@ -3,6 +3,13 @@ TSAM (Time Series Aggregation Module) backend for time series aggregation.
 
 This backend wraps the existing flixopt Clustering class which uses the
 tsam package to perform k-means clustering of time series into typical periods.
+
+Terminology note:
+- TSAM uses "typical periods" to mean representative time chunks (e.g., typical days)
+- "cluster" = a group of similar time chunks (e.g., similar days)
+- "cluster_duration" = length of each time chunk (e.g., 24h for daily clustering)
+- "period" and "scenario" in method signatures refer to the MODEL's dimensions
+  (years/months and scenarios), NOT the clustering time chunks
 """
 
 from __future__ import annotations
