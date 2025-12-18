@@ -574,14 +574,14 @@ class TransformAccessor:
 
         return new_fs
 
-    def cluster_reduce(
+    def cluster(
         self,
         n_clusters: int,
         cluster_duration: str | float,
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
-        storage_inter_period_linking: bool = True,
+        storage_inter_cluster_linking: bool = True,
         storage_cyclic: bool = True,
     ) -> FlowSystem:
         """
@@ -589,34 +589,33 @@ class TransformAccessor:
 
         This method creates a new FlowSystem optimized for sizing studies by reducing
         the number of timesteps to only the typical (representative) clusters identified
-        through time series aggregation. Unlike `cluster()` which uses equality constraints,
-        this method actually reduces the problem size for faster solving.
+        through time series aggregation using the tsam package.
 
         The method:
-        1. Performs time series clustering using tsam
+        1. Performs time series clustering using tsam (k-means)
         2. Extracts only the typical clusters (not all original timesteps)
         3. Applies timestep weighting for accurate cost representation
         4. Optionally links storage states between clusters via boundary variables
 
-        Use this for initial sizing optimization, then use `fix_sizes()` to re-optimize
+        Use this for initial sizing optimization, then use ``fix_sizes()`` to re-optimize
         at full resolution for accurate dispatch results.
 
         Args:
-            n_clusters: Number of clusters (typical segments) to extract (e.g., 8 typical days).
+            n_clusters: Number of clusters (typical periods) to extract (e.g., 8 typical days).
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
             weights: Optional clustering weights per time series. Keys are time series labels.
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
                 clusters. **Recommended** for demand time series to capture peak demand days.
             time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
-            storage_inter_period_linking: If True, link storage states between clusters using
+            storage_inter_cluster_linking: If True, link storage states between clusters using
                 boundary variables. This preserves long-term storage behavior. Default: True.
             storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end] for storages.
-                Only used when storage_inter_period_linking=True. Default: True.
+                Only used when storage_inter_cluster_linking=True. Default: True.
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
-            The FlowSystem has metadata stored in `_aggregation_info` for expansion.
+            The FlowSystem has metadata stored in ``_aggregation_info`` for expansion.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
@@ -626,7 +625,7 @@ class TransformAccessor:
             Two-stage sizing optimization:
 
             >>> # Stage 1: Size with reduced timesteps (fast)
-            >>> fs_sizing = flow_system.transform.cluster_reduce(
+            >>> fs_sizing = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
             ...     time_series_for_high_peaks=['HeatDemand(Q_th)|fixed_relative_profile'],
@@ -644,7 +643,7 @@ class TransformAccessor:
 
         Note:
             - This is best suited for initial sizing, not final dispatch optimization
-            - Use `time_series_for_high_peaks` to ensure peak demand clusters are captured
+            - Use ``time_series_for_high_peaks`` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - Storage linking adds SOC_boundary variables to track state between clusters
         """
@@ -665,7 +664,7 @@ class TransformAccessor:
         dt = float(self._fs.timestep_duration.min().item())
         if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
             raise ValueError(
-                f'cluster_reduce() requires uniform timestep sizes, got min={dt}h, '
+                f'cluster() requires uniform timestep sizes, got min={dt}h, '
                 f'max={float(self._fs.timestep_duration.max().item())}h.'
             )
         if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
@@ -837,7 +836,7 @@ class TransformAccessor:
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
-            storage_inter_cluster_linking=storage_inter_period_linking,
+            storage_inter_cluster_linking=storage_inter_cluster_linking,
             storage_cyclic=storage_cyclic,
         )
 
@@ -892,7 +891,7 @@ class TransformAccessor:
     def expand_solution(self) -> FlowSystem:
         """Expand a reduced (clustered) FlowSystem back to full original timesteps.
 
-        After solving a FlowSystem created with ``cluster_reduce()``, this method
+        After solving a FlowSystem created with ``cluster()``, this method
         disaggregates the FlowSystem by:
         1. Expanding all time series data from typical clusters to full timesteps
         2. Expanding the solution by mapping each typical cluster back to all
@@ -909,14 +908,14 @@ class TransformAccessor:
             FlowSystem: A new FlowSystem with full timesteps and expanded solution.
 
         Raises:
-            ValueError: If the FlowSystem was not created with ``cluster_reduce()``.
+            ValueError: If the FlowSystem was not created with ``cluster()``.
             ValueError: If the FlowSystem has no solution.
 
         Examples:
             Two-stage optimization with solution expansion:
 
             >>> # Stage 1: Size with reduced timesteps
-            >>> fs_reduced = flow_system.transform.cluster_reduce(
+            >>> fs_reduced = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
             ... )
@@ -945,7 +944,7 @@ class TransformAccessor:
         # Validate
         if self._fs._aggregation_info is None:
             raise ValueError(
-                'expand_solution() requires a FlowSystem created with cluster_reduce() or aggregate(). '
+                'expand_solution() requires a FlowSystem created with cluster(). '
                 'This FlowSystem has no aggregation info.'
             )
         if self._fs.solution is None:
@@ -1104,190 +1103,3 @@ class TransformAccessor:
             periods=periods,
             scenarios=scenarios,
         )
-
-    # =====================================================================
-    # New Aggregation API (Phase 3 - Backend-agnostic interface)
-    # =====================================================================
-
-    def aggregate(
-        self,
-        method: str | Any = 'tsam',
-        n_representatives: int | None = None,
-        **kwargs,
-    ) -> FlowSystem:
-        """Unified aggregation method supporting multiple backends.
-
-        This is the recommended API for time series aggregation. It supports
-        multiple backends (TSAM, manual, etc.) through a unified interface.
-
-        For TSAM backend, this delegates to cluster_reduce().
-
-        Args:
-            method: Aggregation backend. Options:
-                - 'tsam': Use TSAM package for k-means clustering (default)
-                - 'manual': Use ManualBackend with pre-computed mapping
-                - Custom Aggregator instance
-            n_representatives: Target number of clusters (typical periods).
-                For 'tsam' with cluster_duration='1D', this is the number of
-                typical days.
-            **kwargs: Backend-specific options. For 'tsam':
-                - cluster_duration: Duration per cluster ('1D', '24h', etc.)
-                - time_series_for_high_peaks: Force high-value period inclusion
-                - time_series_for_low_peaks: Force low-value period inclusion
-                - weights: Custom clustering weights
-
-        Returns:
-            New FlowSystem with reduced timesteps.
-
-        Example:
-            >>> # TSAM clustering with 8 typical days
-            >>> fs_agg = fs.transform.aggregate(
-            ...     method='tsam',
-            ...     n_representatives=8,
-            ...     cluster_duration='1D',
-            ... )
-
-            >>> # Manual aggregation with external clustering
-            >>> fs_agg = fs.transform.set_aggregation(my_mapping, my_weights)
-
-        See Also:
-            set_aggregation: For PyPSA-style manual aggregation
-            cluster_reduce: TSAM reduction-based clustering
-        """
-        from .aggregation import Aggregator, get_backend
-
-        # Handle string backend names
-        if isinstance(method, str):
-            backend_cls = get_backend(method)
-            if method == 'tsam':
-                # Delegate to existing TSAM method
-                return self._aggregate_tsam(n_representatives, **kwargs)
-            elif method == 'manual':
-                raise ValueError("Use set_aggregation() for manual aggregation, not aggregate(method='manual')")
-            else:
-                # Custom registered backend
-                _backend = backend_cls(**kwargs)  # noqa: F841
-        elif isinstance(method, Aggregator):
-            _backend = method  # noqa: F841
-        else:
-            raise TypeError(f'method must be str or Aggregator, got {type(method)}')
-
-        # Use backend to aggregate
-        raise NotImplementedError(
-            "Generic backend aggregation not yet implemented. Use method='tsam' or set_aggregation() for now."
-        )
-
-    def _aggregate_tsam(
-        self,
-        n_representatives: int | None,
-        **kwargs,
-    ) -> FlowSystem:
-        """Internal: delegate to cluster_reduce()."""
-        # Extract TSAM-specific kwargs
-        cluster_duration = kwargs.pop('cluster_duration', '1D')
-        time_series_for_high_peaks = kwargs.pop('time_series_for_high_peaks', None)
-        time_series_for_low_peaks = kwargs.pop('time_series_for_low_peaks', None)
-        weights = kwargs.pop('weights', None)
-
-        return self.cluster_reduce(
-            n_clusters=n_representatives,
-            cluster_duration=cluster_duration,
-            weights=weights,
-            time_series_for_high_peaks=time_series_for_high_peaks,
-            time_series_for_low_peaks=time_series_for_low_peaks,
-            storage_cyclic=kwargs.pop('storage_cyclic', True),
-        )
-
-    def set_aggregation(
-        self,
-        timestep_mapping: xr.DataArray,
-        weights: xr.DataArray,
-        cluster_structure: Any = None,
-        aggregated_data: xr.Dataset | None = None,
-    ) -> FlowSystem:
-        """Set aggregation from external tool (PyPSA-style workflow).
-
-        This enables users to bring their own aggregation results from any tool
-        (sklearn, custom algorithms, hierarchical clustering, etc.) and apply
-        them to flixopt.
-
-        This is similar to PyPSA's approach where aggregation is done externally
-        and the framework just accepts the results.
-
-        Args:
-            timestep_mapping: Maps each original timestep to representative index.
-                DataArray with dims [original_time].
-                Values should be integers in range [0, n_representatives).
-            weights: Weight for each representative timestep.
-                DataArray with dims [time].
-                Typically equals count of original timesteps each representative covers.
-                This becomes the cluster_weight in the reduced FlowSystem.
-            cluster_structure: Optional ClusterStructure for storage inter-cluster linking.
-                Required for proper storage optimization.
-            aggregated_data: Optional pre-aggregated time series data.
-                If not provided, data will be extracted from mapping.
-
-        Returns:
-            New FlowSystem with reduced timesteps.
-
-        Example:
-            >>> # External clustering with sklearn
-            >>> from sklearn.cluster import KMeans
-            >>> import xarray as xr
-            >>>
-            >>> # ... perform clustering ...
-            >>> mapping = xr.DataArray(my_mapping, dims=['original_time'])
-            >>> weights = xr.DataArray(my_weights, dims=['time'])
-            >>>
-            >>> fs_agg = fs.transform.set_aggregation(
-            ...     timestep_mapping=mapping,
-            ...     weights=weights,
-            ... )
-
-        See Also:
-            aggregate: Unified aggregation API with backend support
-            flixopt.aggregation.ManualBackend: Backend class for manual aggregation
-            flixopt.aggregation.create_manual_backend_from_labels: Helper for sklearn labels
-        """
-        from .aggregation import ManualBackend
-
-        # Create ManualBackend from provided data
-        backend = ManualBackend(
-            timestep_mapping=timestep_mapping,
-            representative_weights=weights,
-            cluster_structure=cluster_structure,
-        )
-
-        # Build aggregation result
-        # For now, we need to convert flow_system data to xr.Dataset for the backend
-        data = self._fs_data_to_dataset()
-        n_representatives = len(weights)
-
-        _result = backend.aggregate(data, n_representatives)  # noqa: F841
-
-        # Full implementation would create FlowSystem directly from result
-        raise NotImplementedError(
-            'set_aggregation() is not yet fully implemented. Use cluster_reduce() for TSAM-based aggregation.'
-        )
-
-    def _fs_data_to_dataset(self) -> xr.Dataset:
-        """Convert FlowSystem time series data to xarray Dataset."""
-        from .core import TimeSeriesData
-
-        data_vars = {}
-        for element in self._fs.values():
-            for attr_name, attr_value in element.__dict__.items():
-                if isinstance(attr_value, TimeSeriesData) and attr_value.has_data:
-                    name = f'{element.label_full}|{attr_name}'
-                    data_vars[name] = (['time'], attr_value.data.values)
-
-        return xr.Dataset(
-            data_vars,
-            coords={'time': self._fs.timesteps},
-        )
-
-    # Future methods can be added here:
-    #
-    # def mga(self, alternatives: int = 5) -> FlowSystem:
-    #     """Create a FlowSystem configured for Modeling to Generate Alternatives."""
-    #     ...

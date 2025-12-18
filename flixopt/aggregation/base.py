@@ -18,7 +18,6 @@ All data structures use xarray for consistent handling of coordinates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
 
 import numpy as np
 import xarray as xr
@@ -216,53 +215,6 @@ class AggregationResult:
             )
 
 
-@runtime_checkable
-class Aggregator(Protocol):
-    """Protocol that any aggregation backend must implement.
-
-    This protocol defines the interface for time series aggregation backends.
-    Implementations can use any clustering algorithm (TSAM, sklearn k-means,
-    hierarchical clustering, etc.) as long as they return an AggregationResult.
-
-    Example implementation:
-        class MyAggregator:
-            def aggregate(
-                self,
-                data: xr.Dataset,
-                n_representatives: int,
-                **kwargs
-            ) -> AggregationResult:
-                # Custom clustering logic
-                ...
-                return AggregationResult(
-                    timestep_mapping=mapping,
-                    n_representatives=n_representatives,
-                    representative_weights=weights,
-                )
-    """
-
-    def aggregate(
-        self,
-        data: xr.Dataset,
-        n_representatives: int,
-        **kwargs,
-    ) -> AggregationResult:
-        """Perform time series aggregation (clustering).
-
-        Args:
-            data: Input time series data as xarray Dataset.
-                Must have 'time' dimension.
-            n_representatives: Target number of representative timesteps
-                (n_clusters * timesteps_per_cluster).
-            **kwargs: Backend-specific options (e.g., cluster_duration).
-
-        Returns:
-            AggregationResult containing mapping, weights, and optionally
-            aggregated data and cluster structure.
-        """
-        ...
-
-
 @dataclass
 class AggregationInfo:
     """Information about an aggregation stored on a FlowSystem.
@@ -336,3 +288,90 @@ def create_cluster_structure_from_mapping(
         n_clusters=n_clusters,
         timesteps_per_cluster=timesteps_per_cluster,
     )
+
+
+def plot_aggregation(
+    result: AggregationResult,
+    colormap: str | None = None,
+    show: bool | None = None,
+):
+    """Plot original vs aggregated data comparison.
+
+    Visualizes the original time series (dashed lines) overlaid with
+    the aggregated/clustered time series (solid lines) for comparison.
+
+    Args:
+        result: AggregationResult containing original and aggregated data.
+        colormap: Colorscale name for the time series colors.
+            Defaults to CONFIG.Plotting.default_qualitative_colorscale.
+        show: Whether to display the figure.
+            Defaults to CONFIG.Plotting.default_show.
+
+    Returns:
+        PlotResult containing the comparison figure and underlying data.
+
+    Example:
+        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+        >>> plot_aggregation(fs_clustered._aggregation_info.result)
+    """
+    import plotly.express as px
+
+    from ..color_processing import process_colors
+    from ..config import CONFIG
+    from ..plot_result import PlotResult
+
+    if result.original_data is None or result.aggregated_data is None:
+        raise ValueError('AggregationResult must contain both original_data and aggregated_data for plotting')
+
+    # Convert xarray to DataFrames
+    original_df = result.original_data.to_dataframe()
+    aggregated_df = result.aggregated_data.to_dataframe()
+
+    # Expand aggregated data to original length using mapping
+    mapping = result.timestep_mapping.values
+    expanded_agg = aggregated_df.iloc[mapping].reset_index(drop=True)
+
+    # Rename for legend
+    original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
+    expanded_agg = expanded_agg.rename(columns={col: f'Aggregated - {col}' for col in expanded_agg.columns})
+
+    colors = list(
+        process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(original_df.columns)).values()
+    )
+
+    # Create line plot for original data (dashed)
+    original_df = original_df.reset_index()
+    index_name = original_df.columns[0]
+    df_org_long = original_df.melt(id_vars=index_name, var_name='variable', value_name='value')
+    fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+    for trace in fig.data:
+        trace.update(line=dict(dash='dash'))
+
+    # Add aggregated data (solid lines)
+    expanded_agg[index_name] = original_df[index_name]
+    df_agg_long = expanded_agg.melt(id_vars=index_name, var_name='variable', value_name='value')
+    fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+    for trace in fig2.data:
+        fig.add_trace(trace)
+
+    fig.update_layout(
+        title='Original vs Aggregated Data (original = ---)',
+        xaxis_title='Time',
+        yaxis_title='Value',
+    )
+
+    # Build xarray Dataset with both original and aggregated data
+    data = xr.Dataset(
+        {
+            'original': result.original_data.to_array(dim='variable'),
+            'aggregated': result.aggregated_data.to_array(dim='variable'),
+        }
+    )
+    plot_result = PlotResult(data=data, figure=fig)
+
+    if show is None:
+        show = CONFIG.Plotting.default_show
+    if show:
+        plot_result.show()
+
+    return plot_result
