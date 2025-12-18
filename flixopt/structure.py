@@ -217,6 +217,24 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return self.flow_system.hours_of_previous_timesteps
 
     @property
+    def timestep_weight(self) -> xr.DataArray:
+        """Timestep weight for cluster_reduce optimization.
+
+        Represents how many original timesteps each cluster represents.
+        Default is 1.0 for all timesteps.
+        """
+        return self.flow_system.timestep_weight
+
+    @property
+    def aggregation_weight(self) -> xr.DataArray:
+        """Combined weight for time aggregation.
+
+        Combines hours_per_step (timestep duration) and timestep_weight (cluster representation).
+        Use this for proper time aggregation in clustered models.
+        """
+        return self.hours_per_step * self.timestep_weight
+
+    @property
     def scenario_weights(self) -> xr.DataArray:
         """
         Scenario weights of model. With optional normalization.

@@ -1356,6 +1356,9 @@ class TransformAccessor:
         # Create new FlowSystem with reduced timesteps
         reduced_fs = FlowSystem.from_dataset(ds_new)
 
+        # Set timestep_weight for proper aggregation in the reduced FlowSystem
+        reduced_fs.timestep_weight = reduced_fs.fit_to_model_coords('timestep_weight', timestep_weights, dims=['time'])
+
         # Store cluster info for later use during modeling and expand_solution()
         reduced_fs._cluster_info = {
             'clustering_results': clustering_results,  # Dict keyed by (period, scenario)

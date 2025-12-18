@@ -680,7 +680,7 @@ class FlowModel(ElementModel):
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
-            tracked_expression=(self.flow_rate * self._model.hours_per_step).sum('time'),
+            tracked_expression=(self.flow_rate * self._model.aggregation_weight).sum('time'),
             bounds=(
                 self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
                 self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
@@ -826,7 +826,7 @@ class FlowModel(ElementModel):
             self._model.effects.add_share_to_effects(
                 name=self.label_full,
                 expressions={
-                    effect: self.flow_rate * self._model.hours_per_step * factor
+                    effect: self.flow_rate * self._model.aggregation_weight * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
                 target='temporal',
@@ -839,7 +839,7 @@ class FlowModel(ElementModel):
 
         # Maximum load factor constraint
         if self.element.load_factor_max is not None:
-            flow_hours_per_size_max = self._model.hours_per_step.sum('time') * self.element.load_factor_max
+            flow_hours_per_size_max = self._model.aggregation_weight.sum('time') * self.element.load_factor_max
             self.add_constraints(
                 self.total_flow_hours <= size * flow_hours_per_size_max,
                 short_name='load_factor_max',
@@ -847,7 +847,7 @@ class FlowModel(ElementModel):
 
         # Minimum load factor constraint
         if self.element.load_factor_min is not None:
-            flow_hours_per_size_min = self._model.hours_per_step.sum('time') * self.element.load_factor_min
+            flow_hours_per_size_min = self._model.aggregation_weight.sum('time') * self.element.load_factor_min
             self.add_constraints(
                 self.total_flow_hours >= size * flow_hours_per_size_min,
                 short_name='load_factor_min',
@@ -951,7 +951,9 @@ class BusModel(ElementModel):
 
         # Add virtual supply/demand to balance and penalty if needed
         if self.element.allows_imbalance:
-            imbalance_penalty = np.multiply(self._model.hours_per_step, self.element.imbalance_penalty_per_flow_hour)
+            imbalance_penalty = np.multiply(
+                self._model.aggregation_weight, self.element.imbalance_penalty_per_flow_hour
+            )
 
             self.virtual_supply = self.add_variables(
                 lower=0, coords=self._model.get_coords(), short_name='virtual_supply'

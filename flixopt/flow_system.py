@@ -67,6 +67,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
             Period weights are always computed internally from the period index (like hours_per_timestep for time).
             The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
+        timestep_weight: Weight for each timestep representing cluster representation count.
+            If None (default), all timesteps have weight 1.0. Used by cluster_reduce() to specify
+            how many original timesteps each cluster represents. Combined with hours_per_timestep
+            via aggregation_weight for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
@@ -170,6 +174,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weight_of_last_period: int | float | None = None,
         scenario_weights: Numeric_S | None = None,
+        timestep_weight: Numeric_TPS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
@@ -188,6 +193,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
         self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+
+        # Timestep weight for cluster_reduce optimization (default 1.0)
+        # Represents how many original timesteps each cluster represents
+        self.timestep_weight = self.fit_to_model_coords(
+            'timestep_weight',
+            np.ones(len(self.timesteps)) if timestep_weight is None else timestep_weight,
+            dims=['time'],
+        )
 
         self.scenario_weights = scenario_weights  # Use setter
 
@@ -704,6 +717,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             weight_of_last_period=reference_structure.get('weight_of_last_period'),
             scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
             if 'scenario_weights' in reference_structure
+            else None,
+            timestep_weight=cls._resolve_dataarray_reference(reference_structure['timestep_weight'], arrays_dict)
+            if 'timestep_weight' in reference_structure
             else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
@@ -1328,10 +1344,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.connect_and_transform()
         self.create_model(normalize_weights)
 
-        # Apply timestep weighting before do_modeling() for cluster_reduce()
-        if self._cluster_info is not None:
-            self._apply_timestep_weights()
-
         self.model.do_modeling()
 
         # Add clustering constraints if this is a clustered FlowSystem
@@ -1347,16 +1359,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _apply_timestep_weights(self) -> None:
         """Apply timestep weights to the model for cluster_reduce() optimization.
 
-        This multiplies operational effects (costs, emissions) by the number of
-        original segments each typical cluster represents.
+        .. deprecated::
+            This method is deprecated. Timestep weights are now stored directly on FlowSystem
+            as `timestep_weight` and accessed via `FlowSystemModel.timestep_weight` and
+            `FlowSystemModel.aggregation_weight`.
         """
+        warnings.warn(
+            '_apply_timestep_weights() is deprecated. Timestep weights are now stored directly '
+            'on FlowSystem as `timestep_weight` and accessed via FlowSystemModel.timestep_weight.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         info = self._cluster_info
         if info is None:
             return
 
         timestep_weights = info['timestep_weights']
 
-        # Store timestep weights on the model for use in effect calculations
+        # Store timestep weights on the model for backward compatibility
         self.model.timestep_weights = xr.DataArray(
             timestep_weights,
             coords={'time': self.timesteps},

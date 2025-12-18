@@ -951,12 +951,12 @@ class TypicalPeriodsModel(Submodel):
 
         charge_state = storage.submodel.variables[charge_state_name]
 
-        # Get storage capacity bounds
+        # Get storage capacity bounds (may have period/scenario dimensions)
         capacity = storage.capacity_in_flow_hours
         if hasattr(capacity, 'fixed_size') and capacity.fixed_size is not None:
             cap_value = capacity.fixed_size
         elif hasattr(capacity, 'maximum') and capacity.maximum is not None:
-            cap_value = float(capacity.maximum.max().item()) if hasattr(capacity.maximum, 'max') else capacity.maximum
+            cap_value = capacity.maximum
         else:
             cap_value = 1e9  # Large default
 
@@ -966,9 +966,37 @@ class TypicalPeriodsModel(Submodel):
         boundary_coords = [np.arange(n_boundaries)]
         boundary_dims = ['period_boundary']
 
-        # Bounds: 0 <= SOC_boundary <= capacity
-        lb = xr.DataArray(0.0, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
-        ub = xr.DataArray(cap_value, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
+        # Build bounds - handle both scalar and multi-dimensional cap_value
+        # If cap_value has period/scenario dims, we need to include them
+        if isinstance(cap_value, xr.DataArray) and cap_value.dims:
+            # cap_value has dimensions (e.g., period, scenario) - need to broadcast
+            extra_dims = list(cap_value.dims)
+            extra_coords = {dim: cap_value.coords[dim].values for dim in extra_dims}
+
+            # Add extra dims/coords to the variable
+            boundary_dims = ['period_boundary'] + extra_dims
+            boundary_coords = [np.arange(n_boundaries)] + [extra_coords[d] for d in extra_dims]
+
+            # Build lb and ub with all dimensions
+            lb_coords = {'period_boundary': np.arange(n_boundaries), **extra_coords}
+            lb_shape = [n_boundaries] + [len(extra_coords[d]) for d in extra_dims]
+            lb = xr.DataArray(
+                np.zeros(lb_shape),
+                coords=lb_coords,
+                dims=boundary_dims,
+            )
+
+            # Broadcast cap_value across period_boundary dimension
+            ub = cap_value.expand_dims({'period_boundary': n_boundaries}, axis=0)
+            ub = ub.assign_coords(period_boundary=np.arange(n_boundaries))
+        else:
+            # Scalar cap_value - simple case
+            if hasattr(cap_value, 'item'):
+                cap_value = float(cap_value.item())
+            else:
+                cap_value = float(cap_value)
+            lb = xr.DataArray(0.0, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
+            ub = xr.DataArray(cap_value, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
 
         soc_boundary = self.add_variables(
             lower=lb,
