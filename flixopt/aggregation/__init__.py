@@ -4,9 +4,9 @@ Time Series Aggregation Module for flixopt.
 This module provides data structures for time series clustering/aggregation.
 
 Key classes:
-- AggregationResult: Universal result container for clustering
+- ClusterResult: Universal result container for clustering
 - ClusterStructure: Hierarchical structure info for storage inter-cluster linking
-- AggregationInfo: Stored on FlowSystem after clustering
+- ClusterInfo: Stored on FlowSystem after clustering
 
 Example usage:
 
@@ -18,7 +18,7 @@ Example usage:
     )
 
     # Access clustering metadata
-    info = fs_clustered._aggregation_info
+    info = fs_clustered._cluster_info
     print(f'Number of clusters: {info.result.cluster_structure.n_clusters}')
 
     # Expand solution back to full resolution
@@ -26,8 +26,8 @@ Example usage:
 """
 
 from .base import (
-    AggregationInfo,
-    AggregationResult,
+    ClusterInfo,
+    ClusterResult,
     ClusterStructure,
     create_cluster_structure_from_mapping,
     plot_aggregation,
@@ -50,8 +50,8 @@ def _get_inter_cluster_linking():
 
 __all__ = [
     # Core classes
-    'AggregationResult',
-    'AggregationInfo',
+    'ClusterResult',
+    'ClusterInfo',
     'ClusterStructure',
     'InterClusterLinking',
     # Utilities

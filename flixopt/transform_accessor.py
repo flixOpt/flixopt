@@ -615,7 +615,7 @@ class TransformAccessor:
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
-            The FlowSystem has metadata stored in ``_aggregation_info`` for expansion.
+            The FlowSystem has metadata stored in ``_cluster_info`` for expansion.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
@@ -649,7 +649,7 @@ class TransformAccessor:
         """
         import tsam.timeseriesaggregation as tsam
 
-        from .aggregation import AggregationInfo, AggregationResult, ClusterStructure
+        from .aggregation import ClusterInfo, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
@@ -797,7 +797,7 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = 0
 
-        # Build AggregationInfo for inter-cluster linking and solution expansion
+        # Build ClusterInfo for inter-cluster linking and solution expansion
         n_original_timesteps = len(self._fs.timesteps)
 
         # Build timestep_mapping: maps each original timestep to its representative
@@ -824,7 +824,7 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
-        aggregation_result = AggregationResult(
+        aggregation_result = ClusterResult(
             timestep_mapping=xr.DataArray(timestep_mapping, dims=['original_time'], name='timestep_mapping'),
             n_representatives=n_reduced_timesteps,
             representative_weights=timestep_weights.rename('representative_weights'),
@@ -832,7 +832,7 @@ class TransformAccessor:
             original_data=ds,
         )
 
-        reduced_fs._aggregation_info = AggregationInfo(
+        reduced_fs._cluster_info = ClusterInfo(
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
@@ -942,7 +942,7 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate
-        if self._fs._aggregation_info is None:
+        if self._fs._cluster_info is None:
             raise ValueError(
                 'expand_solution() requires a FlowSystem created with cluster(). '
                 'This FlowSystem has no aggregation info.'
@@ -950,7 +950,7 @@ class TransformAccessor:
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        info = self._fs._aggregation_info
+        info = self._fs._cluster_info
         cluster_structure = info.result.cluster_structure
         if cluster_structure is None:
             raise ValueError('No cluster structure available for expansion.')

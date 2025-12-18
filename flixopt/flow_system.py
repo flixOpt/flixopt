@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .aggregation import AggregationInfo
+    from .aggregation import ClusterInfo
     from .solvers import _Solver
     from .structure import TimeSeriesWeights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
@@ -233,7 +233,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._solution: xr.Dataset | None = None
 
         # Aggregation info - populated by transform.cluster()
-        self._aggregation_info: AggregationInfo | None = None
+        self._cluster_info: ClusterInfo | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -1294,7 +1294,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model.do_modeling()
 
         # Add inter-cluster storage linking if this is an aggregated FlowSystem
-        if self._aggregation_info is not None:
+        if self._cluster_info is not None:
             self._add_inter_cluster_linking()
 
         return self
@@ -1307,7 +1307,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         from .aggregation.storage_linking import InterClusterLinking
 
-        info = self._aggregation_info
+        info = self._cluster_info
         if info is None:
             return
 

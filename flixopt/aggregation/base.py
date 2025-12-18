@@ -108,7 +108,7 @@ class ClusterStructure:
 
 
 @dataclass
-class AggregationResult:
+class ClusterResult:
     """Universal result from any time series aggregation method.
 
     This dataclass captures all information needed to:
@@ -216,7 +216,7 @@ class AggregationResult:
 
 
 @dataclass
-class AggregationInfo:
+class ClusterInfo:
     """Information about an aggregation stored on a FlowSystem.
 
     This is stored on the FlowSystem after aggregation to enable:
@@ -226,14 +226,14 @@ class AggregationInfo:
     - Serialization/deserialization of aggregated models
 
     Attributes:
-        result: The AggregationResult from the aggregation backend.
+        result: The ClusterResult from the aggregation backend.
         original_flow_system: Reference to the FlowSystem before aggregation.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
         storage_inter_cluster_linking: Whether to add inter-cluster storage constraints.
         storage_cyclic: Whether to enforce cyclic storage (SOC[start] = SOC[end]).
     """
 
-    result: AggregationResult
+    result: ClusterResult
     original_flow_system: object  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
@@ -291,7 +291,7 @@ def create_cluster_structure_from_mapping(
 
 
 def plot_aggregation(
-    result: AggregationResult,
+    result: ClusterResult,
     colormap: str | None = None,
     show: bool | None = None,
 ):
@@ -301,7 +301,7 @@ def plot_aggregation(
     the aggregated/clustered time series (solid lines) for comparison.
 
     Args:
-        result: AggregationResult containing original and aggregated data.
+        result: ClusterResult containing original and aggregated data.
         colormap: Colorscale name for the time series colors.
             Defaults to CONFIG.Plotting.default_qualitative_colorscale.
         show: Whether to display the figure.
@@ -312,7 +312,7 @@ def plot_aggregation(
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-        >>> plot_aggregation(fs_clustered._aggregation_info.result)
+        >>> plot_aggregation(fs_clustered._cluster_info.result)
     """
     import plotly.express as px
 
@@ -321,7 +321,7 @@ def plot_aggregation(
     from ..plot_result import PlotResult
 
     if result.original_data is None or result.aggregated_data is None:
-        raise ValueError('AggregationResult must contain both original_data and aggregated_data for plotting')
+        raise ValueError('ClusterResult must contain both original_data and aggregated_data for plotting')
 
     # Convert xarray to DataFrames
     original_df = result.original_data.to_dataframe()

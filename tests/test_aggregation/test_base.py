@@ -5,8 +5,8 @@ import pytest
 import xarray as xr
 
 from flixopt.aggregation import (
-    AggregationInfo,
-    AggregationResult,
+    ClusterInfo,
+    ClusterResult,
     ClusterStructure,
     create_cluster_structure_from_mapping,
 )
@@ -62,12 +62,12 @@ class TestClusterStructure:
         assert float(weights.isel(time=4).values) == 1.0
 
 
-class TestAggregationResult:
-    """Tests for AggregationResult dataclass."""
+class TestClusterResult:
+    """Tests for ClusterResult dataclass."""
 
     def test_basic_creation(self):
-        """Test basic AggregationResult creation."""
-        result = AggregationResult(
+        """Test basic ClusterResult creation."""
+        result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 0, 1, 1, 2, 2], dims=['original_time']),
             n_representatives=3,
             representative_weights=xr.DataArray([2, 2, 2], dims=['time']),
@@ -77,8 +77,8 @@ class TestAggregationResult:
         assert result.n_original_timesteps == 6
 
     def test_creation_from_numpy(self):
-        """Test AggregationResult creation from numpy arrays."""
-        result = AggregationResult(
+        """Test ClusterResult creation from numpy arrays."""
+        result = ClusterResult(
             timestep_mapping=np.array([0, 1, 0, 1]),
             n_representatives=2,
             representative_weights=np.array([2.0, 2.0]),
@@ -89,7 +89,7 @@ class TestAggregationResult:
 
     def test_validation_success(self):
         """Test validation passes for valid result."""
-        result = AggregationResult(
+        result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 1, 0, 1], dims=['original_time']),
             n_representatives=2,
             representative_weights=xr.DataArray([2.0, 2.0], dims=['time']),
@@ -100,7 +100,7 @@ class TestAggregationResult:
 
     def test_validation_invalid_mapping(self):
         """Test validation fails for out-of-range mapping."""
-        result = AggregationResult(
+        result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 5, 0, 1], dims=['original_time']),  # 5 is out of range
             n_representatives=2,
             representative_weights=xr.DataArray([2.0, 2.0], dims=['time']),
@@ -111,7 +111,7 @@ class TestAggregationResult:
 
     def test_get_expansion_mapping(self):
         """Test get_expansion_mapping returns named DataArray."""
-        result = AggregationResult(
+        result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 1, 0], dims=['original_time']),
             n_representatives=2,
             representative_weights=xr.DataArray([2.0, 1.0], dims=['time']),
@@ -139,18 +139,18 @@ class TestCreateClusterStructureFromMapping:
         assert structure.n_original_periods == 3
 
 
-class TestAggregationInfo:
-    """Tests for AggregationInfo dataclass."""
+class TestClusterInfo:
+    """Tests for ClusterInfo dataclass."""
 
     def test_creation(self):
-        """Test AggregationInfo creation."""
-        result = AggregationResult(
+        """Test ClusterInfo creation."""
+        result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 1], dims=['original_time']),
             n_representatives=2,
             representative_weights=xr.DataArray([1.0, 1.0], dims=['time']),
         )
 
-        info = AggregationInfo(
+        info = ClusterInfo(
             result=result,
             original_flow_system=None,  # Would be FlowSystem in practice
             backend_name='tsam',

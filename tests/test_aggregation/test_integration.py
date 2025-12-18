@@ -137,9 +137,9 @@ class TestAggregationModuleImports:
         """Test that aggregation module can be imported from flixopt."""
         from flixopt import aggregation
 
-        assert hasattr(aggregation, 'AggregationResult')
+        assert hasattr(aggregation, 'ClusterResult')
         assert hasattr(aggregation, 'ClusterStructure')
-        assert hasattr(aggregation, 'AggregationInfo')
+        assert hasattr(aggregation, 'ClusterInfo')
 
     def test_plot_aggregation_available(self):
         """Test that plot_aggregation is available."""
