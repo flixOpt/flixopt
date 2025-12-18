@@ -263,12 +263,12 @@ class StatusModel(Submodel):
         self._add_effects()
 
     def _add_effects(self):
-        """Add operational effects"""
+        """Add operational effects (use timestep_duration only, cluster_weight is applied when summing to total)"""
         if self.parameters.effects_per_active_hour:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.status * factor * self._model.aggregation_weight
+                    effect: self.status * factor * self._model.timestep_duration
                     for effect, factor in self.parameters.effects_per_active_hour.items()
                 },
                 target='temporal',
@@ -612,8 +612,8 @@ class ShareAllocationModel(Submodel):
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
-                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.aggregation_weight,
-                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.aggregation_weight,
+                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.timestep_duration,
+                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
                 coords=self._model.get_coords(self._dims),
                 short_name='per_timestep',
             )

@@ -821,12 +821,12 @@ class FlowModel(ElementModel):
         }
 
     def _create_shares(self):
-        # Effects per flow hour
+        # Effects per flow hour (use timestep_duration only, cluster_weight is applied when summing to total)
         if self.element.effects_per_flow_hour:
             self._model.effects.add_share_to_effects(
                 name=self.label_full,
                 expressions={
-                    effect: self.flow_rate * self._model.aggregation_weight * factor
+                    effect: self.flow_rate * self._model.timestep_duration * factor
                     for effect, factor in self.element.effects_per_flow_hour.items()
                 },
                 target='temporal',
