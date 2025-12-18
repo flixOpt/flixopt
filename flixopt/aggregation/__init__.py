@@ -50,17 +50,32 @@ from .manual import (
     create_manual_backend_from_selection,
 )
 
+# Lazy import for InterClusterLinking to avoid circular imports
+# It depends on structure.Submodel which has complex import dependencies
+InterClusterLinking = None
+
+
+def _get_inter_cluster_linking():
+    """Get InterClusterLinking class with lazy import."""
+    global InterClusterLinking
+    if InterClusterLinking is None:
+        from .storage_linking import InterClusterLinking as _InterClusterLinking
+
+        InterClusterLinking = _InterClusterLinking
+    return InterClusterLinking
+
+
 # Conditional imports based on package availability
 _BACKENDS = {'manual': ManualBackend}
 
 try:
-    from .tsam_backend import TSAMBackend, create_tsam_backend_from_clustering
+    from .tsam_backend import TSAMBackend, plot_aggregation
 
     _BACKENDS['tsam'] = TSAMBackend
 except ImportError:
     # tsam not installed - TSAMBackend not available
     TSAMBackend = None
-    create_tsam_backend_from_clustering = None
+    plot_aggregation = None
 
 
 def get_backend(name: str):
@@ -103,14 +118,15 @@ __all__ = [
     'AggregationInfo',
     'ClusterStructure',
     'Aggregator',
+    'InterClusterLinking',
     # Backends
     'TSAMBackend',
     'ManualBackend',
     # Utilities
     'create_cluster_structure_from_mapping',
-    'create_tsam_backend_from_clustering',
     'create_manual_backend_from_labels',
     'create_manual_backend_from_selection',
+    'plot_aggregation',
     'get_backend',
     'list_backends',
 ]

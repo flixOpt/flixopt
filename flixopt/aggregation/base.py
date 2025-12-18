@@ -270,17 +270,22 @@ class AggregationInfo:
     This is stored on the FlowSystem after aggregation to enable:
     - expand_solution() to map back to original timesteps
     - Statistics to properly weight results
+    - Inter-cluster storage linking
     - Serialization/deserialization of aggregated models
 
     Attributes:
         result: The AggregationResult from the aggregation backend.
         original_flow_system: Reference to the FlowSystem before aggregation.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
+        storage_inter_cluster_linking: Whether to add inter-cluster storage constraints.
+        storage_cyclic: Whether to enforce cyclic storage (SOC[start] = SOC[end]).
     """
 
     result: AggregationResult
     original_flow_system: object  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
+    storage_inter_cluster_linking: bool = True
+    storage_cyclic: bool = True
 
 
 def create_cluster_structure_from_mapping(

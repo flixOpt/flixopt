@@ -359,92 +359,88 @@ class TSAMBackend:
         )
 
 
-def create_tsam_backend_from_clustering(
-    clustering,  # flixopt.clustering.Clustering
-) -> tuple[TSAMBackend, AggregationResult]:
-    """Create TSAMBackend and AggregationResult from existing Clustering object.
+def plot_aggregation(
+    result: AggregationResult,
+    colormap: str | None = None,
+    show: bool | None = None,
+):
+    """Plot original vs aggregated data comparison.
 
-    This is a bridge function to help migrate from the old Clustering class
-    to the new aggregation abstraction.
+    Visualizes the original time series (dashed lines) overlaid with
+    the aggregated/clustered time series (solid lines) for comparison.
 
     Args:
-        clustering: Existing flixopt Clustering object (after calling cluster()).
+        result: AggregationResult containing original and aggregated data.
+        colormap: Colorscale name for the time series colors.
+            Defaults to CONFIG.Plotting.default_qualitative_colorscale.
+        show: Whether to display the figure.
+            Defaults to CONFIG.Plotting.default_show.
 
     Returns:
-        Tuple of (TSAMBackend, AggregationResult).
+        PlotResult containing the comparison figure and underlying data.
+
+    Example:
+        >>> result = backend.aggregate(data, n_representatives=8)
+        >>> plot_aggregation(result)
     """
-    if clustering.tsam is None:
-        raise ValueError('Clustering has not been executed. Call cluster() first.')
+    import plotly.express as px
 
-    tsam_agg = clustering.tsam
+    from ..color_processing import process_colors
+    from ..config import CONFIG
+    from ..plot_result import PlotResult
 
-    backend = TSAMBackend(
-        cluster_duration=clustering.hours_per_period,
-        n_segments=clustering.n_segments,
-        time_series_for_high_peaks=clustering.time_series_for_high_peaks,
-        time_series_for_low_peaks=clustering.time_series_for_low_peaks,
-        weights=clustering.weights,
+    if result.original_data is None or result.aggregated_data is None:
+        raise ValueError('AggregationResult must contain both original_data and aggregated_data for plotting')
+
+    # Convert xarray to DataFrames
+    original_df = result.original_data.to_dataframe()
+    aggregated_df = result.aggregated_data.to_dataframe()
+
+    # Expand aggregated data to original length using mapping
+    mapping = result.timestep_mapping.values
+    expanded_agg = aggregated_df.iloc[mapping].reset_index(drop=True)
+
+    # Rename for legend
+    original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
+    expanded_agg = expanded_agg.rename(columns={col: f'Aggregated - {col}' for col in expanded_agg.columns})
+
+    colors = list(
+        process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(original_df.columns)).values()
     )
 
-    # Build AggregationResult from Clustering state
-    n_timesteps = clustering.nr_of_time_steps
-    timesteps_per_period = int(clustering.hours_per_period / clustering.hours_per_time_step)
-    cluster_order = tsam_agg.clusterOrder
-    n_clusters = len(tsam_agg.clusterPeriodNoOccur)
+    # Create line plot for original data (dashed)
+    original_df = original_df.reset_index()
+    index_name = original_df.columns[0]
+    df_org_long = original_df.melt(id_vars=index_name, var_name='variable', value_name='value')
+    fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+    for trace in fig.data:
+        trace.update(line=dict(dash='dash'))
 
-    # Build timestep mapping
-    timestep_mapping = np.zeros(n_timesteps, dtype=np.int32)
-    for period_idx, cluster_id in enumerate(cluster_order):
-        for pos in range(timesteps_per_period):
-            original_idx = period_idx * timesteps_per_period + pos
-            if original_idx < n_timesteps:
-                representative_idx = cluster_id * timesteps_per_period + pos
-                timestep_mapping[original_idx] = representative_idx
+    # Add aggregated data (solid lines)
+    expanded_agg[index_name] = original_df[index_name]
+    df_agg_long = expanded_agg.melt(id_vars=index_name, var_name='variable', value_name='value')
+    fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+    for trace in fig2.data:
+        fig.add_trace(trace)
 
-    # Build weights
-    n_representative_timesteps = n_clusters * timesteps_per_period
-    representative_weights = np.zeros(n_representative_timesteps, dtype=np.float64)
-    for cluster_id, count in tsam_agg.clusterPeriodNoOccur.items():
-        for pos in range(timesteps_per_period):
-            rep_idx = cluster_id * timesteps_per_period + pos
-            if rep_idx < n_representative_timesteps:
-                representative_weights[rep_idx] = count
-
-    # Create cluster structure
-    cluster_occurrences = xr.DataArray(
-        [tsam_agg.clusterPeriodNoOccur.get(c, 0) for c in range(n_clusters)],
-        dims=['cluster'],
-        name='cluster_occurrences',
+    fig.update_layout(
+        title='Original vs Aggregated Data (original = ---)',
+        xaxis_title='Time',
+        yaxis_title='Value',
     )
 
-    cluster_structure = ClusterStructure(
-        cluster_order=xr.DataArray(cluster_order, dims=['original_period'], name='cluster_order'),
-        cluster_occurrences=cluster_occurrences,
-        n_clusters=n_clusters,
-        timesteps_per_cluster=timesteps_per_period,
+    # Build xarray Dataset with both original and aggregated data
+    data = xr.Dataset(
+        {
+            'original': result.original_data.to_array(dim='variable'),
+            'aggregated': result.aggregated_data.to_array(dim='variable'),
+        }
     )
+    plot_result = PlotResult(data=data, figure=fig)
 
-    # Build aggregated data as xarray Dataset
-    aggregated_df = clustering.aggregated_data
-    aggregated_ds = xr.Dataset(
-        {col: (['time'], aggregated_df[col].values[:n_representative_timesteps]) for col in aggregated_df.columns},
-        coords={'time': np.arange(n_representative_timesteps)},
-    )
+    if show is None:
+        show = CONFIG.Plotting.default_show
+    if show:
+        plot_result.show()
 
-    # Original data as xarray Dataset
-    original_df = clustering.original_data
-    original_ds = xr.Dataset(
-        {col: (['time'], original_df[col].values) for col in original_df.columns},
-        coords={'time': np.arange(n_timesteps)},
-    )
-
-    result = AggregationResult(
-        timestep_mapping=xr.DataArray(timestep_mapping, dims=['original_time'], name='timestep_mapping'),
-        n_representatives=n_representative_timesteps,
-        representative_weights=xr.DataArray(representative_weights, dims=['time'], name='representative_weights'),
-        aggregated_data=aggregated_ds,
-        cluster_structure=cluster_structure,
-        original_data=original_ds,
-    )
-
-    return backend, result
+    return plot_result

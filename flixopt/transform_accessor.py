@@ -616,7 +616,7 @@ class TransformAccessor:
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
-            The FlowSystem has metadata stored in `_cluster_info` for weighting.
+            The FlowSystem has metadata stored in `_aggregation_info` for expansion.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
@@ -648,7 +648,9 @@ class TransformAccessor:
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - Storage linking adds SOC_boundary variables to track state between clusters
         """
-        from .clustering import Clustering
+        import tsam.timeseriesaggregation as tsam
+
+        from .aggregation import AggregationInfo, AggregationResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
@@ -682,10 +684,11 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
-        # Cluster each (period, scenario) combination
-        clustering_results: dict[tuple, Clustering] = {}
+        # Cluster each (period, scenario) combination using tsam directly
+        tsam_results: dict[tuple, tsam.TimeSeriesAggregation] = {}
         cluster_orders: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
+        use_extreme_periods = bool(time_series_for_high_peaks or time_series_for_low_peaks)
 
         for period_label in periods:
             for scenario_label in scenarios:
@@ -693,30 +696,35 @@ class TransformAccessor:
                 selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
                 ds_slice = ds.sel(**selector, drop=True) if selector else ds
                 temporaly_changing_ds = drop_constant_arrays(ds_slice, dim='time')
+                df = temporaly_changing_ds.to_dataframe()
 
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
 
-                clustering = Clustering(
-                    original_data=temporaly_changing_ds.to_dataframe(),
-                    hours_per_time_step=dt,
-                    hours_per_period=hours_per_cluster,
-                    nr_of_periods=n_clusters,
-                    weights=weights or self._calculate_clustering_weights(temporaly_changing_ds),
-                    time_series_for_high_peaks=time_series_for_high_peaks or [],
-                    time_series_for_low_peaks=time_series_for_low_peaks or [],
+                # Use tsam directly
+                clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
+                tsam_agg = tsam.TimeSeriesAggregation(
+                    df,
+                    noTypicalPeriods=n_clusters,
+                    hoursPerPeriod=hours_per_cluster,
+                    resolution=dt,
+                    clusterMethod='k_means',
+                    extremePeriodMethod='new_cluster_center' if use_extreme_periods else 'None',
+                    weightDict={name: w for name, w in clustering_weights.items() if name in df.columns},
+                    addPeakMax=time_series_for_high_peaks or [],
+                    addPeakMin=time_series_for_low_peaks or [],
                 )
-                clustering.cluster()
+                tsam_agg.createTypicalPeriods()
 
-                clustering_results[key] = clustering
-                cluster_orders[key] = clustering.tsam.clusterOrder
-                cluster_occurrences_all[key] = clustering.tsam.clusterPeriodNoOccur
+                tsam_results[key] = tsam_agg
+                cluster_orders[key] = tsam_agg.clusterOrder
+                cluster_occurrences_all[key] = tsam_agg.clusterPeriodNoOccur
 
-        # Use first clustering for structure
+        # Use first result for structure
         first_key = (periods[0], scenarios[0])
-        first_clustering = clustering_results[first_key]
-        n_reduced_timesteps = len(first_clustering.tsam.typicalPeriods)
-        actual_n_clusters = len(first_clustering.tsam.clusterPeriodNoOccur)
+        first_tsam = tsam_results[first_key]
+        n_reduced_timesteps = len(first_tsam.typicalPeriods)
+        actual_n_clusters = len(first_tsam.clusterPeriodNoOccur)
 
         # Create new time index (needed for weights and typical periods)
         new_time_index = pd.date_range(
@@ -742,8 +750,8 @@ class TransformAccessor:
 
         # Build typical periods DataArrays keyed by (variable_name, (period, scenario))
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, clustering in clustering_results.items():
-            typical_df = clustering.tsam.typicalPeriods
+        for key, tsam_agg in tsam_results.items():
+            typical_df = tsam_agg.typicalPeriods
             for col in typical_df.columns:
                 typical_das.setdefault(col, {})[key] = xr.DataArray(
                     typical_df[col].values, dims=['time'], coords={'time': new_time_index}
@@ -790,21 +798,48 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = 0
 
-        reduced_fs._cluster_info = {
-            'clustering_results': clustering_results,
-            'cluster_orders': cluster_orders,
-            'cluster_occurrences': cluster_occurrences_all,
-            'timestep_weights': timestep_weights,
-            'n_clusters': actual_n_clusters,
-            'timesteps_per_cluster': timesteps_per_cluster,
-            'storage_inter_period_linking': storage_inter_period_linking,
-            'storage_cyclic': storage_cyclic,
-            'original_fs': self._fs,
-            'has_periods': has_periods,
-            'has_scenarios': has_scenarios,
-            'cluster_order': cluster_orders[first_key],
-            'clustering': first_clustering,
-        }
+        # Build AggregationInfo for inter-cluster linking and solution expansion
+        n_original_timesteps = len(self._fs.timesteps)
+
+        # Build timestep_mapping: maps each original timestep to its representative
+        timestep_mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+        for period_idx, cluster_id in enumerate(cluster_orders[first_key]):
+            for pos in range(timesteps_per_cluster):
+                original_idx = period_idx * timesteps_per_cluster + pos
+                if original_idx < n_original_timesteps:
+                    representative_idx = cluster_id * timesteps_per_cluster + pos
+                    timestep_mapping[original_idx] = representative_idx
+
+        # Build cluster_occurrences as DataArray
+        first_occurrences = cluster_occurrences_all[first_key]
+        cluster_occurrences_da = xr.DataArray(
+            [first_occurrences.get(c, 0) for c in range(actual_n_clusters)],
+            dims=['cluster'],
+            name='cluster_occurrences',
+        )
+
+        cluster_structure = ClusterStructure(
+            cluster_order=xr.DataArray(cluster_orders[first_key], dims=['original_period'], name='cluster_order'),
+            cluster_occurrences=cluster_occurrences_da,
+            n_clusters=actual_n_clusters,
+            timesteps_per_cluster=timesteps_per_cluster,
+        )
+
+        aggregation_result = AggregationResult(
+            timestep_mapping=xr.DataArray(timestep_mapping, dims=['original_time'], name='timestep_mapping'),
+            n_representatives=n_reduced_timesteps,
+            representative_weights=timestep_weights.rename('representative_weights'),
+            cluster_structure=cluster_structure,
+            original_data=ds,
+        )
+
+        reduced_fs._aggregation_info = AggregationInfo(
+            result=aggregation_result,
+            original_flow_system=self._fs,
+            backend_name='tsam',
+            storage_inter_cluster_linking=storage_inter_period_linking,
+            storage_cyclic=storage_cyclic,
+        )
 
         return reduced_fs
 
@@ -908,21 +943,29 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate
-        if not hasattr(self._fs, '_cluster_info') or self._fs._cluster_info is None:
+        if self._fs._aggregation_info is None:
             raise ValueError(
-                'expand_solution() requires a FlowSystem created with cluster_reduce(). '
-                'This FlowSystem has no cluster info.'
+                'expand_solution() requires a FlowSystem created with cluster_reduce() or aggregate(). '
+                'This FlowSystem has no aggregation info.'
             )
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        info = self._fs._cluster_info
-        timesteps_per_cluster = info['timesteps_per_cluster']
-        original_fs: FlowSystem = info['original_fs']
-        n_clusters = info['n_clusters']
-        has_periods = info.get('has_periods', False)
-        has_scenarios = info.get('has_scenarios', False)
-        cluster_orders = info.get('cluster_orders', {(None, None): info['cluster_order']})
+        info = self._fs._aggregation_info
+        cluster_structure = info.result.cluster_structure
+        if cluster_structure is None:
+            raise ValueError('No cluster structure available for expansion.')
+
+        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
+        original_fs: FlowSystem = info.original_flow_system
+        n_clusters = (
+            int(cluster_structure.n_clusters)
+            if isinstance(cluster_structure.n_clusters, (int, np.integer))
+            else int(cluster_structure.n_clusters.values)
+        )
+        has_periods = original_fs.periods is not None
+        has_scenarios = original_fs.scenarios is not None
+        cluster_order = cluster_structure.cluster_order.values
 
         periods = list(original_fs.periods) if has_periods else [None]
         scenarios = list(original_fs.scenarios) if has_scenarios else [None]
@@ -930,13 +973,12 @@ class TransformAccessor:
         original_timesteps = original_fs.timesteps
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
-        first_key = (periods[0], scenarios[0])
 
-        # Build expansion mappings per (period, scenario)
-        mappings = {
-            key: self._build_expansion_mapping(order, timesteps_per_cluster, n_original_timesteps)
-            for key, order in cluster_orders.items()
-        }
+        # Build expansion mapping (same for all period/scenario combinations)
+        base_mapping = self._build_expansion_mapping(cluster_order, timesteps_per_cluster, n_original_timesteps)
+
+        # Create mappings dict for all (period, scenario) combinations using the same mapping
+        mappings = {(p, s): base_mapping for p in periods for s in scenarios}
 
         # Expand function for DataArrays
         def expand_da(da: xr.DataArray) -> xr.DataArray:
@@ -977,7 +1019,7 @@ class TransformAccessor:
             + (
                 f', {n_combinations} period/scenario combinations)'
                 if n_combinations > 1
-                else f' → {len(cluster_orders[first_key])} original segments)'
+                else f' → {len(cluster_order)} original segments)'
             )
         )
 

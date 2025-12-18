@@ -1,11 +1,13 @@
 """
 This module contains the Optimization functionality for the flixopt framework.
 It is used to optimize a FlowSystemModel for a given FlowSystem through a solver.
-There are three different Optimization types:
+
+There are two Optimization types:
     1. Optimization: Optimizes the FlowSystemModel for the full FlowSystem
-    2. ClusteredOptimization: Optimizes the FlowSystemModel for the full FlowSystem, but clusters the TimeSeriesData.
-        This simplifies the mathematical model and usually speeds up the solving process.
-    3. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
+    2. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
+
+For time series aggregation (clustering), use FlowSystem.transform.aggregate() or
+FlowSystem.transform.cluster_reduce() instead.
 """
 
 from __future__ import annotations
@@ -16,27 +18,22 @@ import pathlib
 import sys
 import timeit
 import warnings
-from collections import Counter
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-import numpy as np
 from tqdm import tqdm
 
 from . import io as fx_io
-from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
-from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
-from .flow_system import FlowSystem
 from .results import Results, SegmentedResults
 
 if TYPE_CHECKING:
     import pandas as pd
     import xarray as xr
 
-    from .elements import Component
+    from .flow_system import FlowSystem
     from .solvers import _Solver
     from .structure import FlowSystemModel
 
@@ -355,162 +352,6 @@ class Optimization:
     @property
     def modeled(self) -> bool:
         return True if self.model is not None else False
-
-
-class ClusteredOptimization(Optimization):
-    """
-    ClusteredOptimization reduces computational complexity by clustering time series into typical periods.
-
-    This optimization approach clusters time series data using techniques from the tsam library to identify
-    representative time periods, significantly reducing computation time while maintaining solution accuracy.
-
-    Note:
-        The quality of the solution depends on the choice of aggregation parameters.
-        The optimal parameters depend on the specific problem and the characteristics of the time series data.
-        For more information, refer to the [tsam documentation](https://tsam.readthedocs.io/en/latest/).
-
-    Args:
-        name: Name of the optimization
-        flow_system: FlowSystem to be optimized
-        clustering_parameters: Parameters for clustering. See ClusteringParameters class documentation
-        components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
-            This equalizes variables in the components according to the typical periods computed in the aggregation
-        folder: Folder where results should be saved. If None, current working directory is used
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving
-
-    Attributes:
-        clustering (Clustering | None): Contains the clustered time series data
-        clustering_model (ClusteringModel | None): Contains Variables and Constraints that equalize clusters of the time series data
-    """
-
-    def __init__(
-        self,
-        name: str,
-        flow_system: FlowSystem,
-        clustering_parameters: ClusteringParameters,
-        components_to_clusterize: list[Component] | None = None,
-        folder: pathlib.Path | None = None,
-        normalize_weights: bool = True,
-    ):
-        warnings.warn(
-            f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use FlowSystem.transform.cluster() followed by FlowSystem.optimize(solver) instead. '
-            'Example: clustered_fs = flow_system.transform.cluster(n_clusters=8, cluster_duration="1D"); '
-            'clustered_fs.optimize(solver)',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # Note: Multi-period and multi-scenario are now supported via the new transform.cluster() API
-        # Skip parent deprecation warning by calling common init directly
-        _initialize_optimization_common(
-            self,
-            name=name,
-            flow_system=flow_system,
-            folder=folder,
-            normalize_weights=normalize_weights,
-        )
-        self.clustering_parameters = clustering_parameters
-        self.components_to_clusterize = components_to_clusterize
-        self.clustering: Clustering | None = None
-        self.clustering_model: ClusteringModel | None = None
-
-    def do_modeling(self) -> ClusteredOptimization:
-        t_start = timeit.default_timer()
-        self.flow_system.connect_and_transform()
-        self._perform_clustering()
-
-        # Model the System
-        self.model = self.flow_system.create_model(self.normalize_weights)
-        self.model.do_modeling()
-        # Add Clustering Submodel after modeling the rest
-        # Populate clustering indices from tsam
-        self.clustering_parameters.populate_from_tsam(self.clustering.tsam)
-        self.clustering_model = ClusteringModel(
-            self.model, self.clustering_parameters, self.flow_system, self.components_to_clusterize
-        )
-        self.clustering_model.do_modeling()
-        self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
-        return self
-
-    def _perform_clustering(self):
-        from .clustering import Clustering
-
-        t_start_agg = timeit.default_timer()
-
-        # Validation
-        dt_min = float(self.flow_system.timestep_duration.min().item())
-        dt_max = float(self.flow_system.timestep_duration.max().item())
-        if not dt_min == dt_max:
-            raise ValueError(
-                f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'
-            )
-        ratio = self.clustering_parameters.cluster_duration_hours / dt_max
-        if not np.isclose(ratio, round(ratio), atol=1e-9):
-            raise ValueError(
-                f'The selected cluster_duration={self.clustering_parameters.cluster_duration_hours}h does not match the time '
-                f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
-            )
-
-        logger.info(f'{"":#^80}')
-        logger.info(f'{" Clustering TimeSeries Data ":#^80}')
-
-        ds = self.flow_system.to_dataset()
-
-        temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
-
-        # Clustering - creation of clustered timeseries:
-        self.clustering = Clustering(
-            original_data=temporaly_changing_ds.to_dataframe(),
-            hours_per_time_step=float(dt_min),
-            hours_per_period=self.clustering_parameters.cluster_duration_hours,
-            nr_of_periods=self.clustering_parameters.n_clusters,
-            weights=self.calculate_clustering_weights(temporaly_changing_ds),
-            time_series_for_high_peaks=self.clustering_parameters.labels_for_high_peaks,
-            time_series_for_low_peaks=self.clustering_parameters.labels_for_low_peaks,
-        )
-
-        self.clustering.cluster()
-        result = self.clustering.plot(show=CONFIG.Plotting.default_show)
-        result.to_html(self.folder / 'clustering.html')
-        if self.clustering_parameters.aggregate_data:
-            ds = self.flow_system.to_dataset()
-            for name, series in self.clustering.aggregated_data.items():
-                da = (
-                    DataConverter.to_dataarray(series, self.flow_system.coords)
-                    .rename(name)
-                    .assign_attrs(ds[name].attrs)
-                )
-                if TimeSeriesData.is_timeseries_data(da):
-                    da = TimeSeriesData.from_dataarray(da)
-
-                ds[name] = da
-
-            self.flow_system = FlowSystem.from_dataset(ds)
-        self.flow_system.connect_and_transform()
-        self.durations['clustering'] = round(timeit.default_timer() - t_start_agg, 2)
-
-    @classmethod
-    def calculate_clustering_weights(cls, ds: xr.Dataset) -> dict[str, float]:
-        """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
-        groups = [da.attrs.get('clustering_group') for da in ds.data_vars.values() if 'clustering_group' in da.attrs]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        group_weights = {group: 1 / count for group, count in group_counts.items()}
-
-        weights = {}
-        for name, da in ds.data_vars.items():
-            clustering_group = da.attrs.get('clustering_group')
-            group_weight = group_weights.get(clustering_group)
-            if group_weight is not None:
-                weights[name] = group_weight
-            else:
-                weights[name] = da.attrs.get('clustering_weight', 1)
-
-        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.info('All Clustering weights were set to 1')
-
-        return weights
 
 
 class SegmentedOptimization:

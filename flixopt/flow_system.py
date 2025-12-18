@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
+    from .aggregation import AggregationInfo
     from .solvers import _Solver
     from .structure import TimeSeriesWeights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
@@ -231,8 +232,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
-        # Typical periods info - populated by transform.cluster_reduce()
-        self._cluster_info: dict | None = None
+        # Aggregation info - populated by transform.cluster_reduce() or transform.aggregate()
+        self._aggregation_info: AggregationInfo | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -1292,68 +1293,40 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.do_modeling()
 
-        # Add typical periods storage modeling if this is a reduced FlowSystem
-        if self._cluster_info is not None:
-            self._add_typical_periods_modeling()
+        # Add inter-cluster storage linking if this is an aggregated FlowSystem
+        if self._aggregation_info is not None:
+            self._add_inter_cluster_linking()
 
         return self
 
-    def _apply_timestep_weights(self) -> None:
-        """Apply timestep weights to the model for cluster_reduce() optimization.
-
-        .. deprecated::
-            This method is deprecated. Cluster weights are now stored directly on FlowSystem
-            as `cluster_weight` and accessed via `FlowSystemModel.cluster_weight` and
-            `FlowSystemModel.aggregation_weight`.
-        """
-        warnings.warn(
-            '_apply_timestep_weights() is deprecated. Cluster weights are now stored directly '
-            'on FlowSystem as `cluster_weight` and accessed via FlowSystemModel.cluster_weight.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        info = self._cluster_info
-        if info is None:
-            return
-
-        timestep_weights = info['timestep_weights']
-
-        # Store timestep weights on the model for backward compatibility
-        self.model.timestep_weights = xr.DataArray(
-            timestep_weights,
-            coords={'time': self.timesteps},
-            dims=['time'],
-            name='timestep_weights',
-        )
-        logger.info(f'Applied timestep weights for typical periods: sum={sum(timestep_weights)}')
-
-    def _add_typical_periods_modeling(self) -> None:
-        """Add storage inter-period linking for typical periods optimization.
+    def _add_inter_cluster_linking(self) -> None:
+        """Add storage inter-cluster linking for aggregated optimization.
 
         Creates SOC_boundary variables that link storage states between sequential
-        periods in the original time series, using the delta SOC from typical periods.
+        periods in the original time series, using the delta SOC from representative periods.
         """
-        from .clustering import TypicalPeriodsModel
+        from .aggregation.storage_linking import InterClusterLinking
 
-        info = self._cluster_info
+        info = self._aggregation_info
         if info is None:
             return
 
-        if not info.get('storage_inter_period_linking', True):
-            logger.info('Storage inter-period linking disabled')
+        if not info.storage_inter_cluster_linking:
+            logger.info('Storage inter-cluster linking disabled')
             return
 
-        # Create typical periods model for storage linking
-        typical_periods_model = TypicalPeriodsModel(
+        if info.result.cluster_structure is None:
+            logger.warning('No cluster structure available for inter-cluster linking')
+            return
+
+        # Create inter-cluster linking model for storage
+        linking_model = InterClusterLinking(
             model=self.model,
             flow_system=self,
-            cluster_order=info['cluster_order'],
-            cluster_occurrences=info['cluster_occurrences'],
-            n_typical_periods=info['n_clusters'],
-            timesteps_per_period=info['timesteps_per_cluster'],
-            storage_cyclic=info.get('storage_cyclic', True),
+            cluster_structure=info.result.cluster_structure,
+            storage_cyclic=info.storage_cyclic,
         )
-        typical_periods_model.do_modeling()
+        linking_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """

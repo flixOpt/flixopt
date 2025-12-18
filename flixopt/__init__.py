@@ -15,7 +15,6 @@ except (PackageNotFoundError, TypeError):
 # Import commonly used classes and functions
 from . import aggregation, linear_converters, plotting, results, solvers
 from .carrier import Carrier, CarrierContainer
-from .clustering import ClusteringParameters
 from .components import (
     LinearConverter,
     Sink,
@@ -30,7 +29,7 @@ from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
-from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
+from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
 from .structure import TimeSeriesWeights
 
@@ -51,7 +50,6 @@ __all__ = [
     'Transmission',
     'FlowSystem',
     'Optimization',
-    'ClusteredOptimization',
     'SegmentedOptimization',
     'InvestParameters',
     'StatusParameters',
@@ -59,7 +57,6 @@ __all__ = [
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
-    'ClusteringParameters',
     'PlotResult',
     'TimeSeriesWeights',
     'aggregation',
