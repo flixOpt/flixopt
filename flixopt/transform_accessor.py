@@ -1046,8 +1046,8 @@ class TransformAccessor:
 
     def cluster_reduce(
         self,
-        n_typical_periods: int,
         period_duration: str | float,
+        n_typical_periods: int,
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
@@ -1072,9 +1072,9 @@ class TransformAccessor:
         at full resolution for accurate dispatch results.
 
         Args:
-            n_typical_periods: Number of typical periods to extract (e.g., 8 typical days).
             period_duration: Duration of each period. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
+            n_typical_periods: Number of typical periods to extract (e.g., 8 typical days).
             weights: Optional clustering weights per time series. Keys are time series labels.
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
                 periods. **Recommended** for demand time series to capture peak demand days.
@@ -1097,8 +1097,8 @@ class TransformAccessor:
 
             >>> # Stage 1: Size with reduced timesteps (fast)
             >>> fs_sizing = flow_system.transform.cluster_reduce(
-            ...     n_typical_periods=8,
             ...     period_duration='1D',
+            ...     n_typical_periods=8,
             ...     time_series_for_high_peaks=['HeatDemand(Q_th)|fixed_relative_profile'],
             ... )
             >>> fs_sizing.optimize(solver)
@@ -1263,8 +1263,8 @@ class TransformAccessor:
 
             >>> # Stage 1: Size with reduced timesteps
             >>> fs_reduced = flow_system.transform.cluster_reduce(
-            ...     n_typical_periods=8,
             ...     period_duration='1D',
+            ...     n_typical_periods=8,
             ... )
             >>> fs_reduced.optimize(solver)
             >>>
@@ -1304,7 +1304,7 @@ class TransformAccessor:
         cluster_order = info['cluster_order']
         timesteps_per_period = info['timesteps_per_period']
         original_fs: FlowSystem = info['original_fs']
-        n_typical_periods = info['nr_of_typical_periods']
+        n_typical_periods = info['n_typical_periods']
 
         # Get original timesteps from the original FlowSystem
         original_timesteps = original_fs.timesteps

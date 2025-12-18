@@ -927,7 +927,7 @@ class TypicalPeriodsModel(Submodel):
 
         logger.info(
             f'Adding inter-period storage linking for {len(storages)} storages '
-            f'({self.n_original_periods} original periods, {self.nr_of_typical_periods} typical)'
+            f'({self.n_original_periods} original periods, {self.n_typical_periods} typical)'
         )
 
         for storage in storages:
@@ -982,7 +982,7 @@ class TypicalPeriodsModel(Submodel):
         # delta_SOC[c] = charge_state[c, end] - charge_state[c, start]
         # We store these as a dict since linopy expressions can't be concat'd with xr.concat
         delta_soc_dict = {}
-        for c in range(self.nr_of_typical_periods):
+        for c in range(self.n_typical_periods):
             # Get start and end timestep indices for this typical period
             start_idx = c * self.timesteps_per_period
             end_idx = (c + 1) * self.timesteps_per_period  # charge_state has extra timestep at end

@@ -1387,7 +1387,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flow_system=self,
             cluster_order=info['cluster_order'],
             cluster_occurrences=info['cluster_occurrences'],
-            nr_of_typical_periods=info['nr_of_typical_periods'],
+            n_typical_periods=info['n_typical_periods'],
             timesteps_per_period=info['timesteps_per_period'],
             storage_cyclic=info.get('storage_cyclic', True),
         )
