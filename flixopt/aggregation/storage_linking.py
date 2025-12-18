@@ -70,14 +70,14 @@ class InterClusterLinking(Submodel):
         self.storage_cyclic = storage_cyclic
 
         # Extract commonly used values from cluster_structure
-        self._cluster_order = cluster_structure.cluster_order.values
         self._n_clusters = (
             int(cluster_structure.n_clusters)
             if isinstance(cluster_structure.n_clusters, (int, np.integer))
             else int(cluster_structure.n_clusters.values)
         )
         self._timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        self._n_original_periods = len(self._cluster_order)
+        self._n_original_periods = cluster_structure.n_original_periods
+        self._has_multi_dims = cluster_structure.has_multi_dims
 
     def do_modeling(self):
         """Create SOC boundary variables and inter-period linking constraints.
@@ -176,10 +176,18 @@ class InterClusterLinking(Submodel):
 
         # Create linking constraints:
         # SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
-        for d in range(self._n_original_periods):
-            c = int(self._cluster_order[d])
-            lhs = soc_boundary.isel(period_boundary=d + 1) - soc_boundary.isel(period_boundary=d) - delta_soc_dict[c]
-            self.add_constraints(lhs == 0, short_name=f'link|{label}|{d}')
+        if self._has_multi_dims:
+            # Multi-dimensional cluster_order: create constraints per (period, scenario) slice
+            self._add_linking_constraints_multi_dim(storage, soc_boundary, delta_soc_dict, label)
+        else:
+            # Simple case: single cluster_order for all slices
+            cluster_order = self.cluster_structure.get_cluster_order_for_slice()
+            for d in range(self._n_original_periods):
+                c = int(cluster_order[d])
+                lhs = (
+                    soc_boundary.isel(period_boundary=d + 1) - soc_boundary.isel(period_boundary=d) - delta_soc_dict[c]
+                )
+                self.add_constraints(lhs == 0, short_name=f'link|{label}|{d}')
 
         # Cyclic constraint: SOC_boundary[0] = SOC_boundary[end]
         if self.storage_cyclic:
@@ -187,3 +195,65 @@ class InterClusterLinking(Submodel):
             self.add_constraints(lhs == 0, short_name=f'cyclic|{label}')
 
         logger.debug(f'Added inter-cluster linking for storage {label}')
+
+    def _add_linking_constraints_multi_dim(
+        self,
+        storage,
+        soc_boundary,
+        delta_soc_dict: dict,
+        label: str,
+    ) -> None:
+        """Add linking constraints when cluster_order has period/scenario dimensions.
+
+        When different (period, scenario) slices have different cluster assignments,
+        we need to create constraints that select the correct delta_SOC for each slice.
+
+        Args:
+            storage: Storage component being linked.
+            soc_boundary: SOC boundary variable with dims [period_boundary, period?, scenario?].
+            delta_soc_dict: Dict mapping cluster ID to delta_SOC expression.
+            label: Storage label for constraint naming.
+        """
+        # Determine which dimensions we're iterating over
+        periods = list(self.flow_system.periods) if self.flow_system.periods is not None else [None]
+        scenarios = list(self.flow_system.scenarios) if self.flow_system.scenarios is not None else [None]
+        has_periods = periods != [None]
+        has_scenarios = scenarios != [None]
+
+        # For each (period, scenario) combination, create constraints using the slice's cluster_order
+        for p in periods:
+            for s in scenarios:
+                cluster_order = self.cluster_structure.get_cluster_order_for_slice(period=p, scenario=s)
+
+                # Build selector for this slice
+                selector = {}
+                if has_periods and p is not None:
+                    selector['period'] = p
+                if has_scenarios and s is not None:
+                    selector['scenario'] = s
+
+                # Select the slice of soc_boundary and delta_soc for this (period, scenario)
+                soc_boundary_slice = soc_boundary.sel(**selector) if selector else soc_boundary
+
+                for d in range(self._n_original_periods):
+                    c = int(cluster_order[d])
+                    delta_soc = delta_soc_dict[c]
+                    if selector:
+                        delta_soc = (
+                            delta_soc.sel(**selector) if any(dim in delta_soc.dims for dim in selector) else delta_soc
+                        )
+
+                    lhs = (
+                        soc_boundary_slice.isel(period_boundary=d + 1)
+                        - soc_boundary_slice.isel(period_boundary=d)
+                        - delta_soc
+                    )
+
+                    # Build constraint name with period/scenario info
+                    slice_suffix = ''
+                    if has_periods and p is not None:
+                        slice_suffix += f'|p={p}'
+                    if has_scenarios and s is not None:
+                        slice_suffix += f'|s={s}'
+
+                    self.add_constraints(lhs == 0, short_name=f'link|{label}|{d}{slice_suffix}')

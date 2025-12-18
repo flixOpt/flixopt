@@ -318,19 +318,22 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
     fs_reduced.optimize(solver_fixture)
 
     info = fs_reduced._cluster_info
-    cluster_order = info.result.cluster_structure.cluster_order.values
-    timesteps_per_cluster = info.result.cluster_structure.timesteps_per_cluster  # 24
+    cluster_structure = info.result.cluster_structure
+    timesteps_per_cluster = cluster_structure.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
     fs_expanded = fs_reduced.transform.expand_solution()
     expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 
-    # Check mapping for each scenario (all use the same cluster_order in simplified implementation)
+    # Check mapping for each scenario using its own cluster_order
     for scenario in scenarios_2:
+        # Get the cluster_order for THIS scenario
+        cluster_order = cluster_structure.get_cluster_order_for_slice(scenario=scenario)
+
         reduced_scenario = reduced_flow.sel(scenario=scenario).values
         expanded_scenario = expanded_flow.sel(scenario=scenario).values
 
-        # Verify mapping is correct for this scenario
+        # Verify mapping is correct for this scenario using its own cluster_order
         for orig_segment_idx, cluster_id in enumerate(cluster_order):
             orig_start = orig_segment_idx * timesteps_per_cluster
             orig_end = orig_start + timesteps_per_cluster

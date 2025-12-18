@@ -800,32 +800,75 @@ class TransformAccessor:
         # Build ClusterInfo for inter-cluster linking and solution expansion
         n_original_timesteps = len(self._fs.timesteps)
 
-        # Build timestep_mapping: maps each original timestep to its representative
-        timestep_mapping = np.zeros(n_original_timesteps, dtype=np.int32)
-        for period_idx, cluster_id in enumerate(cluster_orders[first_key]):
-            for pos in range(timesteps_per_cluster):
-                original_idx = period_idx * timesteps_per_cluster + pos
-                if original_idx < n_original_timesteps:
-                    representative_idx = cluster_id * timesteps_per_cluster + pos
-                    timestep_mapping[original_idx] = representative_idx
+        # Build per-slice cluster_order and timestep_mapping as multi-dimensional DataArrays
+        # This is needed because each (period, scenario) combination may have different clustering
 
-        # Build cluster_occurrences as DataArray
-        first_occurrences = cluster_occurrences_all[first_key]
-        cluster_occurrences_da = xr.DataArray(
-            [first_occurrences.get(c, 0) for c in range(actual_n_clusters)],
-            dims=['cluster'],
-            name='cluster_occurrences',
-        )
+        def _build_timestep_mapping_for_key(key: tuple) -> np.ndarray:
+            """Build timestep_mapping for a single (period, scenario) slice."""
+            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+            for period_idx, cluster_id in enumerate(cluster_orders[key]):
+                for pos in range(timesteps_per_cluster):
+                    original_idx = period_idx * timesteps_per_cluster + pos
+                    if original_idx < n_original_timesteps:
+                        representative_idx = cluster_id * timesteps_per_cluster + pos
+                        mapping[original_idx] = representative_idx
+            return mapping
+
+        def _build_cluster_occurrences_for_key(key: tuple) -> np.ndarray:
+            """Build cluster_occurrences array for a single (period, scenario) slice."""
+            occurrences = cluster_occurrences_all[key]
+            return np.array([occurrences.get(c, 0) for c in range(actual_n_clusters)])
+
+        # Build multi-dimensional arrays
+        if has_periods or has_scenarios:
+            # Multi-dimensional case: build arrays for each (period, scenario) combination
+            # cluster_order: dims [original_period, period?, scenario?]
+            cluster_order_slices = {}
+            timestep_mapping_slices = {}
+            cluster_occurrences_slices = {}
+
+            for p in periods:
+                for s in scenarios:
+                    key = (p, s)
+                    cluster_order_slices[key] = xr.DataArray(
+                        cluster_orders[key], dims=['original_period'], name='cluster_order'
+                    )
+                    timestep_mapping_slices[key] = xr.DataArray(
+                        _build_timestep_mapping_for_key(key), dims=['original_time'], name='timestep_mapping'
+                    )
+                    cluster_occurrences_slices[key] = xr.DataArray(
+                        _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
+                    )
+
+            # Combine slices into multi-dimensional DataArrays
+            cluster_order_da = self._combine_slices_to_dataarray_generic(
+                cluster_order_slices, ['original_period'], periods, scenarios, 'cluster_order'
+            )
+            timestep_mapping_da = self._combine_slices_to_dataarray_generic(
+                timestep_mapping_slices, ['original_time'], periods, scenarios, 'timestep_mapping'
+            )
+            cluster_occurrences_da = self._combine_slices_to_dataarray_generic(
+                cluster_occurrences_slices, ['cluster'], periods, scenarios, 'cluster_occurrences'
+            )
+        else:
+            # Simple case: single (None, None) slice
+            cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_period'], name='cluster_order')
+            timestep_mapping_da = xr.DataArray(
+                _build_timestep_mapping_for_key(first_key), dims=['original_time'], name='timestep_mapping'
+            )
+            cluster_occurrences_da = xr.DataArray(
+                _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
+            )
 
         cluster_structure = ClusterStructure(
-            cluster_order=xr.DataArray(cluster_orders[first_key], dims=['original_period'], name='cluster_order'),
+            cluster_order=cluster_order_da,
             cluster_occurrences=cluster_occurrences_da,
             n_clusters=actual_n_clusters,
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
         aggregation_result = ClusterResult(
-            timestep_mapping=xr.DataArray(timestep_mapping, dims=['original_time'], name='timestep_mapping'),
+            timestep_mapping=timestep_mapping_da,
             n_representatives=n_reduced_timesteps,
             representative_weights=timestep_weights.rename('representative_weights'),
             cluster_structure=cluster_structure,
@@ -887,6 +930,54 @@ class TransformAccessor:
         result = result.transpose('time', ...)
 
         return result.assign_attrs(original_da.attrs)
+
+    @staticmethod
+    def _combine_slices_to_dataarray_generic(
+        slices: dict[tuple, xr.DataArray],
+        base_dims: list[str],
+        periods: list,
+        scenarios: list,
+        name: str,
+    ) -> xr.DataArray:
+        """Combine per-(period, scenario) slices into a multi-dimensional DataArray.
+
+        Generic version that works with any base dimension (not just 'time').
+
+        Args:
+            slices: Dict mapping (period, scenario) tuples to DataArrays.
+            base_dims: Base dimensions of each slice (e.g., ['original_period'] or ['original_time']).
+            periods: List of period labels ([None] if no periods dimension).
+            scenarios: List of scenario labels ([None] if no scenarios dimension).
+            name: Name for the resulting DataArray.
+
+        Returns:
+            DataArray with dimensions [base_dims..., period?, scenario?].
+        """
+        first_key = (periods[0], scenarios[0])
+        has_periods = periods != [None]
+        has_scenarios = scenarios != [None]
+
+        # Simple case: no period/scenario dimensions
+        if not has_periods and not has_scenarios:
+            return slices[first_key].rename(name)
+
+        # Multi-dimensional: use xr.concat to stack along period/scenario dims
+        if has_periods and has_scenarios:
+            # Stack scenarios first, then periods
+            period_arrays = []
+            for p in periods:
+                scenario_arrays = [slices[(p, s)] for s in scenarios]
+                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
+            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
+        elif has_periods:
+            result = xr.concat([slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
+        else:
+            result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
+
+        # Put base dimension first (standard order)
+        result = result.transpose(base_dims[0], ...)
+
+        return result.rename(name)
 
     def expand_solution(self) -> FlowSystem:
         """Expand a reduced (clustered) FlowSystem back to full original timesteps.
@@ -964,7 +1055,6 @@ class TransformAccessor:
         )
         has_periods = original_fs.periods is not None
         has_scenarios = original_fs.scenarios is not None
-        cluster_order = cluster_structure.cluster_order.values
 
         periods = list(original_fs.periods) if has_periods else [None]
         scenarios = list(original_fs.scenarios) if has_scenarios else [None]
@@ -973,11 +1063,15 @@ class TransformAccessor:
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
-        # Build expansion mapping (same for all period/scenario combinations)
-        base_mapping = self._build_expansion_mapping(cluster_order, timesteps_per_cluster, n_original_timesteps)
-
-        # Create mappings dict for all (period, scenario) combinations using the same mapping
-        mappings = {(p, s): base_mapping for p in periods for s in scenarios}
+        # Build expansion mapping per (period, scenario) combination
+        # Each slice may have a different cluster assignment
+        mappings = {}
+        for p in periods:
+            for s in scenarios:
+                cluster_order = cluster_structure.get_cluster_order_for_slice(period=p, scenario=s)
+                mappings[(p, s)] = self._build_expansion_mapping(
+                    cluster_order, timesteps_per_cluster, n_original_timesteps
+                )
 
         # Expand function for DataArrays
         def expand_da(da: xr.DataArray) -> xr.DataArray:
@@ -1012,13 +1106,14 @@ class TransformAccessor:
         )
 
         n_combinations = len(periods) * len(scenarios)
+        n_original_segments = cluster_structure.n_original_periods
         logger.info(
             f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
             f'({n_clusters} clusters'
             + (
                 f', {n_combinations} period/scenario combinations)'
                 if n_combinations > 1
-                else f' → {len(cluster_order)} original segments)'
+                else f' → {n_original_segments} original segments)'
             )
         )
 

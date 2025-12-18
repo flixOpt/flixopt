@@ -37,10 +37,11 @@ class ClusterStructure:
 
     Attributes:
         cluster_order: Maps each original time chunk index to its cluster ID.
-            dims: [original_period] where original_period indexes the time chunks
-            (e.g., days) before clustering. Values are cluster indices (0 to n_clusters-1).
+            dims: [original_period] for simple case, or
+            [original_period, period, scenario] for multi-period/scenario systems.
+            Values are cluster indices (0 to n_clusters-1).
         cluster_occurrences: Count of how many original time chunks each cluster represents.
-            dims: [cluster]
+            dims: [cluster] for simple case, or [cluster, period, scenario] for multi-dim.
         n_clusters: Number of distinct clusters (typical periods).
         timesteps_per_cluster: Number of timesteps in each cluster (e.g., 24 for daily).
 
@@ -50,6 +51,10 @@ class ClusterStructure:
         - cluster_occurrences: shape (8,), e.g., [45, 46, 46, 46, 46, 45, 45, 46]
         - n_clusters: 8
         - timesteps_per_cluster: 24 (for hourly data)
+
+        For multi-scenario (e.g., 2 scenarios):
+        - cluster_order: shape (365, 2) with dims [original_period, scenario]
+        - cluster_occurrences: shape (8, 2) with dims [cluster, scenario]
     """
 
     cluster_order: xr.DataArray
@@ -77,6 +82,47 @@ class ClusterStructure:
     def n_original_periods(self) -> int:
         """Number of original periods (before clustering)."""
         return len(self.cluster_order.coords['original_period'])
+
+    @property
+    def has_multi_dims(self) -> bool:
+        """Check if cluster_order has period/scenario dimensions."""
+        return 'period' in self.cluster_order.dims or 'scenario' in self.cluster_order.dims
+
+    def get_cluster_order_for_slice(self, period: str | None = None, scenario: str | None = None) -> np.ndarray:
+        """Get cluster_order for a specific (period, scenario) combination.
+
+        Args:
+            period: Period label (None if no period dimension).
+            scenario: Scenario label (None if no scenario dimension).
+
+        Returns:
+            1D numpy array of cluster indices for the specified slice.
+        """
+        order = self.cluster_order
+        if 'period' in order.dims and period is not None:
+            order = order.sel(period=period)
+        if 'scenario' in order.dims and scenario is not None:
+            order = order.sel(scenario=scenario)
+        return order.values.astype(int)
+
+    def get_cluster_occurrences_for_slice(
+        self, period: str | None = None, scenario: str | None = None
+    ) -> dict[int, int]:
+        """Get cluster occurrence counts for a specific (period, scenario) combination.
+
+        Args:
+            period: Period label (None if no period dimension).
+            scenario: Scenario label (None if no scenario dimension).
+
+        Returns:
+            Dict mapping cluster ID to occurrence count.
+        """
+        occurrences = self.cluster_occurrences
+        if 'period' in occurrences.dims and period is not None:
+            occurrences = occurrences.sel(period=period)
+        if 'scenario' in occurrences.dims and scenario is not None:
+            occurrences = occurrences.sel(scenario=scenario)
+        return {int(c): int(occurrences.sel(cluster=c).values) for c in occurrences.coords['cluster'].values}
 
     def get_cluster_weight_per_timestep(self) -> xr.DataArray:
         """Get weight for each representative timestep.
@@ -118,11 +164,12 @@ class ClusterResult:
 
     Attributes:
         timestep_mapping: Maps each original timestep to its representative index.
-            dims: [original_time]
+            dims: [original_time] for simple case, or
+            [original_time, period, scenario] for multi-period/scenario systems.
             Values are indices into the representative timesteps (0 to n_representatives-1).
         n_representatives: Number of representative timesteps after aggregation.
         representative_weights: Weight for each representative timestep.
-            dims: [time]
+            dims: [time] or [time, period, scenario]
             Typically equals the number of original timesteps each representative covers.
             Used as cluster_weight in the FlowSystem.
         aggregated_data: Time series data aggregated to representative timesteps.
@@ -177,6 +224,23 @@ class ClusterResult:
             DataArray mapping original timesteps to representative indices.
         """
         return self.timestep_mapping.rename('expansion_mapping')
+
+    def get_timestep_mapping_for_slice(self, period: str | None = None, scenario: str | None = None) -> np.ndarray:
+        """Get timestep_mapping for a specific (period, scenario) combination.
+
+        Args:
+            period: Period label (None if no period dimension).
+            scenario: Scenario label (None if no scenario dimension).
+
+        Returns:
+            1D numpy array of representative timestep indices for the specified slice.
+        """
+        mapping = self.timestep_mapping
+        if 'period' in mapping.dims and period is not None:
+            mapping = mapping.sel(period=period)
+        if 'scenario' in mapping.dims and scenario is not None:
+            mapping = mapping.sel(scenario=scenario)
+        return mapping.values.astype(int)
 
     def validate(self) -> None:
         """Validate that all fields are consistent.
