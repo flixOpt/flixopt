@@ -677,6 +677,8 @@ class ClusteringModel(Submodel):
         clustering_parameters: ClusteringParameters,
         flow_system: FlowSystem,
         components_to_clusterize: list[Component] | None = None,
+        period_selector: int | str | None = None,
+        scenario_selector: str | None = None,
     ):
         """
         Args:
@@ -684,11 +686,22 @@ class ClusteringModel(Submodel):
             clustering_parameters: Parameters controlling clustering behavior (must have indices populated).
             flow_system: The FlowSystem being optimized.
             components_to_clusterize: Components to apply clustering to. If None, all components.
+            period_selector: If provided, only add constraints for this period (for multi-period FlowSystems).
+            scenario_selector: If provided, only add constraints for this scenario (for multi-scenario FlowSystems).
         """
-        super().__init__(model, label_of_element='Clustering', label_of_model='Clustering')
+        # Include period/scenario in label for multi-dimensional cases
+        label_suffix = ''
+        if period_selector is not None:
+            label_suffix += f'|{period_selector}'
+        if scenario_selector is not None:
+            label_suffix += f'|{scenario_selector}'
+
+        super().__init__(model, label_of_element='Clustering', label_of_model=f'Clustering{label_suffix}')
         self.flow_system = flow_system
         self.clustering_parameters = clustering_parameters
         self.components_to_clusterize = components_to_clusterize
+        self.period_selector = period_selector
+        self.scenario_selector = scenario_selector
 
     def do_modeling(self):
         """Create equality constraints for clustered time indices.
@@ -781,6 +794,13 @@ class ClusteringModel(Submodel):
         for name, var in variables.items():
             if 'time' not in var.dims:
                 continue
+
+            # For multi-period/scenario, select only the relevant slice
+            # Each period/scenario has its own clustering indices
+            if self.period_selector is not None and 'period' in var.dims:
+                var = var.sel(period=self.period_selector)
+            if self.scenario_selector is not None and 'scenario' in var.dims:
+                var = var.sel(scenario=self.scenario_selector)
 
             # Compute difference: var[idx_i] - var[idx_j]
             diff = var.isel(time=idx_i) - var.isel(time=idx_j)

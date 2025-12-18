@@ -1333,6 +1333,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_clustering_constraints(self) -> None:
         """Add clustering constraints to the model."""
+        import copy
+
         from .clustering import ClusteringModel
 
         info = self._clustering_info or {}
@@ -1340,27 +1342,52 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if 'parameters' not in info:
             raise KeyError('_clustering_info missing required key: "parameters"')
 
-        parameters = info['parameters']
+        base_parameters = info['parameters']
+        clustering_obj = info.get('clustering')
 
-        # Populate indices from tsam if not already set
-        if not parameters.has_indices:
-            if 'clustering' not in info:
-                raise KeyError(
-                    '_clustering_info missing "clustering" and parameters have no indices. '
-                    'Either provide cluster_order/period_length or run transform.cluster() first.'
+        # Check if this is a multi-period/scenario clustering
+        is_multi_dimensional = isinstance(clustering_obj, dict) and len(clustering_obj) > 1
+
+        if is_multi_dimensional:
+            # For multi-period/scenario, create separate constraints for each combination
+            # Each (period, scenario) has its own clustering with different cluster assignments
+            for (period_label, scenario_label), clustering in clustering_obj.items():
+                # Create a copy of parameters with this period's indices
+                params_copy = copy.copy(base_parameters)
+                params_copy.populate_from_tsam(clustering.tsam)
+
+                # Determine period/scenario selector
+                period_selector = period_label if period_label is not None else None
+                scenario_selector = scenario_label if scenario_label is not None else None
+
+                clustering_model = ClusteringModel(
+                    model=self.model,
+                    clustering_parameters=params_copy,
+                    flow_system=self,
+                    components_to_clusterize=info.get('components_to_clusterize'),
+                    period_selector=period_selector,
+                    scenario_selector=scenario_selector,
                 )
-            clustering_obj = info['clustering']
-            if isinstance(clustering_obj, dict):
-                clustering_obj = next(iter(clustering_obj.values()))
-            parameters.populate_from_tsam(clustering_obj.tsam)
+                clustering_model.do_modeling()
+        else:
+            # Single dimension - use original logic
+            if not base_parameters.has_indices:
+                if clustering_obj is None:
+                    raise KeyError(
+                        '_clustering_info missing "clustering" and parameters have no indices. '
+                        'Either provide cluster_order/period_length or run transform.cluster() first.'
+                    )
+                if isinstance(clustering_obj, dict):
+                    clustering_obj = next(iter(clustering_obj.values()))
+                base_parameters.populate_from_tsam(clustering_obj.tsam)
 
-        clustering_model = ClusteringModel(
-            model=self.model,
-            clustering_parameters=parameters,
-            flow_system=self,
-            components_to_clusterize=info.get('components_to_clusterize'),
-        )
-        clustering_model.do_modeling()
+            clustering_model = ClusteringModel(
+                model=self.model,
+                clustering_parameters=base_parameters,
+                flow_system=self,
+                components_to_clusterize=info.get('components_to_clusterize'),
+            )
+            clustering_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
