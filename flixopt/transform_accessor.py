@@ -1212,12 +1212,13 @@ class TransformAccessor:
                 )
 
         # Build reduced dataset
+        all_keys = {(p, s) for p in periods for s in scenarios}
         ds_new_vars = {}
         for name, original_da in ds.data_vars.items():
             if 'time' not in original_da.dims:
                 ds_new_vars[name] = original_da.copy()
-            elif name not in typical_das:
-                # Time-dependent but constant: slice to new time length
+            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
+                # Time-dependent but constant (or not present in all clustering results): slice to new time length
                 ds_new_vars[name] = original_da.isel(time=slice(0, n_reduced_timesteps)).assign_coords(
                     time=new_time_index
                 )
