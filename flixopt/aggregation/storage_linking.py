@@ -130,32 +130,41 @@ class InterClusterLinking(Submodel):
         # Create SOC_boundary variables for each original period boundary
         # We need n_original_periods + 1 boundaries (start of first through end of last)
         n_boundaries = self._n_original_periods + 1
-        boundary_coords = [np.arange(n_boundaries)]
-        boundary_dims = ['period_boundary']
+        boundary_coords = {'cluster_boundary': np.arange(n_boundaries)}
+        boundary_dims = ['cluster_boundary']
 
-        # Build bounds - handle both scalar and multi-dimensional cap_value
+        # Determine extra dimensions from FlowSystem (period, scenario)
+        # These are needed even if cap_value is scalar, because different periods/scenarios
+        # may have different cluster assignments
+        extra_dims = []
+        if self.flow_system.periods is not None:
+            extra_dims.append('period')
+            boundary_coords['period'] = np.array(list(self.flow_system.periods))
+        if self.flow_system.scenarios is not None:
+            extra_dims.append('scenario')
+            boundary_coords['scenario'] = np.array(list(self.flow_system.scenarios))
+
+        if extra_dims:
+            boundary_dims = ['cluster_boundary'] + extra_dims
+
+        # Build bounds shape
+        lb_shape = [n_boundaries] + [len(boundary_coords[d]) for d in extra_dims]
+        lb = xr.DataArray(np.zeros(lb_shape), coords=boundary_coords, dims=boundary_dims)
+
+        # Get upper bound from capacity
         if isinstance(cap_value, xr.DataArray) and cap_value.dims:
-            # cap_value has dimensions (e.g., period, scenario) - need to broadcast
-            extra_dims = list(cap_value.dims)
-            extra_coords = {dim: cap_value.coords[dim].values for dim in extra_dims}
-
-            boundary_dims = ['period_boundary'] + extra_dims
-            boundary_coords = [np.arange(n_boundaries)] + [extra_coords[d] for d in extra_dims]
-
-            lb_coords = {'period_boundary': np.arange(n_boundaries), **extra_coords}
-            lb_shape = [n_boundaries] + [len(extra_coords[d]) for d in extra_dims]
-            lb = xr.DataArray(np.zeros(lb_shape), coords=lb_coords, dims=boundary_dims)
-
-            ub = cap_value.expand_dims({'period_boundary': n_boundaries}, axis=0)
-            ub = ub.assign_coords(period_boundary=np.arange(n_boundaries))
+            # cap_value has dimensions - expand to include cluster_boundary
+            ub = cap_value.expand_dims({'cluster_boundary': n_boundaries}, axis=0)
+            ub = ub.assign_coords(cluster_boundary=np.arange(n_boundaries))
+            # Ensure dims are in the right order
+            ub = ub.transpose('cluster_boundary', ...)
         else:
-            # Scalar cap_value
+            # Scalar cap_value - broadcast to all dims
             if hasattr(cap_value, 'item'):
                 cap_value = float(cap_value.item())
             else:
                 cap_value = float(cap_value)
-            lb = xr.DataArray(0.0, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
-            ub = xr.DataArray(cap_value, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
+            ub = xr.DataArray(np.full(lb_shape, cap_value), coords=boundary_coords, dims=boundary_dims)
 
         soc_boundary = self.add_variables(
             lower=lb,
@@ -185,13 +194,15 @@ class InterClusterLinking(Submodel):
             for d in range(self._n_original_periods):
                 c = int(cluster_order[d])
                 lhs = (
-                    soc_boundary.isel(period_boundary=d + 1) - soc_boundary.isel(period_boundary=d) - delta_soc_dict[c]
+                    soc_boundary.isel(cluster_boundary=d + 1)
+                    - soc_boundary.isel(cluster_boundary=d)
+                    - delta_soc_dict[c]
                 )
                 self.add_constraints(lhs == 0, short_name=f'link|{label}|{d}')
 
         # Cyclic constraint: SOC_boundary[0] = SOC_boundary[end]
         if self.storage_cyclic:
-            lhs = soc_boundary.isel(period_boundary=0) - soc_boundary.isel(period_boundary=self._n_original_periods)
+            lhs = soc_boundary.isel(cluster_boundary=0) - soc_boundary.isel(cluster_boundary=self._n_original_periods)
             self.add_constraints(lhs == 0, short_name=f'cyclic|{label}')
 
         logger.debug(f'Added inter-cluster linking for storage {label}')
@@ -210,7 +221,7 @@ class InterClusterLinking(Submodel):
 
         Args:
             storage: Storage component being linked.
-            soc_boundary: SOC boundary variable with dims [period_boundary, period?, scenario?].
+            soc_boundary: SOC boundary variable with dims [cluster_boundary, period?, scenario?].
             delta_soc_dict: Dict mapping cluster ID to delta_SOC expression.
             label: Storage label for constraint naming.
         """
@@ -220,32 +231,40 @@ class InterClusterLinking(Submodel):
         has_periods = periods != [None]
         has_scenarios = scenarios != [None]
 
+        # Check which dimensions soc_boundary actually has
+        soc_dims = set(soc_boundary.dims)
+
         # For each (period, scenario) combination, create constraints using the slice's cluster_order
         for p in periods:
             for s in scenarios:
                 cluster_order = self.cluster_structure.get_cluster_order_for_slice(period=p, scenario=s)
 
-                # Build selector for this slice
-                selector = {}
-                if has_periods and p is not None:
-                    selector['period'] = p
-                if has_scenarios and s is not None:
-                    selector['scenario'] = s
+                # Build selector for this slice - only include dims that exist in soc_boundary
+                soc_selector = {}
+                if has_periods and p is not None and 'period' in soc_dims:
+                    soc_selector['period'] = p
+                if has_scenarios and s is not None and 'scenario' in soc_dims:
+                    soc_selector['scenario'] = s
 
-                # Select the slice of soc_boundary and delta_soc for this (period, scenario)
-                soc_boundary_slice = soc_boundary.sel(**selector) if selector else soc_boundary
+                # Select the slice of soc_boundary for this (period, scenario)
+                soc_boundary_slice = soc_boundary.sel(**soc_selector) if soc_selector else soc_boundary
 
                 for d in range(self._n_original_periods):
                     c = int(cluster_order[d])
                     delta_soc = delta_soc_dict[c]
-                    if selector:
-                        delta_soc = (
-                            delta_soc.sel(**selector) if any(dim in delta_soc.dims for dim in selector) else delta_soc
-                        )
+
+                    # Build selector for delta_soc - check which dims it has
+                    delta_selector = {}
+                    if has_periods and p is not None and 'period' in delta_soc.dims:
+                        delta_selector['period'] = p
+                    if has_scenarios and s is not None and 'scenario' in delta_soc.dims:
+                        delta_selector['scenario'] = s
+                    if delta_selector:
+                        delta_soc = delta_soc.sel(**delta_selector)
 
                     lhs = (
-                        soc_boundary_slice.isel(period_boundary=d + 1)
-                        - soc_boundary_slice.isel(period_boundary=d)
+                        soc_boundary_slice.isel(cluster_boundary=d + 1)
+                        - soc_boundary_slice.isel(cluster_boundary=d)
                         - delta_soc
                     )
 
