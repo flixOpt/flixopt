@@ -696,6 +696,183 @@ class TransformAccessor:
 
         return new_fs
 
+    def cluster_reduce(
+        self,
+        hours_per_period: float,
+        nr_of_typical_periods: int,
+        weights: dict[str, float] | None = None,
+        time_series_for_high_peaks: list[str] | None = None,
+        time_series_for_low_peaks: list[str] | None = None,
+        storage_inter_period_linking: bool = True,
+        storage_cyclic: bool = True,
+    ) -> FlowSystem:
+        """
+        Create a FlowSystem with reduced timesteps using typical periods.
+
+        This method creates a new FlowSystem optimized for sizing studies by reducing
+        the number of timesteps to only the typical (representative) periods identified
+        through time series aggregation. Unlike `cluster()` which uses equality constraints,
+        this method actually reduces the problem size for faster solving.
+
+        The method:
+        1. Performs time series clustering using tsam
+        2. Extracts only the typical periods (not all original timesteps)
+        3. Applies timestep weighting for accurate cost representation
+        4. Optionally links storage states between periods via boundary variables
+
+        Use this for initial sizing optimization, then use `fix_sizes()` to re-optimize
+        at full resolution for accurate dispatch results.
+
+        Args:
+            hours_per_period: Duration of each period in hours (e.g., 24 for daily periods).
+            nr_of_typical_periods: Number of typical periods to extract (e.g., 8).
+            weights: Optional clustering weights per time series. Keys are time series labels.
+            time_series_for_high_peaks: Time series labels for explicitly selecting high-value periods.
+            time_series_for_low_peaks: Time series labels for explicitly selecting low-value periods.
+            storage_inter_period_linking: If True, link storage states between periods using
+                boundary variables. This preserves long-term storage behavior. Default: True.
+            storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end] for storages.
+                Only used when storage_inter_period_linking=True. Default: True.
+
+        Returns:
+            A new FlowSystem with reduced timesteps (only typical periods).
+            The FlowSystem has `timestep_weights` stored in `_typical_periods_info`.
+
+        Raises:
+            ValueError: If timestep sizes are inconsistent.
+            ValueError: If hours_per_period is not a multiple of timestep size.
+
+        Examples:
+            Two-stage sizing optimization:
+
+            >>> # Stage 1: Size with reduced timesteps (fast)
+            >>> fs_sizing = flow_system.transform.cluster_reduce(
+            ...     hours_per_period=24,
+            ...     nr_of_typical_periods=8,
+            ... )
+            >>> fs_sizing.optimize(solver)
+            >>>
+            >>> # Stage 2: Fix sizes and re-optimize at full resolution
+            >>> fs_dispatch = flow_system.transform.fix_sizes(fs_sizing.statistics.sizes)
+            >>> fs_dispatch.optimize(solver)
+
+        Note:
+            - This is best suited for initial sizing, not final dispatch optimization
+            - Storage linking adds SOC_boundary variables to track state between periods
+            - Timestep weights are applied to operational costs automatically
+        """
+        import numpy as np
+
+        from .clustering import Clustering
+        from .core import DataConverter, TimeSeriesData, drop_constant_arrays
+        from .flow_system import FlowSystem
+
+        # Validation
+        dt_min = float(self._fs.hours_per_timestep.min().item())
+        dt_max = float(self._fs.hours_per_timestep.max().item())
+        if dt_min != dt_max:
+            raise ValueError(
+                f'Clustering failed due to inconsistent time step sizes: '
+                f'delta_t varies from {dt_min} to {dt_max} hours.'
+            )
+        ratio = hours_per_period / dt_max
+        if not np.isclose(ratio, round(ratio), atol=1e-9):
+            raise ValueError(
+                f'The selected hours_per_period={hours_per_period} does not match the time '
+                f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
+            )
+
+        timesteps_per_period = int(round(hours_per_period / dt_max))
+
+        logger.info(f'{"":#^80}')
+        logger.info(f'{" Creating Typical Periods (Reduced Timesteps) ":#^80}')
+
+        # Get dataset representation
+        ds = self._fs.to_dataset()
+        temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
+
+        # Perform clustering
+        clustering = Clustering(
+            original_data=temporaly_changing_ds.to_dataframe(),
+            hours_per_time_step=float(dt_min),
+            hours_per_period=hours_per_period,
+            nr_of_periods=nr_of_typical_periods,
+            weights=weights or self._calculate_clustering_weights(temporaly_changing_ds),
+            time_series_for_high_peaks=time_series_for_high_peaks or [],
+            time_series_for_low_peaks=time_series_for_low_peaks or [],
+        )
+        clustering.cluster()
+
+        # Extract typical periods data from tsam
+        typical_periods_df = clustering.tsam.typicalPeriods
+        cluster_order = clustering.tsam.clusterOrder  # Order in which clusters appear
+        cluster_occurrences = clustering.tsam.clusterPeriodNoOccur  # {cluster_id: count}
+
+        # Create timestep weights: each typical period timestep represents multiple original timesteps
+        # Weight = number of original periods this typical period represents
+        timestep_weights = []
+        for typical_period_idx in range(nr_of_typical_periods):
+            weight = cluster_occurrences.get(typical_period_idx, 1)
+            timestep_weights.extend([weight] * timesteps_per_period)
+
+        timestep_weights = np.array(timestep_weights)
+
+        logger.info(f'Reduced from {len(self._fs.timesteps)} to {len(typical_periods_df)} timesteps')
+        logger.info(f'Cluster occurrences: {cluster_occurrences}')
+
+        # Create new time index for typical periods
+        # Use a synthetic time index starting from the original start time
+        original_time = self._fs.timesteps
+        time_start = original_time[0]
+        freq = pd.Timedelta(hours=dt_min)
+        new_time_index = pd.date_range(
+            start=time_start,
+            periods=len(typical_periods_df),
+            freq=freq,
+        )
+
+        # Build new dataset with typical periods data
+        ds_new = self._fs.to_dataset()
+
+        # Update time-varying data arrays with typical periods values
+        typical_periods_df.index = new_time_index  # Reindex with our new time
+        for name in typical_periods_df.columns:
+            if name in ds_new.data_vars:
+                series = typical_periods_df[name]
+                da = DataConverter.to_dataarray(
+                    series,
+                    {'time': new_time_index, **{k: v for k, v in self._fs.coords.items() if k != 'time'}},
+                ).rename(name)
+                da = da.assign_attrs(ds_new[name].attrs)
+                if TimeSeriesData.is_timeseries_data(da):
+                    da = TimeSeriesData.from_dataarray(da)
+                ds_new[name] = da
+
+        # Update time coordinate
+        ds_new = ds_new.reindex(time=new_time_index)
+
+        # Update metadata
+        ds_new.attrs['timesteps_per_period'] = timesteps_per_period
+        ds_new.attrs['hours_per_timestep'] = dt_min
+
+        # Create new FlowSystem with reduced timesteps
+        reduced_fs = FlowSystem.from_dataset(ds_new)
+
+        # Store typical periods info for later use during modeling
+        reduced_fs._typical_periods_info = {
+            'clustering': clustering,
+            'timestep_weights': timestep_weights,
+            'cluster_order': cluster_order,
+            'cluster_occurrences': cluster_occurrences,
+            'nr_of_typical_periods': nr_of_typical_periods,
+            'timesteps_per_period': timesteps_per_period,
+            'storage_inter_period_linking': storage_inter_period_linking,
+            'storage_cyclic': storage_cyclic,
+            'original_fs': self._fs,
+        }
+
+        return reduced_fs
+
     # Future methods can be added here:
     #
     # def mga(self, alternatives: int = 5) -> FlowSystem:

@@ -620,8 +620,13 @@ class ShareAllocationModel(Submodel):
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
-            # Add it to the total
-            self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
+            # Add it to the total, with optional timestep weighting for typical periods optimization
+            # timestep_weights is set by TypicalPeriodsModel when using cluster_reduce()
+            timestep_weights = getattr(self._model, 'timestep_weights', None)
+            if timestep_weights is not None:
+                self._eq_total.lhs -= (self.total_per_timestep * timestep_weights).sum(dim='time')
+            else:
+                self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
 
     def add_share(
         self,

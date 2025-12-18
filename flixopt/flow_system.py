@@ -219,6 +219,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Clustering info - populated by transform.cluster()
         self._clustering_info: dict | None = None
 
+        # Typical periods info - populated by transform.cluster_reduce()
+        self._typical_periods_info: dict | None = None
+
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
@@ -1270,11 +1273,29 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.connect_and_transform()
         self.create_model(normalize_weights)
+
+        # Set timestep weights before do_modeling if using typical periods
+        # This allows ShareAllocationModel to apply weights when summing temporal effects
+        if self._typical_periods_info is not None:
+            import xarray as xr
+
+            timestep_weights = self._typical_periods_info.get('timestep_weights')
+            if timestep_weights is not None:
+                self.model.timestep_weights = xr.DataArray(
+                    timestep_weights,
+                    dims=['time'],
+                    coords={'time': self.timesteps},
+                )
+
         self.model.do_modeling()
 
         # Add clustering constraints if this is a clustered FlowSystem
         if self._clustering_info is not None:
             self._add_clustering_constraints()
+
+        # Add typical periods modeling (storage linking)
+        if self._typical_periods_info is not None:
+            self._add_typical_periods_modeling()
 
         return self
 
@@ -1296,6 +1317,33 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             components_to_clusterize=info['components_to_clusterize'],
         )
         clustering_model.do_modeling()
+
+    def _add_typical_periods_modeling(self) -> None:
+        """Add typical periods modeling (timestep weighting and storage linking)."""
+        from .clustering import TypicalPeriodsModel
+
+        info = self._typical_periods_info or {}
+        required_keys = {
+            'timestep_weights',
+            'cluster_order',
+            'nr_of_typical_periods',
+            'timesteps_per_period',
+        }
+        missing_keys = required_keys - set(info)
+        if missing_keys:
+            raise KeyError(f'_typical_periods_info missing required keys: {sorted(missing_keys)}')
+
+        typical_periods_model = TypicalPeriodsModel(
+            model=self.model,
+            flow_system=self,
+            timestep_weights=info['timestep_weights'],
+            cluster_order=info['cluster_order'],
+            nr_of_typical_periods=info['nr_of_typical_periods'],
+            timesteps_per_period=info['timesteps_per_period'],
+            storage_inter_period_linking=info.get('storage_inter_period_linking', True),
+            storage_cyclic=info.get('storage_cyclic', True),
+        )
+        typical_periods_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
