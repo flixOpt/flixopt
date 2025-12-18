@@ -51,6 +51,27 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.0.3] - 2025-12-17
+
+**Summary**: Cleaner notebook outputs and improved `CONFIG.notebook()` preset.
+
+### ♻️ Changed
+
+- `CONFIG.notebook()` now suppresses linopy progress bars via `progress=False` in solve calls
+- Downgraded "FlowSystem not connected" message from WARNING to INFO (auto-connects anyway)
+
+### 🐛 Fixed
+
+- Fixed notebooks triggering unnecessary warnings (removed `relative_minimum` without `status_parameters`)
+
+### 📝 Docs
+
+- Consolidated verbose print statements into concise single-line summaries across all tutorial notebooks
+- Added output suppression (`;`) to `optimize()` calls for cleaner cell output
+- Fixed notebook 07 parameters so CHP investment produces interesting results (was 0 kW, now 100 kW)
+
+---
+
 ## [5.0.2] - 2025-12-17
 
 ### ♻️ Changed
