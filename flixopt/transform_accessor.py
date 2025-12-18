@@ -1240,6 +1240,139 @@ class TransformAccessor:
 
         return reduced_fs
 
+    def expand_solution(self) -> FlowSystem:
+        """Expand a reduced (typical periods) FlowSystem back to full original timesteps.
+
+        After solving a FlowSystem created with ``cluster_reduce()``, this method
+        disaggregates the FlowSystem by:
+        1. Expanding all time series data from typical periods to full timesteps
+        2. Expanding the solution by mapping each typical period back to all
+           original periods it represents
+
+        This enables using all existing solution accessors (``statistics``, ``plot``, etc.)
+        with full time resolution, where both the data and solution are consistently
+        expanded from the typical periods.
+
+        Returns:
+            FlowSystem: A new FlowSystem with full timesteps and expanded solution.
+
+        Raises:
+            ValueError: If the FlowSystem was not created with ``cluster_reduce()``.
+            ValueError: If the FlowSystem has no solution.
+
+        Examples:
+            Two-stage optimization with solution expansion:
+
+            >>> # Stage 1: Size with reduced timesteps
+            >>> fs_reduced = flow_system.transform.cluster_reduce(
+            ...     n_typical_periods=8,
+            ...     period_duration='1D',
+            ... )
+            >>> fs_reduced.optimize(solver)
+            >>>
+            >>> # Expand to full resolution FlowSystem
+            >>> fs_expanded = fs_reduced.transform.expand_solution()
+            >>>
+            >>> # Use all existing accessors with full timesteps
+            >>> fs_expanded.statistics.flow_rates  # Full 8760 timesteps
+            >>> fs_expanded.statistics.plot.balance('HeatBus')  # Full resolution plots
+            >>> fs_expanded.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
+
+        Note:
+            The expanded FlowSystem repeats the typical period values for all
+            periods belonging to the same cluster. Both input data and solution
+            are consistently expanded, so they match. This is an approximation -
+            the actual dispatch at full resolution would differ due to
+            intra-period variations in time series data.
+
+            For accurate dispatch results, use ``fix_sizes()`` to fix the sizes
+            from the reduced optimization and re-optimize at full resolution.
+        """
+        import numpy as np
+
+        from .flow_system import FlowSystem
+
+        # Validate
+        if not hasattr(self._fs, '_typical_periods_info') or self._fs._typical_periods_info is None:
+            raise ValueError(
+                'expand_solution() requires a FlowSystem created with cluster_reduce(). '
+                'This FlowSystem has no typical periods info.'
+            )
+
+        if self._fs.solution is None:
+            raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
+
+        info = self._fs._typical_periods_info
+        cluster_order = info['cluster_order']
+        timesteps_per_period = info['timesteps_per_period']
+        original_fs: FlowSystem = info['original_fs']
+        n_typical_periods = info['nr_of_typical_periods']
+
+        # Get original timesteps from the original FlowSystem
+        original_timesteps = original_fs.timesteps
+        n_original_timesteps = len(original_timesteps)
+        n_reduced_timesteps = n_typical_periods * timesteps_per_period
+
+        # Build mapping: for each original timestep, which reduced timestep to copy from
+        mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+
+        for orig_ts_idx in range(n_original_timesteps):
+            # Which original period does this timestep belong to?
+            orig_period_idx = orig_ts_idx // timesteps_per_period
+            # Position within the period
+            pos_in_period = orig_ts_idx % timesteps_per_period
+
+            # Which cluster (typical period) does this original period map to?
+            cluster_id = cluster_order[orig_period_idx] if orig_period_idx < len(cluster_order) else 0
+
+            # The corresponding timestep in the reduced solution
+            reduced_ts_idx = cluster_id * timesteps_per_period + pos_in_period
+
+            # Ensure we don't exceed reduced solution bounds
+            mapping[orig_ts_idx] = min(reduced_ts_idx, n_reduced_timesteps - 1)
+
+        # Helper function to expand time-dependent data
+        def expand_time_data(da: xr.DataArray) -> xr.DataArray:
+            if 'time' not in da.dims:
+                return da.copy()
+            expanded_da = da.isel(time=xr.DataArray(mapping, dims=['time']))
+            expanded_da = expanded_da.assign_coords(time=original_timesteps)
+            return expanded_da.assign_attrs(da.attrs)
+
+        # 1. Expand the FlowSystem's data (input time series)
+        reduced_ds = self._fs.to_dataset(include_solution=False)
+        expanded_ds_data = {}
+
+        for var_name in reduced_ds.data_vars:
+            expanded_ds_data[var_name] = expand_time_data(reduced_ds[var_name])
+
+        # Update coordinates
+        expanded_ds = xr.Dataset(expanded_ds_data, attrs=reduced_ds.attrs)
+        expanded_ds = expanded_ds.assign_coords(time=original_timesteps)
+
+        # Copy hours_per_timestep from original
+        expanded_ds.attrs['hours_per_timestep'] = original_fs.hours_per_timestep.values.tolist()
+
+        # Create the expanded FlowSystem from the expanded dataset
+        expanded_fs = FlowSystem.from_dataset(expanded_ds)
+
+        # 2. Expand the solution
+        reduced_solution = self._fs.solution
+        expanded_solution_data = {}
+
+        for var_name in reduced_solution.data_vars:
+            expanded_solution_data[var_name] = expand_time_data(reduced_solution[var_name])
+
+        expanded_solution = xr.Dataset(expanded_solution_data, attrs=reduced_solution.attrs)
+        expanded_fs._solution = expanded_solution
+
+        logger.info(
+            f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
+            f'({n_typical_periods} typical periods → {len(cluster_order)} original periods)'
+        )
+
+        return expanded_fs
+
     # Future methods can be added here:
     #
     # def mga(self, alternatives: int = 5) -> FlowSystem:
