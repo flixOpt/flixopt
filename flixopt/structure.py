@@ -305,7 +305,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def cluster_weight(self) -> xr.DataArray:
-        """Cluster weight for cluster_reduce optimization.
+        """Cluster weight for cluster() optimization.
 
         Represents how many original timesteps each cluster represents.
         Default is 1.0 for all timesteps.

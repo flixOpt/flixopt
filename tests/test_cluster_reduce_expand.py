@@ -1,4 +1,4 @@
-"""Tests for cluster_reduce() and expand_solution() functionality."""
+"""Tests for cluster() and expand_solution() functionality."""
 
 import numpy as np
 import pandas as pd
@@ -43,12 +43,12 @@ def timesteps_8_days():
     return pd.date_range('2020-01-01', periods=192, freq='h')
 
 
-def test_cluster_reduce_creates_reduced_timesteps(timesteps_8_days):
-    """Test that cluster_reduce creates a FlowSystem with fewer timesteps."""
+def test_cluster_creates_reduced_timesteps(timesteps_8_days):
+    """Test that cluster creates a FlowSystem with fewer timesteps."""
     fs = create_simple_system(timesteps_8_days)
 
     # Reduce to 2 typical clusters (days)
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -64,7 +64,7 @@ def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_day
     fs = create_simple_system(timesteps_8_days)
 
     # Reduce to 2 typical clusters
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -86,7 +86,7 @@ def test_expand_solution_preserves_solution_variables(solver_fixture, timesteps_
     """Test that expand_solution keeps all solution variables."""
     fs = create_simple_system(timesteps_8_days)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -105,7 +105,7 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
     """Test that expand_solution correctly maps typical cluster values to all segments."""
     fs = create_simple_system(timesteps_8_days)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -142,7 +142,7 @@ def test_expand_solution_enables_statistics_accessor(solver_fixture, timesteps_8
     """Test that statistics accessor works on expanded FlowSystem."""
     fs = create_simple_system(timesteps_8_days)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -163,7 +163,7 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     """Test that total_effects match between clustered and expanded FlowSystem."""
     fs = create_simple_system(timesteps_8_days)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -193,7 +193,7 @@ def test_expand_solution_without_aggregation_info_raises(solver_fixture, timeste
     fs = create_simple_system(timesteps_2_days)
     fs.optimize(solver_fixture)
 
-    with pytest.raises(ValueError, match='cluster_reduce|aggregate'):
+    with pytest.raises(ValueError, match='cluster'):
         fs.transform.expand_solution()
 
 
@@ -201,7 +201,7 @@ def test_expand_solution_without_solution_raises(timesteps_8_days):
     """Test that expand_solution raises error if no solution."""
     fs = create_simple_system(timesteps_8_days)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -254,8 +254,8 @@ def scenarios_2():
     return pd.Index(['base', 'high'], name='scenario')
 
 
-def test_cluster_reduce_with_scenarios(timesteps_8_days, scenarios_2):
-    """Test that cluster_reduce handles scenarios correctly."""
+def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
+    """Test that cluster handles scenarios correctly."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
     # Verify scenarios are set up correctly
@@ -263,7 +263,7 @@ def test_cluster_reduce_with_scenarios(timesteps_8_days, scenarios_2):
     assert len(fs.scenarios) == 2
 
     # Reduce to 2 typical clusters
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -280,12 +280,12 @@ def test_cluster_reduce_with_scenarios(timesteps_8_days, scenarios_2):
     assert info.original_flow_system.scenarios is not None
 
 
-def test_cluster_reduce_and_expand_with_scenarios(solver_fixture, timesteps_8_days, scenarios_2):
-    """Test full cluster_reduce -> optimize -> expand_solution cycle with scenarios."""
+def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, scenarios_2):
+    """Test full cluster -> optimize -> expand_solution cycle with scenarios."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
     # Reduce
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )
@@ -311,7 +311,7 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
     """Test that expand_solution correctly maps scenarios in multi-scenario systems."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
-    fs_reduced = fs.transform.cluster_reduce(
+    fs_reduced = fs.transform.cluster(
         n_clusters=2,
         cluster_duration='1D',
     )

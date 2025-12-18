@@ -6,8 +6,7 @@ There are two Optimization types:
     1. Optimization: Optimizes the FlowSystemModel for the full FlowSystem
     2. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
 
-For time series aggregation (clustering), use FlowSystem.transform.aggregate() or
-FlowSystem.transform.cluster_reduce() instead.
+For time series aggregation (clustering), use FlowSystem.transform.cluster() instead.
 """
 
 from __future__ import annotations

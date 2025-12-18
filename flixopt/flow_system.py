@@ -70,7 +70,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Period weights are always computed internally from the period index (like timestep_duration for time).
             The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
         cluster_weight: Weight for each timestep representing cluster representation count.
-            If None (default), all timesteps have weight 1.0. Used by cluster_reduce() to specify
+            If None (default), all timesteps have weight 1.0. Used by cluster() to specify
             how many original timesteps each cluster represents. Combined with timestep_duration
             via aggregation_weight for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
@@ -196,9 +196,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
 
-        # Cluster weight for cluster_reduce optimization (default 1.0)
+        # Cluster weight for cluster() optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
-        # May have period/scenario dimensions if cluster_reduce was used with those
+        # May have period/scenario dimensions if cluster() was used with those
         self.cluster_weight = self.fit_to_model_coords(
             'cluster_weight',
             np.ones(len(self.timesteps)) if cluster_weight is None else cluster_weight,
@@ -232,7 +232,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
-        # Aggregation info - populated by transform.cluster_reduce() or transform.aggregate()
+        # Aggregation info - populated by transform.cluster()
         self._aggregation_info: AggregationInfo | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution

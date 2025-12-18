@@ -31,7 +31,7 @@ class TransformAccessor:
     Examples:
         Time series aggregation (8 typical days):
 
-        >>> reduced_fs = flow_system.transform.cluster_reduce(n_clusters=8, cluster_duration='1D')
+        >>> reduced_fs = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
         >>> reduced_fs.optimize(solver)
         >>> expanded_fs = reduced_fs.transform.expand_solution()
 

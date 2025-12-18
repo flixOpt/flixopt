@@ -86,18 +86,18 @@ class TestFlowSystemWeightsProperty:
         np.testing.assert_array_almost_equal(weights.temporal.values, expected)
 
 
-class TestAggregateMethod:
-    """Tests for FlowSystem.transform.aggregate method."""
+class TestClusterMethod:
+    """Tests for FlowSystem.transform.cluster method."""
 
-    def test_aggregate_method_exists(self):
-        """Test that transform.aggregate method exists."""
+    def test_cluster_method_exists(self):
+        """Test that transform.cluster method exists."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=48, freq='h'))
 
-        assert hasattr(fs.transform, 'aggregate')
-        assert callable(fs.transform.aggregate)
+        assert hasattr(fs.transform, 'cluster')
+        assert callable(fs.transform.cluster)
 
-    def test_aggregate_tsam_delegates_to_cluster_reduce(self):
-        """Test that aggregate with method='tsam' works."""
+    def test_cluster_reduces_timesteps(self):
+        """Test that cluster reduces timesteps."""
         # This test requires tsam to be installed
         pytest.importorskip('tsam')
         from flixopt import Bus, Flow, Sink, Source
@@ -119,41 +119,15 @@ class TestAggregateMethod:
         sink = Sink('demand', inputs=[demand_flow])
         fs.add_elements(source, sink, bus)
 
-        # Should delegate to cluster_reduce - reduce 7 days to 2 representative days
-        fs_agg = fs.transform.aggregate(
-            method='tsam',
-            n_representatives=2,
+        # Reduce 7 days to 2 representative days
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
             cluster_duration='1D',
         )
 
         # Check that timesteps were reduced (from 168 hours to 48 hours = 2 days x 24 hours)
-        assert len(fs_agg.timesteps) < len(fs.timesteps)
-        assert len(fs_agg.timesteps) == 48  # 2 representative days x 24 hours
-
-
-class TestSetAggregationMethod:
-    """Tests for FlowSystem.transform.set_aggregation method."""
-
-    def test_set_aggregation_method_exists(self):
-        """Test that transform.set_aggregation method exists."""
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
-
-        assert hasattr(fs.transform, 'set_aggregation')
-        assert callable(fs.transform.set_aggregation)
-
-    def test_set_aggregation_raises_not_implemented(self):
-        """Test that set_aggregation raises NotImplementedError for now."""
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
-
-        mapping = xr.DataArray(np.arange(24) % 4, dims=['original_time'])
-        weights = xr.DataArray([6.0, 6.0, 6.0, 6.0], dims=['time'])
-
-        # For now, should raise NotImplementedError
-        with pytest.raises(NotImplementedError):
-            fs.transform.set_aggregation(
-                timestep_mapping=mapping,
-                weights=weights,
-            )
+        assert len(fs_clustered.timesteps) < len(fs.timesteps)
+        assert len(fs_clustered.timesteps) == 48  # 2 representative days x 24 hours
 
 
 class TestAggregationModuleImports:
@@ -165,28 +139,16 @@ class TestAggregationModuleImports:
 
         assert hasattr(aggregation, 'AggregationResult')
         assert hasattr(aggregation, 'ClusterStructure')
-        assert hasattr(aggregation, 'Aggregator')
-        assert hasattr(aggregation, 'TSAMBackend')
-        assert hasattr(aggregation, 'ManualBackend')
+        assert hasattr(aggregation, 'AggregationInfo')
 
-    def test_list_backends(self):
-        """Test list_backends function."""
-        from flixopt.aggregation import list_backends
+    def test_plot_aggregation_available(self):
+        """Test that plot_aggregation is available."""
+        from flixopt.aggregation import plot_aggregation
 
-        backends = list_backends()
-        assert 'manual' in backends
-        # 'tsam' may or may not be available depending on installation
+        assert callable(plot_aggregation)
 
-    def test_get_backend(self):
-        """Test get_backend function."""
-        from flixopt.aggregation import ManualBackend, get_backend
+    def test_create_cluster_structure_from_mapping_available(self):
+        """Test that create_cluster_structure_from_mapping is available."""
+        from flixopt.aggregation import create_cluster_structure_from_mapping
 
-        backend_cls = get_backend('manual')
-        assert backend_cls is ManualBackend
-
-    def test_get_backend_invalid(self):
-        """Test get_backend raises for invalid backend."""
-        from flixopt.aggregation import get_backend
-
-        with pytest.raises(ValueError, match='Unknown backend'):
-            get_backend('nonexistent')
+        assert callable(create_cluster_structure_from_mapping)

@@ -29,7 +29,7 @@ class ClusterStructure:
 
     This class captures the hierarchical structure of time series clustering,
     which is needed for proper storage state-of-charge tracking across
-    typical periods when using cluster_reduce().
+    typical periods when using cluster().
 
     Note: "original_period" here refers to the original time chunks before
     clustering (e.g., 365 original days), NOT the model's "period" dimension
@@ -128,7 +128,7 @@ class AggregationResult:
         aggregated_data: Time series data aggregated to representative timesteps.
             Optional - some backends may not aggregate data.
         cluster_structure: Hierarchical clustering structure for storage linking.
-            Optional - only needed when using cluster_reduce() mode.
+            Optional - only needed when using cluster() mode.
         original_data: Reference to original data before aggregation.
             Optional - useful for expand_solution().
 
