@@ -1242,12 +1242,10 @@ class TransformAccessor:
         reduced_fs = FlowSystem.from_dataset(ds_new)
         reduced_fs.cluster_weight = reduced_fs.fit_to_model_coords('cluster_weight', timestep_weights, dims=['time'])
 
-        # If storage_cyclic=False, also disable cyclic constraint on individual storages
-        if not storage_cyclic:
-            for storage in reduced_fs.storages.values():
-                if storage.initial_charge_state == 'equals_final':
-                    storage.initial_charge_state = 0
-                    logger.debug(f"Set {storage.label}.initial_charge_state=0 (was 'equals_final')")
+        # Remove 'equals_final' from storages - doesn't make sense on reduced timesteps
+        for storage in reduced_fs.storages.values():
+            if storage.initial_charge_state == 'equals_final':
+                storage.initial_charge_state = 0
 
         reduced_fs._cluster_info = {
             'clustering_results': clustering_results,
