@@ -785,7 +785,9 @@ class TransformAccessor:
 
         # Remove 'equals_final' from storages - doesn't make sense on reduced timesteps
         for storage in reduced_fs.storages.values():
-            if storage.initial_charge_state == 'equals_final':
+            # Handle both scalar and xarray cases
+            ics = storage.initial_charge_state
+            if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = 0
 
         reduced_fs._cluster_info = {
