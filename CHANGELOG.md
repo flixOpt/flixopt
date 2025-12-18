@@ -51,7 +51,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [5.0.3] - 2025-12-17
+## [5.0.3] - 2025-12-18
 
 **Summary**: Cleaner notebook outputs and improved `CONFIG.notebook()` preset.
 
