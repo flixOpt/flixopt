@@ -20,11 +20,11 @@ import flixopt as fx
 # Output directory (same as this script)
 try:
     OUTPUT_DIR = Path(__file__).parent
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'examples' / 'resources'
+    DATA_DIR = Path(__file__).parent  # Zeitreihen2020.csv is in the same directory
 except NameError:
     # Running in notebook context (e.g., mkdocs-jupyter)
     OUTPUT_DIR = Path('docs/notebooks/data')
-    DATA_DIR = Path('examples/resources')
+    DATA_DIR = Path('docs/notebooks/data')
 
 
 def create_simple_system() -> fx.FlowSystem:
@@ -280,6 +280,7 @@ def create_district_heating_system() -> fx.FlowSystem:
                     effects_of_investment_per_size={'costs': 10},
                 ),
                 relative_minimum=0.3,
+                status_parameters=fx.StatusParameters(),
             ),
             fuel_flow=fx.Flow('Q_fu', bus='Coal'),
         ),
@@ -296,6 +297,7 @@ def create_district_heating_system() -> fx.FlowSystem:
                     effects_of_investment_per_size={'costs': 5},
                 ),
                 relative_minimum=0.1,
+                status_parameters=fx.StatusParameters(),
             ),
             fuel_flow=fx.Flow('Q_fu', bus='Gas'),
         ),
