@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-# Path to the examples directory
-EXAMPLES_DIR = Path(__file__).parent.parent / 'examples'
+# Path to the examples directory (now in tests/deprecated/examples/)
+EXAMPLES_DIR = Path(__file__).parent / 'examples'
 
 # Examples that have dependencies and must run in sequence
 DEPENDENT_EXAMPLES = (

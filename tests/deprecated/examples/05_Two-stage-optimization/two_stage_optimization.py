@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     # Data Import
     data_import = pd.read_csv(
-        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
+        pathlib.Path(__file__).parents[4] / 'docs' / 'notebooks' / 'data' / 'Zeitreihen2020.csv', index_col=0
     ).sort_index()
     filtered_data = data_import[:500]
 
@@ -39,11 +39,13 @@ if __name__ == '__main__':
 
     flow_system = fx.FlowSystem(timesteps)
     # Carriers provide automatic color assignment in plots
+    # Bus imbalance penalties allow slack when two-stage sizing doesn't meet peak demand
+    imbalance_penalty = 1e5
     flow_system.add_elements(
-        fx.Bus('Strom', carrier='electricity'),
-        fx.Bus('Fernwärme', carrier='heat'),
-        fx.Bus('Gas', carrier='gas'),
-        fx.Bus('Kohle', carrier='fuel'),
+        fx.Bus('Strom', carrier='electricity', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Fernwärme', carrier='heat', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Gas', carrier='gas', imbalance_penalty_per_flow_hour=imbalance_penalty),
+        fx.Bus('Kohle', carrier='fuel', imbalance_penalty_per_flow_hour=imbalance_penalty),
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie'),
@@ -67,8 +69,12 @@ if __name__ == '__main__':
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
             status_parameters=fx.StatusParameters(effects_per_startup=1_000, min_uptime=10, min_downtime=10),
-            electrical_flow=fx.Flow('P_el', bus='Strom'),
-            thermal_flow=fx.Flow('Q_th', bus='Fernwärme'),
+            electrical_flow=fx.Flow(
+                'P_el', bus='Strom', size=1000
+            ),  # Large size for big-M (won't constrain optimization)
+            thermal_flow=fx.Flow(
+                'Q_th', bus='Fernwärme', size=1000
+            ),  # Large size for big-M (won't constrain optimization)
             fuel_flow=fx.Flow(
                 'Q_fu',
                 bus='Kohle',

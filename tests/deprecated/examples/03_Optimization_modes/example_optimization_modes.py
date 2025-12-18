@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     # Data Import
     data_import = pd.read_csv(
-        pathlib.Path(__file__).parent.parent / 'resources' / 'Zeitreihen2020.csv', index_col=0
+        pathlib.Path(__file__).parents[4] / 'docs' / 'notebooks' / 'data' / 'Zeitreihen2020.csv', index_col=0
     ).sort_index()
     filtered_data = data_import['2020-01-01':'2020-01-07 23:45:00']
     # filtered_data = data_import[0:500]  # Alternatively filter by index

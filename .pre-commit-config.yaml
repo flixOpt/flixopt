@@ -7,7 +7,7 @@ repos:
       - id: check-yaml
         exclude: ^mkdocs\.yml$  # Skip mkdocs.yml
       - id: check-added-large-files
-        exclude: ^examples/resources/Zeitreihen2020\.csv$
+        exclude: .*Zeitreihen2020\.csv$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.4
@@ -20,4 +20,4 @@ repos:
     rev: 0.8.2
     hooks:
       - id: nbstripout
-        files: ^docs/examples.*\.ipynb$
+        files: ^docs/.*\.ipynb$

@@ -87,13 +87,13 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install mike
-        run: uv pip install --system mike
+      - name: Extract changelog
+        run: |
+          cp CHANGELOG.md docs/changelog.md
+          python scripts/format_changelog.py
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: docs
-          path: site/
+      - name: Install dependencies
+        run: uv pip install --system ".[docs,full]"
 
       - name: Configure Git
         run: |
@@ -104,5 +104,5 @@ jobs:
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
-          mike deploy --push --update-aliases --no-build $VERSION latest
+          mike deploy --push --update-aliases $VERSION latest
           mike set-default --push latest

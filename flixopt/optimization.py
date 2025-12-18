@@ -242,6 +242,7 @@ class Optimization:
         self.model.solve(
             log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
@@ -255,7 +256,7 @@ class Optimization:
             from .io import document_linopy_model
 
             document_linopy_model(self.model, paths.model_documentation)
-            self.flow_system.to_netcdf(paths.flow_system)
+            self.flow_system.to_netcdf(paths.flow_system, overwrite=True)
             raise RuntimeError(
                 f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
             )

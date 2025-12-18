@@ -111,9 +111,47 @@ clustered_fs = flow_system.transform.cluster(
 
 ---
 
-## [Upcoming] - v5.0.0
 
-**Summary**: This is a major release that fundamentally reimagines how users interact with flixopt. The new **FlowSystem-centric API** dramatically simplifies workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **removes all deprecated items from v4.x**.
+## [5.0.3] - 2025-12-18
+
+**Summary**: Cleaner notebook outputs and improved `CONFIG.notebook()` preset.
+
+### ♻️ Changed
+
+- `CONFIG.notebook()` now suppresses linopy progress bars via `progress=False` in solve calls
+- Downgraded "FlowSystem not connected" message from WARNING to INFO (auto-connects anyway)
+
+### 🐛 Fixed
+
+- Fixed notebooks triggering unnecessary warnings (removed `relative_minimum` without `status_parameters`)
+
+### 📝 Docs
+
+- Consolidated verbose print statements into concise single-line summaries across all tutorial notebooks
+- Added output suppression (`;`) to `optimize()` calls for cleaner cell output
+- Fixed notebook 07 parameters so CHP investment produces interesting results (was 0 kW, now 100 kW)
+
+---
+
+## [5.0.2] - 2025-12-17
+
+### ♻️ Changed
+
+- `statistics.plot.effects()` now defaults to `by=None` for aggregated totals; use `by='component'` for the previous behavior
+
+---
+
+## [5.0.1] - 2025-12-17
+
+### 👷 Development
+
+- Fixed docs deployment in CI workflow
+
+---
+
+## [5.0.0] - 2025-12-16
+
+**Summary**: This is a major release that introduces the new **FlowSystem-centric API**, dramatically simplifying workflows by integrating optimization, results access, and visualization directly into the FlowSystem object. This release also completes the terminology standardization (OnOff → Status) and **deprecates the old Optimization/Results workflow** (to be removed in v6.0.0).
 
 !!! tip "Migration Guide"
 
@@ -130,7 +168,7 @@ import flixopt as fx
 flow_system = fx.FlowSystem(timesteps)
 flow_system.add_elements(boiler, heat_bus, costs)
 
-# Optimize directly on FlowSystem (no more Optimization class!)
+# Optimize directly on FlowSystem
 flow_system.optimize(fx.solvers.HighsSolver())
 
 # Access results via solution Dataset
@@ -230,7 +268,7 @@ clustered_fs.optimize(solver)
 **Rolling Horizon Optimization**: Decompose large operational problems into sequential segments:
 
 ```python
-# Solve with rolling horizon (replaces SegmentedOptimization)
+# Solve with rolling horizon
 segments = flow_system.optimize.rolling_horizon(
     solver,
     horizon=192,    # Timesteps per segment
@@ -255,9 +293,15 @@ flow_system.to_netcdf('results/my_model.nc4')
 # Load FlowSystem with solution intact
 loaded_fs = fx.FlowSystem.from_netcdf('results/my_model.nc4')
 print(loaded_fs.solution['costs'].item())  # Solution is available!
+```
 
-# Migrate old result files
+**Migration Helper for Old Results** (deprecated, temporary):
+
+```python
+# Migrate old result files to new FlowSystem format
 fs = fx.FlowSystem.from_old_results('results_folder', 'my_model')
+# Or convert Results object directly
+fs = results.convert_to_flow_system()
 ```
 
 **FlowSystem Locking**: FlowSystem automatically locks after optimization to prevent accidental modifications:
@@ -268,8 +312,9 @@ flow_system.optimize(solver)
 # This would raise an error:
 # flow_system.add_elements(new_component)  # Locked!
 
-# Clear solution to unlock for modifications
-flow_system.solution = None  # Now you can modify
+# Call reset() to unlock for modifications
+flow_system.reset()
+flow_system.add_elements(new_component)  # Now works
 ```
 
 **NetCDF Improvements**:
@@ -286,22 +331,7 @@ flow_system.solution = None  # Now you can modify
 
 ### 💥 Breaking Changes
 
-**Removed: Optimization and Results Classes** - Use FlowSystem methods instead:
-
-```python
-# Old (v4.x)
-optimization = fx.Optimization('model', flow_system)
-optimization.do_modeling()
-optimization.solve(solver)
-results = optimization.results
-costs = results.model['costs'].solution.item()
-
-# New (v5.0)
-flow_system.optimize(solver)
-costs = flow_system.solution['costs'].item()
-```
-
-**Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). This is a clean breaking change with no backwards compatibility wrapper.
+**Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). Old NetCDF files with `OnOffParameters` are automatically converted on load.
 
 | Old Term | New Term |
 |----------|----------|
@@ -332,16 +362,6 @@ costs = flow_system.solution['costs'].item()
 - `excess_input` → `virtual_supply`
 - `excess_output` → `virtual_demand`
 
-**Transform methods moved** from FlowSystem to TransformAccessor:
-
-```python
-# Old (deprecated, still works with warning)
-fs_subset = flow_system.sel(time=slice('2023-01-01', '2023-06-30'))
-
-# New (recommended)
-fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
-```
-
 **Storage charge_state changes**:
 - `charge_state` no longer has an extra timestep
 - Final charge state is now a separate variable: `charge_state|final`
@@ -357,33 +377,76 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 - Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
 - Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
 - Renamed `Bus.with_excess` → `allows_imbalance`
-- Results class deprecated in favor of `flow_system.solution` and `flow_system.statistics`
-- All plotting methods (`flow_rates()`, `flow_hours()`, etc.) deprecated in favor of statistics accessor
 
 ### 🗑️ Deprecated
 
-- `Results` class → Access results via `flow_system.solution` after optimization
-- `results.flow_rates()` → Use `flow_system.statistics.flow_rates`
-- `results.flow_hours()` → Use `flow_system.statistics.flow_hours`
+All deprecated items will be removed in v6.0.0.
+
+**Old Optimization Workflow** - Use FlowSystem methods instead:
+
+```python
+# Old (deprecated, still works with warning)
+optimization = fx.Optimization('model', flow_system)
+optimization.do_modeling()
+optimization.solve(solver)
+results = optimization.results
+costs = results.model['costs'].solution.item()
+
+# New (recommended)
+flow_system.optimize(solver)
+costs = flow_system.solution['costs'].item()
+```
+
+**Classes deprecated:**
+- `Optimization` → Use `flow_system.optimize(solver)`
+- `ClusteredOptimization` → Use `flow_system.transform.cluster()` then `optimize()`
+- `SegmentedOptimization` → Use `flow_system.optimize.rolling_horizon()`
+- `Results` → Use `flow_system.solution` and `flow_system.statistics`
+- `SegmentedResults` → Use segment FlowSystems directly
+
+**FlowSystem methods deprecated:**
 - `flow_system.sel()` → Use `flow_system.transform.sel()`
 - `flow_system.isel()` → Use `flow_system.transform.isel()`
 - `flow_system.resample()` → Use `flow_system.transform.resample()`
+- `flow_system.plot_network()` → Use `flow_system.topology.plot_network()`
+- `flow_system.start_network_app()` → Use `flow_system.topology.start_network_app()`
+- `flow_system.stop_network_app()` → Use `flow_system.topology.stop_network_app()`
+- `flow_system.network_infos()` → Use `flow_system.topology.network_infos()`
+
+**Results methods deprecated:**
+- `results.flow_rates()` → Use `flow_system.statistics.flow_rates`
+- `results.flow_hours()` → Use `flow_system.statistics.flow_hours`
+
+**Migration helpers (temporary, also deprecated):**
+- `FlowSystem.from_old_results()` → For migrating old result files
+- `Results.convert_to_flow_system()` → For converting Results objects
+
+**Plotting parameters deprecated:**
+- `indexer` parameter → Use `select` instead
+- `heatmap_timeframes` parameter → Use `reshape_time=(timeframes, timesteps_per_frame)` instead
+- `heatmap_timesteps_per_frame` parameter → Use `reshape_time=(timeframes, timesteps_per_frame)` instead
+- `color_map` parameter → Use `colors` instead
 
 ### 🔥 Removed
 
-**Modules removed:**
-- `calculation.py` module - Use `flow_system.optimize()` instead
+**Python version changes:**
+- Dropped Python 3.10 support
+- Added Python 3.14 support
 
-**Classes removed:**
-- `Calculation`, `FullCalculation` → Use `flow_system.optimize()`
-- `AggregatedCalculation` → Use `flow_system.transform.cluster()` + `optimize()`
-- `SegmentedCalculation`, `SegmentedOptimization` → Use `flow_system.optimize.rolling_horizon()`
+**Classes removed** (already renamed/deprecated in v4.x):
+- `OnOffParameters` → Use `StatusParameters`
+- `Calculation` → Use `Optimization` (deprecated) or `flow_system.optimize()` (recommended)
+- `FullCalculation` → Use `Optimization` (deprecated) or `flow_system.optimize()` (recommended)
+- `AggregatedCalculation` → Use `ClusteredOptimization` (deprecated) or `flow_system.transform.cluster()` (recommended)
+- `SegmentedCalculation` → Use `SegmentedOptimization` (deprecated) or `flow_system.optimize.rolling_horizon()` (recommended)
 - `Aggregation` → Use `Clustering`
 - `AggregationParameters` → Use `ClusteringParameters`
 - `AggregationModel` → Use `ClusteringModel`
-- `CalculationResults` → Use `flow_system.solution`
-- `SegmentedCalculationResults` → Use `SegmentedResults`
-- `OnOffParameters` → Use `StatusParameters`
+- `CalculationResults` → Use `Results` (deprecated) or `flow_system.solution` (recommended)
+- `SegmentedCalculationResults` → Use `SegmentedResults` (deprecated)
+
+**Modules removed:**
+- `calculation.py` module → Use `optimization.py` (deprecated) or FlowSystem methods (recommended)
 
 **Functions removed:**
 - `change_logging_level()` → Use `CONFIG.Logging.enable_console()`
@@ -391,35 +454,6 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 **Properties removed:**
 - `FlowSystem.all_elements` → Use dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`)
 - `FlowSystem.weights` → Use `scenario_weights`
-
-**Features removed:**
-- Passing `Bus` objects directly to `Flow` → Pass bus label string instead and add Bus to FlowSystem
-- Using `Effect` objects in `EffectValues` → Use effect label strings instead
-
-**All deprecated parameters from v4.x removed:**
-
-| Class | Old Parameter | New Parameter |
-|-------|--------------|---------------|
-| TimeSeriesData | `agg_group` | `aggregation_group` |
-| TimeSeriesData | `agg_weight` | `aggregation_weight` |
-| Effect | `minimum_operation` | `minimum_temporal` |
-| Effect | `maximum_operation` | `maximum_temporal` |
-| Effect | `minimum_invest` | `minimum_periodic` |
-| Effect | `maximum_invest` | `maximum_periodic` |
-| Flow | `flow_hours_total_max` | `flow_hours_max` |
-| Flow | `flow_hours_total_min` | `flow_hours_min` |
-| InvestParameters | `fix_effects` | `effects_of_investment` |
-| InvestParameters | `specific_effects` | `effects_of_investment_per_size` |
-| InvestParameters | `divest_effects` | `effects_of_retirement` |
-| InvestParameters | `optional` | `mandatory` (inverted) |
-| Storage | `"lastValueOfSim"` | `"equals_final"` |
-| Source | `source` | `outputs` |
-| Sink | `sink` | `inputs` |
-| LinearConverters | `Q_fu` | `fuel_flow` |
-| LinearConverters | `P_el` | `electrical_flow` |
-| LinearConverters | `Q_th` | `thermal_flow` |
-| LinearConverters | `eta` | `thermal_efficiency` |
-| LinearConverters | `COP` | `cop` |
 
 ### 📝 Docs
 
@@ -460,18 +494,19 @@ fs_subset = flow_system.transform.sel(time=slice('2023-01-01', '2023-06-30'))
 
 ### Migration Checklist
 
+The old `Optimization`/`Results` workflow still works with deprecation warnings. Migrate at your own pace before v6.0.0.
+
 | Task | Action |
 |------|--------|
-| Replace `Optimization` class | Use `flow_system.optimize(solver)` |
-| Replace `SegmentedOptimization` class | Use `flow_system.optimize.rolling_horizon(solver, ...)` |
-| Replace `Results` access | Use `flow_system.solution['var_name']` |
-| Update `OnOffParameters` | Rename to `StatusParameters` with new parameter names |
-| Update `on_off_parameters` | Rename to `status_parameters` |
-| Update Bus excess parameters | Use `imbalance_penalty_per_flow_hour` |
-| Update deprecated parameters | See removal table above |
+| Update `OnOffParameters` | Rename to `StatusParameters` with new parameter names (breaking) |
+| Update `on_off_parameters` | Rename to `status_parameters` (breaking) |
+| Update Bus excess parameters | Use `imbalance_penalty_per_flow_hour` (breaking) |
+| Replace `Optimization` class | Use `flow_system.optimize(solver)` (deprecated) |
+| Replace `SegmentedOptimization` | Use `flow_system.optimize.rolling_horizon(solver, ...)` (deprecated) |
+| Replace `Results` access | Use `flow_system.solution['var_name']` (deprecated) |
+| Update transform methods | Use `flow_system.transform.sel/isel/resample()` (deprecated) |
 | Update I/O code | Use `to_netcdf()` / `from_netcdf()` on FlowSystem |
-| Update transform methods | Use `flow_system.transform.sel/isel/resample()` |
-| Migrate old result files | Use `FlowSystem.from_old_results(folder, name)` |
+| Migrate old result files | Use `FlowSystem.from_old_results(folder, name)` (temporary helper) |
 
 ---
 
@@ -1058,7 +1093,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 ---
 
 ## [3.1.1] - 2025-10-20
-**Summary**: Fixed a bug when acessing the `effects_per_component` dataset in results without periodic effects.
+**Summary**: Fixed a bug when accessing the `effects_per_component` dataset in results without periodic effects.
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
