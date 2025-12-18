@@ -597,7 +597,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
         """
         if not self.connected_and_transformed:
-            logger.warning('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
+            logger.info('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
         ds = super().to_dataset()
@@ -1326,6 +1326,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.solve(
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
 

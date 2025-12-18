@@ -242,6 +242,7 @@ class Optimization:
         self.model.solve(
             log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
