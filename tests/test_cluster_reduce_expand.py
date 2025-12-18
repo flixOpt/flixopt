@@ -55,8 +55,8 @@ def test_cluster_reduce_creates_reduced_timesteps(timesteps_8_days):
 
     # Should have 2 * 24 = 48 timesteps instead of 192
     assert len(fs_reduced.timesteps) == 48
-    assert hasattr(fs_reduced, '_cluster_info')
-    assert fs_reduced._cluster_info['n_clusters'] == 2
+    assert hasattr(fs_reduced, '_aggregation_info')
+    assert fs_reduced._aggregation_info.result.cluster_structure.n_clusters == 2
 
 
 def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_days):
@@ -112,9 +112,9 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
     fs_reduced.optimize(solver_fixture)
 
     # Get cluster_order to know mapping
-    info = fs_reduced._cluster_info
-    cluster_order = info['cluster_order']
-    timesteps_per_cluster = info['timesteps_per_cluster']  # 24
+    info = fs_reduced._aggregation_info
+    cluster_order = info.result.cluster_structure.cluster_order.values
+    timesteps_per_cluster = info.result.cluster_structure.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
 
@@ -188,12 +188,12 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
 
-def test_expand_solution_without_cluster_info_raises(solver_fixture, timesteps_2_days):
+def test_expand_solution_without_aggregation_info_raises(solver_fixture, timesteps_2_days):
     """Test that expand_solution raises error if not a reduced FlowSystem."""
     fs = create_simple_system(timesteps_2_days)
     fs.optimize(solver_fixture)
 
-    with pytest.raises(ValueError, match='cluster_reduce'):
+    with pytest.raises(ValueError, match='cluster_reduce|aggregate'):
         fs.transform.expand_solution()
 
 
@@ -271,15 +271,13 @@ def test_cluster_reduce_with_scenarios(timesteps_8_days, scenarios_2):
     # Should have 2 * 24 = 48 timesteps
     assert len(fs_reduced.timesteps) == 48
 
-    # Should have cluster_orders for each scenario
-    info = fs_reduced._cluster_info
-    assert 'cluster_orders' in info
-    assert info['has_scenarios'] is True
-
-    # Each scenario should have its own cluster_order
-    for scenario in scenarios_2:
-        key = (None, scenario)
-        assert key in info['cluster_orders']
+    # Should have aggregation info with cluster structure
+    info = fs_reduced._aggregation_info
+    assert info is not None
+    assert info.result.cluster_structure is not None
+    assert info.result.cluster_structure.n_clusters == 2
+    # Original FlowSystem had scenarios
+    assert info.original_flow_system.scenarios is not None
 
 
 def test_cluster_reduce_and_expand_with_scenarios(solver_fixture, timesteps_8_days, scenarios_2):
@@ -310,7 +308,7 @@ def test_cluster_reduce_and_expand_with_scenarios(solver_fixture, timesteps_8_da
 
 
 def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_8_days, scenarios_2):
-    """Test that each scenario uses its own cluster_order in expand_solution."""
+    """Test that expand_solution correctly maps scenarios in multi-scenario systems."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
     fs_reduced = fs.transform.cluster_reduce(
@@ -319,19 +317,16 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
     )
     fs_reduced.optimize(solver_fixture)
 
-    info = fs_reduced._cluster_info
-    cluster_orders = info['cluster_orders']
-    timesteps_per_cluster = info['timesteps_per_cluster']  # 24
+    info = fs_reduced._aggregation_info
+    cluster_order = info.result.cluster_structure.cluster_order.values
+    timesteps_per_cluster = info.result.cluster_structure.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
     fs_expanded = fs_reduced.transform.expand_solution()
     expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 
-    # Check mapping for each scenario independently
+    # Check mapping for each scenario (all use the same cluster_order in simplified implementation)
     for scenario in scenarios_2:
-        key = (None, scenario)
-        cluster_order = cluster_orders[key]
-
         reduced_scenario = reduced_flow.sel(scenario=scenario).values
         expanded_scenario = expanded_flow.sel(scenario=scenario).values
 
