@@ -471,7 +471,7 @@ class StatisticsAccessor:
         """
         self._require_solution()
         if self._flow_hours is None:
-            hours = self._fs.hours_per_timestep
+            hours = self._fs.timestep_duration
             flow_rates = self.flow_rates
             # Multiply and preserve/transform attributes
             data_vars = {}

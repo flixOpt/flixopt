@@ -209,30 +209,31 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return solution
 
     @property
-    def hours_per_step(self):
-        return self.flow_system.hours_per_timestep
+    def timestep_duration(self) -> xr.DataArray:
+        """Duration of each timestep in hours."""
+        return self.flow_system.timestep_duration
 
     @property
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
 
     @property
-    def timestep_weight(self) -> xr.DataArray:
-        """Timestep weight for cluster_reduce optimization.
+    def cluster_weight(self) -> xr.DataArray:
+        """Cluster weight for cluster_reduce optimization.
 
         Represents how many original timesteps each cluster represents.
         Default is 1.0 for all timesteps.
         """
-        return self.flow_system.timestep_weight
+        return self.flow_system.cluster_weight
 
     @property
     def aggregation_weight(self) -> xr.DataArray:
         """Combined weight for time aggregation.
 
-        Combines hours_per_step (timestep duration) and timestep_weight (cluster representation).
+        Combines timestep_duration (physical duration) and cluster_weight (cluster representation).
         Use this for proper time aggregation in clustered models.
         """
-        return self.hours_per_step * self.timestep_weight
+        return self.timestep_duration * self.cluster_weight
 
     @property
     def scenario_weights(self) -> xr.DataArray:
@@ -1721,8 +1722,8 @@ class Submodel(SubmodelsMixin):
         return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
-    def hours_per_step(self):
-        return self._model.hours_per_step
+    def timestep_duration(self):
+        return self._model.timestep_duration
 
     def _do_modeling(self):
         """

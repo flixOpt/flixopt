@@ -438,8 +438,8 @@ class ClusteredOptimization(Optimization):
         t_start_agg = timeit.default_timer()
 
         # Validation
-        dt_min = float(self.flow_system.hours_per_timestep.min().item())
-        dt_max = float(self.flow_system.hours_per_timestep.max().item())
+        dt_min = float(self.flow_system.timestep_duration.min().item())
+        dt_max = float(self.flow_system.timestep_duration.max().item())
         if not dt_min == dt_max:
             raise ValueError(
                 f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'

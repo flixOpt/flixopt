@@ -182,8 +182,8 @@ class TransformAccessor:
         from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 
         # Validation
-        dt_min = float(self._fs.hours_per_timestep.min().item())
-        dt_max = float(self._fs.hours_per_timestep.max().item())
+        dt_min = float(self._fs.timestep_duration.min().item())
+        dt_max = float(self._fs.timestep_duration.max().item())
         if dt_min != dt_max:
             raise ValueError(
                 f'Clustering failed due to inconsistent time step sizes: '
@@ -253,8 +253,8 @@ class TransformAccessor:
         from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 
         # Validation
-        dt_min = float(self._fs.hours_per_timestep.min().item())
-        dt_max = float(self._fs.hours_per_timestep.max().item())
+        dt_min = float(self._fs.timestep_duration.min().item())
+        dt_max = float(self._fs.timestep_duration.max().item())
         if dt_min != dt_max:
             raise ValueError(
                 f'Clustering failed due to inconsistent time step sizes: '
@@ -1129,8 +1129,8 @@ class TransformAccessor:
             hours_per_cluster = float(cluster_duration)
 
         # Validation
-        dt_min = float(self._fs.hours_per_timestep.min().item())
-        dt_max = float(self._fs.hours_per_timestep.max().item())
+        dt_min = float(self._fs.timestep_duration.min().item())
+        dt_max = float(self._fs.timestep_duration.max().item())
         if dt_min != dt_max:
             raise ValueError(
                 f'cluster_reduce() failed due to inconsistent time step sizes: '
@@ -1351,13 +1351,13 @@ class TransformAccessor:
 
         # Update metadata
         ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
-        ds_new.attrs['hours_per_timestep'] = dt_min
+        ds_new.attrs['timestep_duration'] = dt_min
 
         # Create new FlowSystem with reduced timesteps
         reduced_fs = FlowSystem.from_dataset(ds_new)
 
-        # Set timestep_weight for proper aggregation in the reduced FlowSystem
-        reduced_fs.timestep_weight = reduced_fs.fit_to_model_coords('timestep_weight', timestep_weights, dims=['time'])
+        # Set cluster_weight for proper aggregation in the reduced FlowSystem
+        reduced_fs.cluster_weight = reduced_fs.fit_to_model_coords('cluster_weight', timestep_weights, dims=['time'])
 
         # Store cluster info for later use during modeling and expand_solution()
         reduced_fs._cluster_info = {
@@ -1570,8 +1570,8 @@ class TransformAccessor:
         expanded_ds = xr.Dataset(expanded_ds_data, attrs=reduced_ds.attrs)
         expanded_ds = expanded_ds.assign_coords(time=original_timesteps)
 
-        # Copy hours_per_timestep from original
-        expanded_ds.attrs['hours_per_timestep'] = original_fs.hours_per_timestep.values.tolist()
+        # Copy timestep_duration from original
+        expanded_ds.attrs['timestep_duration'] = original_fs.timestep_duration.values.tolist()
 
         # Create the expanded FlowSystem from the expanded dataset
         expanded_fs = FlowSystem.from_dataset(expanded_ds)

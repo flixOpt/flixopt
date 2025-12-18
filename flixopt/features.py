@@ -242,7 +242,7 @@ class StatusModel(Submodel):
                 short_name='uptime',
                 minimum_duration=self.parameters.min_uptime,
                 maximum_duration=self.parameters.max_uptime,
-                duration_per_step=self.hours_per_step,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
                 previous_duration=self._get_previous_uptime(),
             )
@@ -255,7 +255,7 @@ class StatusModel(Submodel):
                 short_name='downtime',
                 minimum_duration=self.parameters.min_downtime,
                 maximum_duration=self.parameters.max_downtime,
-                duration_per_step=self.hours_per_step,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
                 previous_duration=self._get_previous_downtime(),
             )
@@ -330,7 +330,7 @@ class StatusModel(Submodel):
 
         Returns 0 if no previous status is provided (assumes previously inactive).
         """
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
             return 0
         else:
@@ -341,7 +341,7 @@ class StatusModel(Submodel):
 
         Returns one timestep duration if no previous status is provided (assumes previously inactive).
         """
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
             return hours_per_step
         else:
@@ -620,8 +620,8 @@ class ShareAllocationModel(Submodel):
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
-            # Add it to the total (timestep_weight handles cluster representation, defaults to 1.0)
-            self._eq_total.lhs -= (self.total_per_timestep * self._model.timestep_weight).sum(dim='time')
+            # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
+            self._eq_total.lhs -= (self.total_per_timestep * self._model.cluster_weight).sum(dim='time')
 
     def add_share(
         self,

@@ -23,7 +23,7 @@ class TestFlowModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|total_flow_hours'],
             flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration).sum('time'),
         )
         assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
         assert_var_equal(
@@ -61,7 +61,7 @@ class TestFlowModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|total_flow_hours'],
             flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration).sum('time'),
         )
 
         assert_var_equal(
@@ -83,12 +83,12 @@ class TestFlowModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|load_factor_min'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] >= model.hours_per_step.sum('time') * 0.1 * 100,
+            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] >= model.timestep_duration.sum('time') * 0.1 * 100,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)|load_factor_max'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] <= model.hours_per_step.sum('time') * 0.9 * 100,
+            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] <= model.timestep_duration.sum('time') * 0.9 * 100,
         )
 
         assert_sets_equal(
@@ -129,13 +129,13 @@ class TestFlowModel:
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(temporal)'],
             model.variables['Sink(Wärme)->costs(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step * costs_per_flow_hour,
+            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration * costs_per_flow_hour,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)->CO2(temporal)'],
             model.variables['Sink(Wärme)->CO2(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.hours_per_step * co2_per_flow_hour,
+            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration * co2_per_flow_hour,
         )
 
 
@@ -561,7 +561,7 @@ class TestFlowOnModel:
             model.add_variables(binary=True, coords=model.get_coords()),
         )
         # Upper bound is total hours when active_hours_max is not specified
-        total_hours = model.hours_per_step.sum('time')
+        total_hours = model.timestep_duration.sum('time')
         assert_var_equal(
             model.variables['Sink(Wärme)|active_hours'],
             model.add_variables(lower=0, upper=total_hours, coords=model.get_coords(['period', 'scenario'])),
@@ -580,7 +580,7 @@ class TestFlowOnModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|active_hours'],
             flow.submodel.variables['Sink(Wärme)|active_hours']
-            == (flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration).sum('time'),
         )
 
     def test_effects_per_active_hour(self, basic_flow_system_linopy_coords, coords_config):
@@ -635,13 +635,13 @@ class TestFlowOnModel:
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(temporal)'],
             model.variables['Sink(Wärme)->costs(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step * costs_per_running_hour,
+            == flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration * costs_per_running_hour,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)->CO2(temporal)'],
             model.variables['Sink(Wärme)->CO2(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step * co2_per_running_hour,
+            == flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration * co2_per_running_hour,
         )
 
     def test_consecutive_on_hours(self, basic_flow_system_linopy_coords, coords_config):
@@ -687,7 +687,7 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=8, coords=model.get_coords()),
         )
 
-        mega = model.hours_per_step.sum('time')
+        mega = model.timestep_duration.sum('time')
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|ub'],
@@ -698,7 +698,7 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|uptime|forward'],
             model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
             <= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1)),
+            + model.timestep_duration.isel(time=slice(None, -1)),
         )
 
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
@@ -706,14 +706,14 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|uptime|backward'],
             model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
             >= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1))
+            + model.timestep_duration.isel(time=slice(None, -1))
             + (model.variables['Sink(Wärme)|status'].isel(time=slice(1, None)) - 1) * mega,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|initial'],
             model.variables['Sink(Wärme)|uptime'].isel(time=0)
-            == model.variables['Sink(Wärme)|status'].isel(time=0) * model.hours_per_step.isel(time=0),
+            == model.variables['Sink(Wärme)|status'].isel(time=0) * model.timestep_duration.isel(time=0),
         )
 
         assert_conequal(
@@ -768,7 +768,7 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=8, coords=model.get_coords()),
         )
 
-        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 3
+        mega = model.timestep_duration.sum('time') + model.timestep_duration.isel(time=0) * 3
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|ub'],
@@ -779,7 +779,7 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|uptime|forward'],
             model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
             <= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1)),
+            + model.timestep_duration.isel(time=slice(None, -1)),
         )
 
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
@@ -787,14 +787,14 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|uptime|backward'],
             model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
             >= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1))
+            + model.timestep_duration.isel(time=slice(None, -1))
             + (model.variables['Sink(Wärme)|status'].isel(time=slice(1, None)) - 1) * mega,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|initial'],
             model.variables['Sink(Wärme)|uptime'].isel(time=0)
-            == model.variables['Sink(Wärme)|status'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1 + 3)),
+            == model.variables['Sink(Wärme)|status'].isel(time=0) * (model.timestep_duration.isel(time=0) * (1 + 3)),
         )
 
         assert_conequal(
@@ -850,7 +850,9 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=12, coords=model.get_coords()),
         )
 
-        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 1  # previously inactive for 1h
+        mega = (
+            model.timestep_duration.sum('time') + model.timestep_duration.isel(time=0) * 1
+        )  # previously inactive for 1h
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|ub'],
@@ -861,7 +863,7 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|downtime|forward'],
             model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
             <= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1)),
+            + model.timestep_duration.isel(time=slice(None, -1)),
         )
 
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
@@ -869,14 +871,14 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|downtime|backward'],
             model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
             >= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1))
+            + model.timestep_duration.isel(time=slice(None, -1))
             + (model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None)) - 1) * mega,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|initial'],
             model.variables['Sink(Wärme)|downtime'].isel(time=0)
-            == model.variables['Sink(Wärme)|inactive'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1 + 1)),
+            == model.variables['Sink(Wärme)|inactive'].isel(time=0) * (model.timestep_duration.isel(time=0) * (1 + 1)),
         )
 
         assert_conequal(
@@ -933,7 +935,7 @@ class TestFlowOnModel:
             model.add_variables(lower=0, upper=12, coords=model.get_coords()),
         )
 
-        mega = model.hours_per_step.sum('time') + model.hours_per_step.isel(time=0) * 2
+        mega = model.timestep_duration.sum('time') + model.timestep_duration.isel(time=0) * 2
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|ub'],
@@ -944,7 +946,7 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|downtime|forward'],
             model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
             <= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1)),
+            + model.timestep_duration.isel(time=slice(None, -1)),
         )
 
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
@@ -952,14 +954,14 @@ class TestFlowOnModel:
             model.constraints['Sink(Wärme)|downtime|backward'],
             model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
             >= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
-            + model.hours_per_step.isel(time=slice(None, -1))
+            + model.timestep_duration.isel(time=slice(None, -1))
             + (model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None)) - 1) * mega,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|initial'],
             model.variables['Sink(Wärme)|downtime'].isel(time=0)
-            == model.variables['Sink(Wärme)|inactive'].isel(time=0) * (model.hours_per_step.isel(time=0) * (1 + 2)),
+            == model.variables['Sink(Wärme)|inactive'].isel(time=0) * (model.timestep_duration.isel(time=0) * (1 + 2)),
         )
 
         assert_conequal(
@@ -1067,7 +1069,7 @@ class TestFlowOnModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|active_hours'],
             flow.submodel.variables['Sink(Wärme)|active_hours']
-            == (flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration).sum('time'),
         )
 
 
@@ -1131,7 +1133,7 @@ class TestFlowOnInvestModel:
             model.add_variables(binary=True, coords=model.get_coords()),
         )
         # Upper bound is total hours when active_hours_max is not specified
-        total_hours = model.hours_per_step.sum('time')
+        total_hours = model.timestep_duration.sum('time')
         assert_var_equal(
             model.variables['Sink(Wärme)|active_hours'],
             model.add_variables(lower=0, upper=total_hours, coords=model.get_coords(['period', 'scenario'])),
@@ -1157,7 +1159,7 @@ class TestFlowOnInvestModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|active_hours'],
             flow.submodel.variables['Sink(Wärme)|active_hours']
-            == (flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration).sum('time'),
         )
 
         # Investment
@@ -1233,7 +1235,7 @@ class TestFlowOnInvestModel:
             model.add_variables(binary=True, coords=model.get_coords()),
         )
         # Upper bound is total hours when active_hours_max is not specified
-        total_hours = model.hours_per_step.sum('time')
+        total_hours = model.timestep_duration.sum('time')
         assert_var_equal(
             model.variables['Sink(Wärme)|active_hours'],
             model.add_variables(lower=0, upper=total_hours, coords=model.get_coords(['period', 'scenario'])),
@@ -1251,7 +1253,7 @@ class TestFlowOnInvestModel:
         assert_conequal(
             model.constraints['Sink(Wärme)|active_hours'],
             flow.submodel.variables['Sink(Wärme)|active_hours']
-            == (flow.submodel.variables['Sink(Wärme)|status'] * model.hours_per_step).sum('time'),
+            == (flow.submodel.variables['Sink(Wärme)|status'] * model.timestep_duration).sum('time'),
         )
 
         # Investment
