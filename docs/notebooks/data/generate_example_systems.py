@@ -457,10 +457,13 @@ def create_multiperiod_system() -> fx.FlowSystem:
     - 3 planning periods (years 2024, 2025, 2026)
     - 2 scenarios (high demand, low demand)
 
-    Each period: 48 hours (2 days representative)
+    Each period: 336 hours (2 weeks) - suitable for clustering demonstrations.
+    Use transform.sisel() to select subsets if needed.
     """
-    timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
-    hour_of_day = np.arange(48) % 24
+    n_hours = 336  # 2 weeks
+    timesteps = pd.date_range('2024-01-01', periods=n_hours, freq='h')
+    hour_of_day = np.arange(n_hours) % 24
+    day_of_week = (np.arange(n_hours) // 24) % 7
 
     # Period definitions (years)
     periods = pd.Index([2024, 2025, 2026], name='period')
@@ -469,19 +472,21 @@ def create_multiperiod_system() -> fx.FlowSystem:
     scenarios = pd.Index(['high_demand', 'low_demand'], name='scenario')
     scenario_weights = np.array([0.3, 0.7])
 
-    # Base demand pattern (hourly)
+    # Base demand pattern (hourly) with daily and weekly variation
     base_pattern = np.where((hour_of_day >= 7) & (hour_of_day <= 18), 80.0, 35.0)
+    weekend_factor = np.where(day_of_week >= 5, 0.6, 1.0)
+    base_pattern = base_pattern * weekend_factor
 
     # Scenario-specific scaling
     np.random.seed(42)
-    high_demand = base_pattern * 1.2 + np.random.normal(0, 5, 48)
-    low_demand = base_pattern * 0.85 + np.random.normal(0, 3, 48)
+    high_demand = base_pattern * 1.3 + np.random.normal(0, 8, n_hours)
+    low_demand = base_pattern * 0.8 + np.random.normal(0, 5, n_hours)
 
     # Create DataFrame with scenario columns
     heat_demand = pd.DataFrame(
         {
-            'high_demand': np.clip(high_demand, 20, 120),
-            'low_demand': np.clip(low_demand, 15, 90),
+            'high_demand': np.clip(high_demand, 20, 150),
+            'low_demand': np.clip(low_demand, 15, 100),
         },
         index=timesteps,
     )
