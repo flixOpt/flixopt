@@ -886,7 +886,7 @@ class TypicalPeriodsModel(Submodel):
         flow_system: FlowSystem,
         cluster_order: np.ndarray | list,
         cluster_occurrences: dict[int, int],
-        nr_of_typical_periods: int,
+        n_typical_periods: int,
         timesteps_per_period: int,
         storage_cyclic: bool = True,
     ):
@@ -898,7 +898,7 @@ class TypicalPeriodsModel(Submodel):
                 period belongs to. Length = n_original_periods.
             cluster_occurrences: Dict mapping cluster_id to number of original periods
                 it represents.
-            nr_of_typical_periods: Number of typical (representative) periods.
+            n_typical_periods: Number of typical (representative) periods.
             timesteps_per_period: Number of timesteps in each period.
             storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
         """
@@ -906,7 +906,7 @@ class TypicalPeriodsModel(Submodel):
         self.flow_system = flow_system
         self.cluster_order = np.array(cluster_order)
         self.cluster_occurrences = cluster_occurrences
-        self.nr_of_typical_periods = nr_of_typical_periods
+        self.n_typical_periods = n_typical_periods
         self.timesteps_per_period = timesteps_per_period
         self.storage_cyclic = storage_cyclic
         self.n_original_periods = len(self.cluster_order)
@@ -978,9 +978,10 @@ class TypicalPeriodsModel(Submodel):
             short_name=f'SOC_boundary|{label}',
         )
 
-        # Compute delta_SOC for each typical period
+        # Pre-compute delta_SOC for each typical period
         # delta_SOC[c] = charge_state[c, end] - charge_state[c, start]
-        delta_soc_list = []
+        # We store these as a dict since linopy expressions can't be concat'd with xr.concat
+        delta_soc_dict = {}
         for c in range(self.nr_of_typical_periods):
             # Get start and end timestep indices for this typical period
             start_idx = c * self.timesteps_per_period
@@ -988,22 +989,13 @@ class TypicalPeriodsModel(Submodel):
 
             # charge_state at end - charge_state at start of typical period c
             # Note: charge_state is indexed by time with extra timestep
-            delta = charge_state.isel(time=end_idx) - charge_state.isel(time=start_idx)
-            delta_soc_list.append(delta)
-
-        # Stack into array indexed by typical_period
-        delta_soc = xr.concat(delta_soc_list, dim='typical_period')
-        delta_soc = delta_soc.assign_coords(typical_period=np.arange(self.nr_of_typical_periods))
+            delta_soc_dict[c] = charge_state.isel(time=end_idx) - charge_state.isel(time=start_idx)
 
         # Create linking constraints:
         # SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
         for d in range(self.n_original_periods):
             c = int(self.cluster_order[d])  # Which typical period this original period maps to
-            lhs = (
-                soc_boundary.isel(period_boundary=d + 1)
-                - soc_boundary.isel(period_boundary=d)
-                - delta_soc.isel(typical_period=c)
-            )
+            lhs = soc_boundary.isel(period_boundary=d + 1) - soc_boundary.isel(period_boundary=d) - delta_soc_dict[c]
             self.add_constraints(lhs == 0, short_name=f'inter_period_link|{label}|{d}')
 
         # Cyclic constraint: SOC_boundary[0] = SOC_boundary[end]

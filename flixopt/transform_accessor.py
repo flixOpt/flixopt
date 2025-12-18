@@ -1118,8 +1118,6 @@ class TransformAccessor:
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - Storage linking adds SOC_boundary variables to track state between periods
         """
-        import pandas as pd
-
         from .clustering import Clustering
         from .core import DataConverter, TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
@@ -1172,19 +1170,19 @@ class TransformAccessor:
         cluster_occurrences = clustering.tsam.clusterPeriodNoOccur  # {cluster_id: count}
 
         # Actual number of typical periods (may differ from requested if peak forcing is used)
-        actual_nr_of_typical_periods = len(cluster_occurrences)
+        actual_n_typical_periods = len(cluster_occurrences)
 
         # Create timestep weights: each typical period timestep represents multiple original timesteps
         # Weight = number of original periods this typical period represents
         timestep_weights = []
-        for typical_period_idx in range(actual_nr_of_typical_periods):
+        for typical_period_idx in range(actual_n_typical_periods):
             weight = cluster_occurrences.get(typical_period_idx, 1)
             timestep_weights.extend([weight] * timesteps_per_period)
 
         timestep_weights = np.array(timestep_weights)
 
         logger.info(f'Reduced from {len(self._fs.timesteps)} to {len(typical_periods_df)} timesteps')
-        logger.info(f'Typical periods: {actual_nr_of_typical_periods} (requested: {n_typical_periods})')
+        logger.info(f'Typical periods: {actual_n_typical_periods} (requested: {n_typical_periods})')
         logger.info(f'Cluster occurrences: {cluster_occurrences}')
 
         # Create new time index for typical periods
@@ -1231,7 +1229,7 @@ class TransformAccessor:
             'timestep_weights': timestep_weights,
             'cluster_order': cluster_order,
             'cluster_occurrences': cluster_occurrences,
-            'nr_of_typical_periods': actual_nr_of_typical_periods,
+            'n_typical_periods': actual_n_typical_periods,
             'timesteps_per_period': timesteps_per_period,
             'storage_inter_period_linking': storage_inter_period_linking,
             'storage_cyclic': storage_cyclic,
