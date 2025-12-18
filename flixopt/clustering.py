@@ -861,3 +861,154 @@ class ClusteringModel(Submodel):
                 expressions={PENALTY_EFFECT_LABEL: (var * penalty).sum(sum_dim)},
                 target='periodic',
             )
+
+
+class TypicalPeriodsModel(Submodel):
+    """Model that adds storage inter-period linking for typical periods optimization.
+
+    When using cluster_reduce(), timesteps are reduced to only typical (representative)
+    periods. This model creates variables and constraints to track storage state
+    across the full original time horizon using boundary state variables.
+
+    The approach:
+    1. Create SOC_boundary[d] for each original period d (0 to n_original_periods)
+    2. Compute delta_SOC[c] for each typical period c (change in SOC during period)
+    3. Link: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+    4. Optionally enforce cyclic: SOC_boundary[0] = SOC_boundary[n_original_periods]
+
+    This allows the optimizer to properly value storage for long-term (seasonal)
+    patterns while only solving for the typical period timesteps.
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        flow_system: FlowSystem,
+        cluster_order: np.ndarray | list,
+        cluster_occurrences: dict[int, int],
+        nr_of_typical_periods: int,
+        timesteps_per_period: int,
+        storage_cyclic: bool = True,
+    ):
+        """
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            flow_system: The FlowSystem being optimized.
+            cluster_order: Array indicating which typical period (cluster) each original
+                period belongs to. Length = n_original_periods.
+            cluster_occurrences: Dict mapping cluster_id to number of original periods
+                it represents.
+            nr_of_typical_periods: Number of typical (representative) periods.
+            timesteps_per_period: Number of timesteps in each period.
+            storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
+        """
+        super().__init__(model, label_of_element='TypicalPeriods', label_of_model='TypicalPeriods')
+        self.flow_system = flow_system
+        self.cluster_order = np.array(cluster_order)
+        self.cluster_occurrences = cluster_occurrences
+        self.nr_of_typical_periods = nr_of_typical_periods
+        self.timesteps_per_period = timesteps_per_period
+        self.storage_cyclic = storage_cyclic
+        self.n_original_periods = len(self.cluster_order)
+
+    def do_modeling(self):
+        """Create SOC boundary variables and inter-period linking constraints.
+
+        For each storage:
+        - SOC_boundary[d]: State of charge at start of original period d
+        - delta_SOC[c]: Change in SOC during typical period c
+        - Linking: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+        """
+
+        storages = list(self.flow_system.storages.values())
+        if not storages:
+            logger.info('No storages found - skipping inter-period linking')
+            return
+
+        logger.info(
+            f'Adding inter-period storage linking for {len(storages)} storages '
+            f'({self.n_original_periods} original periods, {self.nr_of_typical_periods} typical)'
+        )
+
+        for storage in storages:
+            self._add_storage_linking(storage)
+
+    def _add_storage_linking(self, storage) -> None:
+        """Add inter-period linking constraints for a single storage.
+
+        Args:
+            storage: Storage component to add linking for.
+        """
+        import xarray as xr
+
+        label = storage.label
+
+        # Get the charge state variable from the storage's submodel
+        charge_state_name = f'{label}|charge_state'
+        if charge_state_name not in storage.submodel.variables:
+            logger.warning(f'Storage {label} has no charge_state variable - skipping')
+            return
+
+        charge_state = storage.submodel.variables[charge_state_name]
+
+        # Get storage capacity bounds
+        capacity = storage.capacity_in_flow_hours
+        if hasattr(capacity, 'fixed_size') and capacity.fixed_size is not None:
+            cap_value = capacity.fixed_size
+        elif hasattr(capacity, 'maximum') and capacity.maximum is not None:
+            cap_value = float(capacity.maximum.max().item()) if hasattr(capacity.maximum, 'max') else capacity.maximum
+        else:
+            cap_value = 1e9  # Large default
+
+        # Create SOC_boundary variables for each original period boundary
+        # We need n_original_periods + 1 boundaries (start of first period through end of last)
+        n_boundaries = self.n_original_periods + 1
+        boundary_coords = [np.arange(n_boundaries)]
+        boundary_dims = ['period_boundary']
+
+        # Bounds: 0 <= SOC_boundary <= capacity
+        lb = xr.DataArray(0.0, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
+        ub = xr.DataArray(cap_value, coords={'period_boundary': np.arange(n_boundaries)}, dims=['period_boundary'])
+
+        soc_boundary = self.add_variables(
+            lower=lb,
+            upper=ub,
+            coords=boundary_coords,
+            dims=boundary_dims,
+            short_name=f'SOC_boundary|{label}',
+        )
+
+        # Compute delta_SOC for each typical period
+        # delta_SOC[c] = charge_state[c, end] - charge_state[c, start]
+        delta_soc_list = []
+        for c in range(self.nr_of_typical_periods):
+            # Get start and end timestep indices for this typical period
+            start_idx = c * self.timesteps_per_period
+            end_idx = (c + 1) * self.timesteps_per_period  # charge_state has extra timestep at end
+
+            # charge_state at end - charge_state at start of typical period c
+            # Note: charge_state is indexed by time with extra timestep
+            delta = charge_state.isel(time=end_idx) - charge_state.isel(time=start_idx)
+            delta_soc_list.append(delta)
+
+        # Stack into array indexed by typical_period
+        delta_soc = xr.concat(delta_soc_list, dim='typical_period')
+        delta_soc = delta_soc.assign_coords(typical_period=np.arange(self.nr_of_typical_periods))
+
+        # Create linking constraints:
+        # SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+        for d in range(self.n_original_periods):
+            c = int(self.cluster_order[d])  # Which typical period this original period maps to
+            lhs = (
+                soc_boundary.isel(period_boundary=d + 1)
+                - soc_boundary.isel(period_boundary=d)
+                - delta_soc.isel(typical_period=c)
+            )
+            self.add_constraints(lhs == 0, short_name=f'inter_period_link|{label}|{d}')
+
+        # Cyclic constraint: SOC_boundary[0] = SOC_boundary[end]
+        if self.storage_cyclic:
+            lhs = soc_boundary.isel(period_boundary=0) - soc_boundary.isel(period_boundary=self.n_original_periods)
+            self.add_constraints(lhs == 0, short_name=f'cyclic|{label}')
+
+        logger.debug(f'Added inter-period linking for storage {label}')

@@ -219,6 +219,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Clustering info - populated by transform.cluster()
         self._clustering_info: dict | None = None
 
+        # Typical periods info - populated by transform.cluster_reduce()
+        self._typical_periods_info: dict | None = None
+
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
@@ -1306,6 +1309,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         1. Connecting and transforming all elements (if not already done)
         2. Creating the FlowSystemModel with all variables and constraints
         3. Adding clustering constraints (if this is a clustered FlowSystem)
+        4. Adding typical periods modeling (if this is a reduced FlowSystem)
 
         After calling this method, `self.model` will be available for inspection
         before solving.
@@ -1323,13 +1327,71 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.connect_and_transform()
         self.create_model(normalize_weights)
+
+        # Apply timestep weighting before do_modeling() for typical periods
+        if self._typical_periods_info is not None:
+            self._apply_timestep_weights()
+
         self.model.do_modeling()
 
         # Add clustering constraints if this is a clustered FlowSystem
         if self._clustering_info is not None:
             self._add_clustering_constraints()
 
+        # Add typical periods storage modeling if this is a reduced FlowSystem
+        if self._typical_periods_info is not None:
+            self._add_typical_periods_modeling()
+
         return self
+
+    def _apply_timestep_weights(self) -> None:
+        """Apply timestep weights to the model for typical periods optimization.
+
+        This multiplies operational effects (costs, emissions) by the number of
+        original periods each typical period represents.
+        """
+        info = self._typical_periods_info
+        if info is None:
+            return
+
+        timestep_weights = info['timestep_weights']
+
+        # Store timestep weights on the model for use in effect calculations
+        self.model.timestep_weights = xr.DataArray(
+            timestep_weights,
+            coords={'time': self.timesteps},
+            dims=['time'],
+            name='timestep_weights',
+        )
+        logger.info(f'Applied timestep weights for typical periods: sum={sum(timestep_weights)}')
+
+    def _add_typical_periods_modeling(self) -> None:
+        """Add storage inter-period linking for typical periods optimization.
+
+        Creates SOC_boundary variables that link storage states between sequential
+        periods in the original time series, using the delta SOC from typical periods.
+        """
+        from .clustering import TypicalPeriodsModel
+
+        info = self._typical_periods_info
+        if info is None:
+            return
+
+        if not info.get('storage_inter_period_linking', True):
+            logger.info('Storage inter-period linking disabled')
+            return
+
+        # Create typical periods model for storage linking
+        typical_periods_model = TypicalPeriodsModel(
+            model=self.model,
+            flow_system=self,
+            cluster_order=info['cluster_order'],
+            cluster_occurrences=info['cluster_occurrences'],
+            nr_of_typical_periods=info['nr_of_typical_periods'],
+            timesteps_per_period=info['timesteps_per_period'],
+            storage_cyclic=info.get('storage_cyclic', True),
+        )
+        typical_periods_model.do_modeling()
 
     def _add_clustering_constraints(self) -> None:
         """Add clustering constraints to the model."""
