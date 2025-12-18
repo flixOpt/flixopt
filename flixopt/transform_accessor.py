@@ -1145,48 +1145,96 @@ class TransformAccessor:
 
         timesteps_per_cluster = int(round(hours_per_cluster / dt_max))
 
+        # Check for multi-period/scenario dimensions
+        has_periods = self._fs.periods is not None
+        has_scenarios = self._fs.scenarios is not None
+
         logger.info(f'{"":#^80}')
-        logger.info(f'{" Creating Typical Clusters (Reduced Timesteps) ":#^80}')
+        if has_periods or has_scenarios:
+            logger.info(f'{" Creating Typical Clusters (Multi-dimensional) ":#^80}')
+        else:
+            logger.info(f'{" Creating Typical Clusters (Reduced Timesteps) ":#^80}')
+
+        # Determine iteration dimensions
+        periods = list(self._fs.periods) if has_periods else [None]
+        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
 
         # Get dataset representation
         ds = self._fs.to_dataset(include_solution=False)
-        temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
 
-        # Perform clustering
-        clustering = Clustering(
-            original_data=temporaly_changing_ds.to_dataframe(),
-            hours_per_time_step=float(dt_min),
-            hours_per_period=hours_per_cluster,
-            nr_of_periods=n_clusters,
-            weights=weights or self._calculate_clustering_weights(temporaly_changing_ds),
-            time_series_for_high_peaks=time_series_for_high_peaks or [],
-            time_series_for_low_peaks=time_series_for_low_peaks or [],
-        )
-        clustering.cluster()
+        # Store clustering results per (period, scenario) combination
+        clustering_results: dict[tuple, Clustering] = {}
+        cluster_orders: dict[tuple, np.ndarray] = {}
+        cluster_occurrences_all: dict[tuple, dict] = {}
 
-        # Extract typical periods data from tsam
-        typical_periods_df = clustering.tsam.typicalPeriods
-        cluster_order = clustering.tsam.clusterOrder  # Order in which clusters appear
-        cluster_occurrences = clustering.tsam.clusterPeriodNoOccur  # {cluster_id: count}
+        # Track actual n_clusters (may vary per combination if peak forcing is used)
+        all_n_clusters = []
 
-        # Actual number of clusters (may differ from requested if peak forcing is used)
-        actual_n_clusters = len(cluster_occurrences)
+        # Cluster each period x scenario combination independently
+        for period_label in periods:
+            for scenario_label in scenarios:
+                key = (period_label, scenario_label)
 
-        # Create timestep weights: each typical cluster timestep represents multiple original timesteps
-        # Weight = number of original clusters this typical cluster represents
+                # Select slice for this combination
+                selector = {}
+                if period_label is not None:
+                    selector['period'] = period_label
+                if scenario_label is not None:
+                    selector['scenario'] = scenario_label
+
+                if selector:
+                    ds_slice = ds.sel(**selector, drop=True)
+                else:
+                    ds_slice = ds
+
+                # Drop constant arrays for clustering
+                temporaly_changing_ds = drop_constant_arrays(ds_slice, dim='time')
+
+                # Log dimension info
+                dim_info = []
+                if period_label is not None:
+                    dim_info.append(f'period={period_label}')
+                if scenario_label is not None:
+                    dim_info.append(f'scenario={scenario_label}')
+                if dim_info:
+                    logger.info(f'Clustering {", ".join(dim_info)}...')
+
+                # Perform clustering on this slice
+                clustering = Clustering(
+                    original_data=temporaly_changing_ds.to_dataframe(),
+                    hours_per_time_step=float(dt_min),
+                    hours_per_period=hours_per_cluster,
+                    nr_of_periods=n_clusters,
+                    weights=weights or self._calculate_clustering_weights(temporaly_changing_ds),
+                    time_series_for_high_peaks=time_series_for_high_peaks or [],
+                    time_series_for_low_peaks=time_series_for_low_peaks or [],
+                )
+                clustering.cluster()
+
+                clustering_results[key] = clustering
+                cluster_orders[key] = clustering.tsam.clusterOrder
+                cluster_occurrences_all[key] = clustering.tsam.clusterPeriodNoOccur
+                all_n_clusters.append(len(clustering.tsam.clusterPeriodNoOccur))
+
+        # Use first clustering result for building reduced dataset
+        # (all should have same structure, just different cluster assignments)
+        first_key = (periods[0], scenarios[0])
+        first_clustering = clustering_results[first_key]
+        typical_periods_df = first_clustering.tsam.typicalPeriods
+        actual_n_clusters = len(first_clustering.tsam.clusterPeriodNoOccur)
+
+        # Create timestep weights (use first combination - weights should be consistent)
+        cluster_occurrences = cluster_occurrences_all[first_key]
         timestep_weights = []
         for cluster_idx in range(actual_n_clusters):
             weight = cluster_occurrences.get(cluster_idx, 1)
             timestep_weights.extend([weight] * timesteps_per_cluster)
-
         timestep_weights = np.array(timestep_weights)
 
         logger.info(f'Reduced from {len(self._fs.timesteps)} to {len(typical_periods_df)} timesteps')
         logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
-        logger.info(f'Cluster occurrences: {cluster_occurrences}')
 
-        # Create new time index for typical periods
-        # Use a synthetic time index starting from the original start time
+        # Create new time index for typical clusters
         original_time = self._fs.timesteps
         time_start = original_time[0]
         freq = pd.Timedelta(hours=dt_min)
@@ -1196,25 +1244,110 @@ class TransformAccessor:
             freq=freq,
         )
 
-        # Build new dataset with typical periods data
-        ds_new = self._fs.to_dataset(include_solution=False)
+        # Build new dataset with typical clusters data
+        ds_original = self._fs.to_dataset(include_solution=False)
 
-        # Update time-varying data arrays with typical periods values
-        typical_periods_df.index = new_time_index  # Reindex with our new time
-        for name in typical_periods_df.columns:
-            if name in ds_new.data_vars:
-                series = typical_periods_df[name]
+        # Collect typical periods data per (period, scenario) combination
+        # Key: (period, scenario), Value: DataFrame with typical period data
+        typical_dfs = {}
+        for key, clustering in clustering_results.items():
+            typical_df = clustering.tsam.typicalPeriods.copy()
+            typical_df.index = new_time_index
+            typical_dfs[key] = typical_df
+
+        # Build new data arrays with reduced time dimension
+        ds_new_vars = {}
+        for name in ds_original.data_vars:
+            original_da = ds_original[name]
+
+            # Check if this variable is in the typical periods (time-varying and non-constant)
+            first_key = (periods[0], scenarios[0])
+            in_typical = name in typical_dfs[first_key].columns
+
+            if 'time' not in original_da.dims:
+                # Time-independent variable: copy as-is
+                ds_new_vars[name] = original_da.copy()
+            elif not in_typical:
+                # Time-dependent but constant (not clustered): slice to new time length
+                # Take first timesteps_per_cluster * n_clusters timesteps
+                ds_new_vars[name] = original_da.isel(time=slice(0, len(new_time_index))).assign_coords(
+                    time=new_time_index
+                )
+            elif not has_periods and not has_scenarios:
+                # Simple case: single clustering, use typical periods directly
+                series = typical_dfs[first_key][name]
                 da = DataConverter.to_dataarray(
                     series,
                     {'time': new_time_index, **{k: v for k, v in self._fs.coords.items() if k != 'time'}},
                 ).rename(name)
-                da = da.assign_attrs(ds_new[name].attrs)
+                da = da.assign_attrs(original_da.attrs)
                 if TimeSeriesData.is_timeseries_data(da):
                     da = TimeSeriesData.from_dataarray(da)
-                ds_new[name] = da
+                ds_new_vars[name] = da
+            else:
+                # Multi-dimensional: build new array with all dims but reduced time
+                new_dims = list(original_da.dims)
+                new_shape = list(original_da.shape)
+                time_idx = new_dims.index('time')
+                new_shape[time_idx] = len(new_time_index)
 
-        # Update time coordinate
-        ds_new = ds_new.reindex(time=new_time_index)
+                # Build coordinates
+                new_coords = {}
+                for dim in new_dims:
+                    if dim == 'time':
+                        new_coords[dim] = new_time_index
+                    else:
+                        new_coords[dim] = original_da.coords[dim].values
+
+                # Initialize array and fill per (period, scenario)
+                new_data = np.zeros(new_shape, dtype=original_da.dtype)
+
+                for period_label in periods:
+                    for scenario_label in scenarios:
+                        key = (period_label, scenario_label)
+                        typical_df = typical_dfs[key]
+
+                        if name not in typical_df.columns:
+                            continue
+
+                        series_values = typical_df[name].values
+
+                        # Determine indices for this slice
+                        if 'period' in new_dims and 'scenario' in new_dims:
+                            if period_label is not None and scenario_label is not None:
+                                period_idx = list(new_coords['period']).index(period_label)
+                                scenario_idx = list(new_coords['scenario']).index(scenario_label)
+                                if new_dims == ['time', 'period', 'scenario']:
+                                    new_data[:, period_idx, scenario_idx] = series_values
+                                elif new_dims == ['time', 'scenario', 'period']:
+                                    new_data[:, scenario_idx, period_idx] = series_values
+                        elif 'period' in new_dims:
+                            if period_label is not None:
+                                period_idx = list(new_coords['period']).index(period_label)
+                                if new_dims == ['time', 'period']:
+                                    new_data[:, period_idx] = series_values
+                                elif new_dims == ['period', 'time']:
+                                    new_data[period_idx, :] = series_values
+                        elif 'scenario' in new_dims:
+                            if scenario_label is not None:
+                                scenario_idx = list(new_coords['scenario']).index(scenario_label)
+                                if new_dims == ['time', 'scenario']:
+                                    new_data[:, scenario_idx] = series_values
+                                elif new_dims == ['scenario', 'time']:
+                                    new_data[scenario_idx, :] = series_values
+                        else:
+                            # Has time but no period/scenario: use first key's data
+                            new_data[:] = series_values
+                            break  # Only need to fill once
+
+                da = xr.DataArray(data=new_data, dims=new_dims, coords=new_coords, attrs=original_da.attrs)
+                if TimeSeriesData.is_timeseries_data(da):
+                    da = TimeSeriesData.from_dataarray(da)
+                ds_new_vars[name] = da
+
+        # Create new dataset with updated variables
+        ds_new = xr.Dataset(ds_new_vars, attrs=ds_original.attrs)
+        ds_new = ds_new.assign_coords(time=new_time_index)
 
         # Update metadata
         ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
@@ -1223,17 +1356,22 @@ class TransformAccessor:
         # Create new FlowSystem with reduced timesteps
         reduced_fs = FlowSystem.from_dataset(ds_new)
 
-        # Store cluster info for later use during modeling
+        # Store cluster info for later use during modeling and expand_solution()
         reduced_fs._cluster_info = {
-            'clustering': clustering,
+            'clustering_results': clustering_results,  # Dict keyed by (period, scenario)
+            'cluster_orders': cluster_orders,  # Dict keyed by (period, scenario)
+            'cluster_occurrences': cluster_occurrences_all,  # Dict keyed by (period, scenario)
             'timestep_weights': timestep_weights,
-            'cluster_order': cluster_order,
-            'cluster_occurrences': cluster_occurrences,
             'n_clusters': actual_n_clusters,
             'timesteps_per_cluster': timesteps_per_cluster,
             'storage_inter_period_linking': storage_inter_period_linking,
             'storage_cyclic': storage_cyclic,
             'original_fs': self._fs,
+            'has_periods': has_periods,
+            'has_scenarios': has_scenarios,
+            # For backwards compatibility with simple case
+            'cluster_order': cluster_orders[first_key],
+            'clustering': first_clustering,
         }
 
         return reduced_fs
@@ -1246,6 +1384,9 @@ class TransformAccessor:
         1. Expanding all time series data from typical clusters to full timesteps
         2. Expanding the solution by mapping each typical cluster back to all
            original segments it represents
+
+        For FlowSystems with periods and/or scenarios, each (period, scenario)
+        combination is expanded using its own cluster assignment.
 
         This enables using all existing solution accessors (``statistics``, ``plot``, etc.)
         with full time resolution, where both the data and solution are consistently
@@ -1301,48 +1442,126 @@ class TransformAccessor:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
         info = self._fs._cluster_info
-        cluster_order = info['cluster_order']
         timesteps_per_cluster = info['timesteps_per_cluster']
         original_fs: FlowSystem = info['original_fs']
         n_clusters = info['n_clusters']
+        has_periods = info.get('has_periods', False)
+        has_scenarios = info.get('has_scenarios', False)
+
+        # Get cluster_orders dict (keyed by (period, scenario) tuples)
+        # For backwards compatibility, create dict from single cluster_order if needed
+        cluster_orders = info.get('cluster_orders', {(None, None): info['cluster_order']})
+
+        # Determine iteration dimensions
+        periods = list(original_fs.periods) if has_periods else [None]
+        scenarios = list(original_fs.scenarios) if has_scenarios else [None]
 
         # Get original timesteps from the original FlowSystem
         original_timesteps = original_fs.timesteps
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
-        # Build mapping: for each original timestep, which reduced timestep to copy from
-        mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+        # Helper to build mapping for a specific cluster_order
+        def build_mapping(cluster_order: np.ndarray) -> np.ndarray:
+            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+            for orig_ts_idx in range(n_original_timesteps):
+                orig_segment_idx = orig_ts_idx // timesteps_per_cluster
+                pos_in_cluster = orig_ts_idx % timesteps_per_cluster
+                cluster_id = cluster_order[orig_segment_idx] if orig_segment_idx < len(cluster_order) else 0
+                reduced_ts_idx = cluster_id * timesteps_per_cluster + pos_in_cluster
+                mapping[orig_ts_idx] = min(reduced_ts_idx, n_reduced_timesteps - 1)
+            return mapping
 
-        for orig_ts_idx in range(n_original_timesteps):
-            # Which original segment does this timestep belong to?
-            orig_segment_idx = orig_ts_idx // timesteps_per_cluster
-            # Position within the cluster
-            pos_in_cluster = orig_ts_idx % timesteps_per_cluster
+        # Build mappings per (period, scenario)
+        mappings = {key: build_mapping(order) for key, order in cluster_orders.items()}
+        first_key = (periods[0], scenarios[0])
 
-            # Which cluster does this original segment map to?
-            cluster_id = cluster_order[orig_segment_idx] if orig_segment_idx < len(cluster_order) else 0
-
-            # The corresponding timestep in the reduced solution
-            reduced_ts_idx = cluster_id * timesteps_per_cluster + pos_in_cluster
-
-            # Ensure we don't exceed reduced solution bounds
-            mapping[orig_ts_idx] = min(reduced_ts_idx, n_reduced_timesteps - 1)
-
-        # Helper function to expand time-dependent data
-        def expand_time_data(da: xr.DataArray) -> xr.DataArray:
-            if 'time' not in da.dims:
-                return da.copy()
+        # Helper function to expand time-dependent data (simple case)
+        def expand_simple(da: xr.DataArray, mapping: np.ndarray) -> xr.DataArray:
             expanded_da = da.isel(time=xr.DataArray(mapping, dims=['time']))
             expanded_da = expanded_da.assign_coords(time=original_timesteps)
             return expanded_da.assign_attrs(da.attrs)
+
+        # Helper function to expand multi-dimensional data
+        def expand_multi_dimensional(da: xr.DataArray) -> xr.DataArray:
+            # Create output array with expanded time dimension
+            new_dims = list(da.dims)
+            new_shape = list(da.shape)
+            time_idx = new_dims.index('time')
+            new_shape[time_idx] = n_original_timesteps
+
+            # Build new coordinates
+            new_coords = dict(da.coords)
+            new_coords['time'] = original_timesteps
+
+            # Initialize output with zeros
+            expanded_data = np.zeros(new_shape, dtype=da.dtype)
+
+            # Expand each (period, scenario) slice independently
+            for period_label in periods:
+                for scenario_label in scenarios:
+                    key = (period_label, scenario_label)
+                    mapping = mappings[key]
+
+                    # Build selector for this slice
+                    if 'period' in da.dims and 'scenario' in da.dims:
+                        if period_label is not None and scenario_label is not None:
+                            slice_data = da.sel(period=period_label, scenario=scenario_label)
+                            expanded_slice = slice_data.values[mapping]
+                            # Assign back to the correct position
+                            period_idx = list(da.coords['period'].values).index(period_label)
+                            scenario_idx = list(da.coords['scenario'].values).index(scenario_label)
+                            if da.dims == ('time', 'period', 'scenario'):
+                                expanded_data[:, period_idx, scenario_idx] = expanded_slice
+                            elif da.dims == ('time', 'scenario', 'period'):
+                                expanded_data[:, scenario_idx, period_idx] = expanded_slice
+                    elif 'period' in da.dims:
+                        if period_label is not None:
+                            slice_data = da.sel(period=period_label)
+                            expanded_slice = slice_data.values[mapping]
+                            period_idx = list(da.coords['period'].values).index(period_label)
+                            if da.dims == ('time', 'period'):
+                                expanded_data[:, period_idx] = expanded_slice
+                            elif da.dims == ('period', 'time'):
+                                expanded_data[period_idx, :] = expanded_slice
+                    elif 'scenario' in da.dims:
+                        if scenario_label is not None:
+                            slice_data = da.sel(scenario=scenario_label)
+                            expanded_slice = slice_data.values[mapping]
+                            scenario_idx = list(da.coords['scenario'].values).index(scenario_label)
+                            if da.dims == ('time', 'scenario'):
+                                expanded_data[:, scenario_idx] = expanded_slice
+                            elif da.dims == ('scenario', 'time'):
+                                expanded_data[scenario_idx, :] = expanded_slice
+
+            return xr.DataArray(
+                data=expanded_data,
+                dims=new_dims,
+                coords=new_coords,
+                attrs=da.attrs,
+            )
+
+        # Helper function to expand any data array
+        def expand_data(da: xr.DataArray) -> xr.DataArray:
+            if 'time' not in da.dims:
+                # Time-independent: copy as-is
+                return da.copy()
+            elif not has_periods and not has_scenarios:
+                # Simple case: use first mapping
+                return expand_simple(da, mappings[first_key])
+            elif 'period' not in da.dims and 'scenario' not in da.dims:
+                # Has time but no period/scenario dims: use first mapping
+                return expand_simple(da, mappings[first_key])
+            else:
+                # Multi-dimensional: expand each slice independently
+                return expand_multi_dimensional(da)
 
         # 1. Expand the FlowSystem's data (input time series)
         reduced_ds = self._fs.to_dataset(include_solution=False)
         expanded_ds_data = {}
 
         for var_name in reduced_ds.data_vars:
-            expanded_ds_data[var_name] = expand_time_data(reduced_ds[var_name])
+            expanded_ds_data[var_name] = expand_data(reduced_ds[var_name])
 
         # Update coordinates
         expanded_ds = xr.Dataset(expanded_ds_data, attrs=reduced_ds.attrs)
@@ -1359,15 +1578,22 @@ class TransformAccessor:
         expanded_solution_data = {}
 
         for var_name in reduced_solution.data_vars:
-            expanded_solution_data[var_name] = expand_time_data(reduced_solution[var_name])
+            expanded_solution_data[var_name] = expand_data(reduced_solution[var_name])
 
         expanded_solution = xr.Dataset(expanded_solution_data, attrs=reduced_solution.attrs)
         expanded_fs._solution = expanded_solution
 
-        logger.info(
-            f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
-            f'({n_clusters} clusters → {len(cluster_order)} original segments)'
-        )
+        n_combinations = len(periods) * len(scenarios)
+        if n_combinations > 1:
+            logger.info(
+                f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
+                f'({n_clusters} clusters, {n_combinations} period/scenario combinations)'
+            )
+        else:
+            logger.info(
+                f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
+                f'({n_clusters} clusters → {len(cluster_orders[first_key])} original segments)'
+            )
 
         return expanded_fs
 
