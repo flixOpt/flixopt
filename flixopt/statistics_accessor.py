@@ -784,9 +784,9 @@ class StatisticsAccessor:
                         label = f'{contributor}->{source_effect}({current_mode})'
                         if label in solution:
                             da = solution[label] * factor
-                            # For total mode, sum temporal over time
+                            # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
                             if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                                da = da.sum('time')
+                                da = (da * self._fs.cluster_weight).sum('time')
                             if share_total is None:
                                 share_total = da
                             else:

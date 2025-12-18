@@ -1412,6 +1412,11 @@ class TransformAccessor:
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
+        # Reset cluster_weight to 1.0 - values are already expanded, no weighting needed
+        expanded_fs.cluster_weight = expanded_fs.fit_to_model_coords(
+            'cluster_weight', np.ones(n_original_timesteps), dims=['time']
+        )
+
         # 2. Expand solution
         reduced_solution = self._fs.solution
         expanded_fs._solution = xr.Dataset(
