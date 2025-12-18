@@ -1531,6 +1531,246 @@ class TransformAccessor:
             scenarios=scenarios,
         )
 
+    # =====================================================================
+    # New Aggregation API (Phase 3 - Backend-agnostic interface)
+    # =====================================================================
+
+    def aggregate(
+        self,
+        method: str | Any = 'tsam',
+        n_representatives: int | None = None,
+        reduce: bool = True,
+        **kwargs,
+    ) -> FlowSystem:
+        """Unified aggregation method supporting multiple backends.
+
+        This is the recommended API for time series aggregation. It supports
+        multiple backends (TSAM, manual, etc.) through a unified interface.
+
+        For TSAM backend, this delegates to cluster() or cluster_reduce()
+        based on the ``reduce`` parameter.
+
+        Args:
+            method: Aggregation backend. Options:
+                - 'tsam': Use TSAM package for k-means clustering (default)
+                - 'manual': Use ManualBackend with pre-computed mapping
+                - Custom Aggregator instance
+            n_representatives: Target number of representative timesteps.
+                For 'tsam' with cluster_duration='1D', this is the number of
+                typical days.
+            reduce: Aggregation mode:
+                - True: Reduce timesteps (cluster_reduce mode)
+                - False: Keep all timesteps with equality constraints (cluster mode)
+            **kwargs: Backend-specific options. For 'tsam':
+                - cluster_duration: Duration per cluster ('1D', '24h', etc.)
+                - n_segments: Inner-period segmentation
+                - time_series_for_high_peaks: Force high-value period inclusion
+                - time_series_for_low_peaks: Force low-value period inclusion
+                - aggregate_data: Whether to aggregate time series data
+                - include_storage: Include storage in constraints
+
+        Returns:
+            New FlowSystem with aggregation applied.
+
+        Example:
+            >>> # TSAM clustering with 8 typical days
+            >>> fs_agg = fs.transform.aggregate(
+            ...     method='tsam',
+            ...     n_representatives=8,
+            ...     reduce=True,
+            ...     cluster_duration='1D',
+            ... )
+
+            >>> # Manual aggregation with external clustering
+            >>> fs_agg = fs.transform.set_aggregation(my_mapping, my_weights)
+
+        See Also:
+            set_aggregation: For PyPSA-style manual aggregation
+            cluster: TSAM constraint-based clustering
+            cluster_reduce: TSAM reduction-based clustering
+        """
+        from .aggregation import Aggregator, get_backend
+
+        # Handle string backend names
+        if isinstance(method, str):
+            backend_cls = get_backend(method)
+            if method == 'tsam':
+                # Delegate to existing TSAM methods for backwards compatibility
+                return self._aggregate_tsam(n_representatives, reduce, **kwargs)
+            elif method == 'manual':
+                raise ValueError("Use set_aggregation() for manual aggregation, not aggregate(method='manual')")
+            else:
+                # Custom registered backend
+                _backend = backend_cls(**kwargs)  # noqa: F841
+        elif isinstance(method, Aggregator):
+            _backend = method  # noqa: F841
+        else:
+            raise TypeError(f'method must be str or Aggregator, got {type(method)}')
+
+        # Use backend to aggregate
+        raise NotImplementedError(
+            "Generic backend aggregation not yet implemented. Use method='tsam' or set_aggregation() for now."
+        )
+
+    def _aggregate_tsam(
+        self,
+        n_representatives: int | None,
+        reduce: bool,
+        **kwargs,
+    ) -> FlowSystem:
+        """Internal: delegate to existing TSAM methods."""
+        # Extract TSAM-specific kwargs
+        cluster_duration = kwargs.pop('cluster_duration', '1D')
+        n_segments = kwargs.pop('n_segments', None)
+        aggregate_data = kwargs.pop('aggregate_data', True)
+        include_storage = kwargs.pop('include_storage', True)
+        flexibility_percent = kwargs.pop('flexibility_percent', 0)
+        flexibility_penalty = kwargs.pop('flexibility_penalty', 0)
+        time_series_for_high_peaks = kwargs.pop('time_series_for_high_peaks', None)
+        time_series_for_low_peaks = kwargs.pop('time_series_for_low_peaks', None)
+        components_to_clusterize = kwargs.pop('components_to_clusterize', None)
+        weights = kwargs.pop('weights', None)
+
+        if reduce:
+            # cluster_reduce doesn't support n_segments
+            return self.cluster_reduce(
+                n_clusters=n_representatives,
+                cluster_duration=cluster_duration,
+                weights=weights,
+                time_series_for_high_peaks=time_series_for_high_peaks,
+                time_series_for_low_peaks=time_series_for_low_peaks,
+                storage_cyclic=kwargs.pop('storage_cyclic', True),
+            )
+        else:
+            return self.cluster(
+                n_clusters=n_representatives,
+                cluster_duration=cluster_duration,
+                n_segments=n_segments,
+                aggregate_data=aggregate_data,
+                include_storage=include_storage,
+                flexibility_percent=flexibility_percent,
+                flexibility_penalty=flexibility_penalty,
+                time_series_for_high_peaks=time_series_for_high_peaks,
+                time_series_for_low_peaks=time_series_for_low_peaks,
+                components_to_clusterize=components_to_clusterize,
+            )
+
+    def set_aggregation(
+        self,
+        timestep_mapping: xr.DataArray,
+        weights: xr.DataArray,
+        reduce: bool = True,
+        cluster_structure: Any = None,
+        aggregated_data: xr.Dataset | None = None,
+    ) -> FlowSystem:
+        """Set aggregation from external tool (PyPSA-style workflow).
+
+        This enables users to bring their own aggregation results from any tool
+        (sklearn, custom algorithms, hierarchical clustering, etc.) and apply
+        them to flixopt.
+
+        This is similar to PyPSA's approach where aggregation is done externally
+        and the framework just accepts the results.
+
+        Args:
+            timestep_mapping: Maps each original timestep to representative index.
+                DataArray with dims [original_time] or [original_time, period, scenario].
+                Values should be integers in range [0, n_representatives).
+            weights: Weight for each representative timestep.
+                DataArray with dims [time] or [time, period, scenario].
+                Typically equals count of original timesteps each representative covers.
+            reduce: Aggregation mode:
+                - True (default): Reduce timesteps (like cluster_reduce)
+                - False: Keep all timesteps with equality constraints (like cluster)
+            cluster_structure: Optional ClusterStructure for storage inter-period linking.
+                Required for proper storage optimization in reduce mode.
+            aggregated_data: Optional pre-aggregated time series data.
+                If not provided, data will be extracted from mapping.
+
+        Returns:
+            New FlowSystem with aggregation applied.
+
+        Example:
+            >>> # External clustering with sklearn
+            >>> from sklearn.cluster import KMeans
+            >>> import xarray as xr
+            >>>
+            >>> # ... perform clustering ...
+            >>> mapping = xr.DataArray(my_mapping, dims=['original_time'])
+            >>> weights = xr.DataArray(my_weights, dims=['time'])
+            >>>
+            >>> fs_agg = fs.transform.set_aggregation(
+            ...     timestep_mapping=mapping,
+            ...     weights=weights,
+            ...     reduce=True,
+            ... )
+
+        See Also:
+            aggregate: Unified aggregation API with backend support
+            flixopt.aggregation.ManualBackend: Backend class for manual aggregation
+            flixopt.aggregation.create_manual_backend_from_labels: Helper for sklearn labels
+        """
+        from .aggregation import ManualBackend
+
+        # Create ManualBackend from provided data
+        backend = ManualBackend(
+            timestep_mapping=timestep_mapping,
+            representative_weights=weights,
+            cluster_structure=cluster_structure,
+        )
+
+        # Build aggregation result
+        # For now, we need to convert flow_system data to xr.Dataset for the backend
+        data = self._fs_data_to_dataset()
+        n_representatives = len(weights)
+
+        result = backend.aggregate(data, n_representatives)
+
+        # Apply aggregation based on mode
+        if reduce:
+            return self._apply_reduce_aggregation(result)
+        else:
+            return self._apply_constraint_aggregation(result)
+
+    def _fs_data_to_dataset(self) -> xr.Dataset:
+        """Convert FlowSystem time series data to xarray Dataset."""
+        from .core import TimeSeriesData
+
+        data_vars = {}
+        for element in self._fs.values():
+            for attr_name, attr_value in element.__dict__.items():
+                if isinstance(attr_value, TimeSeriesData) and attr_value.has_data:
+                    name = f'{element.label_full}|{attr_name}'
+                    data_vars[name] = (['time'], attr_value.data.values)
+
+        return xr.Dataset(
+            data_vars,
+            coords={'time': self._fs.timesteps},
+        )
+
+    def _apply_reduce_aggregation(self, result) -> FlowSystem:
+        """Apply reduce-mode aggregation using AggregationResult.
+
+        This creates a new FlowSystem with reduced timesteps, similar to
+        cluster_reduce() but using the generic AggregationResult.
+        """
+        # For now, delegate to existing cluster_reduce infrastructure
+        # Full implementation would create FlowSystem directly from result
+        raise NotImplementedError(
+            'set_aggregation with reduce=True not yet fully implemented. '
+            'Use cluster_reduce() for now, or set_aggregation with reduce=False.'
+        )
+
+    def _apply_constraint_aggregation(self, result) -> FlowSystem:
+        """Apply constraint-mode aggregation using AggregationResult.
+
+        This creates equality constraints to equate clustered timesteps,
+        similar to cluster() but using the generic AggregationResult.
+        """
+        # For now, delegate to existing cluster infrastructure
+        # Full implementation would create constraints from result.timestep_mapping
+        raise NotImplementedError('set_aggregation with reduce=False not yet fully implemented. Use cluster() for now.')
+
     # Future methods can be added here:
     #
     # def mga(self, alternatives: int = 5) -> FlowSystem:

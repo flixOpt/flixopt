@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     import pyvis
 
     from .solvers import _Solver
+    from .structure import TimeSeriesWeights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 from .carrier import Carrier, CarrierContainer
@@ -2060,6 +2061,47 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+    @property
+    def weights(self) -> TimeSeriesWeights:
+        """Unified weighting system for time series aggregation.
+
+        Returns a TimeSeriesWeights object providing a clean, unified interface
+        for all weight types used in flixopt. This is the recommended way to
+        access weights for new code (PyPSA-inspired design).
+
+        The temporal weight combines timestep_duration and cluster_weight,
+        which is the proper weight for summing over time.
+
+        Returns:
+            TimeSeriesWeights with temporal, period, and scenario weights.
+
+        Example:
+            >>> weights = flow_system.weights
+            >>> weighted_total = (flow_rate * weights.temporal).sum('time')
+            >>> # Or use the convenience method:
+            >>> weighted_total = weights.sum_over_time(flow_rate)
+        """
+        from .structure import TimeSeriesWeights
+
+        return TimeSeriesWeights(
+            temporal=self.timestep_duration * self.cluster_weight,
+            period=self.period_weights,
+            scenario=self._scenario_weights,
+        )
+
+    @property
+    def aggregation_weight(self) -> xr.DataArray:
+        """Combined weight for time aggregation.
+
+        Combines timestep_duration (physical duration) and cluster_weight (cluster representation).
+        Use this for proper time aggregation in clustered models.
+
+        Note:
+            This is equivalent to `weights.temporal`. The unified TimeSeriesWeights
+            interface (via `flow_system.weights`) is recommended for new code.
+        """
+        return self.timestep_duration * self.cluster_weight
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """

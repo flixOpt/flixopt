@@ -42,6 +42,92 @@ logger = logging.getLogger('flixopt')
 CLASS_REGISTRY = {}
 
 
+@dataclass
+class TimeSeriesWeights:
+    """Unified weighting system for time series aggregation (PyPSA-inspired).
+
+    This class provides a clean, unified interface for time series weights,
+    combining the various weight types used in flixopt into a single object.
+
+    Attributes:
+        temporal: Combined weight for temporal operations (timestep_duration × cluster_weight).
+            Applied to all time-summing operations. dims: [time] or [time, period, scenario]
+        period: Weight for each period in multi-period optimization.
+            dims: [period] or None
+        scenario: Weight for each scenario in stochastic optimization.
+            dims: [scenario] or None
+        objective: Optional override weight for objective function calculations.
+            If None, uses temporal weight. dims: [time] or [time, period, scenario]
+        storage: Optional override weight for storage balance equations.
+            If None, uses temporal weight. dims: [time] or [time, period, scenario]
+
+    Example:
+        >>> # Access via FlowSystem
+        >>> weights = flow_system.weights
+        >>> weighted_sum = (flow_rate * weights.temporal).sum('time')
+        >>>
+        >>> # With period/scenario weighting
+        >>> total = weighted_sum * weights.period * weights.scenario
+
+    Note:
+        For backwards compatibility, the existing properties (cluster_weight,
+        timestep_duration, aggregation_weight) are still available on FlowSystem
+        and FlowSystemModel.
+    """
+
+    temporal: xr.DataArray
+    period: xr.DataArray | None = None
+    scenario: xr.DataArray | None = None
+    objective: xr.DataArray | None = None
+    storage: xr.DataArray | None = None
+
+    def __post_init__(self):
+        """Validate weights."""
+        if not isinstance(self.temporal, xr.DataArray):
+            raise TypeError('temporal must be an xarray DataArray')
+        if 'time' not in self.temporal.dims:
+            raise ValueError("temporal must have 'time' dimension")
+
+    @property
+    def effective_objective(self) -> xr.DataArray:
+        """Get effective objective weight (override or temporal)."""
+        return self.objective if self.objective is not None else self.temporal
+
+    @property
+    def effective_storage(self) -> xr.DataArray:
+        """Get effective storage weight (override or temporal)."""
+        return self.storage if self.storage is not None else self.temporal
+
+    def sum_over_time(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over time dimension with proper weighting.
+
+        Args:
+            data: DataArray with 'time' dimension.
+
+        Returns:
+            Data summed over time with temporal weighting applied.
+        """
+        if 'time' not in data.dims:
+            return data
+        return (data * self.temporal).sum('time')
+
+    def apply_period_scenario_weights(self, data: xr.DataArray) -> xr.DataArray:
+        """Apply period and scenario weights to data.
+
+        Args:
+            data: DataArray, optionally with 'period' and/or 'scenario' dims.
+
+        Returns:
+            Data with period and scenario weights applied.
+        """
+        result = data
+        if self.period is not None and 'period' in data.dims:
+            result = result * self.period
+        if self.scenario is not None and 'scenario' in data.dims:
+            result = result * self.scenario
+        return result
+
+
 def register_class_for_io(cls):
     """Register a class for serialization/deserialization."""
     name = cls.__name__

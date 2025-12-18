@@ -911,6 +911,58 @@ class TypicalPeriodsModel(Submodel):
         self.storage_cyclic = storage_cyclic
         self.n_original_periods = len(self.cluster_order)
 
+    @classmethod
+    def from_cluster_structure(
+        cls,
+        model: FlowSystemModel,
+        flow_system: FlowSystem,
+        cluster_structure,  # aggregation.ClusterStructure
+        storage_cyclic: bool = True,
+    ) -> TypicalPeriodsModel:
+        """Create TypicalPeriodsModel from a ClusterStructure.
+
+        This is the recommended way to create TypicalPeriodsModel when using
+        the new aggregation API, as it accepts the generic ClusterStructure
+        from any aggregation backend.
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            flow_system: The FlowSystem being optimized.
+            cluster_structure: ClusterStructure from flixopt.aggregation module.
+            storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
+
+        Returns:
+            Configured TypicalPeriodsModel instance.
+
+        Example:
+            >>> from flixopt.aggregation import ClusterStructure
+            >>> structure = ClusterStructure(...)
+            >>> model = TypicalPeriodsModel.from_cluster_structure(model, flow_system, structure)
+        """
+        # Extract data from ClusterStructure
+        cluster_order = cluster_structure.cluster_order.values
+        n_clusters = (
+            int(cluster_structure.n_clusters)
+            if isinstance(cluster_structure.n_clusters, (int, np.integer))
+            else int(cluster_structure.n_clusters.values)
+        )
+
+        # Convert cluster_occurrences DataArray to dict
+        cluster_occurrences = {}
+        for c in range(n_clusters):
+            occ = cluster_structure.cluster_occurrences.sel(cluster=c)
+            cluster_occurrences[c] = int(occ.values)
+
+        return cls(
+            model=model,
+            flow_system=flow_system,
+            cluster_order=cluster_order,
+            cluster_occurrences=cluster_occurrences,
+            n_typical_periods=n_clusters,
+            timesteps_per_period=cluster_structure.timesteps_per_cluster,
+            storage_cyclic=storage_cyclic,
+        )
+
     def do_modeling(self):
         """Create SOC boundary variables and inter-period linking constraints.
 

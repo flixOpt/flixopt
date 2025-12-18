@@ -13,7 +13,7 @@ except (PackageNotFoundError, TypeError):
     __version__ = '0.0.0.dev0'
 
 # Import commonly used classes and functions
-from . import linear_converters, plotting, results, solvers
+from . import aggregation, linear_converters, plotting, results, solvers
 from .carrier import Carrier, CarrierContainer
 from .clustering import ClusteringParameters
 from .components import (
@@ -32,6 +32,7 @@ from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
 from .plot_result import PlotResult
+from .structure import TimeSeriesWeights
 
 __all__ = [
     'TimeSeriesData',
@@ -60,6 +61,8 @@ __all__ = [
     'PiecewiseEffects',
     'ClusteringParameters',
     'PlotResult',
+    'TimeSeriesWeights',
+    'aggregation',
     'plotting',
     'results',
     'linear_converters',
