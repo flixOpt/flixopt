@@ -463,6 +463,7 @@ class TransformAccessor:
             >>> clustered_fs = flow_system.transform.add_clustering(params)
         """
         from .clustering import ClusteringParameters
+        from .core import DataConverter, TimeSeriesData
 
         # Validate parameters type
         if not isinstance(parameters, ClusteringParameters):
@@ -472,11 +473,72 @@ class TransformAccessor:
         if not parameters.has_indices:
             raise ValueError(
                 'ClusteringParameters must have indices set. '
-                'Either provide cluster_order/period_length directly or call populate_from_tsam().'
+                'Either provide cluster_order/period_length directly, pass tsam_aggregation, or call populate_from_tsam().'
             )
 
-        # Create a copy of the FlowSystem to avoid modifying the original
-        clustered_fs = self._fs.copy()
+        # Aggregate data if tsam_aggregation is provided and aggregate_data=True
+        if parameters.aggregate_data and parameters.tsam_aggregation is not None:
+            ds = self._fs.to_dataset()
+            tsam_agg = parameters.tsam_aggregation
+
+            # Get aggregated data from tsam (this is pre-computed for the subset that was clustered)
+            aggregated_df = tsam_agg.predictOriginalData()
+
+            # For variables not in the clustering subset, compute aggregation manually
+            # using the cluster assignments
+            period_length = parameters.period_length
+            cluster_order = parameters.cluster_order.values
+            n_timesteps = len(self._fs.timesteps)
+
+            for name in ds.data_vars:
+                da = ds[name]
+                if 'time' not in da.dims:
+                    continue
+
+                if name in aggregated_df.columns:
+                    # Use tsam's aggregated result for columns that were clustered
+                    series = aggregated_df[name]
+                    da_new = DataConverter.to_dataarray(series, self._fs.coords).rename(name).assign_attrs(da.attrs)
+                else:
+                    # Manually aggregate using cluster assignments
+                    # For each timestep, replace with mean of corresponding timesteps in same cluster
+                    import numpy as np
+
+                    values = da.values.copy()
+                    aggregated_values = np.zeros_like(values)
+
+                    # Build mapping: for each cluster, collect all timestep indices
+                    n_clusters = int(cluster_order.max()) + 1
+                    cluster_to_timesteps: dict[int, list[int]] = {c: [] for c in range(n_clusters)}
+                    for period_idx, cluster_id in enumerate(cluster_order):
+                        for pos in range(period_length):
+                            ts_idx = period_idx * period_length + pos
+                            if ts_idx < n_timesteps:
+                                cluster_to_timesteps[int(cluster_id)].append((ts_idx, pos))
+
+                    # For each cluster, compute mean for each position
+                    for _cluster_id, ts_list in cluster_to_timesteps.items():
+                        # Group by position within period
+                        position_values: dict[int, list] = {}
+                        for ts_idx, pos in ts_list:
+                            position_values.setdefault(pos, []).append(values[ts_idx])
+
+                        # Compute mean for each position and assign back
+                        for ts_idx, pos in ts_list:
+                            aggregated_values[ts_idx] = np.mean(position_values[pos])
+
+                    da_new = da.copy(data=aggregated_values)
+
+                if TimeSeriesData.is_timeseries_data(da_new):
+                    da_new = TimeSeriesData.from_dataarray(da_new)
+                ds[name] = da_new
+
+            from .flow_system import FlowSystem
+
+            clustered_fs = FlowSystem.from_dataset(ds)
+        else:
+            # No data aggregation - just copy
+            clustered_fs = self._fs.copy()
 
         # Store clustering info
         clustered_fs._clustering_info = {

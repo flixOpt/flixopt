@@ -501,6 +501,8 @@ class ClusteringParameters(Interface):
         period_length: int | None = None,
         segment_assignment: xr.DataArray | None = None,
         skip_first_of_period: bool = True,
+        # External tsam aggregation for data transformation
+        tsam_aggregation: tsam.TimeSeriesAggregation | None = None,
     ):
         import xarray as xr
 
@@ -515,6 +517,7 @@ class ClusteringParameters(Interface):
         self.time_series_for_high_peaks: list[TimeSeriesData] = time_series_for_high_peaks or []
         self.time_series_for_low_peaks: list[TimeSeriesData] = time_series_for_low_peaks or []
         self.skip_first_of_period = skip_first_of_period
+        self.tsam_aggregation = tsam_aggregation  # Not serialized - runtime only
 
         # Clustering indices - ensure DataArrays have names for IO
         if cluster_order is not None:
@@ -542,6 +545,10 @@ class ClusteringParameters(Interface):
                 )
         else:
             self.segment_assignment = None
+
+        # Auto-populate indices from tsam if provided
+        if tsam_aggregation is not None and not self.has_indices:
+            self.populate_from_tsam(tsam_aggregation)
 
     @property
     def has_indices(self) -> bool:
