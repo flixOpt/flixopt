@@ -1193,44 +1193,22 @@ class TransformAccessor:
             start=self._fs.timesteps[0], periods=n_reduced_timesteps, freq=pd.Timedelta(hours=dt)
         )
 
-        # Create timestep weights from cluster occurrences (per period/scenario if needed)
-        def _build_weights_for_key(key: tuple) -> np.ndarray:
+        # Create timestep weights from cluster occurrences (per period/scenario)
+        def _build_weights_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            return np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
+            weights = np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
+            return xr.DataArray(weights, dims=['time'], coords={'time': new_time_index})
 
-        # Build weights array - might need period/scenario dimensions
-        if has_periods or has_scenarios:
-            # Build multi-dimensional weights
-            weights_dict: dict[tuple, xr.DataArray] = {}
-            for key in cluster_occurrences_all:
-                weights_dict[key] = xr.DataArray(
-                    _build_weights_for_key(key), dims=['time'], coords={'time': new_time_index}
-                )
-            # Combine into single DataArray with appropriate dimensions
-            if has_periods and has_scenarios:
-                period_arrays = []
-                for p in periods:
-                    scenario_arrays = [weights_dict[(p, s)] for s in scenarios]
-                    period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-                timestep_weights = xr.concat(period_arrays, dim=pd.Index(periods, name='period')).transpose('time', ...)
-            elif has_periods:
-                timestep_weights = xr.concat(
-                    [weights_dict[(p, None)] for p in periods], dim=pd.Index(periods, name='period')
-                ).transpose('time', 'period')
-            else:
-                timestep_weights = xr.concat(
-                    [weights_dict[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario')
-                ).transpose('time', 'scenario')
-        else:
-            timestep_weights = _build_weights_for_key(first_key)
+        # Build weights - use _combine_slices_to_dataarray for consistent multi-dim handling
+        weights_slices = {key: _build_weights_for_key(key) for key in cluster_occurrences_all}
+        # Create a dummy 1D DataArray as template for _combine_slices_to_dataarray
+        dummy_template = xr.DataArray(np.zeros(n_reduced_timesteps), dims=['time'])
+        timestep_weights = self._combine_slices_to_dataarray(
+            weights_slices, dummy_template, new_time_index, periods, scenarios
+        )
 
         logger.info(f'Reduced from {len(self._fs.timesteps)} to {n_reduced_timesteps} timesteps')
         logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
-
-        # Create new time index
-        new_time_index = pd.date_range(
-            start=self._fs.timesteps[0], periods=n_reduced_timesteps, freq=pd.Timedelta(hours=dt)
-        )
 
         # Build typical periods DataArrays keyed by (variable_name, (period, scenario))
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
@@ -1339,10 +1317,8 @@ class TransformAccessor:
         else:
             result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
 
-        # Match original dimension order
-        target_dims = [d for d in original_da.dims if d in result.dims]
-        if target_dims and tuple(target_dims) != result.dims:
-            result = result.transpose(*target_dims)
+        # Put time dimension first (standard order), preserve other dims
+        result = result.transpose('time', ...)
 
         return result.assign_attrs(original_da.attrs)
 
@@ -1445,23 +1421,12 @@ class TransformAccessor:
         expanded_ds.attrs['timestep_duration'] = original_fs.timestep_duration.values.tolist()
 
         # Create cluster_weight with value 1.0 for all timesteps (no weighting needed for expanded)
+        # Use _combine_slices_to_dataarray for consistent multi-dim handling
         ones_da = xr.DataArray(np.ones(n_original_timesteps), dims=['time'], coords={'time': original_timesteps})
-        if has_periods and has_scenarios:
-            cluster_weight = (
-                ones_da.expand_dims(period=list(periods), scenario=list(scenarios))
-                .transpose('time', 'period', 'scenario')
-                .rename('cluster_weight')
-            )
-        elif has_periods:
-            cluster_weight = (
-                ones_da.expand_dims(period=list(periods)).transpose('time', 'period').rename('cluster_weight')
-            )
-        elif has_scenarios:
-            cluster_weight = (
-                ones_da.expand_dims(scenario=list(scenarios)).transpose('time', 'scenario').rename('cluster_weight')
-            )
-        else:
-            cluster_weight = ones_da.rename('cluster_weight')
+        ones_slices = {(p, s): ones_da for p in periods for s in scenarios}
+        cluster_weight = self._combine_slices_to_dataarray(
+            ones_slices, ones_da, original_timesteps, periods, scenarios
+        ).rename('cluster_weight')
         expanded_ds['cluster_weight'] = cluster_weight
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)

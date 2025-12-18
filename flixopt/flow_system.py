@@ -197,15 +197,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Cluster weight for cluster_reduce optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
         # May have period/scenario dimensions if cluster_reduce was used with those
-        if cluster_weight is None:
-            self.cluster_weight = self.fit_to_model_coords(
-                'cluster_weight', np.ones(len(self.timesteps)), dims=['time']
-            )
-        elif isinstance(cluster_weight, xr.DataArray) and len(cluster_weight.dims) > 1:
-            # Multi-dimensional cluster_weight from cluster_reduce - use directly
-            self.cluster_weight = cluster_weight.rename('cluster_weight')
-        else:
-            self.cluster_weight = self.fit_to_model_coords('cluster_weight', cluster_weight, dims=['time'])
+        self.cluster_weight = self.fit_to_model_coords(
+            'cluster_weight',
+            np.ones(len(self.timesteps)) if cluster_weight is None else cluster_weight,
+            dims=['time', 'period', 'scenario'],  # Gracefully ignores dims not present
+        )
 
         self.scenario_weights = scenario_weights  # Use setter
 
