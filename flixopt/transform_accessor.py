@@ -1436,7 +1436,7 @@ class TransformAccessor:
                 return da.copy()
             return self._expand_dataarray(da, mappings, original_timesteps, periods, scenarios)
 
-        # 1. Expand FlowSystem data (exclude cluster_weight - we'll set it manually)
+        # 1. Expand FlowSystem data (with cluster_weight set to 1.0 for all timesteps)
         reduced_ds = self._fs.to_dataset(include_solution=False)
         expanded_ds = xr.Dataset(
             {name: expand_da(da) for name, da in reduced_ds.data_vars.items() if name != 'cluster_weight'},
@@ -1444,30 +1444,27 @@ class TransformAccessor:
         )
         expanded_ds.attrs['timestep_duration'] = original_fs.timestep_duration.values.tolist()
 
-        expanded_fs = FlowSystem.from_dataset(expanded_ds)
-
-        # Reset cluster_weight to 1.0 - values are already expanded, no weighting needed
-        # Match dimensions of original clustered cluster_weight
-        if has_periods or has_scenarios:
-            ones_da = xr.DataArray(np.ones(n_original_timesteps), dims=['time'], coords={'time': original_timesteps})
-            if has_periods and has_scenarios:
-                expanded_fs.cluster_weight = (
-                    ones_da.expand_dims(period=list(periods), scenario=list(scenarios))
-                    .transpose('time', 'period', 'scenario')
-                    .rename('cluster_weight')
-                )
-            elif has_periods:
-                expanded_fs.cluster_weight = (
-                    ones_da.expand_dims(period=list(periods)).transpose('time', 'period').rename('cluster_weight')
-                )
-            else:
-                expanded_fs.cluster_weight = (
-                    ones_da.expand_dims(scenario=list(scenarios)).transpose('time', 'scenario').rename('cluster_weight')
-                )
-        else:
-            expanded_fs.cluster_weight = expanded_fs.fit_to_model_coords(
-                'cluster_weight', np.ones(n_original_timesteps), dims=['time']
+        # Create cluster_weight with value 1.0 for all timesteps (no weighting needed for expanded)
+        ones_da = xr.DataArray(np.ones(n_original_timesteps), dims=['time'], coords={'time': original_timesteps})
+        if has_periods and has_scenarios:
+            cluster_weight = (
+                ones_da.expand_dims(period=list(periods), scenario=list(scenarios))
+                .transpose('time', 'period', 'scenario')
+                .rename('cluster_weight')
             )
+        elif has_periods:
+            cluster_weight = (
+                ones_da.expand_dims(period=list(periods)).transpose('time', 'period').rename('cluster_weight')
+            )
+        elif has_scenarios:
+            cluster_weight = (
+                ones_da.expand_dims(scenario=list(scenarios)).transpose('time', 'scenario').rename('cluster_weight')
+            )
+        else:
+            cluster_weight = ones_da.rename('cluster_weight')
+        expanded_ds['cluster_weight'] = cluster_weight
+
+        expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
         # 2. Expand solution
         reduced_solution = self._fs.solution
