@@ -1326,6 +1326,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.solve(
             solver_name=solver.name,
+            progress=CONFIG.Solving.log_to_console,
             **solver.options,
         )
 
