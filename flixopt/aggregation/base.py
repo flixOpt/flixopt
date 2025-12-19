@@ -152,6 +152,65 @@ class ClusterStructure:
             name='cluster_weight',
         )
 
+    def plot(self, show: bool | None = None):
+        """Plot cluster assignment visualization.
+
+        Shows which cluster each original period belongs to, and the
+        number of occurrences per cluster.
+
+        Args:
+            show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying data.
+        """
+        import plotly.express as px
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        n_clusters = (
+            int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
+        )
+
+        # Create DataFrame for plotting
+        import pandas as pd
+
+        cluster_order = self.get_cluster_order_for_slice()
+        df = pd.DataFrame(
+            {
+                'Original Period': range(1, len(cluster_order) + 1),
+                'Cluster': cluster_order,
+            }
+        )
+
+        # Bar chart showing cluster assignment
+        fig = px.bar(
+            df,
+            x='Original Period',
+            y=[1] * len(df),
+            color='Cluster',
+            color_continuous_scale='Viridis',
+            title=f'Cluster Assignment ({self.n_original_periods} periods → {n_clusters} clusters)',
+        )
+        fig.update_layout(yaxis_visible=False, coloraxis_colorbar_title='Cluster')
+
+        # Build data for PlotResult
+        data = xr.Dataset(
+            {
+                'cluster_order': self.cluster_order,
+                'cluster_occurrences': self.cluster_occurrences,
+            }
+        )
+        plot_result = PlotResult(data=data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
+
 
 @dataclass
 class ClusterResult:
@@ -278,6 +337,102 @@ class ClusterResult:
                 stacklevel=2,
             )
 
+    def plot(self, colormap: str | None = None, show: bool | None = None):
+        """Plot original vs aggregated data comparison.
+
+        Convenience method that calls plot_aggregation() on this result.
+
+        Args:
+            colormap: Colorscale name for the time series colors.
+            show: Whether to display the figure.
+
+        Returns:
+            PlotResult containing the comparison figure and underlying data.
+        """
+        return plot_aggregation(self, colormap=colormap, show=show)
+
+    def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
+        """Plot each cluster's typical period profile.
+
+        Shows each cluster as a separate subplot with its occurrence count
+        in the title. Useful for understanding what each cluster represents.
+
+        Args:
+            variable: Variable to plot. If None, plots the first available variable.
+            show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying data.
+        """
+        from plotly.subplots import make_subplots
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        if self.aggregated_data is None or self.cluster_structure is None:
+            raise ValueError('ClusterResult must contain aggregated_data and cluster_structure for this plot')
+
+        cs = self.cluster_structure
+        n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
+
+        # Select variable
+        variables = list(self.aggregated_data.data_vars)
+        if variable is None:
+            variable = variables[0]
+        elif variable not in variables:
+            raise ValueError(f'Variable {variable} not found. Available: {variables}')
+
+        data = self.aggregated_data[variable].values
+
+        # Reshape to [n_clusters, timesteps_per_cluster]
+        data_by_cluster = data.reshape(n_clusters, cs.timesteps_per_cluster)
+
+        # Create subplots
+        n_cols = min(4, n_clusters)
+        n_rows = (n_clusters + n_cols - 1) // n_cols
+        fig = make_subplots(
+            rows=n_rows,
+            cols=n_cols,
+            subplot_titles=[
+                f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
+            ],
+        )
+
+        x = np.arange(cs.timesteps_per_cluster)
+        for c in range(n_clusters):
+            row = c // n_cols + 1
+            col = c % n_cols + 1
+            fig.add_trace(
+                {'type': 'scatter', 'x': x, 'y': data_by_cluster[c], 'mode': 'lines', 'showlegend': False},
+                row=row,
+                col=col,
+            )
+
+        fig.update_layout(
+            title=f'Typical Periods: {variable}',
+            height=200 * n_rows,
+        )
+
+        # Build data for PlotResult
+        result_data = xr.Dataset(
+            {
+                'typical_periods': xr.DataArray(
+                    data_by_cluster,
+                    dims=['cluster', 'timestep'],
+                    coords={'cluster': range(n_clusters), 'timestep': range(cs.timesteps_per_cluster)},
+                ),
+                'occurrences': cs.cluster_occurrences,
+            }
+        )
+        plot_result = PlotResult(data=result_data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
+
 
 @dataclass
 class ClusterInfo:
@@ -302,6 +457,42 @@ class ClusterInfo:
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
+
+    def plot(self, colormap: str | None = None, show: bool | None = None):
+        """Plot original vs aggregated data comparison.
+
+        Convenience method that calls plot_aggregation() on the result.
+
+        Args:
+            colormap: Colorscale name for the time series colors.
+            show: Whether to display the figure.
+
+        Returns:
+            PlotResult containing the comparison figure and underlying data.
+
+        Example:
+            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+            >>> fs_clustered._cluster_info.plot()
+        """
+        return self.result.plot(colormap=colormap, show=show)
+
+    def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
+        """Plot each cluster's typical period profile.
+
+        Convenience method that calls plot_typical_periods() on the result.
+
+        Args:
+            variable: Variable to plot. If None, plots the first available variable.
+            show: Whether to display the figure.
+
+        Returns:
+            PlotResult containing the figure and underlying data.
+
+        Example:
+            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+            >>> fs_clustered._cluster_info.plot_typical_periods()
+        """
+        return self.result.plot_typical_periods(variable=variable, show=show)
 
 
 def create_cluster_structure_from_mapping(

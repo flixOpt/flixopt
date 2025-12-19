@@ -873,6 +873,7 @@ class TransformAccessor:
             representative_weights=timestep_weights.rename('representative_weights'),
             cluster_structure=cluster_structure,
             original_data=ds,
+            aggregated_data=ds_new,
         )
 
         reduced_fs._cluster_info = ClusterInfo(
