@@ -918,21 +918,15 @@ class StorageModel(ComponentModel):
         # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
         clustering = self._model.flow_system.clustering
         if clustering is not None:
-            # Skip transition j→j+1 if j+1 is a cluster start (entering a new cluster)
-            # cluster_start_mask[1:] gives starts at positions 1..n, which correspond to
-            # constraint positions 0..n-1 (shifted by 1). We invert to get "keep" mask.
-            cluster_start = clustering.cluster_start_mask
-            intra_mask_values = np.ones(len(cluster_start), dtype=bool)
-            intra_mask_values[:-1] = ~cluster_start.values[1:]  # Skip where next is a start
+            # Skip constraint at position (start - 1) for each cluster start after the first.
+            # This removes the link between end of cluster N and start of cluster N+1.
+            starts = clustering.cluster_start_positions
+            n_timesteps = len(self._model.flow_system.timesteps)
+            mask_values = np.ones(n_timesteps, dtype=bool)
+            mask_values[starts[1:] - 1] = False  # Skip positions before each new cluster
 
             shifted_time_coords = self._model.flow_system.timesteps_extra[1:]
-            mask = xr.DataArray(intra_mask_values, dims=['time'], coords={'time': shifted_time_coords})
-
-            # Expand dims to match lhs if cluster_start has period/scenario dims
-            if 'period' in cluster_start.dims:
-                mask = mask.expand_dims(period=cluster_start.coords['period'].values)
-            if 'scenario' in cluster_start.dims:
-                mask = mask.expand_dims(scenario=cluster_start.coords['scenario'].values)
+            mask = xr.DataArray(mask_values, dims=['time'], coords={'time': shifted_time_coords})
 
             lhs = lhs.where(mask)
 

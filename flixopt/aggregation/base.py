@@ -17,7 +17,7 @@ All data structures use xarray for consistent handling of coordinates.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -908,7 +908,6 @@ class Clustering:
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
-    _cluster_start_mask: xr.DataArray | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -986,61 +985,25 @@ class Clustering:
         return self.result.timestep_mapping
 
     @property
-    def cluster_start_mask(self) -> xr.DataArray:
-        """Boolean mask True for the first timestep of each cluster.
+    def cluster_start_positions(self) -> np.ndarray:
+        """Integer positions where clusters start.
 
-        This provides a simple, intuitive way to identify cluster boundaries.
-        Invert (~) to get a mask for non-start timesteps.
-
-        The mask uses clustered FlowSystem's timesteps as coordinates.
-        Use `.assign_coords(time=new_coords)` if different coordinates are needed.
+        Returns the indices of the first timestep of each cluster.
+        Use these positions to build masks for specific use cases.
 
         Returns:
-            DataArray with dims ['time'] or ['time', 'period', 'scenario'],
-            True for first timestep of each cluster.
+            1D numpy array of positions: [0, T, 2T, ...] where T = timesteps_per_period.
 
         Example:
-            For 2 clusters with 24 timesteps each (48 total):
-            - Position 0: True (start of cluster 0)
-            - Positions 1-23: False
-            - Position 24: True (start of cluster 1)
-            - Positions 25-47: False
+            For 2 clusters with 24 timesteps each:
+            >>> clustering.cluster_start_positions
+            array([0, 24])
         """
-        if self._cluster_start_mask is not None:
-            return self._cluster_start_mask
-
         if self.result.cluster_structure is None:
             raise ValueError('No cluster_structure available')
 
-        n_clusters = self.n_clusters
-        steps_per_cluster = self.timesteps_per_period
-        n_timesteps = n_clusters * steps_per_cluster
-
-        # First timestep of each cluster: 0, T, 2T, ...
-        mask_values = (np.arange(n_timesteps) % steps_per_cluster) == 0
-
-        # Use clustered timesteps from aggregated_data or representative_weights
-        if self.result.aggregated_data is not None and 'time' in self.result.aggregated_data.coords:
-            time_coords = self.result.aggregated_data.coords['time'].values
-        else:
-            time_coords = self.result.representative_weights.coords['time'].values
-
-        mask = xr.DataArray(
-            mask_values,
-            dims=['time'],
-            coords={'time': time_coords},
-            name='cluster_start_mask',
-        )
-
-        # Expand to include period/scenario dimensions if present (for broadcasting)
-        original_fs = self.original_flow_system
-        if original_fs.periods is not None:
-            mask = mask.expand_dims(period=list(original_fs.periods))
-        if original_fs.scenarios is not None:
-            mask = mask.expand_dims(scenario=list(original_fs.scenarios))
-
-        self._cluster_start_mask = mask
-        return self._cluster_start_mask
+        n_timesteps = self.n_clusters * self.timesteps_per_period
+        return np.arange(0, n_timesteps, self.timesteps_per_period)
 
 
 def create_cluster_structure_from_mapping(
