@@ -919,8 +919,8 @@ class StorageModel(ComponentModel):
         clustering = self._model.flow_system.clustering
         mask = None
 
-        if clustering is not None and clustering.storage_mode in ('independent', 'intercluster', 'intercluster_cyclic'):
-            # Skip inter-cluster boundaries: removes link between end of cluster N and start of N+1
+        if clustering is not None:
+            # All modes skip inter-cluster boundaries: removes naive link between end of cluster N and start of N+1
             mask = np.ones(lhs.sizes['time'], dtype=bool)
             mask[clustering.cluster_start_positions] = False
             mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
