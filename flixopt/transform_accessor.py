@@ -615,7 +615,7 @@ class TransformAccessor:
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
-            The FlowSystem has metadata stored in ``cluster_info`` for expansion.
+            The FlowSystem has metadata stored in ``clustering`` for expansion.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
@@ -649,7 +649,7 @@ class TransformAccessor:
         """
         import tsam.timeseriesaggregation as tsam
 
-        from .aggregation import ClusterInfo, ClusterResult, ClusterStructure
+        from .aggregation import Clustering, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
@@ -797,7 +797,7 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = 0
 
-        # Build ClusterInfo for inter-cluster linking and solution expansion
+        # Build Clustering for inter-cluster linking and solution expansion
         n_original_timesteps = len(self._fs.timesteps)
 
         # Build per-slice cluster_order and timestep_mapping as multi-dimensional DataArrays
@@ -876,7 +876,7 @@ class TransformAccessor:
             aggregated_data=ds_new,
         )
 
-        reduced_fs.cluster_info = ClusterInfo(
+        reduced_fs.clustering = Clustering(
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
@@ -1034,7 +1034,7 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate
-        if self._fs.cluster_info is None:
+        if self._fs.clustering is None:
             raise ValueError(
                 'expand_solution() requires a FlowSystem created with cluster(). '
                 'This FlowSystem has no aggregation info.'
@@ -1042,7 +1042,7 @@ class TransformAccessor:
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        info = self._fs.cluster_info
+        info = self._fs.clustering
         cluster_structure = info.result.cluster_structure
         if cluster_structure is None:
             raise ValueError('No cluster structure available for expansion.')

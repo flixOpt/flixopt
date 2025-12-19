@@ -543,7 +543,7 @@ class ClusterResult:
 
 
 @dataclass
-class ClusterInfo:
+class Clustering:
     """Information about an aggregation stored on a FlowSystem.
 
     This is stored on the FlowSystem after aggregation to enable:
@@ -576,7 +576,7 @@ class ClusterInfo:
         else:
             structure_info = 'no structure'
         return (
-            f'ClusterInfo(\n'
+            f'Clustering(\n'
             f'  backend={self.backend_name!r}\n'
             f'  {structure_info}\n'
             f'  storage_linking={self.storage_inter_cluster_linking}, cyclic={self.storage_cyclic}\n'
@@ -599,7 +599,7 @@ class ClusterInfo:
 
         Example:
             >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered.cluster_info.plot()
+            >>> fs_clustered.clustering.plot()
         """
         return self.result.plot(colormap=colormap, show=show)
 
@@ -618,9 +618,72 @@ class ClusterInfo:
 
         Example:
             >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered.cluster_info.plot_typical_periods()
+            >>> fs_clustered.clustering.plot_typical_periods()
         """
         return self.result.plot_typical_periods(variable=variable, show=show)
+
+    def plot_structure(self, show: bool | None = None):
+        """Plot cluster assignment visualization.
+
+        Shows which original period belongs to which cluster.
+
+        Args:
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying data.
+
+        Example:
+            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+            >>> fs_clustered.clustering.plot_structure()
+        """
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        return self.result.cluster_structure.plot(show=show)
+
+    # Convenience properties delegating to nested objects
+
+    @property
+    def cluster_order(self) -> xr.DataArray:
+        """Which cluster each original period belongs to."""
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        return self.result.cluster_structure.cluster_order
+
+    @property
+    def occurrences(self) -> xr.DataArray:
+        """How many original periods each cluster represents."""
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        return self.result.cluster_structure.cluster_occurrences
+
+    @property
+    def n_clusters(self) -> int:
+        """Number of clusters."""
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        n = self.result.cluster_structure.n_clusters
+        return int(n) if isinstance(n, (int, np.integer)) else int(n.values)
+
+    @property
+    def n_original_periods(self) -> int:
+        """Number of original periods (before clustering)."""
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        return self.result.cluster_structure.n_original_periods
+
+    @property
+    def timesteps_per_period(self) -> int:
+        """Number of timesteps in each period/cluster."""
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+        return self.result.cluster_structure.timesteps_per_cluster
+
+    @property
+    def timestep_mapping(self) -> xr.DataArray:
+        """Mapping from original timesteps to representative timestep indices."""
+        return self.result.timestep_mapping
 
 
 def create_cluster_structure_from_mapping(

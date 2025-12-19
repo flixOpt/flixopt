@@ -139,7 +139,7 @@ class TestAggregationModuleImports:
 
         assert hasattr(aggregation, 'ClusterResult')
         assert hasattr(aggregation, 'ClusterStructure')
-        assert hasattr(aggregation, 'ClusterInfo')
+        assert hasattr(aggregation, 'Clustering')
 
     def test_plot_aggregation_available(self):
         """Test that plot_aggregation is available."""

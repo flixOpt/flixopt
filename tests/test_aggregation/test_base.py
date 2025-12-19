@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 from flixopt.aggregation import (
-    ClusterInfo,
+    Clustering,
     ClusterResult,
     ClusterStructure,
     create_cluster_structure_from_mapping,
@@ -139,18 +139,18 @@ class TestCreateClusterStructureFromMapping:
         assert structure.n_original_periods == 3
 
 
-class TestClusterInfo:
-    """Tests for ClusterInfo dataclass."""
+class TestClustering:
+    """Tests for Clustering dataclass."""
 
     def test_creation(self):
-        """Test ClusterInfo creation."""
+        """Test Clustering creation."""
         result = ClusterResult(
             timestep_mapping=xr.DataArray([0, 1], dims=['original_time']),
             n_representatives=2,
             representative_weights=xr.DataArray([1.0, 1.0], dims=['time']),
         )
 
-        info = ClusterInfo(
+        info = Clustering(
             result=result,
             original_flow_system=None,  # Would be FlowSystem in practice
             backend_name='tsam',

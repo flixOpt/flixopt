@@ -6,7 +6,7 @@ This module provides data structures for time series clustering/aggregation.
 Key classes:
 - ClusterResult: Universal result container for clustering
 - ClusterStructure: Hierarchical structure info for storage inter-cluster linking
-- ClusterInfo: Stored on FlowSystem after clustering
+- Clustering: Stored on FlowSystem after clustering
 
 Example usage:
 
@@ -18,7 +18,7 @@ Example usage:
     )
 
     # Access clustering metadata
-    info = fs_clustered.cluster_info
+    info = fs_clustered.clustering
     print(f'Number of clusters: {info.result.cluster_structure.n_clusters}')
 
     # Expand solution back to full resolution
@@ -26,7 +26,7 @@ Example usage:
 """
 
 from .base import (
-    ClusterInfo,
+    Clustering,
     ClusterResult,
     ClusterStructure,
     create_cluster_structure_from_mapping,
@@ -51,7 +51,7 @@ def _get_inter_cluster_linking():
 __all__ = [
     # Core classes
     'ClusterResult',
-    'ClusterInfo',
+    'Clustering',
     'ClusterStructure',
     'InterClusterLinking',
     # Utilities
