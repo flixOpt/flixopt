@@ -918,9 +918,22 @@ class StorageModel(ComponentModel):
         # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
         clustering = self._model.flow_system.clustering
         if clustering is not None:
-            # Shift mask coords to match lhs (which uses charge_state[1:], i.e., timesteps_extra[1:])
+            # Skip transition j→j+1 if j+1 is a cluster start (entering a new cluster)
+            # cluster_start_mask[1:] gives starts at positions 1..n, which correspond to
+            # constraint positions 0..n-1 (shifted by 1). We invert to get "keep" mask.
+            cluster_start = clustering.cluster_start_mask
+            intra_mask_values = np.ones(len(cluster_start), dtype=bool)
+            intra_mask_values[:-1] = ~cluster_start.values[1:]  # Skip where next is a start
+
             shifted_time_coords = self._model.flow_system.timesteps_extra[1:]
-            mask = clustering.intra_cluster_mask.assign_coords(time=shifted_time_coords)
+            mask = xr.DataArray(intra_mask_values, dims=['time'], coords={'time': shifted_time_coords})
+
+            # Expand dims to match lhs if cluster_start has period/scenario dims
+            if 'period' in cluster_start.dims:
+                mask = mask.expand_dims(period=cluster_start.coords['period'].values)
+            if 'scenario' in cluster_start.dims:
+                mask = mask.expand_dims(scenario=cluster_start.coords['scenario'].values)
+
             lhs = lhs.where(mask)
 
         self.add_constraints(lhs == 0, short_name='charge_state')
