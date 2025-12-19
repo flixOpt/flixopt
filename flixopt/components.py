@@ -922,10 +922,11 @@ class StorageModel(ComponentModel):
             # This removes the link between end of cluster N and start of cluster N+1.
             mask = np.ones(lhs.sizes['time'], dtype=bool)
             mask[clustering.cluster_start_positions] = False
+            mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
+        else:
+            mask = None
 
-            lhs = lhs.where(xr.DataArray(mask, coords={'time': lhs.coords['time']}))
-
-        self.add_constraints(lhs == 0, short_name='charge_state')
+        self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
 
         # Create InvestmentModel and bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
