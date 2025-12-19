@@ -922,7 +922,7 @@ class StorageModel(ComponentModel):
         if clustering is not None:
             # All modes skip inter-cluster boundaries: removes naive link between end of cluster N and start of N+1
             mask = np.ones(lhs.sizes['time'], dtype=bool)
-            mask[clustering.cluster_start_positions] = False
+            mask[clustering.cluster_start_positions[1:] - 1] = False
             mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
 
         self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
