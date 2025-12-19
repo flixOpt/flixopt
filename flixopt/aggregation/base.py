@@ -588,6 +588,18 @@ class ClusteringPlotAccessor:
         else:
             raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
 
+    def _get_time_varying_variables(self) -> list[str]:
+        """Get list of time-varying variables from original data."""
+        result = self._clustering.result
+        if result.original_data is None:
+            return []
+        return [
+            name
+            for name in result.original_data.data_vars
+            if 'time' in result.original_data[name].dims
+            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
+        ]
+
     def _compare_timeseries(
         self,
         variable: str | None = None,
@@ -595,7 +607,8 @@ class ClusteringPlotAccessor:
         show: bool | None = None,
     ):
         """Compare original vs aggregated as time series."""
-        import plotly.graph_objects as go
+        import pandas as pd
+        import plotly.express as px
 
         from ..config import CONFIG
         from ..plot_result import PlotResult
@@ -604,13 +617,7 @@ class ClusteringPlotAccessor:
         if result.original_data is None or result.aggregated_data is None:
             raise ValueError('No original/aggregated data available for comparison')
 
-        # Filter to time-varying variables
-        time_vars = [
-            name
-            for name in result.original_data.data_vars
-            if 'time' in result.original_data[name].dims
-            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
-        ]
+        time_vars = self._get_time_varying_variables()
         if not time_vars:
             raise ValueError('No time-varying variables found')
 
@@ -626,27 +633,26 @@ class ClusteringPlotAccessor:
         mapping = result.timestep_mapping.values
         expanded = aggregated.values[mapping]
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=original.coords['time'].values,
-                y=original.values,
-                name='Original',
-                line=dict(dash='dash'),
-            )
+        # Build long-form DataFrame for px.line
+        time_values = original.coords['time'].values
+        df = pd.DataFrame(
+            {
+                'time': np.tile(time_values, 2),
+                'value': np.concatenate([original.values, expanded]),
+                'series': ['Original'] * len(time_values) + ['Aggregated'] * len(time_values),
+            }
         )
-        fig.add_trace(
-            go.Scatter(
-                x=original.coords['time'].values,
-                y=expanded,
-                name='Aggregated',
-            )
-        )
-        fig.update_layout(
+
+        colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
+        fig = px.line(
+            df,
+            x='time',
+            y='value',
+            color='series',
             title=f'Original vs Aggregated: {variable}',
-            xaxis_title='Time',
-            yaxis_title='Value',
+            color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
         )
+        fig.update_traces(selector=dict(name='Original'), line_dash='dash')
 
         data = xr.Dataset({'original': original, 'aggregated': xr.DataArray(expanded, dims=['time'])})
         plot_result = PlotResult(data=data, figure=fig)
@@ -665,7 +671,8 @@ class ClusteringPlotAccessor:
         show: bool | None = None,
     ):
         """Compare original vs aggregated as duration curves."""
-        import plotly.graph_objects as go
+        import pandas as pd
+        import plotly.express as px
 
         from ..config import CONFIG
         from ..plot_result import PlotResult
@@ -674,13 +681,7 @@ class ClusteringPlotAccessor:
         if result.original_data is None or result.aggregated_data is None:
             raise ValueError('No original/aggregated data available for comparison')
 
-        # Filter to time-varying variables
-        time_vars = [
-            name
-            for name in result.original_data.data_vars
-            if 'time' in result.original_data[name].dims
-            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
-        ]
+        time_vars = self._get_time_varying_variables()
         if not time_vars:
             raise ValueError('No time-varying variables found')
 
@@ -699,29 +700,28 @@ class ClusteringPlotAccessor:
         # Sort both for duration curve
         original_sorted = np.sort(original)[::-1]
         expanded_sorted = np.sort(expanded)[::-1]
-        x = np.arange(len(original_sorted))
+        n = len(original_sorted)
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=original_sorted,
-                name='Original',
-                line=dict(dash='dash'),
-            )
+        # Build long-form DataFrame for px.line
+        df = pd.DataFrame(
+            {
+                'rank': np.tile(np.arange(n), 2),
+                'value': np.concatenate([original_sorted, expanded_sorted]),
+                'series': ['Original'] * n + ['Aggregated'] * n,
+            }
         )
-        fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=expanded_sorted,
-                name='Aggregated',
-            )
-        )
-        fig.update_layout(
+
+        colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
+        fig = px.line(
+            df,
+            x='rank',
+            y='value',
+            color='series',
             title=f'Duration Curve: {variable}',
-            xaxis_title='Hours (sorted)',
-            yaxis_title='Value',
+            labels={'rank': 'Hours (sorted)', 'value': 'Value'},
+            color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
         )
+        fig.update_traces(selector=dict(name='Original'), line_dash='dash')
 
         data = xr.Dataset(
             {
@@ -741,6 +741,7 @@ class ClusteringPlotAccessor:
     def heatmap(
         self,
         variable: str | None = None,
+        colorscale: str | None = None,
         show: bool | None = None,
     ):
         """Plot clustering structure as a heatmap of periods vs timesteps.
@@ -751,13 +752,15 @@ class ClusteringPlotAccessor:
 
         Args:
             variable: Variable to plot. If None, plots first available variable.
+            colorscale: Colorscale for heatmap.
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the heatmap figure and underlying data.
         """
-        import plotly.graph_objects as go
+        import plotly.express as px
 
         from ..config import CONFIG
         from ..plot_result import PlotResult
@@ -767,13 +770,7 @@ class ClusteringPlotAccessor:
         if result.original_data is None or cs is None:
             raise ValueError('No original data or cluster structure available')
 
-        # Filter to time-varying variables
-        time_vars = [
-            name
-            for name in result.original_data.data_vars
-            if 'time' in result.original_data[name].dims
-            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
-        ]
+        time_vars = self._get_time_varying_variables()
         if not time_vars:
             raise ValueError('No time-varying variables found')
 
@@ -798,19 +795,19 @@ class ClusteringPlotAccessor:
         # Create labels showing period and cluster
         y_labels = [f'P{sorted_indices[i] + 1} (C{clusters_sorted[i]})' for i in range(n_periods)]
 
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=data_sorted,
-                x=list(range(timesteps_per_period)),
-                y=y_labels,
-                colorscale='Viridis',
-                colorbar=dict(title='Value'),
-            )
+        # Build DataArray for px.imshow
+        heatmap_da = xr.DataArray(
+            data_sorted,
+            dims=['period', 'timestep'],
+            coords={'period': y_labels, 'timestep': range(timesteps_per_period)},
         )
-        fig.update_layout(
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+        fig = px.imshow(
+            heatmap_da,
+            color_continuous_scale=colorscale,
             title=f'Clustering Structure: {variable}',
-            xaxis_title='Timestep within period',
-            yaxis_title='Period (sorted by cluster)',
+            labels={'timestep': 'Timestep within period', 'period': 'Period (sorted by cluster)'},
         )
 
         data = xr.Dataset(
@@ -835,22 +832,95 @@ class ClusteringPlotAccessor:
     def typical_periods(
         self,
         variable: str | None = None,
+        colormap: str | None = None,
+        facet_col_wrap: int | None = None,
         show: bool | None = None,
     ):
         """Plot each cluster's typical period profile.
 
-        Shows each cluster as a separate subplot with its occurrence count
-        in the title. Useful for understanding what each cluster represents.
+        Shows each cluster as a separate faceted subplot. Useful for
+        understanding what each cluster represents.
 
         Args:
             variable: Variable to plot. If None, plots the first available variable.
+            colormap: Colorscale for cluster colors.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
+            facet_col_wrap: Max columns before wrapping facets.
+                Defaults to CONFIG.Plotting.default_facet_cols.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the figure and underlying data.
         """
-        return self._clustering.result.plot_typical_periods(variable=variable, show=show)
+        import pandas as pd
+        import plotly.express as px
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        result = self._clustering.result
+        cs = result.cluster_structure
+        if result.aggregated_data is None or cs is None:
+            raise ValueError('No aggregated data or cluster structure available')
+
+        time_vars = self._get_time_varying_variables()
+        if not time_vars:
+            raise ValueError('No time-varying variables found')
+
+        if variable is None:
+            variable = time_vars[0]
+        elif variable not in time_vars:
+            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+
+        n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
+        timesteps_per_cluster = cs.timesteps_per_cluster
+        data = result.aggregated_data[variable].values
+
+        # Reshape to [n_clusters, timesteps_per_cluster]
+        data_by_cluster = data.reshape(n_clusters, timesteps_per_cluster)
+
+        # Build long-form DataFrame with cluster labels including occurrence counts
+        rows = []
+        for c in range(n_clusters):
+            occurrence = int(cs.cluster_occurrences.sel(cluster=c).values)
+            label = f'Cluster {c} (×{occurrence})'
+            for t in range(timesteps_per_cluster):
+                rows.append({'cluster': label, 'timestep': t, 'value': data_by_cluster[c, t]})
+        df = pd.DataFrame(rows)
+
+        colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
+        facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+
+        fig = px.line(
+            df,
+            x='timestep',
+            y='value',
+            facet_col='cluster',
+            facet_col_wrap=facet_col_wrap,
+            title=f'Typical Periods: {variable}',
+            color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
+        )
+        fig.update_layout(showlegend=False)
+
+        result_data = xr.Dataset(
+            {
+                'typical_periods': xr.DataArray(
+                    data_by_cluster,
+                    dims=['cluster', 'timestep'],
+                    coords={'cluster': range(n_clusters), 'timestep': range(timesteps_per_cluster)},
+                ),
+                'occurrences': cs.cluster_occurrences,
+            }
+        )
+        plot_result = PlotResult(data=result_data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
 
 
 @dataclass
