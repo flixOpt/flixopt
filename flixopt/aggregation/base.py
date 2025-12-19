@@ -504,7 +504,7 @@ class ClusterResult:
 
         # Rename for legend
         original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
-        expanded_agg = expanded_agg.rename(columns={col: f'Aggregated - {col}' for col in expanded_agg.columns})
+        expanded_agg = expanded_agg.rename(columns={col: f'Clustered - {col}' for col in expanded_agg.columns})
 
         colors = list(
             process_colors(
@@ -528,16 +528,16 @@ class ClusterResult:
             fig.add_trace(trace)
 
         fig.update_layout(
-            title='Original vs Aggregated Data (original = ---)',
+            title='Original vs Clustered Data (original = ---)',
             xaxis_title='Time',
             yaxis_title='Value',
         )
 
-        # Build xarray Dataset with both original and aggregated data
+        # Build xarray Dataset with both original and clustered data
         data = xr.Dataset(
             {
                 'original': original_filtered.to_array(dim='variable'),
-                'aggregated': aggregated_filtered.to_array(dim='variable'),
+                'clustered': aggregated_filtered.to_array(dim='variable'),
             }
         )
         plot_result = PlotResult(data=data, figure=fig)
@@ -697,12 +697,12 @@ class ClusteringPlotAccessor:
 
         resolved_variables = self._resolve_variables(variables)
 
-        # Build Dataset with 'source' dimension for Original/Aggregated
+        # Build Dataset with 'representation' dimension for Original/Clustered
         data_vars = {}
         for var in resolved_variables:
             original = result.original_data[var]
-            expanded = result.expand_data(result.aggregated_data[var])
-            combined = xr.concat([original, expanded], dim=pd.Index(['Original', 'Aggregated'], name='source'))
+            clustered = result.expand_data(result.aggregated_data[var])
+            combined = xr.concat([original, clustered], dim=pd.Index(['Original', 'Clustered'], name='representation'))
             data_vars[var] = combined
         ds = xr.Dataset(data_vars)
 
@@ -713,16 +713,16 @@ class ClusteringPlotAccessor:
         if kind == 'duration_curve':
             sorted_vars = {}
             for var in ds.data_vars:
-                for source in ds.coords['source'].values:
-                    values = np.sort(ds[var].sel(source=source).values.flatten())[::-1]
-                    sorted_vars[(var, source)] = values
+                for rep in ds.coords['representation'].values:
+                    values = np.sort(ds[var].sel(representation=rep).values.flatten())[::-1]
+                    sorted_vars[(var, rep)] = values
             n = len(values)
             ds = xr.Dataset(
                 {
                     var: xr.DataArray(
-                        [sorted_vars[(var, s)] for s in ['Original', 'Aggregated']],
-                        dims=['source', 'rank'],
-                        coords={'source': ['Original', 'Aggregated'], 'rank': range(n)},
+                        [sorted_vars[(var, r)] for r in ['Original', 'Clustered']],
+                        dims=['representation', 'rank'],
+                        coords={'representation': ['Original', 'Clustered'], 'rank': range(n)},
                     )
                     for var in resolved_variables
                 }
@@ -744,9 +744,9 @@ class ClusteringPlotAccessor:
         x_col = 'time' if kind == 'timeseries' else 'rank'
         if kind == 'timeseries':
             title = (
-                'Original vs Aggregated'
+                'Original vs Clustered'
                 if len(resolved_variables) > 1
-                else f'Original vs Aggregated: {resolved_variables[0]}'
+                else f'Original vs Clustered: {resolved_variables[0]}'
             )
             labels = {}
         else:
@@ -758,7 +758,7 @@ class ClusteringPlotAccessor:
             x=x_col,
             y='value',
             color='variable',
-            line_dash='source',
+            line_dash='representation',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
             title=title,
