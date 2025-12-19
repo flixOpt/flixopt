@@ -30,7 +30,6 @@ from .base import (
     ClusterResult,
     ClusterStructure,
     create_cluster_structure_from_mapping,
-    plot_aggregation,
 )
 
 # Lazy import for InterClusterLinking to avoid circular imports
@@ -56,5 +55,4 @@ __all__ = [
     'InterClusterLinking',
     # Utilities
     'create_cluster_structure_from_mapping',
-    'plot_aggregation',
 ]

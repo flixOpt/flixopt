@@ -141,12 +141,6 @@ class TestAggregationModuleImports:
         assert hasattr(aggregation, 'ClusterStructure')
         assert hasattr(aggregation, 'Clustering')
 
-    def test_plot_aggregation_available(self):
-        """Test that plot_aggregation is available."""
-        from flixopt.aggregation import plot_aggregation
-
-        assert callable(plot_aggregation)
-
     def test_create_cluster_structure_from_mapping_available(self):
         """Test that create_cluster_structure_from_mapping is available."""
         from flixopt.aggregation import create_cluster_structure_from_mapping

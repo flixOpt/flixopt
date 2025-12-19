@@ -25,6 +25,7 @@ import xarray as xr
 
 if TYPE_CHECKING:
     from ..color_processing import ColorType
+    from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
 
@@ -456,181 +457,6 @@ class ClusterResult:
                 stacklevel=2,
             )
 
-    def plot(self, colormap: str | None = None, show: bool | None = None):
-        """Plot original vs aggregated data comparison.
-
-        Visualizes the original time series (dashed lines) overlaid with
-        the aggregated/clustered time series (solid lines) for comparison.
-        Constants (time-invariant variables) are excluded from the plot.
-
-        Args:
-            colormap: Colorscale name for the time series colors.
-                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-
-        Returns:
-            PlotResult containing the comparison figure and underlying data.
-        """
-        import plotly.express as px
-
-        from ..color_processing import process_colors
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-
-        if self.original_data is None or self.aggregated_data is None:
-            raise ValueError('ClusterResult must contain both original_data and aggregated_data for plotting')
-
-        # Filter to only time-varying variables (exclude constants)
-        time_vars = [
-            name
-            for name in self.original_data.data_vars
-            if 'time' in self.original_data[name].dims
-            and not np.isclose(self.original_data[name].min(), self.original_data[name].max())
-        ]
-        if not time_vars:
-            raise ValueError('No time-varying variables found in original_data')
-
-        original_filtered = self.original_data[time_vars]
-        aggregated_filtered = self.aggregated_data[time_vars]
-
-        # Convert xarray to DataFrames
-        original_df = original_filtered.to_dataframe()
-        aggregated_df = aggregated_filtered.to_dataframe()
-
-        # Expand aggregated data to original length using mapping
-        mapping = self.timestep_mapping.values
-        expanded_agg = aggregated_df.iloc[mapping].reset_index(drop=True)
-
-        # Rename for legend
-        original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
-        expanded_agg = expanded_agg.rename(columns={col: f'Clustered - {col}' for col in expanded_agg.columns})
-
-        colors = list(
-            process_colors(
-                colormap or CONFIG.Plotting.default_qualitative_colorscale, list(original_df.columns)
-            ).values()
-        )
-
-        # Create line plot for original data (dashed)
-        original_df = original_df.reset_index()
-        index_name = original_df.columns[0]
-        df_org_long = original_df.melt(id_vars=index_name, var_name='variable', value_name='value')
-        fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
-        for trace in fig.data:
-            trace.update(line=dict(dash='dash'))
-
-        # Add aggregated data (solid lines)
-        expanded_agg[index_name] = original_df[index_name]
-        df_agg_long = expanded_agg.melt(id_vars=index_name, var_name='variable', value_name='value')
-        fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
-        for trace in fig2.data:
-            fig.add_trace(trace)
-
-        fig.update_layout(
-            title='Original vs Clustered Data (original = ---)',
-            xaxis_title='Time',
-            yaxis_title='Value',
-        )
-
-        # Build xarray Dataset with both original and clustered data
-        data = xr.Dataset(
-            {
-                'original': original_filtered.to_array(dim='variable'),
-                'clustered': aggregated_filtered.to_array(dim='variable'),
-            }
-        )
-        plot_result = PlotResult(data=data, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
-    def plot_clusters(self, variable: str | None = None, show: bool | None = None):
-        """Plot each cluster's typical period profile.
-
-        Shows each cluster as a separate subplot with its occurrence count
-        in the title. Useful for understanding what each cluster represents.
-
-        Args:
-            variable: Variable to plot. If None, plots the first available variable.
-            show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
-
-        Returns:
-            PlotResult containing the figure and underlying data.
-        """
-        from plotly.subplots import make_subplots
-
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-
-        if self.aggregated_data is None or self.cluster_structure is None:
-            raise ValueError('ClusterResult must contain aggregated_data and cluster_structure for this plot')
-
-        cs = self.cluster_structure
-        n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
-
-        # Select variable
-        variables = list(self.aggregated_data.data_vars)
-        if variable is None:
-            variable = variables[0]
-        elif variable not in variables:
-            raise ValueError(f'Variable {variable} not found. Available: {variables}')
-
-        data = self.aggregated_data[variable].values
-
-        # Reshape to [n_clusters, timesteps_per_cluster]
-        data_by_cluster = data.reshape(n_clusters, cs.timesteps_per_cluster)
-
-        # Create subplots
-        n_cols = min(4, n_clusters)
-        n_rows = (n_clusters + n_cols - 1) // n_cols
-        fig = make_subplots(
-            rows=n_rows,
-            cols=n_cols,
-            subplot_titles=[
-                f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
-            ],
-        )
-
-        x = np.arange(cs.timesteps_per_cluster)
-        for c in range(n_clusters):
-            row = c // n_cols + 1
-            col = c % n_cols + 1
-            fig.add_trace(
-                {'type': 'scatter', 'x': x, 'y': data_by_cluster[c], 'mode': 'lines', 'showlegend': False},
-                row=row,
-                col=col,
-            )
-
-        fig.update_layout(
-            title=f'Clusters: {variable}',
-            height=200 * n_rows,
-        )
-
-        # Build data for PlotResult
-        result_data = xr.Dataset(
-            {
-                'clusters': xr.DataArray(
-                    data_by_cluster,
-                    dims=['cluster', 'timestep'],
-                    coords={'cluster': range(n_clusters), 'timestep': range(cs.timesteps_per_cluster)},
-                ),
-                'occurrences': cs.cluster_occurrences,
-            }
-        )
-        plot_result = PlotResult(data=result_data, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
 
 class ClusteringPlotAccessor:
     """Plot accessor for Clustering objects.
@@ -660,7 +486,7 @@ class ClusteringPlotAccessor:
         facet_row: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
-    ):
+    ) -> PlotResult:
         """Compare original vs aggregated data.
 
         Args:
@@ -818,7 +644,7 @@ class ClusteringPlotAccessor:
         animation_frame: str | None = 'scenario',
         show: bool | None = None,
         **plotly_kwargs: Any,
-    ):
+    ) -> PlotResult:
         """Plot cluster assignments over time as a heatmap timeline.
 
         Shows which cluster each timestep belongs to as a horizontal color bar.
@@ -954,7 +780,7 @@ class ClusteringPlotAccessor:
         facet_col_wrap: int | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
-    ):
+    ) -> PlotResult:
         """Plot each cluster's typical period profile.
 
         Shows each cluster as a separate faceted subplot. Useful for
@@ -1206,24 +1032,3 @@ def create_cluster_structure_from_mapping(
         n_clusters=n_clusters,
         timesteps_per_cluster=timesteps_per_cluster,
     )
-
-
-def plot_aggregation(
-    result: ClusterResult,
-    colormap: str | None = None,
-    show: bool | None = None,
-):
-    """Plot original vs aggregated data comparison.
-
-    .. deprecated::
-        Use ``result.plot()`` directly instead.
-
-    Args:
-        result: ClusterResult containing original and aggregated data.
-        colormap: Colorscale name for the time series colors.
-        show: Whether to display the figure.
-
-    Returns:
-        PlotResult containing the comparison figure and underlying data.
-    """
-    return result.plot(colormap=colormap, show=show)
