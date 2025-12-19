@@ -340,16 +340,95 @@ class ClusterResult:
     def plot(self, colormap: str | None = None, show: bool | None = None):
         """Plot original vs aggregated data comparison.
 
-        Convenience method that calls plot_aggregation() on this result.
+        Visualizes the original time series (dashed lines) overlaid with
+        the aggregated/clustered time series (solid lines) for comparison.
+        Constants (time-invariant variables) are excluded from the plot.
 
         Args:
             colormap: Colorscale name for the time series colors.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
             show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the comparison figure and underlying data.
         """
-        return plot_aggregation(self, colormap=colormap, show=show)
+        import plotly.express as px
+
+        from ..color_processing import process_colors
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        if self.original_data is None or self.aggregated_data is None:
+            raise ValueError('ClusterResult must contain both original_data and aggregated_data for plotting')
+
+        # Filter to only time-varying variables (exclude constants)
+        time_vars = [
+            name
+            for name in self.original_data.data_vars
+            if 'time' in self.original_data[name].dims
+            and not np.isclose(self.original_data[name].min(), self.original_data[name].max())
+        ]
+        if not time_vars:
+            raise ValueError('No time-varying variables found in original_data')
+
+        original_filtered = self.original_data[time_vars]
+        aggregated_filtered = self.aggregated_data[time_vars]
+
+        # Convert xarray to DataFrames
+        original_df = original_filtered.to_dataframe()
+        aggregated_df = aggregated_filtered.to_dataframe()
+
+        # Expand aggregated data to original length using mapping
+        mapping = self.timestep_mapping.values
+        expanded_agg = aggregated_df.iloc[mapping].reset_index(drop=True)
+
+        # Rename for legend
+        original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
+        expanded_agg = expanded_agg.rename(columns={col: f'Aggregated - {col}' for col in expanded_agg.columns})
+
+        colors = list(
+            process_colors(
+                colormap or CONFIG.Plotting.default_qualitative_colorscale, list(original_df.columns)
+            ).values()
+        )
+
+        # Create line plot for original data (dashed)
+        original_df = original_df.reset_index()
+        index_name = original_df.columns[0]
+        df_org_long = original_df.melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+        for trace in fig.data:
+            trace.update(line=dict(dash='dash'))
+
+        # Add aggregated data (solid lines)
+        expanded_agg[index_name] = original_df[index_name]
+        df_agg_long = expanded_agg.melt(id_vars=index_name, var_name='variable', value_name='value')
+        fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
+        for trace in fig2.data:
+            fig.add_trace(trace)
+
+        fig.update_layout(
+            title='Original vs Aggregated Data (original = ---)',
+            xaxis_title='Time',
+            yaxis_title='Value',
+        )
+
+        # Build xarray Dataset with both original and aggregated data
+        data = xr.Dataset(
+            {
+                'original': original_filtered.to_array(dim='variable'),
+                'aggregated': aggregated_filtered.to_array(dim='variable'),
+            }
+        )
+        plot_result = PlotResult(data=data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
 
     def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
         """Plot each cluster's typical period profile.
@@ -461,11 +540,13 @@ class ClusterInfo:
     def plot(self, colormap: str | None = None, show: bool | None = None):
         """Plot original vs aggregated data comparison.
 
-        Convenience method that calls plot_aggregation() on the result.
+        Convenience method that calls result.plot().
 
         Args:
             colormap: Colorscale name for the time series colors.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
             show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the comparison figure and underlying data.
@@ -479,11 +560,12 @@ class ClusterInfo:
     def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
         """Plot each cluster's typical period profile.
 
-        Convenience method that calls plot_typical_periods() on the result.
+        Convenience method that calls result.plot_typical_periods().
 
         Args:
             variable: Variable to plot. If None, plots the first available variable.
             show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the figure and underlying data.
@@ -552,81 +634,15 @@ def plot_aggregation(
 ):
     """Plot original vs aggregated data comparison.
 
-    Visualizes the original time series (dashed lines) overlaid with
-    the aggregated/clustered time series (solid lines) for comparison.
+    .. deprecated::
+        Use ``result.plot()`` directly instead.
 
     Args:
         result: ClusterResult containing original and aggregated data.
         colormap: Colorscale name for the time series colors.
-            Defaults to CONFIG.Plotting.default_qualitative_colorscale.
         show: Whether to display the figure.
-            Defaults to CONFIG.Plotting.default_show.
 
     Returns:
         PlotResult containing the comparison figure and underlying data.
-
-    Example:
-        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-        >>> plot_aggregation(fs_clustered._cluster_info.result)
     """
-    import plotly.express as px
-
-    from ..color_processing import process_colors
-    from ..config import CONFIG
-    from ..plot_result import PlotResult
-
-    if result.original_data is None or result.aggregated_data is None:
-        raise ValueError('ClusterResult must contain both original_data and aggregated_data for plotting')
-
-    # Convert xarray to DataFrames
-    original_df = result.original_data.to_dataframe()
-    aggregated_df = result.aggregated_data.to_dataframe()
-
-    # Expand aggregated data to original length using mapping
-    mapping = result.timestep_mapping.values
-    expanded_agg = aggregated_df.iloc[mapping].reset_index(drop=True)
-
-    # Rename for legend
-    original_df = original_df.rename(columns={col: f'Original - {col}' for col in original_df.columns})
-    expanded_agg = expanded_agg.rename(columns={col: f'Aggregated - {col}' for col in expanded_agg.columns})
-
-    colors = list(
-        process_colors(colormap or CONFIG.Plotting.default_qualitative_colorscale, list(original_df.columns)).values()
-    )
-
-    # Create line plot for original data (dashed)
-    original_df = original_df.reset_index()
-    index_name = original_df.columns[0]
-    df_org_long = original_df.melt(id_vars=index_name, var_name='variable', value_name='value')
-    fig = px.line(df_org_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
-    for trace in fig.data:
-        trace.update(line=dict(dash='dash'))
-
-    # Add aggregated data (solid lines)
-    expanded_agg[index_name] = original_df[index_name]
-    df_agg_long = expanded_agg.melt(id_vars=index_name, var_name='variable', value_name='value')
-    fig2 = px.line(df_agg_long, x=index_name, y='value', color='variable', color_discrete_sequence=colors)
-    for trace in fig2.data:
-        fig.add_trace(trace)
-
-    fig.update_layout(
-        title='Original vs Aggregated Data (original = ---)',
-        xaxis_title='Time',
-        yaxis_title='Value',
-    )
-
-    # Build xarray Dataset with both original and aggregated data
-    data = xr.Dataset(
-        {
-            'original': result.original_data.to_array(dim='variable'),
-            'aggregated': result.aggregated_data.to_array(dim='variable'),
-        }
-    )
-    plot_result = PlotResult(data=data, figure=fig)
-
-    if show is None:
-        show = CONFIG.Plotting.default_show
-    if show:
-        plot_result.show()
-
-    return plot_result
+    return result.plot(colormap=colormap, show=show)
