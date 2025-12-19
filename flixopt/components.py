@@ -920,15 +920,10 @@ class StorageModel(ComponentModel):
         if clustering is not None:
             # Skip constraint at position (start - 1) for each cluster start after the first.
             # This removes the link between end of cluster N and start of cluster N+1.
-            starts = clustering.cluster_start_positions
-            n_timesteps = len(self._model.flow_system.timesteps)
-            mask_values = np.ones(n_timesteps, dtype=bool)
-            mask_values[starts[1:] - 1] = False  # Skip positions before each new cluster
+            mask = np.ones(lhs.sizes['time'], dtype=bool)
+            mask[clustering.cluster_start_positions] = False
 
-            shifted_time_coords = self._model.flow_system.timesteps_extra[1:]
-            mask = xr.DataArray(mask_values, dims=['time'], coords={'time': shifted_time_coords})
-
-            lhs = lhs.where(mask)
+            lhs = lhs.where(xr.DataArray(mask, coords={'time': lhs.coords['time']}))
 
         self.add_constraints(lhs == 0, short_name='charge_state')
 
