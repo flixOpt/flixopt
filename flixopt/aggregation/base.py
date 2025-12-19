@@ -78,6 +78,19 @@ class ClusterStructure:
         elif self.cluster_occurrences.name is None:
             self.cluster_occurrences = self.cluster_occurrences.rename('cluster_occurrences')
 
+    def __repr__(self) -> str:
+        n_clusters = (
+            int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
+        )
+        occ = [int(self.cluster_occurrences.sel(cluster=c).values) for c in range(n_clusters)]
+        return (
+            f'ClusterStructure(\n'
+            f'  {self.n_original_periods} original periods → {n_clusters} clusters\n'
+            f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
+            f'  occurrences={occ}\n'
+            f')'
+        )
+
     @property
     def n_original_periods(self) -> int:
         """Number of original periods (before clustering)."""
@@ -267,6 +280,22 @@ class ClusterResult:
             )
         elif self.representative_weights.name is None:
             self.representative_weights = self.representative_weights.rename('representative_weights')
+
+    def __repr__(self) -> str:
+        n_rep = (
+            int(self.n_representatives)
+            if isinstance(self.n_representatives, (int, np.integer))
+            else int(self.n_representatives.values)
+        )
+        has_structure = self.cluster_structure is not None
+        has_data = self.original_data is not None and self.aggregated_data is not None
+        return (
+            f'ClusterResult(\n'
+            f'  {self.n_original_timesteps} original → {n_rep} representative timesteps\n'
+            f'  weights sum={float(self.representative_weights.sum().values):.0f}\n'
+            f'  cluster_structure={has_structure}, data={has_data}\n'
+            f')'
+        )
 
     @property
     def n_original_timesteps(self) -> int:
@@ -536,6 +565,23 @@ class ClusterInfo:
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
+
+    def __repr__(self) -> str:
+        cs = self.result.cluster_structure
+        if cs is not None:
+            n_clusters = (
+                int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
+            )
+            structure_info = f'{cs.n_original_periods} periods → {n_clusters} clusters'
+        else:
+            structure_info = 'no structure'
+        return (
+            f'ClusterInfo(\n'
+            f'  backend={self.backend_name!r}\n'
+            f'  {structure_info}\n'
+            f'  storage_linking={self.storage_inter_cluster_linking}, cyclic={self.storage_cyclic}\n'
+            f')'
+        )
 
     def plot(self, colormap: str | None = None, show: bool | None = None):
         """Plot original vs aggregated data comparison.
