@@ -908,7 +908,7 @@ class Clustering:
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
-    _intra_cluster_mask: xr.DataArray | None = field(default=None, repr=False)
+    _cluster_start_mask: xr.DataArray | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -986,28 +986,28 @@ class Clustering:
         return self.result.timestep_mapping
 
     @property
-    def intra_cluster_mask(self) -> xr.DataArray:
-        """Boolean mask for intra-cluster timestep transitions.
+    def cluster_start_mask(self) -> xr.DataArray:
+        """Boolean mask True for the first timestep of each cluster.
 
-        Returns a mask that is True for transitions within a cluster
-        and False for transitions at cluster boundaries. Used to skip
-        inter-cluster balance constraints in storage models.
+        This provides a simple, intuitive way to identify cluster boundaries.
+        Invert (~) to get a mask for non-start timesteps.
 
-        The mask uses the original FlowSystem's timesteps as coordinates.
+        The mask uses clustered FlowSystem's timesteps as coordinates.
         Use `.assign_coords(time=new_coords)` if different coordinates are needed.
 
         Returns:
             DataArray with dims ['time'] or ['time', 'period', 'scenario'],
-            True for intra-cluster transitions.
+            True for first timestep of each cluster.
 
         Example:
             For 2 clusters with 24 timesteps each (48 total):
-            - Positions 0-22: True (within cluster 0)
-            - Position 23: False (boundary between cluster 0 and 1)
-            - Positions 24-47: True (within cluster 1)
+            - Position 0: True (start of cluster 0)
+            - Positions 1-23: False
+            - Position 24: True (start of cluster 1)
+            - Positions 25-47: False
         """
-        if self._intra_cluster_mask is not None:
-            return self._intra_cluster_mask
+        if self._cluster_start_mask is not None:
+            return self._cluster_start_mask
 
         if self.result.cluster_structure is None:
             raise ValueError('No cluster_structure available')
@@ -1016,13 +1016,8 @@ class Clustering:
         steps_per_cluster = self.timesteps_per_period
         n_timesteps = n_clusters * steps_per_cluster
 
-        # Boundary positions: T-1, 2T-1, ..., (n_clusters-1)*T - 1
-        # Position k links charge_state[k+1] to charge_state[k]
-        # Boundary at k means k is last timestep of cluster, k+1 is first of next
-        boundary_positions = [(c * steps_per_cluster) - 1 for c in range(1, n_clusters)]
-
-        mask_values = np.ones(n_timesteps, dtype=bool)
-        mask_values[boundary_positions] = False
+        # First timestep of each cluster: 0, T, 2T, ...
+        mask_values = (np.arange(n_timesteps) % steps_per_cluster) == 0
 
         # Use clustered timesteps from aggregated_data or representative_weights
         if self.result.aggregated_data is not None and 'time' in self.result.aggregated_data.coords:
@@ -1034,7 +1029,7 @@ class Clustering:
             mask_values,
             dims=['time'],
             coords={'time': time_coords},
-            name='intra_cluster_mask',
+            name='cluster_start_mask',
         )
 
         # Expand to include period/scenario dimensions if present (for broadcasting)
@@ -1044,8 +1039,8 @@ class Clustering:
         if original_fs.scenarios is not None:
             mask = mask.expand_dims(scenario=list(original_fs.scenarios))
 
-        self._intra_cluster_mask = mask
-        return self._intra_cluster_mask
+        self._cluster_start_mask = mask
+        return self._cluster_start_mask
 
 
 def create_cluster_structure_from_mapping(
