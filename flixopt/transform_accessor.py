@@ -615,7 +615,7 @@ class TransformAccessor:
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
-            The FlowSystem has metadata stored in ``_cluster_info`` for expansion.
+            The FlowSystem has metadata stored in ``cluster_info`` for expansion.
 
         Raises:
             ValueError: If timestep sizes are inconsistent.
@@ -876,7 +876,7 @@ class TransformAccessor:
             aggregated_data=ds_new,
         )
 
-        reduced_fs._cluster_info = ClusterInfo(
+        reduced_fs.cluster_info = ClusterInfo(
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
@@ -1034,7 +1034,7 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate
-        if self._fs._cluster_info is None:
+        if self._fs.cluster_info is None:
             raise ValueError(
                 'expand_solution() requires a FlowSystem created with cluster(). '
                 'This FlowSystem has no aggregation info.'
@@ -1042,7 +1042,7 @@ class TransformAccessor:
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        info = self._fs._cluster_info
+        info = self._fs.cluster_info
         cluster_structure = info.result.cluster_structure
         if cluster_structure is None:
             raise ValueError('No cluster structure available for expansion.')

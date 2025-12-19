@@ -599,7 +599,7 @@ class ClusterInfo:
 
         Example:
             >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered._cluster_info.plot()
+            >>> fs_clustered.cluster_info.plot()
         """
         return self.result.plot(colormap=colormap, show=show)
 
@@ -618,7 +618,7 @@ class ClusterInfo:
 
         Example:
             >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered._cluster_info.plot_typical_periods()
+            >>> fs_clustered.cluster_info.plot_typical_periods()
         """
         return self.result.plot_typical_periods(variable=variable, show=show)
 

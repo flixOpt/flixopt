@@ -233,7 +233,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._solution: xr.Dataset | None = None
 
         # Aggregation info - populated by transform.cluster()
-        self._cluster_info: ClusterInfo | None = None
+        self.cluster_info: ClusterInfo | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -1294,7 +1294,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model.do_modeling()
 
         # Add inter-cluster storage linking if this is an aggregated FlowSystem
-        if self._cluster_info is not None:
+        if self.cluster_info is not None:
             self._add_inter_cluster_linking()
 
         return self
@@ -1307,7 +1307,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         from .aggregation.storage_linking import InterClusterLinking
 
-        info = self._cluster_info
+        info = self.cluster_info
         if info is None:
             return
 

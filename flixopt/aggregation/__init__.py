@@ -18,7 +18,7 @@ Example usage:
     )
 
     # Access clustering metadata
-    info = fs_clustered._cluster_info
+    info = fs_clustered.cluster_info
     print(f'Number of clusters: {info.result.cluster_structure.n_clusters}')
 
     # Expand solution back to full resolution
