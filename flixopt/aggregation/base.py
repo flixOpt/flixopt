@@ -985,16 +985,16 @@ class Clustering:
         """Mapping from original timesteps to representative timestep indices."""
         return self.result.timestep_mapping
 
-    def get_intra_cluster_mask(self, time_coords: np.ndarray | xr.DataArray) -> xr.DataArray:
-        """Get mask for intra-cluster timestep transitions (cached).
+    @property
+    def intra_cluster_mask(self) -> xr.DataArray:
+        """Boolean mask for intra-cluster timestep transitions.
 
-        Returns a boolean mask that is True for transitions within a cluster
+        Returns a mask that is True for transitions within a cluster
         and False for transitions at cluster boundaries. Used to skip
         inter-cluster balance constraints in storage models.
 
-        Args:
-            time_coords: Time coordinates for the mask. Should match the
-                constraint's time dimension (typically flow_system.timesteps).
+        The mask uses the original FlowSystem's timesteps as coordinates.
+        Use `.assign_coords(time=new_coords)` if different coordinates are needed.
 
         Returns:
             DataArray with dims ['time'] or ['time', 'period', 'scenario'],
@@ -1012,15 +1012,6 @@ class Clustering:
         if self.result.cluster_structure is None:
             raise ValueError('No cluster_structure available')
 
-        self._intra_cluster_mask = self._compute_intra_cluster_mask(time_coords)
-        return self._intra_cluster_mask
-
-    def _compute_intra_cluster_mask(self, time_coords: np.ndarray | xr.DataArray) -> xr.DataArray:
-        """Compute the intra-cluster mask.
-
-        Boundary positions are uniform across all period/scenario slices since
-        n_clusters and timesteps_per_cluster are uniform.
-        """
         n_clusters = self.n_clusters
         steps_per_cluster = self.timesteps_per_period
         n_timesteps = n_clusters * steps_per_cluster
@@ -1033,8 +1024,11 @@ class Clustering:
         mask_values = np.ones(n_timesteps, dtype=bool)
         mask_values[boundary_positions] = False
 
-        if isinstance(time_coords, xr.DataArray):
-            time_coords = time_coords.values
+        # Use clustered timesteps from aggregated_data or representative_weights
+        if self.result.aggregated_data is not None and 'time' in self.result.aggregated_data.coords:
+            time_coords = self.result.aggregated_data.coords['time'].values
+        else:
+            time_coords = self.result.representative_weights.coords['time'].values
 
         mask = xr.DataArray(
             mask_values,
@@ -1050,7 +1044,8 @@ class Clustering:
         if original_fs.scenarios is not None:
             mask = mask.expand_dims(scenario=list(original_fs.scenarios))
 
-        return mask
+        self._intra_cluster_mask = mask
+        return self._intra_cluster_mask
 
 
 def create_cluster_structure_from_mapping(

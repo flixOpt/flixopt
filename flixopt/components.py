@@ -918,7 +918,9 @@ class StorageModel(ComponentModel):
         # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
         clustering = self._model.flow_system.clustering
         if clustering is not None:
-            mask = clustering.get_intra_cluster_mask(self._model.flow_system.timesteps)
+            # Shift mask coords to match lhs (which uses charge_state[1:], i.e., timesteps_extra[1:])
+            shifted_time_coords = self._model.flow_system.timesteps_extra[1:]
+            mask = clustering.intra_cluster_mask.assign_coords(time=shifted_time_coords)
             lhs = lhs.where(mask)
 
         self.add_constraints(lhs == 0, short_name='charge_state')
