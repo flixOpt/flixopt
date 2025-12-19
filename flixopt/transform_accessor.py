@@ -1064,14 +1064,11 @@ class TransformAccessor:
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
-        # Use stored timestep_mapping directly (already multi-dimensional)
-        timestep_mapping = info.result.timestep_mapping
-
-        # Expand function for DataArrays
+        # Expand function using ClusterResult.expand_data() - handles multi-dimensional cases
         def expand_da(da: xr.DataArray) -> xr.DataArray:
             if 'time' not in da.dims:
                 return da.copy()
-            return self._expand_dataarray(da, timestep_mapping, original_timesteps, periods, scenarios)
+            return info.result.expand_data(da, original_time=original_timesteps)
 
         # 1. Expand FlowSystem data (with cluster_weight set to 1.0 for all timesteps)
         reduced_ds = self._fs.to_dataset(include_solution=False)
@@ -1112,65 +1109,3 @@ class TransformAccessor:
         )
 
         return expanded_fs
-
-    @staticmethod
-    def _expand_dataarray(
-        da: xr.DataArray,
-        timestep_mapping: xr.DataArray,
-        original_timesteps: pd.DatetimeIndex,
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Expand a DataArray from reduced to original timesteps using cluster mappings.
-
-        Args:
-            da: DataArray with reduced time dimension.
-            timestep_mapping: DataArray mapping original timesteps to reduced indices.
-                dims: [original_time] or [original_time, period?, scenario?]
-            original_timesteps: Original time coordinates.
-            periods: List of period labels ([None] if no periods).
-            scenarios: List of scenario labels ([None] if no scenarios).
-
-        Returns:
-            DataArray with expanded time dimension.
-        """
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Simple case: no period/scenario dimensions in the data
-        if (not has_periods and not has_scenarios) or ('period' not in da.dims and 'scenario' not in da.dims):
-            mapping = timestep_mapping.values
-            expanded = da.isel(time=xr.DataArray(mapping, dims=['time']))
-            return expanded.assign_coords(time=original_timesteps).assign_attrs(da.attrs)
-
-        # Multi-dimensional: expand each (period, scenario) slice and recombine
-        expanded_slices: dict[tuple, xr.DataArray] = {}
-        for p in periods:
-            for s in scenarios:
-                # Get mapping for this (period, scenario) slice
-                mapping_slice = timestep_mapping
-                if p is not None and 'period' in timestep_mapping.dims:
-                    mapping_slice = mapping_slice.sel(period=p)
-                if s is not None and 'scenario' in timestep_mapping.dims:
-                    mapping_slice = mapping_slice.sel(scenario=s)
-                mapping = mapping_slice.values
-
-                # Select the data slice for this (period, scenario) combination
-                selector = {}
-                if p is not None and 'period' in da.dims:
-                    selector['period'] = p
-                if s is not None and 'scenario' in da.dims:
-                    selector['scenario'] = s
-
-                slice_da = da.sel(**selector, drop=True) if selector else da
-                expanded = slice_da.isel(time=xr.DataArray(mapping, dims=['time']))
-                expanded_slices[(p, s)] = expanded.assign_coords(time=original_timesteps)
-
-        # Recombine slices using _combine_slices_to_dataarray
-        return TransformAccessor._combine_slices_to_dataarray(
-            slices=expanded_slices,
-            original_da=da,
-            new_time_index=original_timesteps,
-            periods=periods,
-            scenarios=scenarios,
-        )

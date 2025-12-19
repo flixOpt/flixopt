@@ -330,6 +330,91 @@ class ClusterResult:
             mapping = mapping.sel(scenario=scenario)
         return mapping.values.astype(int)
 
+    def expand_data(self, aggregated: xr.DataArray, original_time: xr.DataArray | None = None) -> xr.DataArray:
+        """Expand aggregated data back to original timesteps.
+
+        Uses the stored timestep_mapping to map each original timestep to its
+        representative value from the aggregated data. Handles multi-dimensional
+        data with period/scenario dimensions.
+
+        Args:
+            aggregated: DataArray with aggregated (reduced) time dimension.
+            original_time: Original time coordinates. If None, uses coords from
+                original_data if available.
+
+        Returns:
+            DataArray expanded to original timesteps.
+
+        Example:
+            >>> result = fs_clustered.clustering.result
+            >>> aggregated_values = result.aggregated_data['Demand|profile']
+            >>> expanded = result.expand_data(aggregated_values)
+            >>> len(expanded.time) == len(original_timesteps)  # True
+        """
+        import pandas as pd
+
+        if original_time is None:
+            if self.original_data is None:
+                raise ValueError('original_time required when original_data is not available')
+            original_time = self.original_data.coords['time']
+
+        timestep_mapping = self.timestep_mapping
+        has_periods = 'period' in timestep_mapping.dims
+        has_scenarios = 'scenario' in timestep_mapping.dims
+
+        # Simple case: no period/scenario dimensions
+        if not has_periods and not has_scenarios:
+            mapping = timestep_mapping.values
+            expanded_values = aggregated.values[mapping]
+            return xr.DataArray(
+                expanded_values,
+                coords={'time': original_time},
+                dims=['time'],
+                attrs=aggregated.attrs,
+            )
+
+        # Multi-dimensional: expand each (period, scenario) slice and recombine
+        periods = list(timestep_mapping.coords['period'].values) if has_periods else [None]
+        scenarios = list(timestep_mapping.coords['scenario'].values) if has_scenarios else [None]
+
+        expanded_slices: dict[tuple, xr.DataArray] = {}
+        for p in periods:
+            for s in scenarios:
+                # Get mapping for this slice
+                mapping_slice = timestep_mapping
+                if p is not None:
+                    mapping_slice = mapping_slice.sel(period=p)
+                if s is not None:
+                    mapping_slice = mapping_slice.sel(scenario=s)
+                mapping = mapping_slice.values
+
+                # Select the data slice
+                selector = {}
+                if p is not None and 'period' in aggregated.dims:
+                    selector['period'] = p
+                if s is not None and 'scenario' in aggregated.dims:
+                    selector['scenario'] = s
+
+                slice_da = aggregated.sel(**selector, drop=True) if selector else aggregated
+                expanded = slice_da.isel(time=xr.DataArray(mapping, dims=['time']))
+                expanded_slices[(p, s)] = expanded.assign_coords(time=original_time)
+
+        # Recombine slices using xr.concat
+        if has_periods and has_scenarios:
+            period_arrays = []
+            for p in periods:
+                scenario_arrays = [expanded_slices[(p, s)] for s in scenarios]
+                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
+            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
+        elif has_periods:
+            result = xr.concat([expanded_slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
+        else:
+            result = xr.concat(
+                [expanded_slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario')
+            )
+
+        return result.transpose('time', ...).assign_attrs(aggregated.attrs)
+
     def validate(self) -> None:
         """Validate that all fields are consistent.
 
@@ -562,7 +647,9 @@ class ClusteringPlotAccessor:
     def compare(
         self,
         kind: str = 'timeseries',
-        variable: str | None = None,
+        variable: str | list[str] | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         colormap: str | None = None,
         show: bool | None = None,
     ):
@@ -572,7 +659,10 @@ class ClusteringPlotAccessor:
             kind: Type of comparison plot.
                 - 'timeseries': Time series comparison (default)
                 - 'duration_curve': Sorted duration curve comparison
-            variable: Variable to plot. If None, plots first available variable.
+            variable: Variable(s) to plot. Can be a string, list of strings,
+                or None to plot all time-varying variables.
+            facet_col: Dimension for subplot columns (default: 'scenario' if present).
+            facet_row: Dimension for subplot rows (default: 'period' if present).
             colormap: Colorscale name for the colors.
                 Defaults to CONFIG.Plotting.default_qualitative_colorscale.
             show: Whether to display the figure.
@@ -582,9 +672,13 @@ class ClusteringPlotAccessor:
             PlotResult containing the comparison figure and underlying data.
         """
         if kind == 'timeseries':
-            return self._compare_timeseries(variable=variable, colormap=colormap, show=show)
+            return self._compare_timeseries(
+                variable=variable, facet_col=facet_col, facet_row=facet_row, colormap=colormap, show=show
+            )
         elif kind == 'duration_curve':
-            return self._compare_duration_curve(variable=variable, colormap=colormap, show=show)
+            return self._compare_duration_curve(
+                variable=variable, facet_col=facet_col, facet_row=facet_row, colormap=colormap, show=show
+            )
         else:
             raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
 
@@ -600,14 +694,41 @@ class ClusteringPlotAccessor:
             and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
         ]
 
+    def _resolve_variables(self, variable: str | list[str] | None) -> list[str]:
+        """Resolve variable parameter to a list of valid variable names."""
+        time_vars = self._get_time_varying_variables()
+        if not time_vars:
+            raise ValueError('No time-varying variables found')
+
+        if variable is None:
+            return time_vars
+        elif isinstance(variable, str):
+            if variable not in time_vars:
+                raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+            return [variable]
+        else:
+            invalid = [v for v in variable if v not in time_vars]
+            if invalid:
+                raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
+            return list(variable)
+
+    def _resolve_facets(
+        self, ds: xr.Dataset, facet_col: str | None, facet_row: str | None
+    ) -> tuple[str | None, str | None]:
+        """Resolve facet dimensions, returning None if not present in data."""
+        actual_col = facet_col if facet_col and facet_col in ds.dims else None
+        actual_row = facet_row if facet_row and facet_row in ds.dims else None
+        return actual_col, actual_row
+
     def _compare_timeseries(
         self,
-        variable: str | None = None,
+        variable: str | list[str] | None = None,
+        facet_col: str | None = None,
+        facet_row: str | None = None,
         colormap: str | None = None,
         show: bool | None = None,
     ):
         """Compare original vs aggregated as time series."""
-        import pandas as pd
         import plotly.express as px
 
         from ..config import CONFIG
@@ -617,45 +738,48 @@ class ClusteringPlotAccessor:
         if result.original_data is None or result.aggregated_data is None:
             raise ValueError('No original/aggregated data available for comparison')
 
-        time_vars = self._get_time_varying_variables()
-        if not time_vars:
-            raise ValueError('No time-varying variables found')
+        variables = self._resolve_variables(variable)
 
-        if variable is None:
-            variable = time_vars[0]
-        elif variable not in time_vars:
-            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+        # Build Dataset with Original/Aggregated for each variable
+        data_vars = {}
+        for var in variables:
+            original = result.original_data[var]
+            aggregated = result.aggregated_data[var]
+            expanded = result.expand_data(aggregated)
+            data_vars[f'{var} (Original)'] = original
+            data_vars[f'{var} (Aggregated)'] = expanded
+        ds = xr.Dataset(data_vars)
 
-        original = result.original_data[variable]
-        aggregated = result.aggregated_data[variable]
+        # Resolve facets
+        actual_facet_col, actual_facet_row = self._resolve_facets(ds, facet_col, facet_row)
 
-        # Expand aggregated to original length
-        mapping = result.timestep_mapping.values
-        expanded = aggregated.values[mapping]
-
-        # Build long-form DataFrame for px.line
-        time_values = original.coords['time'].values
-        df = pd.DataFrame(
-            {
-                'time': np.tile(time_values, 2),
-                'value': np.concatenate([original.values, expanded]),
-                'series': ['Original'] * len(time_values) + ['Aggregated'] * len(time_values),
-            }
-        )
+        # Convert to long-form DataFrame (like _dataset_to_long_df)
+        df = ds.to_dataframe().reset_index()
+        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
+        df = df.melt(id_vars=coord_cols, var_name='series', value_name='value')
 
         colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
+        title = 'Original vs Aggregated' if len(variables) > 1 else f'Original vs Aggregated: {variables[0]}'
+
         fig = px.line(
             df,
             x='time',
             y='value',
             color='series',
-            title=f'Original vs Aggregated: {variable}',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            title=title,
             color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
         )
-        fig.update_traces(selector=dict(name='Original'), line_dash='dash')
+        # Dash lines for Original series
+        for trace in fig.data:
+            if 'Original' in trace.name:
+                trace.line.dash = 'dash'
+        if actual_facet_row or actual_facet_col:
+            fig.update_yaxes(matches=None)
+            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
-        data = xr.Dataset({'original': original, 'aggregated': xr.DataArray(expanded, dims=['time'])})
-        plot_result = PlotResult(data=data, figure=fig)
+        plot_result = PlotResult(data=ds, figure=fig)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -666,12 +790,13 @@ class ClusteringPlotAccessor:
 
     def _compare_duration_curve(
         self,
-        variable: str | None = None,
+        variable: str | list[str] | None = None,
+        facet_col: str | None = None,
+        facet_row: str | None = None,
         colormap: str | None = None,
         show: bool | None = None,
     ):
         """Compare original vs aggregated as duration curves."""
-        import pandas as pd
         import plotly.express as px
 
         from ..config import CONFIG
@@ -681,55 +806,44 @@ class ClusteringPlotAccessor:
         if result.original_data is None or result.aggregated_data is None:
             raise ValueError('No original/aggregated data available for comparison')
 
-        time_vars = self._get_time_varying_variables()
-        if not time_vars:
-            raise ValueError('No time-varying variables found')
+        variables = self._resolve_variables(variable)
 
-        if variable is None:
-            variable = time_vars[0]
-        elif variable not in time_vars:
-            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+        # Build Dataset with sorted values for each variable
+        data_vars = {}
+        for var in variables:
+            original = result.original_data[var]
+            aggregated = result.aggregated_data[var]
+            expanded = result.expand_data(aggregated)
+            # Sort values for duration curve
+            original_sorted = np.sort(original.values.flatten())[::-1]
+            expanded_sorted = np.sort(expanded.values.flatten())[::-1]
+            n = len(original_sorted)
+            data_vars[f'{var} (Original)'] = xr.DataArray(original_sorted, dims=['rank'], coords={'rank': range(n)})
+            data_vars[f'{var} (Aggregated)'] = xr.DataArray(expanded_sorted, dims=['rank'], coords={'rank': range(n)})
+        ds = xr.Dataset(data_vars)
 
-        original = result.original_data[variable].values
-        aggregated = result.aggregated_data[variable].values
-
-        # Expand aggregated to original length
-        mapping = result.timestep_mapping.values
-        expanded = aggregated[mapping]
-
-        # Sort both for duration curve
-        original_sorted = np.sort(original)[::-1]
-        expanded_sorted = np.sort(expanded)[::-1]
-        n = len(original_sorted)
-
-        # Build long-form DataFrame for px.line
-        df = pd.DataFrame(
-            {
-                'rank': np.tile(np.arange(n), 2),
-                'value': np.concatenate([original_sorted, expanded_sorted]),
-                'series': ['Original'] * n + ['Aggregated'] * n,
-            }
-        )
+        # Convert to long-form DataFrame
+        df = ds.to_dataframe().reset_index()
+        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
+        df = df.melt(id_vars=coord_cols, var_name='series', value_name='value')
 
         colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
+        title = 'Duration Curve' if len(variables) > 1 else f'Duration Curve: {variables[0]}'
+
         fig = px.line(
             df,
             x='rank',
             y='value',
             color='series',
-            title=f'Duration Curve: {variable}',
+            title=title,
             labels={'rank': 'Hours (sorted)', 'value': 'Value'},
             color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
         )
-        fig.update_traces(selector=dict(name='Original'), line_dash='dash')
+        for trace in fig.data:
+            if 'Original' in trace.name:
+                trace.line.dash = 'dash'
 
-        data = xr.Dataset(
-            {
-                'original_sorted': xr.DataArray(original_sorted, dims=['rank']),
-                'aggregated_sorted': xr.DataArray(expanded_sorted, dims=['rank']),
-            }
-        )
-        plot_result = PlotResult(data=data, figure=fig)
+        plot_result = PlotResult(data=ds, figure=fig)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -740,8 +854,9 @@ class ClusteringPlotAccessor:
 
     def heatmap(
         self,
-        variable: str | None = None,
+        variable: str | list[str] | None = None,
         colorscale: str | None = None,
+        facet_col_wrap: int | None = None,
         show: bool | None = None,
     ):
         """Plot clustering structure as a heatmap of periods vs timesteps.
@@ -751,9 +866,12 @@ class ClusteringPlotAccessor:
         grouped by their cluster assignment.
 
         Args:
-            variable: Variable to plot. If None, plots first available variable.
+            variable: Variable(s) to plot. Can be a string, list of strings,
+                or None to plot all time-varying variables.
             colorscale: Colorscale for heatmap.
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
+            facet_col_wrap: Max columns before wrapping facets.
+                Defaults to CONFIG.Plotting.default_facet_cols.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
 
@@ -774,52 +892,77 @@ class ClusteringPlotAccessor:
         if not time_vars:
             raise ValueError('No time-varying variables found')
 
+        # Normalize variable to list
         if variable is None:
-            variable = time_vars[0]
-        elif variable not in time_vars:
-            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+            variables = time_vars
+        elif isinstance(variable, str):
+            if variable not in time_vars:
+                raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+            variables = [variable]
+        else:
+            invalid = [v for v in variable if v not in time_vars]
+            if invalid:
+                raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
+            variables = list(variable)
 
-        original = result.original_data[variable].values
         n_periods = cs.n_original_periods
         timesteps_per_period = cs.timesteps_per_cluster
         cluster_order = cs.cluster_order.values
-
-        # Reshape to [periods, timesteps_per_period]
-        data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
-
-        # Sort periods by cluster for better visualization
         sorted_indices = np.argsort(cluster_order)
-        data_sorted = data_matrix[sorted_indices]
         clusters_sorted = cluster_order[sorted_indices]
-
-        # Create labels showing period and cluster
         y_labels = [f'P{sorted_indices[i] + 1} (C{clusters_sorted[i]})' for i in range(n_periods)]
 
-        # Build DataArray for px.imshow
-        heatmap_da = xr.DataArray(
-            data_sorted,
-            dims=['period', 'timestep'],
-            coords={'period': y_labels, 'timestep': range(timesteps_per_period)},
-        )
-
-        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
-        fig = px.imshow(
-            heatmap_da,
-            color_continuous_scale=colorscale,
-            title=f'Clustering Structure: {variable}',
-            labels={'timestep': 'Timestep within period', 'period': 'Period (sorted by cluster)'},
-        )
-
-        data = xr.Dataset(
-            {
-                'heatmap': xr.DataArray(
+        # Build DataArray with variable dimension if multiple
+        data_vars = {}
+        if len(variables) == 1:
+            original = result.original_data[variables[0]].values
+            data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
+            data_sorted = data_matrix[sorted_indices]
+            heatmap_da = xr.DataArray(
+                data_sorted,
+                dims=['period', 'timestep'],
+                coords={'period': y_labels, 'timestep': range(timesteps_per_period)},
+            )
+            data_vars['heatmap'] = xr.DataArray(
+                data_sorted,
+                dims=['period', 'timestep'],
+                coords={'period': sorted_indices, 'timestep': range(timesteps_per_period)},
+            )
+            title = f'Clustering Structure: {variables[0]}'
+        else:
+            arrays = []
+            for var in variables:
+                original = result.original_data[var].values
+                data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
+                data_sorted = data_matrix[sorted_indices]
+                arrays.append(data_sorted)
+                data_vars[var] = xr.DataArray(
                     data_sorted,
                     dims=['period', 'timestep'],
                     coords={'period': sorted_indices, 'timestep': range(timesteps_per_period)},
-                ),
-                'cluster': xr.DataArray(clusters_sorted, dims=['period']),
-            }
+                )
+            heatmap_da = xr.DataArray(
+                np.stack(arrays, axis=0),
+                dims=['variable', 'period', 'timestep'],
+                coords={'variable': variables, 'period': y_labels, 'timestep': range(timesteps_per_period)},
+            )
+            title = 'Clustering Structure'
+
+        colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
+        facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+        fig = px.imshow(
+            heatmap_da,
+            color_continuous_scale=colorscale,
+            facet_col='variable' if len(variables) > 1 else None,
+            facet_col_wrap=facet_col_wrap if len(variables) > 1 else None,
+            title=title,
+            labels={'timestep': 'Timestep within period', 'period': 'Period (sorted by cluster)'},
         )
+        if len(variables) > 1:
+            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
+
+        data_vars['cluster'] = xr.DataArray(clusters_sorted, dims=['period'])
+        data = xr.Dataset(data_vars)
         plot_result = PlotResult(data=data, figure=fig)
 
         if show is None:
@@ -831,7 +974,7 @@ class ClusteringPlotAccessor:
 
     def typical_periods(
         self,
-        variable: str | None = None,
+        variable: str | list[str] | None = None,
         colormap: str | None = None,
         facet_col_wrap: int | None = None,
         show: bool | None = None,
@@ -842,7 +985,8 @@ class ClusteringPlotAccessor:
         understanding what each cluster represents.
 
         Args:
-            variable: Variable to plot. If None, plots the first available variable.
+            variable: Variable(s) to plot. Can be a string, list of strings,
+                or None to plot all time-varying variables.
             colormap: Colorscale for cluster colors.
                 Defaults to CONFIG.Plotting.default_qualitative_colorscale.
             facet_col_wrap: Max columns before wrapping facets.
@@ -868,51 +1012,61 @@ class ClusteringPlotAccessor:
         if not time_vars:
             raise ValueError('No time-varying variables found')
 
+        # Normalize variable to list
         if variable is None:
-            variable = time_vars[0]
-        elif variable not in time_vars:
-            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+            variables = time_vars
+        elif isinstance(variable, str):
+            if variable not in time_vars:
+                raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+            variables = [variable]
+        else:
+            invalid = [v for v in variable if v not in time_vars]
+            if invalid:
+                raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
+            variables = list(variable)
 
         n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
         timesteps_per_cluster = cs.timesteps_per_cluster
-        data = result.aggregated_data[variable].values
-
-        # Reshape to [n_clusters, timesteps_per_cluster]
-        data_by_cluster = data.reshape(n_clusters, timesteps_per_cluster)
 
         # Build long-form DataFrame with cluster labels including occurrence counts
         rows = []
-        for c in range(n_clusters):
-            occurrence = int(cs.cluster_occurrences.sel(cluster=c).values)
-            label = f'Cluster {c} (×{occurrence})'
-            for t in range(timesteps_per_cluster):
-                rows.append({'cluster': label, 'timestep': t, 'value': data_by_cluster[c, t]})
+        data_vars = {}
+        for var in variables:
+            data = result.aggregated_data[var].values
+            data_by_cluster = data.reshape(n_clusters, timesteps_per_cluster)
+            data_vars[var] = xr.DataArray(
+                data_by_cluster,
+                dims=['cluster', 'timestep'],
+                coords={'cluster': range(n_clusters), 'timestep': range(timesteps_per_cluster)},
+            )
+            for c in range(n_clusters):
+                occurrence = int(cs.cluster_occurrences.sel(cluster=c).values)
+                label = f'Cluster {c} (×{occurrence})'
+                for t in range(timesteps_per_cluster):
+                    rows.append({'cluster': label, 'timestep': t, 'value': data_by_cluster[c, t], 'variable': var})
         df = pd.DataFrame(rows)
 
         colormap = colormap or CONFIG.Plotting.default_qualitative_colorscale
         facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+        title = 'Typical Periods' if len(variables) > 1 else f'Typical Periods: {variables[0]}'
 
         fig = px.line(
             df,
             x='timestep',
             y='value',
             facet_col='cluster',
-            facet_col_wrap=facet_col_wrap,
-            title=f'Typical Periods: {variable}',
+            facet_row='variable' if len(variables) > 1 else None,
+            facet_col_wrap=facet_col_wrap if len(variables) == 1 else None,
+            title=title,
             color_discrete_sequence=px.colors.qualitative.__dict__.get(colormap, px.colors.qualitative.Plotly),
         )
         fig.update_layout(showlegend=False)
+        if len(variables) > 1:
+            fig.update_yaxes(matches=None)
+            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
-        result_data = xr.Dataset(
-            {
-                'typical_periods': xr.DataArray(
-                    data_by_cluster,
-                    dims=['cluster', 'timestep'],
-                    coords={'cluster': range(n_clusters), 'timestep': range(timesteps_per_cluster)},
-                ),
-                'occurrences': cs.cluster_occurrences,
-            }
-        )
+        data_vars['occurrences'] = cs.cluster_occurrences
+        result_data = xr.Dataset(data_vars)
         plot_result = PlotResult(data=result_data, figure=fig)
 
         if show is None:
