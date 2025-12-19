@@ -542,6 +542,317 @@ class ClusterResult:
         return plot_result
 
 
+class ClusteringPlotAccessor:
+    """Plot accessor for Clustering objects.
+
+    Provides visualization methods for comparing original vs aggregated data
+    and understanding the clustering structure.
+
+    Example:
+        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+        >>> fs_clustered.clustering.plot.compare()  # timeseries comparison
+        >>> fs_clustered.clustering.plot.compare(kind='duration_curve')  # duration curve
+        >>> fs_clustered.clustering.plot.heatmap()  # structure visualization
+        >>> fs_clustered.clustering.plot.typical_periods()  # cluster profiles
+    """
+
+    def __init__(self, clustering: Clustering):
+        self._clustering = clustering
+
+    def compare(
+        self,
+        kind: str = 'timeseries',
+        variable: str | None = None,
+        colormap: str | None = None,
+        show: bool | None = None,
+    ):
+        """Compare original vs aggregated data.
+
+        Args:
+            kind: Type of comparison plot.
+                - 'timeseries': Time series comparison (default)
+                - 'duration_curve': Sorted duration curve comparison
+            variable: Variable to plot. If None, plots first available variable.
+            colormap: Colorscale name for the colors.
+                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the comparison figure and underlying data.
+        """
+        if kind == 'timeseries':
+            return self._compare_timeseries(variable=variable, colormap=colormap, show=show)
+        elif kind == 'duration_curve':
+            return self._compare_duration_curve(variable=variable, colormap=colormap, show=show)
+        else:
+            raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
+
+    def _compare_timeseries(
+        self,
+        variable: str | None = None,
+        colormap: str | None = None,
+        show: bool | None = None,
+    ):
+        """Compare original vs aggregated as time series."""
+        import plotly.graph_objects as go
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        result = self._clustering.result
+        if result.original_data is None or result.aggregated_data is None:
+            raise ValueError('No original/aggregated data available for comparison')
+
+        # Filter to time-varying variables
+        time_vars = [
+            name
+            for name in result.original_data.data_vars
+            if 'time' in result.original_data[name].dims
+            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
+        ]
+        if not time_vars:
+            raise ValueError('No time-varying variables found')
+
+        if variable is None:
+            variable = time_vars[0]
+        elif variable not in time_vars:
+            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+
+        original = result.original_data[variable]
+        aggregated = result.aggregated_data[variable]
+
+        # Expand aggregated to original length
+        mapping = result.timestep_mapping.values
+        expanded = aggregated.values[mapping]
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=original.coords['time'].values,
+                y=original.values,
+                name='Original',
+                line=dict(dash='dash'),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=original.coords['time'].values,
+                y=expanded,
+                name='Aggregated',
+            )
+        )
+        fig.update_layout(
+            title=f'Original vs Aggregated: {variable}',
+            xaxis_title='Time',
+            yaxis_title='Value',
+        )
+
+        data = xr.Dataset({'original': original, 'aggregated': xr.DataArray(expanded, dims=['time'])})
+        plot_result = PlotResult(data=data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
+
+    def _compare_duration_curve(
+        self,
+        variable: str | None = None,
+        colormap: str | None = None,
+        show: bool | None = None,
+    ):
+        """Compare original vs aggregated as duration curves."""
+        import plotly.graph_objects as go
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        result = self._clustering.result
+        if result.original_data is None or result.aggregated_data is None:
+            raise ValueError('No original/aggregated data available for comparison')
+
+        # Filter to time-varying variables
+        time_vars = [
+            name
+            for name in result.original_data.data_vars
+            if 'time' in result.original_data[name].dims
+            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
+        ]
+        if not time_vars:
+            raise ValueError('No time-varying variables found')
+
+        if variable is None:
+            variable = time_vars[0]
+        elif variable not in time_vars:
+            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+
+        original = result.original_data[variable].values
+        aggregated = result.aggregated_data[variable].values
+
+        # Expand aggregated to original length
+        mapping = result.timestep_mapping.values
+        expanded = aggregated[mapping]
+
+        # Sort both for duration curve
+        original_sorted = np.sort(original)[::-1]
+        expanded_sorted = np.sort(expanded)[::-1]
+        x = np.arange(len(original_sorted))
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=original_sorted,
+                name='Original',
+                line=dict(dash='dash'),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=expanded_sorted,
+                name='Aggregated',
+            )
+        )
+        fig.update_layout(
+            title=f'Duration Curve: {variable}',
+            xaxis_title='Hours (sorted)',
+            yaxis_title='Value',
+        )
+
+        data = xr.Dataset(
+            {
+                'original_sorted': xr.DataArray(original_sorted, dims=['rank']),
+                'aggregated_sorted': xr.DataArray(expanded_sorted, dims=['rank']),
+            }
+        )
+        plot_result = PlotResult(data=data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
+
+    def heatmap(
+        self,
+        variable: str | None = None,
+        show: bool | None = None,
+    ):
+        """Plot clustering structure as a heatmap of periods vs timesteps.
+
+        Shows the original data organized by periods (rows) and timesteps within
+        each period (columns), with color indicating the value. Periods are
+        grouped by their cluster assignment.
+
+        Args:
+            variable: Variable to plot. If None, plots first available variable.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the heatmap figure and underlying data.
+        """
+        import plotly.graph_objects as go
+
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+
+        result = self._clustering.result
+        cs = result.cluster_structure
+        if result.original_data is None or cs is None:
+            raise ValueError('No original data or cluster structure available')
+
+        # Filter to time-varying variables
+        time_vars = [
+            name
+            for name in result.original_data.data_vars
+            if 'time' in result.original_data[name].dims
+            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
+        ]
+        if not time_vars:
+            raise ValueError('No time-varying variables found')
+
+        if variable is None:
+            variable = time_vars[0]
+        elif variable not in time_vars:
+            raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
+
+        original = result.original_data[variable].values
+        n_periods = cs.n_original_periods
+        timesteps_per_period = cs.timesteps_per_cluster
+        cluster_order = cs.cluster_order.values
+
+        # Reshape to [periods, timesteps_per_period]
+        data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
+
+        # Sort periods by cluster for better visualization
+        sorted_indices = np.argsort(cluster_order)
+        data_sorted = data_matrix[sorted_indices]
+        clusters_sorted = cluster_order[sorted_indices]
+
+        # Create labels showing period and cluster
+        y_labels = [f'P{sorted_indices[i] + 1} (C{clusters_sorted[i]})' for i in range(n_periods)]
+
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=data_sorted,
+                x=list(range(timesteps_per_period)),
+                y=y_labels,
+                colorscale='Viridis',
+                colorbar=dict(title='Value'),
+            )
+        )
+        fig.update_layout(
+            title=f'Clustering Structure: {variable}',
+            xaxis_title='Timestep within period',
+            yaxis_title='Period (sorted by cluster)',
+        )
+
+        data = xr.Dataset(
+            {
+                'heatmap': xr.DataArray(
+                    data_sorted,
+                    dims=['period', 'timestep'],
+                    coords={'period': sorted_indices, 'timestep': range(timesteps_per_period)},
+                ),
+                'cluster': xr.DataArray(clusters_sorted, dims=['period']),
+            }
+        )
+        plot_result = PlotResult(data=data, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
+
+    def typical_periods(
+        self,
+        variable: str | None = None,
+        show: bool | None = None,
+    ):
+        """Plot each cluster's typical period profile.
+
+        Shows each cluster as a separate subplot with its occurrence count
+        in the title. Useful for understanding what each cluster represents.
+
+        Args:
+            variable: Variable to plot. If None, plots the first available variable.
+            show: Whether to display the figure.
+                Defaults to CONFIG.Plotting.default_show.
+
+        Returns:
+            PlotResult containing the figure and underlying data.
+        """
+        return self._clustering.result.plot_typical_periods(variable=variable, show=show)
+
+
 @dataclass
 class Clustering:
     """Information about an aggregation stored on a FlowSystem.
@@ -558,6 +869,13 @@ class Clustering:
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
         storage_inter_cluster_linking: Whether to add inter-cluster storage constraints.
         storage_cyclic: Whether to enforce cyclic storage (SOC[start] = SOC[end]).
+
+    Example:
+        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+        >>> fs_clustered.clustering.n_clusters
+        8
+        >>> fs_clustered.clustering.plot.compare()
+        >>> fs_clustered.clustering.plot.heatmap()
     """
 
     result: ClusterResult
@@ -583,64 +901,20 @@ class Clustering:
             f')'
         )
 
-    def plot(self, colormap: str | None = None, show: bool | None = None):
-        """Plot original vs aggregated data comparison.
-
-        Convenience method that calls result.plot().
-
-        Args:
-            colormap: Colorscale name for the time series colors.
-                Defaults to CONFIG.Plotting.default_qualitative_colorscale.
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
+    @property
+    def plot(self) -> ClusteringPlotAccessor:
+        """Access plotting methods for clustering visualization.
 
         Returns:
-            PlotResult containing the comparison figure and underlying data.
+            ClusteringPlotAccessor with compare(), heatmap(), and typical_periods() methods.
 
         Example:
-            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered.clustering.plot()
+            >>> fs.clustering.plot.compare()  # timeseries comparison
+            >>> fs.clustering.plot.compare(kind='duration_curve')  # duration curve
+            >>> fs.clustering.plot.heatmap()  # structure visualization
+            >>> fs.clustering.plot.typical_periods()  # cluster profiles
         """
-        return self.result.plot(colormap=colormap, show=show)
-
-    def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
-        """Plot each cluster's typical period profile.
-
-        Convenience method that calls result.plot_typical_periods().
-
-        Args:
-            variable: Variable to plot. If None, plots the first available variable.
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-
-        Returns:
-            PlotResult containing the figure and underlying data.
-
-        Example:
-            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered.clustering.plot_typical_periods()
-        """
-        return self.result.plot_typical_periods(variable=variable, show=show)
-
-    def plot_structure(self, show: bool | None = None):
-        """Plot cluster assignment visualization.
-
-        Shows which original period belongs to which cluster.
-
-        Args:
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-
-        Returns:
-            PlotResult containing the figure and underlying data.
-
-        Example:
-            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-            >>> fs_clustered.clustering.plot_structure()
-        """
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.plot(show=show)
+        return ClusteringPlotAccessor(self)
 
     # Convenience properties delegating to nested objects
 
