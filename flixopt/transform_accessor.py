@@ -581,7 +581,7 @@ class TransformAccessor:
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
-        storage: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
+        storage_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
     ) -> FlowSystem:
         """
         Create a FlowSystem with reduced timesteps using typical clusters.
@@ -607,7 +607,7 @@ class TransformAccessor:
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
                 clusters. **Recommended** for demand time series to capture peak demand days.
             time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
-            storage: How storages are treated during clustering. Options:
+            storage_mode: How storages are treated during clustering. Options:
 
                 - ``'independent'``: Clusters are fully decoupled. No constraints between
                   clusters, each cluster has free start/end SOC. Fast but ignores
@@ -889,7 +889,7 @@ class TransformAccessor:
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
-            storage_mode=storage,
+            storage_mode=storage_mode,
         )
 
         return reduced_fs
