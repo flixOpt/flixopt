@@ -25,6 +25,7 @@ import xarray as xr
 
 if TYPE_CHECKING:
     from ..color_processing import ColorType
+    from ..flow_system import FlowSystem
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
@@ -903,7 +904,7 @@ class Clustering:
     """
 
     result: ClusterResult
-    original_flow_system: object  # FlowSystem - avoid circular import
+    original_flow_system: FlowSystem  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
@@ -1044,9 +1045,9 @@ class Clustering:
 
         # Expand to include period/scenario dimensions if present (for broadcasting)
         original_fs = self.original_flow_system
-        if hasattr(original_fs, 'periods') and original_fs.periods is not None:
+        if original_fs.periods is not None:
             mask = mask.expand_dims(period=list(original_fs.periods))
-        if hasattr(original_fs, 'scenarios') and original_fs.scenarios is not None:
+        if original_fs.scenarios is not None:
             mask = mask.expand_dims(scenario=list(original_fs.scenarios))
 
         return mask
