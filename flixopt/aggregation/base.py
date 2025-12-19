@@ -701,25 +701,32 @@ class ClusteringPlotAccessor:
         data_vars = {}
         for var in resolved_variables:
             original = result.original_data[var]
-            aggregated = result.aggregated_data[var]
-            expanded = result.expand_data(aggregated)
-
-            if kind == 'duration_curve':
-                # Sort values for duration curve (flatten, then sort descending)
-                original_sorted = np.sort(original.values.flatten())[::-1]
-                expanded_sorted = np.sort(expanded.values.flatten())[::-1]
-                n = len(original_sorted)
-                original = xr.DataArray(original_sorted, dims=['rank'], coords={'rank': range(n)})
-                expanded = xr.DataArray(expanded_sorted, dims=['rank'], coords={'rank': range(n)})
-
-            # Concat along 'source' dimension
+            expanded = result.expand_data(result.aggregated_data[var])
             combined = xr.concat([original, expanded], dim=pd.Index(['Original', 'Aggregated'], name='source'))
             data_vars[var] = combined
         ds = xr.Dataset(data_vars)
 
-        # Apply selection (only for timeseries - duration curve already flattened)
-        if kind == 'timeseries':
-            ds = _apply_selection(ds, select)
+        # Apply selection
+        ds = _apply_selection(ds, select)
+
+        # For duration curve: flatten and sort values
+        if kind == 'duration_curve':
+            sorted_vars = {}
+            for var in ds.data_vars:
+                for source in ds.coords['source'].values:
+                    values = np.sort(ds[var].sel(source=source).values.flatten())[::-1]
+                    sorted_vars[(var, source)] = values
+            n = len(values)
+            ds = xr.Dataset(
+                {
+                    var: xr.DataArray(
+                        [sorted_vars[(var, s)] for s in ['Original', 'Aggregated']],
+                        dims=['source', 'rank'],
+                        coords={'source': ['Original', 'Aggregated'], 'rank': range(n)},
+                    )
+                    for var in resolved_variables
+                }
+            )
 
         # Resolve facets (only for timeseries)
         actual_facet_col = facet_col if kind == 'timeseries' and facet_col in ds.dims else None
@@ -734,8 +741,8 @@ class ClusteringPlotAccessor:
         color_map = process_colors(colors, variable_labels, CONFIG.Plotting.default_qualitative_colorscale)
 
         # Set x-axis and title based on kind
+        x_col = 'time' if kind == 'timeseries' else 'rank'
         if kind == 'timeseries':
-            x_col = 'time'
             title = (
                 'Original vs Aggregated'
                 if len(resolved_variables) > 1
@@ -743,7 +750,6 @@ class ClusteringPlotAccessor:
             )
             labels = {}
         else:
-            x_col = 'rank'
             title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
             labels = {'rank': 'Hours (sorted)', 'value': 'Value'}
 
