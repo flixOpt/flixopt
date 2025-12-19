@@ -680,28 +680,98 @@ class ClusteringPlotAccessor:
         Returns:
             PlotResult containing the comparison figure and underlying data.
         """
-        if kind == 'timeseries':
-            return self._compare_timeseries(
-                variables=variables,
-                select=select,
-                colors=colors,
-                facet_col=facet_col,
-                facet_row=facet_row,
-                show=show,
-                **plotly_kwargs,
-            )
-        elif kind == 'duration_curve':
-            return self._compare_duration_curve(
-                variables=variables,
-                select=select,
-                colors=colors,
-                facet_col=facet_col,
-                facet_row=facet_row,
-                show=show,
-                **plotly_kwargs,
-            )
-        else:
+        import pandas as pd
+        import plotly.express as px
+
+        from ..color_processing import process_colors
+        from ..config import CONFIG
+        from ..plot_result import PlotResult
+        from ..statistics_accessor import _apply_selection
+
+        if kind not in ('timeseries', 'duration_curve'):
             raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
+
+        result = self._clustering.result
+        if result.original_data is None or result.aggregated_data is None:
+            raise ValueError('No original/aggregated data available for comparison')
+
+        resolved_variables = self._resolve_variables(variables)
+
+        # Build Dataset with 'source' dimension for Original/Aggregated
+        data_vars = {}
+        for var in resolved_variables:
+            original = result.original_data[var]
+            aggregated = result.aggregated_data[var]
+            expanded = result.expand_data(aggregated)
+
+            if kind == 'duration_curve':
+                # Sort values for duration curve (flatten, then sort descending)
+                original_sorted = np.sort(original.values.flatten())[::-1]
+                expanded_sorted = np.sort(expanded.values.flatten())[::-1]
+                n = len(original_sorted)
+                original = xr.DataArray(original_sorted, dims=['rank'], coords={'rank': range(n)})
+                expanded = xr.DataArray(expanded_sorted, dims=['rank'], coords={'rank': range(n)})
+
+            # Concat along 'source' dimension
+            combined = xr.concat([original, expanded], dim=pd.Index(['Original', 'Aggregated'], name='source'))
+            data_vars[var] = combined
+        ds = xr.Dataset(data_vars)
+
+        # Apply selection (only for timeseries - duration curve already flattened)
+        if kind == 'timeseries':
+            ds = _apply_selection(ds, select)
+
+        # Resolve facets (only for timeseries)
+        actual_facet_col = facet_col if kind == 'timeseries' and facet_col in ds.dims else None
+        actual_facet_row = facet_row if kind == 'timeseries' and facet_row in ds.dims else None
+
+        # Convert to long-form DataFrame
+        df = ds.to_dataframe().reset_index()
+        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
+        df = df.melt(id_vars=coord_cols, var_name='variable', value_name='value')
+
+        variable_labels = df['variable'].unique().tolist()
+        color_map = process_colors(colors, variable_labels, CONFIG.Plotting.default_qualitative_colorscale)
+
+        # Set x-axis and title based on kind
+        if kind == 'timeseries':
+            x_col = 'time'
+            title = (
+                'Original vs Aggregated'
+                if len(resolved_variables) > 1
+                else f'Original vs Aggregated: {resolved_variables[0]}'
+            )
+            labels = {}
+        else:
+            x_col = 'rank'
+            title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
+            labels = {'rank': 'Hours (sorted)', 'value': 'Value'}
+
+        fig = px.line(
+            df,
+            x=x_col,
+            y='value',
+            color='variable',
+            line_dash='source',
+            facet_col=actual_facet_col,
+            facet_row=actual_facet_row,
+            title=title,
+            labels=labels,
+            color_discrete_map=color_map,
+            **plotly_kwargs,
+        )
+        if actual_facet_row or actual_facet_col:
+            fig.update_yaxes(matches=None)
+            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
+
+        plot_result = PlotResult(data=ds, figure=fig)
+
+        if show is None:
+            show = CONFIG.Plotting.default_show
+        if show:
+            plot_result.show()
+
+        return plot_result
 
     def _get_time_varying_variables(self) -> list[str]:
         """Get list of time-varying variables from original data."""
@@ -732,171 +802,6 @@ class ClusteringPlotAccessor:
             if invalid:
                 raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
             return list(variables)
-
-    def _resolve_facets(
-        self, ds: xr.Dataset, facet_col: str | None, facet_row: str | None
-    ) -> tuple[str | None, str | None]:
-        """Resolve facet dimensions, returning None if not present in data."""
-        actual_col = facet_col if facet_col and facet_col in ds.dims else None
-        actual_row = facet_row if facet_row and facet_row in ds.dims else None
-        return actual_col, actual_row
-
-    def _compare_timeseries(
-        self,
-        variables: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        facet_col: str | None = None,
-        facet_row: str | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ):
-        """Compare original vs aggregated as time series."""
-        import plotly.express as px
-
-        from ..color_processing import process_colors
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-        from ..statistics_accessor import _apply_selection
-
-        result = self._clustering.result
-        if result.original_data is None or result.aggregated_data is None:
-            raise ValueError('No original/aggregated data available for comparison')
-
-        resolved_variables = self._resolve_variables(variables)
-
-        # Build Dataset with Original/Aggregated for each variable
-        data_vars = {}
-        for var in resolved_variables:
-            original = result.original_data[var]
-            aggregated = result.aggregated_data[var]
-            expanded = result.expand_data(aggregated)
-            data_vars[f'{var} (Original)'] = original
-            data_vars[f'{var} (Aggregated)'] = expanded
-        ds = xr.Dataset(data_vars)
-
-        # Apply selection
-        ds = _apply_selection(ds, select)
-
-        # Resolve facets
-        actual_facet_col, actual_facet_row = self._resolve_facets(ds, facet_col, facet_row)
-
-        # Convert to long-form DataFrame (like _dataset_to_long_df)
-        df = ds.to_dataframe().reset_index()
-        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
-        df = df.melt(id_vars=coord_cols, var_name='series', value_name='value')
-
-        series_labels = df['series'].unique().tolist()
-        color_map = process_colors(colors, series_labels, CONFIG.Plotting.default_qualitative_colorscale)
-        title = (
-            'Original vs Aggregated'
-            if len(resolved_variables) > 1
-            else f'Original vs Aggregated: {resolved_variables[0]}'
-        )
-
-        fig = px.line(
-            df,
-            x='time',
-            y='value',
-            color='series',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            title=title,
-            color_discrete_map=color_map,
-            **plotly_kwargs,
-        )
-        # Dash lines for Original series
-        for trace in fig.data:
-            if 'Original' in trace.name:
-                trace.line.dash = 'dash'
-        if actual_facet_row or actual_facet_col:
-            fig.update_yaxes(matches=None)
-            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
-
-        plot_result = PlotResult(data=ds, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
-    def _compare_duration_curve(
-        self,
-        variables: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        facet_col: str | None = None,
-        facet_row: str | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ):
-        """Compare original vs aggregated as duration curves."""
-        import plotly.express as px
-
-        from ..color_processing import process_colors
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-        from ..statistics_accessor import _apply_selection
-
-        result = self._clustering.result
-        if result.original_data is None or result.aggregated_data is None:
-            raise ValueError('No original/aggregated data available for comparison')
-
-        # Apply selection to original data before resolving variables
-        original_data = _apply_selection(result.original_data, select)
-        aggregated_data = _apply_selection(result.aggregated_data, select)
-
-        resolved_variables = self._resolve_variables(variables)
-
-        # Build Dataset with sorted values for each variable
-        data_vars = {}
-        for var in resolved_variables:
-            original = original_data[var]
-            aggregated = aggregated_data[var]
-            expanded = result.expand_data(aggregated)
-            # Sort values for duration curve
-            original_sorted = np.sort(original.values.flatten())[::-1]
-            expanded_sorted = np.sort(expanded.values.flatten())[::-1]
-            n = len(original_sorted)
-            data_vars[f'{var} (Original)'] = xr.DataArray(original_sorted, dims=['rank'], coords={'rank': range(n)})
-            data_vars[f'{var} (Aggregated)'] = xr.DataArray(expanded_sorted, dims=['rank'], coords={'rank': range(n)})
-        ds = xr.Dataset(data_vars)
-
-        # Convert to long-form DataFrame
-        df = ds.to_dataframe().reset_index()
-        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
-        df = df.melt(id_vars=coord_cols, var_name='series', value_name='value')
-
-        series_labels = df['series'].unique().tolist()
-        color_map = process_colors(colors, series_labels, CONFIG.Plotting.default_qualitative_colorscale)
-        title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
-
-        fig = px.line(
-            df,
-            x='rank',
-            y='value',
-            color='series',
-            title=title,
-            labels={'rank': 'Hours (sorted)', 'value': 'Value'},
-            color_discrete_map=color_map,
-            **plotly_kwargs,
-        )
-        for trace in fig.data:
-            if 'Original' in trace.name:
-                trace.line.dash = 'dash'
-
-        plot_result = PlotResult(data=ds, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
 
     def heatmap(
         self,
