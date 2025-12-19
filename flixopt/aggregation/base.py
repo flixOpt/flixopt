@@ -17,7 +17,7 @@ All data structures use xarray for consistent handling of coordinates.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -907,6 +907,7 @@ class Clustering:
     backend_name: str = 'unknown'
     storage_inter_cluster_linking: bool = True
     storage_cyclic: bool = True
+    _intra_cluster_mask: xr.DataArray | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -982,6 +983,73 @@ class Clustering:
     def timestep_mapping(self) -> xr.DataArray:
         """Mapping from original timesteps to representative timestep indices."""
         return self.result.timestep_mapping
+
+    def get_intra_cluster_mask(self, time_coords: np.ndarray | xr.DataArray) -> xr.DataArray:
+        """Get mask for intra-cluster timestep transitions (cached).
+
+        Returns a boolean mask that is True for transitions within a cluster
+        and False for transitions at cluster boundaries. Used to skip
+        inter-cluster balance constraints in storage models.
+
+        Args:
+            time_coords: Time coordinates for the mask. Should match the
+                constraint's time dimension (typically flow_system.timesteps).
+
+        Returns:
+            DataArray with dims ['time'] or ['time', 'period', 'scenario'],
+            True for intra-cluster transitions.
+
+        Example:
+            For 2 clusters with 24 timesteps each (48 total):
+            - Positions 0-22: True (within cluster 0)
+            - Position 23: False (boundary between cluster 0 and 1)
+            - Positions 24-47: True (within cluster 1)
+        """
+        if self._intra_cluster_mask is not None:
+            return self._intra_cluster_mask
+
+        if self.result.cluster_structure is None:
+            raise ValueError('No cluster_structure available')
+
+        self._intra_cluster_mask = self._compute_intra_cluster_mask(time_coords)
+        return self._intra_cluster_mask
+
+    def _compute_intra_cluster_mask(self, time_coords: np.ndarray | xr.DataArray) -> xr.DataArray:
+        """Compute the intra-cluster mask.
+
+        Boundary positions are uniform across all period/scenario slices since
+        n_clusters and timesteps_per_cluster are uniform.
+        """
+        n_clusters = self.n_clusters
+        steps_per_cluster = self.timesteps_per_period
+        n_timesteps = n_clusters * steps_per_cluster
+
+        # Boundary positions: T-1, 2T-1, ..., (n_clusters-1)*T - 1
+        # Position k links charge_state[k+1] to charge_state[k]
+        # Boundary at k means k is last timestep of cluster, k+1 is first of next
+        boundary_positions = [(c * steps_per_cluster) - 1 for c in range(1, n_clusters)]
+
+        mask_values = np.ones(n_timesteps, dtype=bool)
+        mask_values[boundary_positions] = False
+
+        if isinstance(time_coords, xr.DataArray):
+            time_coords = time_coords.values
+
+        mask = xr.DataArray(
+            mask_values,
+            dims=['time'],
+            coords={'time': time_coords},
+            name='intra_cluster_mask',
+        )
+
+        # Expand to include period/scenario dimensions if present (for broadcasting)
+        original_fs = self.original_flow_system
+        if hasattr(original_fs, 'periods') and original_fs.periods is not None:
+            mask = mask.expand_dims(period=list(original_fs.periods))
+        if hasattr(original_fs, 'scenarios') and original_fs.scenarios is not None:
+            mask = mask.expand_dims(scenario=list(original_fs.scenarios))
+
+        return mask
 
 
 def create_cluster_structure_from_mapping(

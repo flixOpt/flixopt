@@ -907,13 +907,21 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
-        self.add_constraints(
+        # Build balance expression
+        lhs = (
             charge_state.isel(time=slice(1, None))
-            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            + charge_rate * eff_charge * timestep_duration
-            - discharge_rate * timestep_duration / eff_discharge,
-            short_name='charge_state',
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rate * eff_charge * timestep_duration
+            + discharge_rate * timestep_duration / eff_discharge
         )
+
+        # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
+        clustering = self._model.flow_system.clustering
+        if clustering is not None:
+            mask = clustering.get_intra_cluster_mask(self._model.flow_system.timesteps)
+            lhs = lhs.where(mask)
+
+        self.add_constraints(lhs == 0, short_name='charge_state')
 
         # Create InvestmentModel and bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
