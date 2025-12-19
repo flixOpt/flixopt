@@ -1311,8 +1311,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if info is None:
             return
 
-        if not info.storage_inter_cluster_linking:
-            logger.info('Storage inter-cluster linking disabled')
+        # Only add inter-cluster linking for 'intercluster' and 'intercluster_cyclic' modes
+        if info.storage_mode not in ('intercluster', 'intercluster_cyclic'):
+            logger.info(f"Storage mode '{info.storage_mode}' - skipping inter-cluster linking")
             return
 
         if info.result.cluster_structure is None:
@@ -1320,11 +1321,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return
 
         # Create inter-cluster linking model for storage
+        storage_cyclic = info.storage_mode == 'intercluster_cyclic'
         linking_model = InterClusterLinking(
             model=self.model,
             flow_system=self,
             cluster_structure=info.result.cluster_structure,
-            storage_cyclic=info.storage_cyclic,
+            storage_cyclic=storage_cyclic,
         )
         linking_model.do_modeling()
 
