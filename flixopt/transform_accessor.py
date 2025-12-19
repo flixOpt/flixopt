@@ -800,11 +800,11 @@ class TransformAccessor:
         )
 
         # Remove 'equals_final' from storages - doesn't make sense on reduced timesteps
+        # Set to None so initial SOC is free (handled by storage_mode constraints)
         for storage in reduced_fs.storages.values():
-            # Handle both scalar and xarray cases
             ics = storage.initial_charge_state
             if isinstance(ics, str) and ics == 'equals_final':
-                storage.initial_charge_state = 0
+                storage.initial_charge_state = None
 
         # Build Clustering for inter-cluster linking and solution expansion
         n_original_timesteps = len(self._fs.timesteps)

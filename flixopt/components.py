@@ -270,7 +270,7 @@ class Storage(Component):
             maximum_size (or fixed_size) must be explicitly set for proper model scaling.
         relative_minimum_charge_state: Minimum charge state (0-1). Default: 0.
         relative_maximum_charge_state: Maximum charge state (0-1). Default: 1.
-        initial_charge_state: Charge at start. Numeric or 'equals_final'. Default: 0.
+        initial_charge_state: Charge at start. Numeric, 'equals_final', or None (free). Default: 0.
         minimal_final_charge_state: Minimum absolute charge required at end (optional).
         maximal_final_charge_state: Maximum absolute charge allowed at end (optional).
         relative_minimum_final_charge_state: Minimum relative charge at end.
@@ -388,7 +388,7 @@ class Storage(Component):
         capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None,
         relative_minimum_charge_state: Numeric_TPS = 0,
         relative_maximum_charge_state: Numeric_TPS = 1,
-        initial_charge_state: Numeric_PS | Literal['equals_final'] = 0,
+        initial_charge_state: Numeric_PS | Literal['equals_final'] | None = 0,
         minimal_final_charge_state: Numeric_PS | None = None,
         maximal_final_charge_state: Numeric_PS | None = None,
         relative_minimum_final_charge_state: Numeric_PS | None = None,
@@ -452,7 +452,7 @@ class Storage(Component):
         self.relative_loss_per_hour = self._fit_coords(
             f'{self.prefix}|relative_loss_per_hour', self.relative_loss_per_hour
         )
-        if not isinstance(self.initial_charge_state, str):
+        if self.initial_charge_state is not None and not isinstance(self.initial_charge_state, str):
             self.initial_charge_state = self._fit_coords(
                 f'{self.prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
             )
@@ -531,8 +531,8 @@ class Storage(Component):
             min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
             max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
 
-            # Only perform numeric comparisons if not using 'equals_final'
-            if not initial_equals_final:
+            # Only perform numeric comparisons if using a numeric initial_charge_state
+            if not initial_equals_final and self.initial_charge_state is not None:
                 if (self.initial_charge_state > max_initial_at_min_capacity).any():
                     raise PlausibilityError(
                         f'{self.label_full}: {self.initial_charge_state=} '
