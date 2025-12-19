@@ -918,8 +918,14 @@ class StorageModel(ComponentModel):
         # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
         clustering = self._model.flow_system.clustering
         if clustering is not None:
-            mask = clustering.get_intra_cluster_mask(self._model.flow_system.timesteps)
-            lhs = lhs.where(mask)
+            # Get indices to keep (all except cluster boundaries)
+            n_clusters = clustering.n_clusters
+            steps_per_cluster = clustering.timesteps_per_period
+            n_timesteps = n_clusters * steps_per_cluster
+            # Boundary indices: T-1, 2T-1, ..., (n_clusters-1)*T - 1
+            boundary_indices = {(c * steps_per_cluster) - 1 for c in range(1, n_clusters)}
+            valid_indices = [i for i in range(n_timesteps) if i not in boundary_indices]
+            lhs = lhs.isel(time=valid_indices)
 
         self.add_constraints(lhs == 0, short_name='charge_state')
 
