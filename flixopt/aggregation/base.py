@@ -549,7 +549,7 @@ class ClusterResult:
 
         return plot_result
 
-    def plot_typical_periods(self, variable: str | None = None, show: bool | None = None):
+    def plot_clusters(self, variable: str | None = None, show: bool | None = None):
         """Plot each cluster's typical period profile.
 
         Shows each cluster as a separate subplot with its occurrence count
@@ -607,14 +607,14 @@ class ClusterResult:
             )
 
         fig.update_layout(
-            title=f'Typical Periods: {variable}',
+            title=f'Clusters: {variable}',
             height=200 * n_rows,
         )
 
         # Build data for PlotResult
         result_data = xr.Dataset(
             {
-                'typical_periods': xr.DataArray(
+                'clusters': xr.DataArray(
                     data_by_cluster,
                     dims=['cluster', 'timestep'],
                     coords={'cluster': range(n_clusters), 'timestep': range(cs.timesteps_per_cluster)},
