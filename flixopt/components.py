@@ -915,18 +915,31 @@ class StorageModel(ComponentModel):
             + discharge_rate * timestep_duration / eff_discharge
         )
 
-        # Apply intra-cluster mask if clustered (skip inter-cluster boundaries)
+        # Handle clustering modes for storage
         clustering = self._model.flow_system.clustering
-        if clustering is not None:
-            # Skip constraint at position (start - 1) for each cluster start after the first.
-            # This removes the link between end of cluster N and start of cluster N+1.
+        mask = None
+
+        if clustering is not None and clustering.storage_mode in ('independent', 'intercluster', 'intercluster_cyclic'):
+            # Skip inter-cluster boundaries: removes link between end of cluster N and start of N+1
             mask = np.ones(lhs.sizes['time'], dtype=bool)
             mask[clustering.cluster_start_positions] = False
             mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
-        else:
-            mask = None
 
         self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
+
+        # For 'cyclic' mode: each cluster's start equals its end
+        if clustering is not None and clustering.storage_mode == 'cyclic':
+            starts = clustering.cluster_start_positions
+            for i, start_pos in enumerate(starts):
+                # End of cluster i is at (start of cluster i+1) - 1, or last timestep for final cluster
+                if i < len(starts) - 1:
+                    end_pos = starts[i + 1]  # In timesteps_extra, this is the end of cluster i
+                else:
+                    end_pos = len(self._model.flow_system.timesteps)  # Last position in timesteps_extra
+                self.add_constraints(
+                    charge_state.isel(time=start_pos) == charge_state.isel(time=end_pos),
+                    short_name=f'cluster_cyclic_{i}',
+                )
 
         # Create InvestmentModel and bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
