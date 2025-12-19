@@ -854,30 +854,30 @@ class ClusteringPlotAccessor:
 
     def heatmap(
         self,
-        variable: str | list[str] | None = None,
         colorscale: str | None = None,
-        facet_col_wrap: int | None = None,
+        facet_col: str | None = 'scenario',
+        facet_row: str | None = 'period',
         show: bool | None = None,
     ):
-        """Plot clustering structure as a heatmap of periods vs timesteps.
+        """Plot cluster assignments as a heatmap.
 
-        Shows the original data organized by periods (rows) and timesteps within
-        each period (columns), with color indicating the value. Periods are
-        grouped by their cluster assignment.
+        Shows which cluster each original period belongs to. Rows are original
+        periods, color indicates cluster assignment.
+
+        For multi-period/scenario data, creates faceted subplots.
 
         Args:
-            variable: Variable(s) to plot. Can be a string, list of strings,
-                or None to plot all time-varying variables.
             colorscale: Colorscale for heatmap.
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
-            facet_col_wrap: Max columns before wrapping facets.
-                Defaults to CONFIG.Plotting.default_facet_cols.
+            facet_col: Dimension to facet on columns ('scenario', 'period', or None).
+            facet_row: Dimension to facet on rows ('period', 'scenario', or None).
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the heatmap figure and underlying data.
         """
+        import pandas as pd
         import plotly.express as px
 
         from ..config import CONFIG
@@ -885,85 +885,86 @@ class ClusteringPlotAccessor:
 
         result = self._clustering.result
         cs = result.cluster_structure
-        if result.original_data is None or cs is None:
-            raise ValueError('No original data or cluster structure available')
+        if cs is None:
+            raise ValueError('No cluster structure available')
 
-        time_vars = self._get_time_varying_variables()
-        if not time_vars:
-            raise ValueError('No time-varying variables found')
+        cluster_order_da = cs.cluster_order
 
-        # Normalize variable to list
-        if variable is None:
-            variables = time_vars
-        elif isinstance(variable, str):
-            if variable not in time_vars:
-                raise ValueError(f"Variable '{variable}' not found. Available: {time_vars}")
-            variables = [variable]
-        else:
-            invalid = [v for v in variable if v not in time_vars]
-            if invalid:
-                raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
-            variables = list(variable)
+        # Check for multi-dimensional data
+        has_periods = 'period' in cluster_order_da.dims
+        has_scenarios = 'scenario' in cluster_order_da.dims
 
-        n_periods = cs.n_original_periods
-        timesteps_per_period = cs.timesteps_per_cluster
-        cluster_order = cs.cluster_order.values
-        sorted_indices = np.argsort(cluster_order)
-        clusters_sorted = cluster_order[sorted_indices]
-        y_labels = [f'P{sorted_indices[i] + 1} (C{clusters_sorted[i]})' for i in range(n_periods)]
+        # Resolve facets - only apply if dimension exists
+        actual_facet_col = facet_col if facet_col and has_scenarios and facet_col == 'scenario' else None
+        actual_facet_row = facet_row if facet_row and has_periods and facet_row == 'period' else None
 
-        # Build DataArray with variable dimension if multiple
-        data_vars = {}
-        if len(variables) == 1:
-            original = result.original_data[variables[0]].values
-            data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
-            data_sorted = data_matrix[sorted_indices]
-            heatmap_da = xr.DataArray(
-                data_sorted,
-                dims=['period', 'timestep'],
-                coords={'period': y_labels, 'timestep': range(timesteps_per_period)},
-            )
-            data_vars['heatmap'] = xr.DataArray(
-                data_sorted,
-                dims=['period', 'timestep'],
-                coords={'period': sorted_indices, 'timestep': range(timesteps_per_period)},
-            )
-            title = f'Clustering Structure: {variables[0]}'
-        else:
-            arrays = []
-            for var in variables:
-                original = result.original_data[var].values
-                data_matrix = original[: n_periods * timesteps_per_period].reshape(n_periods, timesteps_per_period)
-                data_sorted = data_matrix[sorted_indices]
-                arrays.append(data_sorted)
-                data_vars[var] = xr.DataArray(
-                    data_sorted,
-                    dims=['period', 'timestep'],
-                    coords={'period': sorted_indices, 'timestep': range(timesteps_per_period)},
+        # Get dimension values
+        periods = list(cluster_order_da.coords['period'].values) if has_periods else [None]
+        scenarios = list(cluster_order_da.coords['scenario'].values) if has_scenarios else [None]
+
+        # Build heatmap DataArray for each (period, scenario) slice
+        # Each slice is a 2D array with shape (n_original_periods, 1) showing cluster assignment
+        heatmap_slices: dict[tuple, xr.DataArray] = {}
+        for p in periods:
+            for s in scenarios:
+                cluster_order = cs.get_cluster_order_for_slice(period=p, scenario=s)
+                n_original_periods = len(cluster_order)
+
+                # Create 2D array for heatmap (periods x 1 column for cluster)
+                heatmap_slices[(p, s)] = xr.DataArray(
+                    cluster_order.reshape(-1, 1),
+                    dims=['original_period', 'x'],
+                    coords={'original_period': [f'P{i + 1}' for i in range(n_original_periods)], 'x': ['Cluster']},
                 )
-            heatmap_da = xr.DataArray(
-                np.stack(arrays, axis=0),
-                dims=['variable', 'period', 'timestep'],
-                coords={'variable': variables, 'period': y_labels, 'timestep': range(timesteps_per_period)},
-            )
-            title = 'Clustering Structure'
 
         colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
-        facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+
+        # Combine slices into multi-dimensional DataArray if needed
+        if has_periods and has_scenarios:
+            # Create a combined facet dimension for px.imshow (only supports facet_col)
+            combined_slices = []
+            facet_labels = []
+            for p in periods:
+                for s in scenarios:
+                    combined_slices.append(heatmap_slices[(p, s)])
+                    facet_labels.append(f'{p} / {s}')
+            heatmap_da = xr.concat(combined_slices, dim=pd.Index(facet_labels, name='facet'))
+            facet_dim = 'facet'
+        elif has_periods:
+            heatmap_da = xr.concat(
+                [heatmap_slices[(p, None)] for p in periods],
+                dim=pd.Index(periods, name='period'),
+            )
+            facet_dim = 'period' if actual_facet_row or actual_facet_col else None
+        elif has_scenarios:
+            heatmap_da = xr.concat(
+                [heatmap_slices[(None, s)] for s in scenarios],
+                dim=pd.Index(scenarios, name='scenario'),
+            )
+            facet_dim = 'scenario' if actual_facet_col else None
+        else:
+            heatmap_da = heatmap_slices[(None, None)]
+            facet_dim = None
+
+        # Use px.imshow with xr.DataArray
         fig = px.imshow(
             heatmap_da,
             color_continuous_scale=colorscale,
-            facet_col='variable' if len(variables) > 1 else None,
-            facet_col_wrap=facet_col_wrap if len(variables) > 1 else None,
-            title=title,
-            labels={'timestep': 'Timestep within period', 'period': 'Period (sorted by cluster)'},
+            facet_col=facet_dim,
+            title='Cluster Assignments',
+            labels={'x': '', 'original_period': 'Original Period', 'color': 'Cluster'},
+            aspect='auto',
         )
-        if len(variables) > 1:
+
+        # Clean up facet labels
+        if facet_dim:
             fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
-        data_vars['cluster'] = xr.DataArray(clusters_sorted, dims=['period'])
-        data = xr.Dataset(data_vars)
-        plot_result = PlotResult(data=data, figure=fig)
+        # Hide x-axis since it's just a single "Cluster" column
+        fig.update_xaxes(showticklabels=False)
+
+        # Build data for PlotResult
+        plot_result = PlotResult(data=xr.Dataset({'cluster_assignments': heatmap_da}), figure=fig)
 
         if show is None:
             show = CONFIG.Plotting.default_show
