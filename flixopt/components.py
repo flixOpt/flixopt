@@ -958,6 +958,13 @@ class StorageModel(ComponentModel):
                     short_name=f'cluster_cyclic_{i}',
                 )
 
+        # Determine intercluster mode early (needed for investment bounding)
+        clustering = self._model.flow_system.clustering
+        is_intercluster = clustering is not None and self.element.cluster_mode in (
+            'intercluster',
+            'intercluster_cyclic',
+        )
+
         # Create InvestmentModel and bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
@@ -970,19 +977,18 @@ class StorageModel(ComponentModel):
                 short_name='investment',
             )
 
-            BoundingPatterns.scaled_bounds(
-                self,
-                variable=self.charge_state,
-                scaling_variable=self.investment.size,
-                relative_bounds=self._relative_charge_state_bounds,
-            )
+            # For intercluster modes, charge_state represents delta from SOC_boundary (can be negative),
+            # and the combined bound constraints handle the relationship to investment.size.
+            # For non-intercluster modes, charge_state is absolute SOC and needs scaled bounds.
+            if not is_intercluster:
+                BoundingPatterns.scaled_bounds(
+                    self,
+                    variable=self.charge_state,
+                    scaling_variable=self.investment.size,
+                    relative_bounds=self._relative_charge_state_bounds,
+                )
 
         # Initial charge state (only for non-intercluster modes)
-        clustering = self._model.flow_system.clustering
-        is_intercluster = clustering is not None and self.element.cluster_mode in (
-            'intercluster',
-            'intercluster_cyclic',
-        )
         if not is_intercluster:
             self._initial_and_final_charge_state()
 
