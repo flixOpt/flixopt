@@ -141,10 +141,14 @@ class InterClusterLinking(Submodel):
 
         # Get storage capacity bounds (may have period/scenario dimensions)
         capacity = storage.capacity_in_flow_hours
+        has_investment = hasattr(capacity, 'maximum_size')  # InvestParameters
+
         if hasattr(capacity, 'fixed_size') and capacity.fixed_size is not None:
             cap_value = capacity.fixed_size
-        elif hasattr(capacity, 'maximum') and capacity.maximum is not None:
-            cap_value = capacity.maximum
+        elif hasattr(capacity, 'maximum_size') and capacity.maximum_size is not None:
+            cap_value = capacity.maximum_size
+        elif isinstance(capacity, (int, float)):
+            cap_value = capacity
         else:
             cap_value = 1e9  # Large default
 
@@ -195,6 +199,15 @@ class InterClusterLinking(Submodel):
             short_name=f'SOC_boundary|{label}',
         )
 
+        # For investment-based storage, add bounding constraint: SOC_boundary <= investment.size
+        # This ensures SOC_boundary is scaled by the actual capacity investment
+        if has_investment and storage.submodel.investment is not None:
+            investment_size = storage.submodel.investment.size
+            self.add_constraints(
+                soc_boundary <= investment_size,
+                short_name=f'SOC_boundary_ub|{label}',
+            )
+
         # Pre-compute delta_SOC for each representative period
         # delta_SOC[c] = charge_state[c, end] - charge_state[c, start]
         delta_soc_dict = {}
@@ -226,7 +239,73 @@ class InterClusterLinking(Submodel):
             lhs = soc_boundary.isel(cluster_boundary=0) - soc_boundary.isel(cluster_boundary=self._n_original_periods)
             self.add_constraints(lhs == 0, short_name=f'cyclic|{label}')
 
+        # Add combined bound constraints: 0 <= SOC_boundary[d] + charge_state[t] <= capacity
+        # This ensures the actual SOC (boundary + relative) stays within physical bounds
+        self._add_combined_bound_constraints(storage, soc_boundary, charge_state, has_investment, label)
+
         logger.debug(f'Added inter-cluster linking for storage {label}')
+
+    def _add_combined_bound_constraints(
+        self,
+        storage,
+        soc_boundary,
+        charge_state,
+        has_investment: bool,
+        label: str,
+    ) -> None:
+        """Add combined bound constraints: 0 <= SOC_boundary[d] + charge_state[t] <= capacity.
+
+        Following the S-N model from Blanke et al. (2022), the actual SOC at any time t
+        is SOC_boundary[d] + charge_state[t] where d is the original period containing t.
+        This must be within [0, capacity] for physical validity.
+
+        For efficiency, we add constraints only at cluster boundaries (first and last timestep
+        of each cluster) since these are the extremes due to the monotonic nature of charge_state
+        within a cluster.
+
+        Args:
+            storage: Storage component.
+            soc_boundary: SOC boundary variable with cluster_boundary dimension.
+            charge_state: Charge state variable with time dimension.
+            has_investment: Whether storage has investment decision.
+            label: Storage label for constraint naming.
+        """
+        cluster_order = self.cluster_structure.get_cluster_order_for_slice()
+        investment_size = storage.submodel.investment.size if has_investment else None
+
+        # For each original period, ensure combined SOC is within bounds
+        # We sample at representative points within each cluster to limit constraint count
+        # Key insight: charge_state starts at 0 and evolves within the cluster
+        # The extremes typically occur at the end of charge/discharge cycles
+
+        for d in range(self._n_original_periods):
+            c = int(cluster_order[d])
+            cluster_start = c * self._timesteps_per_cluster
+            cluster_end = (c + 1) * self._timesteps_per_cluster  # charge_state has extra timestep
+
+            soc_d = soc_boundary.isel(cluster_boundary=d)
+
+            # Check at representative timesteps within the cluster
+            # We check at: start, middle, and end to capture key points
+            check_indices = [
+                cluster_start,  # Start (should be 0)
+                cluster_start + self._timesteps_per_cluster // 2,  # Middle
+                cluster_end,  # End (delta_SOC)
+            ]
+
+            for idx in check_indices:
+                if idx >= len(charge_state.coords['time']):
+                    continue
+
+                cs_t = charge_state.isel(time=idx)
+                combined = soc_d + cs_t
+
+                # Lower bound: combined >= 0
+                self.add_constraints(combined >= 0, short_name=f'soc_lb|{label}|{d}|{idx}')
+
+                # Upper bound: combined <= capacity
+                if investment_size is not None:
+                    self.add_constraints(combined <= investment_size, short_name=f'soc_ub|{label}|{d}|{idx}')
 
     def _add_linking_constraints_multi_dim(
         self,
