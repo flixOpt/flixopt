@@ -1293,45 +1293,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.model.do_modeling()
 
-        # Add inter-cluster storage linking if this is an aggregated FlowSystem
-        if self.clustering is not None:
-            self._add_inter_cluster_linking()
-
         return self
-
-    def _add_inter_cluster_linking(self) -> None:
-        """Add storage inter-cluster linking for aggregated optimization.
-
-        Creates SOC_boundary variables that link storage states between sequential
-        periods in the original time series, using the delta SOC from representative periods.
-        Only storages with cluster_mode='intercluster' or 'intercluster_cyclic' are linked.
-        """
-        from .clustering.storage_linking import InterClusterLinking
-
-        info = self.clustering
-        if info is None:
-            return
-
-        if info.result.cluster_structure is None:
-            logger.warning('No cluster structure available for inter-cluster linking')
-            return
-
-        # Filter storages that need inter-cluster linking
-        storages_for_linking = [
-            s for s in self.storages.values() if s.cluster_mode in ('intercluster', 'intercluster_cyclic')
-        ]
-
-        if not storages_for_linking:
-            logger.info('No storages with intercluster mode - skipping inter-cluster linking')
-            return
-
-        linking_model = InterClusterLinking(
-            model=self.model,
-            flow_system=self,
-            cluster_structure=info.result.cluster_structure,
-            storages=storages_for_linking,
-        )
-        linking_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
