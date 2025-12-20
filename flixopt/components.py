@@ -282,7 +282,7 @@ class Storage(Component):
         relative_loss_per_hour: Self-discharge per hour (0-0.1). Default: 0.
         prevent_simultaneous_charge_and_discharge: Prevent charging and discharging
             simultaneously. Adds binary variables. Default: True.
-        cluster_storage_mode: How this storage is treated during clustering optimization.
+        cluster_mode: How this storage is treated during clustering optimization.
             Only relevant when using ``transform.cluster()``. Options:
 
             - ``'independent'``: Clusters are fully decoupled. No constraints between
@@ -413,9 +413,7 @@ class Storage(Component):
         relative_loss_per_hour: Numeric_TPS = 0,
         prevent_simultaneous_charge_and_discharge: bool = True,
         balanced: bool = False,
-        cluster_storage_mode: Literal[
-            'independent', 'cyclic', 'intercluster', 'intercluster_cyclic'
-        ] = 'intercluster_cyclic',
+        cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
         meta_data: dict | None = None,
     ):
         # TODO: fixed_relative_chargeState implementieren
@@ -445,7 +443,7 @@ class Storage(Component):
         self.relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
-        self.cluster_storage_mode = cluster_storage_mode
+        self.cluster_mode = cluster_mode
 
     def create_model(self, model: FlowSystemModel) -> StorageModel:
         self._plausibility_checks()
@@ -947,7 +945,7 @@ class StorageModel(ComponentModel):
         self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
 
         # For 'cyclic' mode: each cluster's start equals its end
-        if clustering is not None and self.element.cluster_storage_mode == 'cyclic':
+        if clustering is not None and self.element.cluster_mode == 'cyclic':
             starts = clustering.cluster_start_positions
             for i, start_pos in enumerate(starts):
                 # End of cluster i is at (start of cluster i+1) - 1, or last timestep for final cluster

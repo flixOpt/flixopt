@@ -42,9 +42,7 @@ class InterClusterLinking(Submodel):
     Example:
         >>> from flixopt.clustering import ClusterStructure, InterClusterLinking
         >>> structure = ClusterStructure(...)
-        >>> storages = [
-        ...     s for s in fs.storages.values() if s.cluster_storage_mode in ('intercluster', 'intercluster_cyclic')
-        ... ]
+        >>> storages = [s for s in fs.storages.values() if s.cluster_mode in ('intercluster', 'intercluster_cyclic')]
         >>> model = InterClusterLinking(
         ...     model=flow_system.model,
         ...     flow_system=flow_system,
@@ -67,7 +65,7 @@ class InterClusterLinking(Submodel):
             flow_system: The FlowSystem being optimized.
             cluster_structure: Clustering structure with cluster_order and occurrences.
             storages: List of Storage components to add inter-cluster linking for.
-                Each storage's cluster_storage_mode determines if cyclic constraint is added.
+                Each storage's cluster_mode determines if cyclic constraint is added.
         """
         super().__init__(model, label_of_element='InterClusterLinking', label_of_model='InterClusterLinking')
         self.flow_system = flow_system
@@ -102,7 +100,7 @@ class InterClusterLinking(Submodel):
         )
 
         for storage in self.storages:
-            storage_cyclic = storage.cluster_storage_mode == 'intercluster_cyclic'
+            storage_cyclic = storage.cluster_mode == 'intercluster_cyclic'
             self._add_storage_linking(storage, storage_cyclic)
 
     def _add_storage_linking(self, storage, storage_cyclic: bool) -> None:

@@ -593,7 +593,7 @@ class TransformAccessor:
         1. Performs time series clustering using tsam (k-means)
         2. Extracts only the typical clusters (not all original timesteps)
         3. Applies timestep weighting for accurate cost representation
-        4. Handles storage states between clusters based on each Storage's ``cluster_storage_mode``
+        4. Handles storage states between clusters based on each Storage's ``cluster_mode``
 
         Use this for initial sizing optimization, then use ``fix_sizes()`` to re-optimize
         at full resolution for accurate dispatch results.
@@ -640,7 +640,7 @@ class TransformAccessor:
             - Use ``time_series_for_high_peaks`` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - For seasonal storage (e.g., hydrogen, thermal storage), set
-              ``Storage.cluster_storage_mode='intercluster'`` or ``'intercluster_cyclic'``
+              ``Storage.cluster_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
         import tsam.timeseriesaggregation as tsam
 
