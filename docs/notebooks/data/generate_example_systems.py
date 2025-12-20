@@ -6,6 +6,7 @@ This script creates FlowSystems of varying complexity:
 3. multiperiod_system - System with periods and scenarios
 4. district_heating_system - Real-world district heating data with investments (1 month)
 5. operational_system - Real-world district heating for operational planning (2 weeks, no investments)
+6. seasonal_storage_system - Solar thermal + seasonal pit storage (full year, 8760h)
 
 Run this script to regenerate the example data files.
 """
@@ -450,6 +451,145 @@ def create_operational_system() -> fx.FlowSystem:
     return fs
 
 
+def create_seasonal_storage_system() -> fx.FlowSystem:
+    """Create a district heating system with solar thermal and seasonal storage.
+
+    Demonstrates seasonal storage value with:
+    - Full year at hourly resolution (8760 timesteps)
+    - Solar thermal: high in summer, low in winter
+    - Heat demand: high in winter, low in summer
+    - Large seasonal pit storage (bridges seasons)
+    - Gas boiler backup
+
+    This system clearly shows the value of inter-cluster storage linking:
+    - Summer: excess solar heat stored in pit
+    - Winter: stored heat reduces gas consumption
+
+    Used by: 08c-clustering, 08c2-clustering-storage-modes notebooks
+    """
+    # Full year, hourly
+    timesteps = pd.date_range('2024-01-01', periods=8760, freq='h')
+    hours = np.arange(8760)
+    hour_of_day = hours % 24
+    day_of_year = hours // 24
+
+    np.random.seed(42)
+
+    # --- Solar irradiance profile ---
+    # Seasonal variation: peaks in summer (day ~180), low in winter
+    seasonal_solar = 0.5 + 0.5 * np.cos(2 * np.pi * (day_of_year - 172) / 365)  # Peak around June 21
+
+    # Daily variation: peaks at noon
+    daily_solar = np.maximum(0, np.cos(2 * np.pi * (hour_of_day - 12) / 24))
+
+    # Combine and scale (MW of solar thermal potential per MW installed)
+    solar_profile = seasonal_solar * daily_solar
+    solar_profile = solar_profile * (0.8 + 0.2 * np.random.random(8760))  # Add some variation
+    solar_profile = np.clip(solar_profile, 0, 1)
+
+    # --- Heat demand profile ---
+    # Seasonal: high in winter, low in summer
+    seasonal_demand = 0.6 + 0.4 * np.cos(2 * np.pi * day_of_year / 365)  # Peak Jan 1
+
+    # Daily: higher during day, lower at night
+    daily_demand = 0.7 + 0.3 * np.sin(2 * np.pi * (hour_of_day - 6) / 24)
+
+    # Combine and scale to ~5 MW peak
+    heat_demand = 5 * seasonal_demand * daily_demand
+    heat_demand = heat_demand * (0.9 + 0.2 * np.random.random(8760))  # Add variation
+    heat_demand = np.clip(heat_demand, 0.5, 6)  # MW
+
+    # --- Gas price (slight seasonal variation) ---
+    gas_price = 40 + 10 * np.cos(2 * np.pi * day_of_year / 365)  # €/MWh, higher in winter
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_carriers(
+        fx.Carrier('gas', '#3498db', 'MW'),
+        fx.Carrier('heat', '#e74c3c', 'MW'),
+    )
+    fs.add_elements(
+        # Buses
+        fx.Bus('Gas', carrier='gas'),
+        fx.Bus('Heat', carrier='heat'),
+        # Effects
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+        # Solar thermal collector (investment) - profile includes 70% collector efficiency
+        # Costs annualized for single-year analysis
+        fx.Source(
+            'SolarThermal',
+            outputs=[
+                fx.Flow(
+                    'Q_th',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        minimum_size=0,
+                        maximum_size=20,  # MW peak
+                        effects_of_investment_per_size={'costs': 15000},  # €/MW (annualized)
+                    ),
+                    fixed_relative_profile=solar_profile * 0.7,  # 70% collector efficiency
+                )
+            ],
+        ),
+        # Gas boiler (backup)
+        fx.linear_converters.Boiler(
+            'GasBoiler',
+            thermal_efficiency=0.90,
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=0,
+                    maximum_size=8,  # MW
+                    effects_of_investment_per_size={'costs': 20000},  # €/MW (annualized)
+                ),
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+        ),
+        # Gas supply (higher price makes solar+storage more attractive)
+        fx.Source(
+            'GasGrid',
+            outputs=[
+                fx.Flow(
+                    'Q_gas',
+                    bus='Gas',
+                    size=20,
+                    effects_per_flow_hour={'costs': gas_price * 1.5, 'CO2': 0.2},  # €/MWh
+                )
+            ],
+        ),
+        # Seasonal pit storage (large capacity for seasonal shifting)
+        fx.Storage(
+            'SeasonalStorage',
+            capacity_in_flow_hours=fx.InvestParameters(
+                minimum_size=0,
+                maximum_size=5000,  # MWh - large for seasonal storage
+                effects_of_investment_per_size={'costs': 20},  # €/MWh (pit storage is cheap)
+            ),
+            initial_charge_state='equals_final',  # Yearly cyclic
+            eta_charge=0.95,
+            eta_discharge=0.95,
+            relative_loss_per_hour=0.0001,  # Very low losses for pit storage
+            charging=fx.Flow(
+                'Charge',
+                bus='Heat',
+                size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
+            ),
+            discharging=fx.Flow(
+                'Discharge',
+                bus='Heat',
+                size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
+            ),
+        ),
+        # Heat demand
+        fx.Sink(
+            'HeatDemand',
+            inputs=[fx.Flow('Q_th', bus='Heat', size=1, fixed_relative_profile=heat_demand)],
+        ),
+    )
+    return fs
+
+
 def create_multiperiod_system() -> fx.FlowSystem:
     """Create a system with multiple periods and scenarios.
 
@@ -550,6 +690,7 @@ def main():
         ('multiperiod_system', create_multiperiod_system),
         ('district_heating_system', create_district_heating_system),
         ('operational_system', create_operational_system),
+        ('seasonal_storage_system', create_seasonal_storage_system),
     ]
 
     for name, create_func in systems:
