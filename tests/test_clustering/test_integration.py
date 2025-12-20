@@ -130,19 +130,19 @@ class TestClusterMethod:
         assert len(fs_clustered.timesteps) == 48  # 2 representative days x 24 hours
 
 
-class TestAggregationModuleImports:
-    """Tests for flixopt.aggregation module imports."""
+class TestClusteringModuleImports:
+    """Tests for flixopt.clustering module imports."""
 
     def test_import_from_flixopt(self):
-        """Test that aggregation module can be imported from flixopt."""
-        from flixopt import aggregation
+        """Test that clustering module can be imported from flixopt."""
+        from flixopt import clustering
 
-        assert hasattr(aggregation, 'ClusterResult')
-        assert hasattr(aggregation, 'ClusterStructure')
-        assert hasattr(aggregation, 'Clustering')
+        assert hasattr(clustering, 'ClusterResult')
+        assert hasattr(clustering, 'ClusterStructure')
+        assert hasattr(clustering, 'Clustering')
 
     def test_create_cluster_structure_from_mapping_available(self):
         """Test that create_cluster_structure_from_mapping is available."""
-        from flixopt.aggregation import create_cluster_structure_from_mapping
+        from flixopt.clustering import create_cluster_structure_from_mapping
 
         assert callable(create_cluster_structure_from_mapping)

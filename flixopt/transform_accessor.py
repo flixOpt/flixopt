@@ -658,7 +658,7 @@ class TransformAccessor:
         """
         import tsam.timeseriesaggregation as tsam
 
-        from .aggregation import Clustering, ClusterResult, ClusterStructure
+        from .clustering import Clustering, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 

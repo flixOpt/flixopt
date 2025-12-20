@@ -69,7 +69,7 @@ nav:
       - Piecewise Effects: notebooks/06c-piecewise-effects.ipynb
     - Scaling:
       - Scenarios: notebooks/07-scenarios-and-periods.ipynb
-      - Aggregation: notebooks/08a-aggregation.ipynb
+      - Clustering: notebooks/08a-aggregation.ipynb
       - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb

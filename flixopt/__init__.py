@@ -13,7 +13,7 @@ except (PackageNotFoundError, TypeError):
     __version__ = '0.0.0.dev0'
 
 # Import commonly used classes and functions
-from . import aggregation, linear_converters, plotting, results, solvers
+from . import clustering, linear_converters, plotting, results, solvers
 from .carrier import Carrier, CarrierContainer
 from .components import (
     LinearConverter,
@@ -59,7 +59,7 @@ __all__ = [
     'PiecewiseEffects',
     'PlotResult',
     'TimeSeriesWeights',
-    'aggregation',
+    'clustering',
     'plotting',
     'results',
     'linear_converters',

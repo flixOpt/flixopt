@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     import pyvis
 
-    from .aggregation import Clustering
+    from .clustering import Clustering
     from .solvers import _Solver
     from .structure import TimeSeriesWeights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
@@ -1305,7 +1305,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Creates SOC_boundary variables that link storage states between sequential
         periods in the original time series, using the delta SOC from representative periods.
         """
-        from .aggregation.storage_linking import InterClusterLinking
+        from .clustering.storage_linking import InterClusterLinking
 
         info = self.clustering
         if info is None:

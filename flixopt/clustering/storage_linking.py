@@ -40,7 +40,7 @@ class InterClusterLinking(Submodel):
     patterns while only solving for the representative timesteps.
 
     Example:
-        >>> from flixopt.aggregation import ClusterStructure, InterClusterLinking
+        >>> from flixopt.clustering import ClusterStructure, InterClusterLinking
         >>> structure = ClusterStructure(...)
         >>> model = InterClusterLinking(
         ...     model=flow_system.model,

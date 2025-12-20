@@ -1,10 +1,10 @@
-"""Tests for flixopt.aggregation.base module."""
+"""Tests for flixopt.clustering.base module."""
 
 import numpy as np
 import pytest
 import xarray as xr
 
-from flixopt.aggregation import (
+from flixopt.clustering import (
     Clustering,
     ClusterResult,
     ClusterStructure,
