@@ -106,6 +106,12 @@ class InterClusterLinking(Submodel):
     def _add_storage_linking(self, storage, storage_cyclic: bool) -> None:
         """Add inter-cluster linking constraints for a single storage.
 
+        Following the S-N model from Blanke et al. (2022), this method:
+        1. Constrains charge_state at each cluster start to 0 (ΔE_0 = 0)
+        2. Creates SOC_boundary variables to track absolute SOC across original periods
+        3. Links via: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+        4. Adds bounds: 0 ≤ SOC_boundary[d] + charge_state[t] ≤ capacity
+
         Args:
             storage: Storage component to add linking for.
             storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
@@ -121,6 +127,17 @@ class InterClusterLinking(Submodel):
             return
 
         charge_state = storage.submodel.variables[charge_state_name]
+
+        # === CRITICAL FIX: Constrain each cluster's start charge_state to 0 ===
+        # This makes charge_state relative to cluster start (like ΔE in S-N model)
+        # Without this, cluster starts are free variables allowing "free energy"
+        for c in range(self._n_clusters):
+            start_idx = c * self._timesteps_per_cluster
+            self.add_constraints(
+                charge_state.isel(time=start_idx) == 0,
+                short_name=f'cluster_start|{label}|{c}',
+            )
+        logger.debug(f'Added {self._n_clusters} cluster start constraints for {label}')
 
         # Get storage capacity bounds (may have period/scenario dimensions)
         capacity = storage.capacity_in_flow_hours

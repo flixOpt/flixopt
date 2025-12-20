@@ -1015,19 +1015,44 @@ class StorageModel(ComponentModel):
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
+
+        # For inter-cluster modes, charge_state represents relative change from cluster start (ΔE)
+        # which can be negative (discharge) or positive (charge). The actual SOC is SOC_boundary + ΔE.
+        # We set lower bound to -capacity to allow the full range.
+        clustering = self._model.flow_system.clustering
+        is_intercluster = clustering is not None and self.element.cluster_mode in (
+            'intercluster',
+            'intercluster_cyclic',
+        )
+
         if self.element.capacity_in_flow_hours is None:
-            # Unbounded storage: lower bound is 0, upper bound is infinite
-            return (0, np.inf)
+            # Unbounded storage: lower bound is 0 (or -inf for intercluster), upper bound is infinite
+            return (-np.inf if is_intercluster else 0, np.inf)
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            return (
-                relative_lower_bound * self.element.capacity_in_flow_hours.minimum_or_fixed_size,
-                relative_upper_bound * self.element.capacity_in_flow_hours.maximum_or_fixed_size,
-            )
+            cap_min = self.element.capacity_in_flow_hours.minimum_or_fixed_size
+            cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
+            if is_intercluster:
+                # For inter-cluster, charge_state is relative to cluster start (ΔE in S-N model)
+                # ΔE can be negative (discharge) or positive (charge), so allow full range.
+                # Create bounds with proper time dimension using the shape from relative bounds.
+                ones = xr.ones_like(relative_upper_bound)
+                return (-ones * cap_max, ones * cap_max)
+            else:
+                return (
+                    relative_lower_bound * cap_min,
+                    relative_upper_bound * cap_max,
+                )
         else:
-            return (
-                relative_lower_bound * self.element.capacity_in_flow_hours,
-                relative_upper_bound * self.element.capacity_in_flow_hours,
-            )
+            cap = self.element.capacity_in_flow_hours
+            if is_intercluster:
+                # Same as above: create bounds with time dimension
+                ones = xr.ones_like(relative_upper_bound)
+                return (-ones * cap, ones * cap)
+            else:
+                return (
+                    relative_lower_bound * cap,
+                    relative_upper_bound * cap,
+                )
 
     @property
     def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
