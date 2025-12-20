@@ -1032,6 +1032,12 @@ class StorageModel(ComponentModel):
         4. Adds bounds: 0 ≤ SOC_boundary[d] + charge_state[t] ≤ capacity
         5. Optionally enforces cyclic: SOC_boundary[0] = SOC_boundary[end]
         """
+        from .clustering.intercluster_helpers import (
+            MultiDimIterator,
+            build_boundary_coords,
+            extract_capacity_bounds,
+        )
+
         clustering = self._model.flow_system.clustering
         if clustering is None or clustering.result.cluster_structure is None:
             return
@@ -1044,12 +1050,57 @@ class StorageModel(ComponentModel):
         )
         timesteps_per_cluster = cluster_structure.timesteps_per_cluster
         n_original_periods = cluster_structure.n_original_periods
-        has_multi_dims = cluster_structure.has_multi_dims
-        storage_cyclic = self.element.cluster_mode == 'intercluster_cyclic'
 
+        # 1. Add cluster start constraints (ΔE_0 = 0)
+        self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)
+
+        # 2. Create SOC_boundary variable
+        flow_system = self._model.flow_system
+        boundary_coords, boundary_dims = build_boundary_coords(n_original_periods, flow_system)
+        capacity_bounds = extract_capacity_bounds(self.element.capacity_in_flow_hours, boundary_coords, boundary_dims)
+
+        soc_boundary = self.add_variables(
+            lower=capacity_bounds.lower,
+            upper=capacity_bounds.upper,
+            coords=boundary_coords,
+            dims=boundary_dims,
+            short_name='SOC_boundary',
+        )
+
+        # 3. Add SOC_boundary <= investment.size for investment-based storage
+        if capacity_bounds.has_investment and self.investment is not None:
+            self.add_constraints(
+                soc_boundary <= self.investment.size,
+                short_name='SOC_boundary_ub',
+            )
+
+        # 4. Pre-compute delta_SOC for each cluster
+        delta_soc_dict = self._compute_delta_soc(n_clusters, timesteps_per_cluster)
+
+        # 5. Add linking constraints using unified multi-dim iterator
+        iterator = MultiDimIterator(flow_system, cluster_structure)
+        self._add_linking_constraints(iterator, soc_boundary, delta_soc_dict, n_original_periods)
+
+        # 6. Add cyclic constraint if requested
+        if self.element.cluster_mode == 'intercluster_cyclic':
+            self.add_constraints(
+                soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
+                short_name='cyclic',
+            )
+
+        # 7. Add combined bound constraints
+        self._add_combined_bound_constraints(
+            iterator,
+            cluster_structure,
+            soc_boundary,
+            capacity_bounds.has_investment,
+            n_original_periods,
+            timesteps_per_cluster,
+        )
+
+    def _add_cluster_start_constraints(self, n_clusters: int, timesteps_per_cluster: int) -> None:
+        """Constrain charge_state at each cluster start to 0 (ΔE_0 = 0)."""
         charge_state = self.charge_state
-
-        # Constrain each cluster's start charge_state to 0 (ΔE_0 = 0 in S-N model)
         for c in range(n_clusters):
             start_idx = c * timesteps_per_cluster
             self.add_constraints(
@@ -1057,177 +1108,103 @@ class StorageModel(ComponentModel):
                 short_name=f'cluster_start_{c}',
             )
 
-        # Get storage capacity bounds
-        capacity = self.element.capacity_in_flow_hours
-        has_investment = isinstance(capacity, InvestParameters)
-
-        if hasattr(capacity, 'fixed_size') and capacity.fixed_size is not None:
-            cap_value = capacity.fixed_size
-        elif hasattr(capacity, 'maximum_size') and capacity.maximum_size is not None:
-            cap_value = capacity.maximum_size
-        elif isinstance(capacity, (int, float)):
-            cap_value = capacity
-        else:
-            cap_value = 1e9
-
-        # Create SOC_boundary variables
-        n_boundaries = n_original_periods + 1
-        boundary_coords = {'cluster_boundary': np.arange(n_boundaries)}
-        boundary_dims = ['cluster_boundary']
-
-        extra_dims = []
-        if self._model.flow_system.periods is not None:
-            extra_dims.append('period')
-            boundary_coords['period'] = np.array(list(self._model.flow_system.periods))
-        if self._model.flow_system.scenarios is not None:
-            extra_dims.append('scenario')
-            boundary_coords['scenario'] = np.array(list(self._model.flow_system.scenarios))
-
-        if extra_dims:
-            boundary_dims = ['cluster_boundary'] + extra_dims
-
-        lb_shape = [n_boundaries] + [len(boundary_coords[d]) for d in extra_dims]
-        lb = xr.DataArray(np.zeros(lb_shape), coords=boundary_coords, dims=boundary_dims)
-
-        if isinstance(cap_value, xr.DataArray) and cap_value.dims:
-            ub = cap_value.expand_dims({'cluster_boundary': n_boundaries}, axis=0)
-            ub = ub.assign_coords(cluster_boundary=np.arange(n_boundaries))
-            ub = ub.transpose('cluster_boundary', ...)
-        else:
-            if hasattr(cap_value, 'item'):
-                cap_value = float(cap_value.item())
-            else:
-                cap_value = float(cap_value)
-            ub = xr.DataArray(np.full(lb_shape, cap_value), coords=boundary_coords, dims=boundary_dims)
-
-        soc_boundary = self.add_variables(
-            lower=lb,
-            upper=ub,
-            coords=boundary_coords,
-            dims=boundary_dims,
-            short_name='SOC_boundary',
-        )
-
-        # Add SOC_boundary <= investment.size for investment-based storage
-        if has_investment and self.investment is not None:
-            self.add_constraints(
-                soc_boundary <= self.investment.size,
-                short_name='SOC_boundary_ub',
-            )
-
-        # Pre-compute delta_SOC for each cluster
+    def _compute_delta_soc(self, n_clusters: int, timesteps_per_cluster: int) -> dict[int, xr.DataArray]:
+        """Pre-compute delta_SOC for each representative cluster."""
+        charge_state = self.charge_state
         delta_soc_dict = {}
         for c in range(n_clusters):
             start_idx = c * timesteps_per_cluster
             end_idx = (c + 1) * timesteps_per_cluster
             delta_soc_dict[c] = charge_state.isel(time=end_idx) - charge_state.isel(time=start_idx)
+        return delta_soc_dict
 
-        # Create linking constraints
-        if has_multi_dims:
-            self._add_linking_constraints_multi_dim(cluster_structure, soc_boundary, delta_soc_dict, n_original_periods)
-        else:
-            cluster_order = cluster_structure.get_cluster_order_for_slice()
-            for d in range(n_original_periods):
-                c = int(cluster_order[d])
-                lhs = (
-                    soc_boundary.isel(cluster_boundary=d + 1)
-                    - soc_boundary.isel(cluster_boundary=d)
-                    - delta_soc_dict[c]
-                )
-                self.add_constraints(lhs == 0, short_name=f'link_{d}')
-
-        # Cyclic constraint
-        if storage_cyclic:
-            self.add_constraints(
-                soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
-                short_name='cyclic',
-            )
-
-        # Combined bound constraints
-        self._add_combined_bound_constraints(
-            cluster_structure, soc_boundary, charge_state, has_investment, n_original_periods, timesteps_per_cluster
-        )
-
-    def _add_linking_constraints_multi_dim(
+    def _add_linking_constraints(
         self,
-        cluster_structure,
+        iterator,
         soc_boundary,
-        delta_soc_dict: dict,
+        delta_soc_dict: dict[int, xr.DataArray],
         n_original_periods: int,
     ) -> None:
-        """Add linking constraints when cluster_order has period/scenario dimensions."""
-        periods = list(self._model.flow_system.periods) if self._model.flow_system.periods else [None]
-        scenarios = list(self._model.flow_system.scenarios) if self._model.flow_system.scenarios else [None]
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
+        """Add linking constraints: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]."""
         soc_dims = set(soc_boundary.dims)
 
-        for p in periods:
-            for s in scenarios:
-                cluster_order = cluster_structure.get_cluster_order_for_slice(period=p, scenario=s)
+        for ctx in iterator:
+            soc_selector = iterator.build_selector(ctx, soc_dims)
+            soc_slice = soc_boundary.sel(**soc_selector) if soc_selector else soc_boundary
 
-                soc_selector = {}
-                if has_periods and p is not None and 'period' in soc_dims:
-                    soc_selector['period'] = p
-                if has_scenarios and s is not None and 'scenario' in soc_dims:
-                    soc_selector['scenario'] = s
+            for d in range(n_original_periods):
+                c = int(ctx.cluster_order[d])
+                delta_soc = delta_soc_dict[c]
 
-                soc_slice = soc_boundary.sel(**soc_selector) if soc_selector else soc_boundary
+                # Select delta_soc for this slice if it has the dimensions
+                delta_selector = iterator.build_selector(ctx, set(delta_soc.dims))
+                if delta_selector:
+                    delta_soc = delta_soc.sel(**delta_selector)
 
-                for d in range(n_original_periods):
-                    c = int(cluster_order[d])
-                    delta_soc = delta_soc_dict[c]
-
-                    delta_selector = {}
-                    if has_periods and p is not None and 'period' in delta_soc.dims:
-                        delta_selector['period'] = p
-                    if has_scenarios and s is not None and 'scenario' in delta_soc.dims:
-                        delta_selector['scenario'] = s
-                    if delta_selector:
-                        delta_soc = delta_soc.sel(**delta_selector)
-
-                    lhs = soc_slice.isel(cluster_boundary=d + 1) - soc_slice.isel(cluster_boundary=d) - delta_soc
-
-                    suffix = ''
-                    if has_periods and p is not None:
-                        suffix += f'_p{p}'
-                    if has_scenarios and s is not None:
-                        suffix += f'_s{s}'
-                    self.add_constraints(lhs == 0, short_name=f'link_{d}{suffix}')
+                lhs = soc_slice.isel(cluster_boundary=d + 1) - soc_slice.isel(cluster_boundary=d) - delta_soc
+                self.add_constraints(lhs == 0, short_name=f'link_{d}{ctx.suffix}')
 
     def _add_combined_bound_constraints(
         self,
+        iterator,
         cluster_structure,
         soc_boundary,
-        charge_state,
         has_investment: bool,
         n_original_periods: int,
         timesteps_per_cluster: int,
     ) -> None:
-        """Add combined bound constraints: 0 <= SOC_boundary[d] + charge_state[t] <= capacity."""
-        cluster_order = cluster_structure.get_cluster_order_for_slice()
+        """Add combined bound constraints: 0 <= SOC_boundary[d] + charge_state[t] <= capacity.
+
+        This method correctly handles multi-dimensional cases by iterating
+        over (period, scenario) combinations using the unified iterator.
+        """
+        charge_state = self.charge_state
         investment_size = self.investment.size if has_investment and self.investment else None
 
-        for d in range(n_original_periods):
-            c = int(cluster_order[d])
-            cluster_start = c * timesteps_per_cluster
-            cluster_end = (c + 1) * timesteps_per_cluster
+        soc_dims = set(soc_boundary.dims)
+        charge_dims = set(charge_state.dims)
+        inv_dims = set(investment_size.dims) if investment_size is not None else set()
 
-            soc_d = soc_boundary.isel(cluster_boundary=d)
+        for ctx in iterator:
+            soc_selector = iterator.build_selector(ctx, soc_dims)
+            charge_selector = iterator.build_selector(ctx, charge_dims)
 
-            check_indices = [cluster_start, cluster_start + timesteps_per_cluster // 2, cluster_end]
+            soc_slice = soc_boundary.sel(**soc_selector) if soc_selector else soc_boundary
+            charge_slice = charge_state.sel(**charge_selector) if charge_selector else charge_state
 
-            for idx in check_indices:
-                if idx >= len(charge_state.coords['time']):
-                    continue
+            for d in range(n_original_periods):
+                c = int(ctx.cluster_order[d])
+                cluster_start = c * timesteps_per_cluster
+                cluster_end = (c + 1) * timesteps_per_cluster
 
-                cs_t = charge_state.isel(time=idx)
-                combined = soc_d + cs_t
+                soc_d = soc_slice.isel(cluster_boundary=d)
 
-                self.add_constraints(combined >= 0, short_name=f'soc_lb_{d}_{idx}')
+                # Sample at key timesteps (start, middle, end)
+                check_indices = [
+                    cluster_start,
+                    cluster_start + timesteps_per_cluster // 2,
+                    cluster_end,
+                ]
 
-                if investment_size is not None:
-                    self.add_constraints(combined <= investment_size, short_name=f'soc_ub_{d}_{idx}')
+                for idx in check_indices:
+                    if idx >= len(charge_state.coords['time']):
+                        continue
+
+                    cs_t = charge_slice.isel(time=idx)
+                    combined = soc_d + cs_t
+
+                    self.add_constraints(
+                        combined >= 0,
+                        short_name=f'soc_lb_{d}_{idx}{ctx.suffix}',
+                    )
+
+                    if investment_size is not None:
+                        inv_selector = iterator.build_selector(ctx, inv_dims)
+                        inv_slice = investment_size.sel(**inv_selector) if inv_selector else investment_size
+                        self.add_constraints(
+                            combined <= inv_slice,
+                            short_name=f'soc_ub_{d}_{idx}{ctx.suffix}',
+                        )
 
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:

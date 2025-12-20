@@ -32,27 +32,11 @@ from .base import (
     create_cluster_structure_from_mapping,
 )
 
-# Lazy import for InterClusterLinking to avoid circular imports
-# It depends on structure.Submodel which has complex import dependencies
-InterClusterLinking = None
-
-
-def _get_inter_cluster_linking():
-    """Get InterClusterLinking class with lazy import."""
-    global InterClusterLinking
-    if InterClusterLinking is None:
-        from .storage_linking import InterClusterLinking as _InterClusterLinking
-
-        InterClusterLinking = _InterClusterLinking
-    return InterClusterLinking
-
-
 __all__ = [
     # Core classes
     'ClusterResult',
     'Clustering',
     'ClusterStructure',
-    'InterClusterLinking',
     # Utilities
     'create_cluster_structure_from_mapping',
 ]
