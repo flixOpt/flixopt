@@ -1096,12 +1096,28 @@ class StorageModel(ComponentModel):
         # 5. Add linking constraints - vectorized
         self._add_linking_constraints(soc_boundary, delta_soc, cluster_order, n_original_periods)
 
-        # 6. Add cyclic constraint if requested
+        # 6. Add cyclic or initial SOC constraint
         if self.element.cluster_mode == 'intercluster_cyclic':
             self.add_constraints(
                 soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
                 short_name='cyclic',
             )
+        else:
+            # For non-cyclic intercluster mode, apply initial_charge_state to SOC_boundary[0]
+            initial = self.element.initial_charge_state
+            if initial is not None:
+                if isinstance(initial, str):
+                    # 'equals_final' means SOC_boundary should be cyclic
+                    self.add_constraints(
+                        soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
+                        short_name='initial_SOC_boundary',
+                    )
+                else:
+                    # Numeric initial charge state
+                    self.add_constraints(
+                        soc_boundary.isel(cluster_boundary=0) == initial,
+                        short_name='initial_SOC_boundary',
+                    )
 
         # 7. Add combined bound constraints - vectorized
         self._add_combined_bound_constraints(
