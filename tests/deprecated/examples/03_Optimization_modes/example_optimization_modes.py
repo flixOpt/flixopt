@@ -33,15 +33,10 @@ if __name__ == '__main__':
     # Segmented Properties
     segment_length, overlap_length = 96, 1
 
-    # Aggregated Properties
-    clustering_parameters = fx.ClusteringParameters(
-        hours_per_period=6,
-        nr_of_periods=4,
-        fix_storage_flows=False,
-        aggregate_data_and_fix_non_binary_vars=True,
-        percentage_of_period_freedom=0,
-        penalty_of_period_freedom=0,
-    )
+    # Clustering Properties
+    n_clusters = 4
+    cluster_duration = '6h'
+    include_storage = False
     keep_extreme_periods = True
     imbalance_penalty = 1e5  # or set to None if not needed
 
@@ -195,12 +190,27 @@ if __name__ == '__main__':
         optimizations.append(optimization)
 
     if aggregated:
-        if keep_extreme_periods:
-            clustering_parameters.time_series_for_high_peaks = [TS_heat_demand]
-            clustering_parameters.time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand]
-        optimization = fx.ClusteredOptimization('Aggregated', flow_system.copy(), clustering_parameters)
-        optimization.do_modeling()
-        optimization.solve(fx.solvers.HighsSolver(0.01 / 100, 60))
+        # Use the new transform.cluster() API
+        time_series_for_high_peaks = [TS_heat_demand] if keep_extreme_periods else None
+        time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand] if keep_extreme_periods else None
+
+        clustered_fs = flow_system.copy().transform.cluster(
+            n_clusters=n_clusters,
+            cluster_duration=cluster_duration,
+            include_storage=include_storage,
+            time_series_for_high_peaks=time_series_for_high_peaks,
+            time_series_for_low_peaks=time_series_for_low_peaks,
+        )
+        clustered_fs.optimize(fx.solvers.HighsSolver(0.01 / 100, 60))
+
+        # Wrap in a simple object for compatibility with comparison code
+        class ClusteredResult:
+            def __init__(self, name, fs):
+                self.name = name
+                self.flow_system = fs
+                self.durations = {'total': 0}  # Placeholder
+
+        optimization = ClusteredResult('Clustered', clustered_fs)
         optimizations.append(optimization)
 
     # --- Plotting for comparison ---

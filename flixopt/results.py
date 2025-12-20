@@ -99,7 +99,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         buses: Dictionary mapping bus labels to BusResults objects
         effects: Dictionary mapping effect names to EffectResults objects
         timesteps_extra: Extended time index including boundary conditions
-        hours_per_timestep: Duration of each timestep for proper energy optimizations
+        timestep_duration: Duration of each timestep in hours for proper energy calculations
 
     Examples:
         Load and analyze saved results:
@@ -285,7 +285,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
         self.timesteps_extra = self.solution.indexes['time']
-        self.hours_per_timestep = FlowSystem.calculate_hours_per_timestep(self.timesteps_extra)
+        self.timestep_duration = FlowSystem.calculate_timestep_duration(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
         self.periods = self.solution.indexes['period'] if 'period' in self.solution.indexes else None
 
@@ -623,7 +623,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         .. deprecated::
             Use `results.plot.all_flow_hours` (Dataset) or
-            `results.flows['FlowLabel'].flow_rate * results.hours_per_timestep` instead.
+            `results.flows['FlowLabel'].flow_rate * results.timestep_duration` instead.
 
             **Note**: The new API differs from this method:
 
@@ -675,7 +675,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             stacklevel=2,
         )
         if self._flow_hours is None:
-            self._flow_hours = (self.flow_rates() * self.hours_per_timestep).rename('flow_hours')
+            self._flow_hours = (self.flow_rates() * self.timestep_duration).rename('flow_hours')
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
         return filter_dataarray_by_coord(self._flow_hours, **filters)
 
@@ -1577,14 +1577,14 @@ class _NodeResults(_ElementResults):
         dpi = plot_kwargs.pop('dpi', None)  # None uses CONFIG.Plotting.default_dpi
 
         inputs = sanitize_dataset(
-            ds=self.solution[self.inputs] * self._results.hours_per_timestep,
+            ds=self.solution[self.inputs] * self._results.timestep_duration,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
             drop_suffix='|',
         )
         outputs = sanitize_dataset(
-            ds=self.solution[self.outputs] * self._results.hours_per_timestep,
+            ds=self.solution[self.outputs] * self._results.timestep_duration,
             threshold=1e-5,
             drop_small_vars=True,
             zero_small_values=True,
@@ -1715,7 +1715,7 @@ class _NodeResults(_ElementResults):
         ds, _ = _apply_selection_to_data(ds, select=select, drop=True)
 
         if unit_type == 'flow_hours':
-            ds = ds * self._results.hours_per_timestep
+            ds = ds * self._results.timestep_duration
             ds = ds.rename_vars({var: var.replace('flow_rate', 'flow_hours') for var in ds.data_vars})
 
         return ds
@@ -2016,7 +2016,7 @@ class FlowResults(_ElementResults):
 
     @property
     def flow_hours(self) -> xr.DataArray:
-        return (self.flow_rate * self._results.hours_per_timestep).rename(f'{self.label}|flow_hours')
+        return (self.flow_rate * self._results.timestep_duration).rename(f'{self.label}|flow_hours')
 
     @property
     def size(self) -> xr.DataArray:

@@ -41,7 +41,7 @@ class PlotResult:
 
         Customizing the figure:
 
-        >>> result = clustering.plot()
+        >>> result = clustering.plot.compare()
         >>> result.update(title='My Custom Title').show()
     """
 

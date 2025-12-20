@@ -38,7 +38,9 @@ if TYPE_CHECKING:
 
     import pyvis
 
+    from .clustering import Clustering
     from .solvers import _Solver
+    from .structure import TimeSeriesWeights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 from .carrier import Carrier, CarrierContainer
@@ -65,8 +67,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         weight_of_last_period: Weight/duration of the last period. If None, computed from the last period interval.
             Used for calculating sums over periods in multi-period models.
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
-            Period weights are always computed internally from the period index (like hours_per_timestep for time).
+            Period weights are always computed internally from the period index (like timestep_duration for time).
             The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
+        cluster_weight: Weight for each timestep representing cluster representation count.
+            If None (default), all timesteps have weight 1.0. Used by cluster() to specify
+            how many original timesteps each cluster represents. Combined with timestep_duration
+            via aggregation_weight for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
@@ -170,6 +176,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weight_of_last_period: int | float | None = None,
         scenario_weights: Numeric_S | None = None,
+        cluster_weight: Numeric_TPS | None = None,
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
@@ -181,13 +188,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.timesteps_extra,
             self.hours_of_last_timestep,
             self.hours_of_previous_timesteps,
-            hours_per_timestep,
+            timestep_duration,
         ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
 
-        self.hours_per_timestep = self.fit_to_model_coords('hours_per_timestep', hours_per_timestep)
+        self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
+
+        # Cluster weight for cluster() optimization (default 1.0)
+        # Represents how many original timesteps each cluster represents
+        # May have period/scenario dimensions if cluster() was used with those
+        self.cluster_weight = self.fit_to_model_coords(
+            'cluster_weight',
+            np.ones(len(self.timesteps)) if cluster_weight is None else cluster_weight,
+            dims=['time', 'period', 'scenario'],  # Gracefully ignores dims not present
+        )
 
         self.scenario_weights = scenario_weights  # Use setter
 
@@ -216,8 +232,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
-        # Clustering info - populated by transform.cluster()
-        self._clustering_info: dict | None = None
+        # Aggregation info - populated by transform.cluster()
+        self.clustering: Clustering | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -302,11 +318,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def calculate_hours_per_timestep(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
-        """Calculate duration of each timestep as a 1D DataArray."""
+    def calculate_timestep_duration(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
+        """Calculate duration of each timestep in hours as a 1D DataArray."""
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
-            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='hours_per_timestep'
+            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='timestep_duration'
         )
 
     @staticmethod
@@ -377,22 +393,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 Can be a scalar or array.
 
         Returns:
-            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep)
+            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration)
         """
         # Create timesteps with extra step at the end
         timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
 
-        # Calculate hours per timestep
-        hours_per_timestep = cls.calculate_hours_per_timestep(timesteps_extra)
+        # Calculate timestep duration
+        timestep_duration = cls.calculate_timestep_duration(timesteps_extra)
 
         # Extract hours_of_last_timestep if not provided
         if hours_of_last_timestep is None:
-            hours_of_last_timestep = hours_per_timestep.isel(time=-1).item()
+            hours_of_last_timestep = timestep_duration.isel(time=-1).item()
 
         # Compute hours_of_previous_timesteps (handles both None and provided cases)
         hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
 
-        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep
+        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration
 
     @classmethod
     def _compute_period_metadata(
@@ -437,7 +453,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         Update time-related attributes and data variables in dataset based on its time index.
 
-        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and hours_per_timestep
+        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and timestep_duration
         from the dataset's time index when these parameters are None. This ensures time metadata
         stays synchronized with the actual timesteps after operations like resampling or selection.
 
@@ -453,14 +469,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         new_time_index = dataset.indexes.get('time')
         if new_time_index is not None and len(new_time_index) >= 2:
             # Use shared helper to compute all time metadata
-            _, hours_of_last_timestep, hours_of_previous_timesteps, hours_per_timestep = cls._compute_time_metadata(
+            _, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration = cls._compute_time_metadata(
                 new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
             )
 
-            # Update hours_per_timestep DataArray if it exists in the dataset
+            # Update timestep_duration DataArray if it exists in the dataset
             # This prevents stale data after resampling operations
-            if 'hours_per_timestep' in dataset.data_vars:
-                dataset['hours_per_timestep'] = hours_per_timestep
+            if 'timestep_duration' in dataset.data_vars:
+                dataset['timestep_duration'] = timestep_duration
 
         # Update time-related attributes only when new values are provided/computed
         # This preserves existing metadata instead of overwriting with None
@@ -676,6 +692,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             weight_of_last_period=reference_structure.get('weight_of_last_period'),
             scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
             if 'scenario_weights' in reference_structure
+            else None,
+            cluster_weight=cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+            if 'cluster_weight' in reference_structure
             else None,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
@@ -1253,6 +1272,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         1. Connecting and transforming all elements (if not already done)
         2. Creating the FlowSystemModel with all variables and constraints
         3. Adding clustering constraints (if this is a clustered FlowSystem)
+        4. Adding typical periods modeling (if this is a reduced FlowSystem)
 
         After calling this method, `self.model` will be available for inspection
         before solving.
@@ -1270,32 +1290,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self.connect_and_transform()
         self.create_model(normalize_weights)
+
         self.model.do_modeling()
 
-        # Add clustering constraints if this is a clustered FlowSystem
-        if self._clustering_info is not None:
-            self._add_clustering_constraints()
-
         return self
-
-    def _add_clustering_constraints(self) -> None:
-        """Add clustering constraints to the model."""
-        from .clustering import ClusteringModel
-
-        info = self._clustering_info or {}
-        required_keys = {'parameters', 'clustering', 'components_to_clusterize'}
-        missing_keys = required_keys - set(info)
-        if missing_keys:
-            raise KeyError(f'_clustering_info missing required keys: {sorted(missing_keys)}')
-
-        clustering_model = ClusteringModel(
-            model=self.model,
-            clustering_parameters=info['parameters'],
-            flow_system=self,
-            clustering_data=info['clustering'],
-            components_to_clusterize=info['components_to_clusterize'],
-        )
-        clustering_model.do_modeling()
 
     def solve(self, solver: _Solver) -> FlowSystem:
         """
@@ -1885,6 +1883,47 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+    @property
+    def weights(self) -> TimeSeriesWeights:
+        """Unified weighting system for time series aggregation.
+
+        Returns a TimeSeriesWeights object providing a clean, unified interface
+        for all weight types used in flixopt. This is the recommended way to
+        access weights for new code (PyPSA-inspired design).
+
+        The temporal weight combines timestep_duration and cluster_weight,
+        which is the proper weight for summing over time.
+
+        Returns:
+            TimeSeriesWeights with temporal, period, and scenario weights.
+
+        Example:
+            >>> weights = flow_system.weights
+            >>> weighted_total = (flow_rate * weights.temporal).sum('time')
+            >>> # Or use the convenience method:
+            >>> weighted_total = weights.sum_over_time(flow_rate)
+        """
+        from .structure import TimeSeriesWeights
+
+        return TimeSeriesWeights(
+            temporal=self.timestep_duration * self.cluster_weight,
+            period=self.period_weights,
+            scenario=self._scenario_weights,
+        )
+
+    @property
+    def aggregation_weight(self) -> xr.DataArray:
+        """Combined weight for time aggregation.
+
+        Combines timestep_duration (physical duration) and cluster_weight (cluster representation).
+        Use this for proper time aggregation in clustered models.
+
+        Note:
+            This is equivalent to `weights.temporal`. The unified TimeSeriesWeights
+            interface (via `flow_system.weights`) is recommended for new code.
+        """
+        return self.timestep_duration * self.cluster_weight
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """
