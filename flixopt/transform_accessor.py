@@ -581,7 +581,6 @@ class TransformAccessor:
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
-        storage_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
     ) -> FlowSystem:
         """
         Create a FlowSystem with reduced timesteps using typical clusters.
@@ -594,7 +593,7 @@ class TransformAccessor:
         1. Performs time series clustering using tsam (k-means)
         2. Extracts only the typical clusters (not all original timesteps)
         3. Applies timestep weighting for accurate cost representation
-        4. Handles storage states between clusters based on the ``storage`` mode
+        4. Handles storage states between clusters based on each Storage's ``cluster_storage_mode``
 
         Use this for initial sizing optimization, then use ``fix_sizes()`` to re-optimize
         at full resolution for accurate dispatch results.
@@ -607,19 +606,6 @@ class TransformAccessor:
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
                 clusters. **Recommended** for demand time series to capture peak demand days.
             time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
-            storage_mode: How storages are treated during clustering. Options:
-
-                - ``'independent'``: Clusters are fully decoupled. No constraints between
-                  clusters, each cluster has free start/end SOC. Fast but ignores
-                  seasonal storage value.
-                - ``'cyclic'``: Each cluster is self-contained. The SOC at the start of
-                  each cluster equals its end (cluster returns to initial state).
-                  Good for "average day" modeling.
-                - ``'intercluster'``: Link storage state across the original timeline using
-                  SOC boundary variables (Kotzur et al. approach). Properly values
-                  seasonal storage patterns. Overall SOC can drift.
-                - ``'intercluster_cyclic'`` (default): Like 'intercluster' but also enforces
-                  that overall SOC returns to initial state (yearly cyclic).
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -653,8 +639,8 @@ class TransformAccessor:
             - This is best suited for initial sizing, not final dispatch optimization
             - Use ``time_series_for_high_peaks`` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
-            - For seasonal storage (e.g., hydrogen, thermal storage), use 'intercluster' or
-              'intercluster_cyclic' to properly value long-term storage
+            - For seasonal storage (e.g., hydrogen, thermal storage), set
+              ``Storage.cluster_storage_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
         import tsam.timeseriesaggregation as tsam
 
@@ -889,7 +875,6 @@ class TransformAccessor:
             result=aggregation_result,
             original_flow_system=self._fs,
             backend_name='tsam',
-            storage_mode=storage_mode,
         )
 
         return reduced_fs

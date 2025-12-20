@@ -42,10 +42,14 @@ class InterClusterLinking(Submodel):
     Example:
         >>> from flixopt.clustering import ClusterStructure, InterClusterLinking
         >>> structure = ClusterStructure(...)
+        >>> storages = [
+        ...     s for s in fs.storages.values() if s.cluster_storage_mode in ('intercluster', 'intercluster_cyclic')
+        ... ]
         >>> model = InterClusterLinking(
         ...     model=flow_system.model,
         ...     flow_system=flow_system,
         ...     cluster_structure=structure,
+        ...     storages=storages,
         ... )
         >>> model.do_modeling()
     """
@@ -55,19 +59,20 @@ class InterClusterLinking(Submodel):
         model: FlowSystemModel,
         flow_system: FlowSystem,
         cluster_structure: ClusterStructure,
-        storage_cyclic: bool = True,
+        storages: list,
     ):
         """
         Args:
             model: The FlowSystemModel to add constraints to.
             flow_system: The FlowSystem being optimized.
             cluster_structure: Clustering structure with cluster_order and occurrences.
-            storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
+            storages: List of Storage components to add inter-cluster linking for.
+                Each storage's cluster_storage_mode determines if cyclic constraint is added.
         """
         super().__init__(model, label_of_element='InterClusterLinking', label_of_model='InterClusterLinking')
         self.flow_system = flow_system
         self.cluster_structure = cluster_structure
-        self.storage_cyclic = storage_cyclic
+        self.storages = storages
 
         # Extract commonly used values from cluster_structure
         self._n_clusters = (
@@ -87,24 +92,25 @@ class InterClusterLinking(Submodel):
         - delta_SOC[c]: Change in SOC during representative period c
         - Linking: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
         """
-        storages = list(self.flow_system.storages.values())
-        if not storages:
-            logger.info('No storages found - skipping inter-cluster linking')
+        if not self.storages:
+            logger.info('No storages to link - skipping inter-cluster linking')
             return
 
         logger.info(
-            f'Adding inter-cluster storage linking for {len(storages)} storages '
+            f'Adding inter-cluster storage linking for {len(self.storages)} storages '
             f'({self._n_original_periods} original periods, {self._n_clusters} clusters)'
         )
 
-        for storage in storages:
-            self._add_storage_linking(storage)
+        for storage in self.storages:
+            storage_cyclic = storage.cluster_storage_mode == 'intercluster_cyclic'
+            self._add_storage_linking(storage, storage_cyclic)
 
-    def _add_storage_linking(self, storage) -> None:
+    def _add_storage_linking(self, storage, storage_cyclic: bool) -> None:
         """Add inter-cluster linking constraints for a single storage.
 
         Args:
             storage: Storage component to add linking for.
+            storage_cyclic: If True, enforce SOC_boundary[0] = SOC_boundary[end].
         """
         import xarray as xr
 
@@ -201,7 +207,7 @@ class InterClusterLinking(Submodel):
                 self.add_constraints(lhs == 0, short_name=f'link|{label}|{d}')
 
         # Cyclic constraint: SOC_boundary[0] = SOC_boundary[end]
-        if self.storage_cyclic:
+        if storage_cyclic:
             lhs = soc_boundary.isel(cluster_boundary=0) - soc_boundary.isel(cluster_boundary=self._n_original_periods)
             self.add_constraints(lhs == 0, short_name=f'cyclic|{label}')
 

@@ -1304,6 +1304,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Creates SOC_boundary variables that link storage states between sequential
         periods in the original time series, using the delta SOC from representative periods.
+        Only storages with cluster_storage_mode='intercluster' or 'intercluster_cyclic' are linked.
         """
         from .clustering.storage_linking import InterClusterLinking
 
@@ -1311,22 +1312,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if info is None:
             return
 
-        # Only add inter-cluster linking for 'intercluster' and 'intercluster_cyclic' modes
-        if info.storage_mode not in ('intercluster', 'intercluster_cyclic'):
-            logger.info(f"Storage mode '{info.storage_mode}' - skipping inter-cluster linking")
-            return
-
         if info.result.cluster_structure is None:
             logger.warning('No cluster structure available for inter-cluster linking')
             return
 
-        # Create inter-cluster linking model for storage
-        storage_cyclic = info.storage_mode == 'intercluster_cyclic'
+        # Filter storages that need inter-cluster linking
+        storages_for_linking = [
+            s for s in self.storages.values() if s.cluster_storage_mode in ('intercluster', 'intercluster_cyclic')
+        ]
+
+        if not storages_for_linking:
+            logger.info('No storages with intercluster mode - skipping inter-cluster linking')
+            return
+
         linking_model = InterClusterLinking(
             model=self.model,
             flow_system=self,
             cluster_structure=info.result.cluster_structure,
-            storage_cyclic=storage_cyclic,
+            storages=storages_for_linking,
         )
         linking_model.do_modeling()
 

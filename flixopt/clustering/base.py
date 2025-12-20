@@ -18,7 +18,7 @@ All data structures use xarray for consistent handling of coordinates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import xarray as xr
@@ -892,11 +892,6 @@ class Clustering:
         result: The ClusterResult from the aggregation backend.
         original_flow_system: Reference to the FlowSystem before aggregation.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
-        storage_mode: How storages are treated during clustering:
-            - 'independent': Clusters fully decoupled, no constraints between clusters
-            - 'cyclic': Each cluster's start equals its end (self-contained periods)
-            - 'intercluster': Link storage state across original timeline (seasonal storage)
-            - 'intercluster_cyclic': Like 'intercluster' but overall timeline is cyclic
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
@@ -909,7 +904,6 @@ class Clustering:
     result: ClusterResult
     original_flow_system: FlowSystem  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
-    storage_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic'
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -920,7 +914,7 @@ class Clustering:
             structure_info = f'{cs.n_original_periods} periods → {n_clusters} clusters'
         else:
             structure_info = 'no structure'
-        return f'Clustering(\n  backend={self.backend_name!r}\n  {structure_info}\n  storage={self.storage_mode!r}\n)'
+        return f'Clustering(\n  backend={self.backend_name!r}\n  {structure_info}\n)'
 
     @property
     def plot(self) -> ClusteringPlotAccessor:
