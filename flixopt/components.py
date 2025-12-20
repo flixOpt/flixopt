@@ -977,10 +977,20 @@ class StorageModel(ComponentModel):
                 short_name='investment',
             )
 
-            # For intercluster modes, charge_state represents delta from SOC_boundary (can be negative),
-            # and the combined bound constraints handle the relationship to investment.size.
-            # For non-intercluster modes, charge_state is absolute SOC and needs scaled bounds.
-            if not is_intercluster:
+            # For intercluster modes, charge_state represents delta from SOC_boundary (can be negative).
+            # The bound should be [-size, +size] (can discharge or charge by full capacity).
+            # For non-intercluster modes, charge_state is absolute SOC and needs [0, size] bounds.
+            if is_intercluster:
+                # Symmetric bounds: -size <= charge_state <= size
+                self.add_constraints(
+                    self.charge_state >= -self.investment.size,
+                    short_name='charge_state|lb',
+                )
+                self.add_constraints(
+                    self.charge_state <= self.investment.size,
+                    short_name='charge_state|ub',
+                )
+            else:
                 BoundingPatterns.scaled_bounds(
                     self,
                     variable=self.charge_state,
@@ -1117,7 +1127,8 @@ class StorageModel(ComponentModel):
         change (end - start) for each cluster.
         """
         starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
-        ends = starts + timesteps_per_cluster
+        # Last timestep of each cluster (not first of next cluster)
+        ends = starts + timesteps_per_cluster - 1
         # Compute delta for all clusters at once
         delta_soc = self.charge_state.isel(time=ends) - self.charge_state.isel(time=starts)
         # Replace 'time' dim with 'cluster' dim
