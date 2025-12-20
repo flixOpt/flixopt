@@ -946,17 +946,11 @@ class StorageModel(ComponentModel):
 
         # For 'cyclic' mode: each cluster's start equals its end
         if clustering is not None and self.element.cluster_mode == 'cyclic':
-            starts = clustering.cluster_start_positions
-            for i, start_pos in enumerate(starts):
-                # End of cluster i is at (start of cluster i+1) - 1, or last timestep for final cluster
-                if i < len(starts) - 1:
-                    end_pos = starts[i + 1]  # In timesteps_extra, this is the end of cluster i
-                else:
-                    end_pos = len(self._model.flow_system.timesteps)  # Last position in timesteps_extra
-                self.add_constraints(
-                    charge_state.isel(time=start_pos) == charge_state.isel(time=end_pos),
-                    short_name=f'cluster_cyclic_{i}',
-                )
+            self.add_constraints(
+                charge_state.isel(time=clustering.cluster_start_positions)
+                == charge_state.isel(time=clustering.cluster_start_positions + clustering.timesteps_per_period - 1),
+                short_name='cluster_cyclic',
+            )
 
         # Determine intercluster mode early (needed for investment bounding)
         clustering = self._model.flow_system.clustering
