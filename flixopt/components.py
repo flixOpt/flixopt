@@ -446,8 +446,32 @@ class Storage(Component):
         self.cluster_mode = cluster_mode
 
     def create_model(self, model: FlowSystemModel) -> StorageModel:
+        """Create the appropriate storage model based on cluster_mode and flow system state.
+
+        For intercluster modes ('intercluster', 'intercluster_cyclic'), uses
+        :class:`InterclusterStorageModel` which implements S-N linking.
+        For other modes, uses the base :class:`StorageModel`.
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+
+        Returns:
+            StorageModel or InterclusterStorageModel instance.
+        """
         self._plausibility_checks()
-        self.submodel = StorageModel(model, self)
+
+        # Use InterclusterStorageModel for intercluster modes when clustering is active
+        clustering = model.flow_system.clustering
+        is_intercluster = clustering is not None and self.cluster_mode in (
+            'intercluster',
+            'intercluster_cyclic',
+        )
+
+        if is_intercluster:
+            self.submodel = InterclusterStorageModel(model, self)
+        else:
+            self.submodel = StorageModel(model, self)
+
         return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
@@ -952,13 +976,6 @@ class StorageModel(ComponentModel):
                 short_name='cluster_cyclic',
             )
 
-        # Determine intercluster mode early (needed for investment bounding)
-        clustering = self._model.flow_system.clustering
-        is_intercluster = clustering is not None and self.element.cluster_mode in (
-            'intercluster',
-            'intercluster_cyclic',
-        )
-
         # Create InvestmentModel and bounding constraints for investment
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
@@ -971,34 +988,15 @@ class StorageModel(ComponentModel):
                 short_name='investment',
             )
 
-            # For intercluster modes, charge_state represents delta from SOC_boundary (can be negative).
-            # The bound should be [-size, +size] (can discharge or charge by full capacity).
-            # For non-intercluster modes, charge_state is absolute SOC and needs [0, size] bounds.
-            if is_intercluster:
-                # Symmetric bounds: -size <= charge_state <= size
-                self.add_constraints(
-                    self.charge_state >= -self.investment.size,
-                    short_name='charge_state|lb',
-                )
-                self.add_constraints(
-                    self.charge_state <= self.investment.size,
-                    short_name='charge_state|ub',
-                )
-            else:
-                BoundingPatterns.scaled_bounds(
-                    self,
-                    variable=self.charge_state,
-                    scaling_variable=self.investment.size,
-                    relative_bounds=self._relative_charge_state_bounds,
-                )
+            BoundingPatterns.scaled_bounds(
+                self,
+                variable=self.charge_state,
+                scaling_variable=self.investment.size,
+                relative_bounds=self._relative_charge_state_bounds,
+            )
 
-        # Initial charge state (only for non-intercluster modes)
-        if not is_intercluster:
-            self._initial_and_final_charge_state()
-
-        # Add inter-cluster linking for intercluster modes
-        if is_intercluster:
-            self._add_intercluster_linking()
+        # Initial and final charge state constraints
+        self._initial_and_final_charge_state()
 
         # Balanced sizes
         if self.element.balanced:
@@ -1032,236 +1030,34 @@ class StorageModel(ComponentModel):
                 short_name='final_charge_min',
             )
 
-    def _add_intercluster_linking(self) -> None:
-        """Add inter-cluster storage linking for aggregated optimization.
-
-        Following the S-N model from Blanke et al. (2022), this method:
-        1. Constrains charge_state at each cluster start to 0 (ΔE_0 = 0)
-        2. Creates SOC_boundary variables to track absolute SOC across original periods
-        3. Links via: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
-        4. Adds bounds: 0 ≤ SOC_boundary[d] + charge_state[t] ≤ capacity
-        5. Optionally enforces cyclic: SOC_boundary[0] = SOC_boundary[end]
-        """
-        from .clustering.intercluster_helpers import (
-            build_boundary_coords,
-            extract_capacity_bounds,
-        )
-
-        clustering = self._model.flow_system.clustering
-        if clustering is None or clustering.result.cluster_structure is None:
-            return
-
-        cluster_structure = clustering.result.cluster_structure
-        n_clusters = (
-            int(cluster_structure.n_clusters)
-            if isinstance(cluster_structure.n_clusters, (int, np.integer))
-            else int(cluster_structure.n_clusters.values)
-        )
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        n_original_periods = cluster_structure.n_original_periods
-        cluster_order = cluster_structure.cluster_order
-
-        # 1. Add cluster start constraints (ΔE_0 = 0) - vectorized
-        self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)
-
-        # 2. Create SOC_boundary variable
-        flow_system = self._model.flow_system
-        boundary_coords, boundary_dims = build_boundary_coords(n_original_periods, flow_system)
-        capacity_bounds = extract_capacity_bounds(self.element.capacity_in_flow_hours, boundary_coords, boundary_dims)
-
-        soc_boundary = self.add_variables(
-            lower=capacity_bounds.lower,
-            upper=capacity_bounds.upper,
-            coords=boundary_coords,
-            dims=boundary_dims,
-            short_name='SOC_boundary',
-        )
-
-        # 3. Add SOC_boundary <= investment.size for investment-based storage
-        if capacity_bounds.has_investment and self.investment is not None:
-            self.add_constraints(
-                soc_boundary <= self.investment.size,
-                short_name='SOC_boundary_ub',
-            )
-
-        # 4. Compute delta_SOC as DataArray with 'cluster' dimension
-        delta_soc = self._compute_delta_soc(n_clusters, timesteps_per_cluster)
-
-        # 5. Add linking constraints - vectorized
-        self._add_linking_constraints(soc_boundary, delta_soc, cluster_order, n_original_periods)
-
-        # 6. Add cyclic or initial SOC constraint
-        if self.element.cluster_mode == 'intercluster_cyclic':
-            self.add_constraints(
-                soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
-                short_name='cyclic',
-            )
-        else:
-            # For non-cyclic intercluster mode, apply initial_charge_state to SOC_boundary[0]
-            initial = self.element.initial_charge_state
-            if initial is not None:
-                if isinstance(initial, str):
-                    # 'equals_final' means SOC_boundary should be cyclic
-                    self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
-                        short_name='initial_SOC_boundary',
-                    )
-                else:
-                    # Numeric initial charge state
-                    self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0) == initial,
-                        short_name='initial_SOC_boundary',
-                    )
-
-        # 7. Add combined bound constraints - vectorized
-        self._add_combined_bound_constraints(
-            soc_boundary,
-            cluster_order,
-            capacity_bounds.has_investment,
-            n_original_periods,
-            timesteps_per_cluster,
-        )
-
-    def _add_cluster_start_constraints(self, n_clusters: int, timesteps_per_cluster: int) -> None:
-        """Constrain charge_state at each cluster start to 0 (ΔE_0 = 0)."""
-        cluster_starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
-        self.add_constraints(
-            self.charge_state.isel(time=cluster_starts) == 0,
-            short_name='cluster_start',
-        )
-
-    def _compute_delta_soc(self, n_clusters: int, timesteps_per_cluster: int) -> xr.DataArray:
-        """Compute delta_SOC for each representative cluster as a DataArray.
-
-        Returns DataArray with 'cluster' dimension containing the net charge state
-        change (end - start) for each cluster.
-        """
-        starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
-        # Last timestep of each cluster (not first of next cluster)
-        ends = starts + timesteps_per_cluster - 1
-        # Compute delta for all clusters at once
-        delta_soc = self.charge_state.isel(time=ends) - self.charge_state.isel(time=starts)
-        # Replace 'time' dim with 'cluster' dim
-        return delta_soc.assign_coords(time=np.arange(n_clusters)).rename({'time': 'cluster'})
-
-    def _add_linking_constraints(
-        self,
-        soc_boundary: xr.DataArray,
-        delta_soc: xr.DataArray,
-        cluster_order: xr.DataArray,
-        n_original_periods: int,
-    ) -> None:
-        """Add linking constraints: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]].
-
-        Uses vectorized xarray operations instead of loops.
-        """
-        # SOC at boundary d+1 (after original period d completes)
-        soc_after = soc_boundary.isel(cluster_boundary=slice(1, None))
-        # SOC at boundary d (before original period d starts)
-        soc_before = soc_boundary.isel(cluster_boundary=slice(None, -1))
-
-        # Rename cluster_boundary -> original_period for alignment
-        soc_after = soc_after.rename({'cluster_boundary': 'original_period'})
-        soc_after = soc_after.assign_coords(original_period=np.arange(n_original_periods))
-        soc_before = soc_before.rename({'cluster_boundary': 'original_period'})
-        soc_before = soc_before.assign_coords(original_period=np.arange(n_original_periods))
-
-        # Get delta_soc for each original period using cluster_order as advanced index
-        # cluster_order has dim 'original_period', delta_soc has dim 'cluster'
-        delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
-
-        # Single vectorized constraint for all original periods
-        lhs = soc_after - soc_before - delta_soc_ordered
-        self.add_constraints(lhs == 0, short_name='link')
-
-    def _add_combined_bound_constraints(
-        self,
-        soc_boundary: xr.DataArray,
-        cluster_order: xr.DataArray,
-        has_investment: bool,
-        n_original_periods: int,
-        timesteps_per_cluster: int,
-    ) -> None:
-        """Add combined bound constraints: 0 <= SOC_boundary[d] + charge_state[t] <= capacity.
-
-        Vectorizes over original_period dimension, loops over sample points.
-        """
-        charge_state = self.charge_state
-
-        # Get soc_boundary for each original period (boundary d, before period d starts)
-        soc_d = soc_boundary.isel(cluster_boundary=slice(None, -1))  # excludes final boundary
-        soc_d = soc_d.rename({'cluster_boundary': 'original_period'})
-        soc_d = soc_d.assign_coords(original_period=np.arange(n_original_periods))
-
-        # Sample offsets within each cluster (start, middle, end)
-        sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster]
-        max_time_idx = len(charge_state.coords['time']) - 1
-
-        # Convert cluster_order to numpy array for indexing
-        cluster_order_vals = cluster_order.values.astype(int)
-        cluster_starts = cluster_order_vals * timesteps_per_cluster
-
-        for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
-            time_indices = np.clip(cluster_starts + offset, 0, max_time_idx)
-
-            # Get charge_state at these time indices using numpy array indexer
-            cs_t = charge_state.isel(time=time_indices)
-
-            # Rename 'time' dim to 'original_period' to align with soc_d
-            cs_t = cs_t.rename({'time': 'original_period'})
-            cs_t = cs_t.assign_coords(original_period=np.arange(n_original_periods))
-
-            # Combined SOC = soc_boundary[d] + charge_state[t]
-            combined = soc_d + cs_t
-
-            # Lower bound constraint: combined >= 0
-            self.add_constraints(combined >= 0, short_name=f'soc_lb_{sample_name}')
-
-            # Upper bound constraint: combined <= capacity (for investment case)
-            if has_investment and self.investment is not None:
-                self.add_constraints(combined <= self.investment.size, short_name=f'soc_ub_{sample_name}')
-
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+        """Get absolute bounds for charge_state variable.
+
+        For base StorageModel, charge_state represents absolute SOC with bounds
+        derived from relative bounds scaled by capacity.
+
+        Note:
+            InterclusterStorageModel overrides this to provide symmetric bounds
+            since charge_state represents ΔE (relative change from cluster start).
+        """
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
 
-        # For inter-cluster modes, charge_state represents relative change from cluster start (ΔE)
-        # which can be negative (discharge) or positive (charge). The actual SOC is SOC_boundary + ΔE.
-        # We set lower bound to -capacity to allow the full range.
-        clustering = self._model.flow_system.clustering
-        is_intercluster = clustering is not None and self.element.cluster_mode in (
-            'intercluster',
-            'intercluster_cyclic',
-        )
-
         if self.element.capacity_in_flow_hours is None:
-            # Unbounded storage: lower bound is 0 (or -inf for intercluster), upper bound is infinite
-            return (-np.inf if is_intercluster else 0, np.inf)
+            return (0, np.inf)
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             cap_min = self.element.capacity_in_flow_hours.minimum_or_fixed_size
             cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
-            if is_intercluster:
-                # For inter-cluster, charge_state is relative to cluster start (ΔE in S-N model)
-                # ΔE can be negative (discharge) or positive (charge), so allow full range.
-                # Create bounds with proper time dimension using the shape from relative bounds.
-                ones = xr.ones_like(relative_upper_bound)
-                return (-ones * cap_max, ones * cap_max)
-            else:
-                return (
-                    relative_lower_bound * cap_min,
-                    relative_upper_bound * cap_max,
-                )
+            return (
+                relative_lower_bound * cap_min,
+                relative_upper_bound * cap_max,
+            )
         else:
             cap = self.element.capacity_in_flow_hours
-            if is_intercluster:
-                # Same as above: create bounds with time dimension
-                ones = xr.ones_like(relative_upper_bound)
-                return (-ones * cap, ones * cap)
-            else:
-                return (
-                    relative_lower_bound * cap,
-                    relative_upper_bound * cap,
-                )
+            return (
+                relative_lower_bound * cap,
+                relative_upper_bound * cap,
+            )
 
     @property
     def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -1313,6 +1109,403 @@ class StorageModel(ComponentModel):
     def netto_discharge(self) -> linopy.Variable:
         """Netto discharge variable"""
         return self['netto_discharge']
+
+
+class InterclusterStorageModel(StorageModel):
+    """Storage model with inter-cluster linking for clustered optimization.
+
+    This class extends :class:`StorageModel` to support inter-cluster storage linking
+    when using time series aggregation (clustering). It implements the S-N linking model
+    from Blanke et al. (2022) to properly value seasonal storage in clustered optimizations.
+
+    The Problem with Naive Clustering
+    ---------------------------------
+    When time series are clustered (e.g., 365 days → 8 typical days), storage behavior
+    is fundamentally misrepresented if each cluster operates independently:
+
+    - **Seasonal patterns are lost**: A battery might charge in summer and discharge in
+      winter, but with independent clusters, each "typical summer day" cannot transfer
+      energy to the "typical winter day".
+    - **Storage value is underestimated**: Without inter-cluster linking, storage can only
+      provide intra-day flexibility, not seasonal arbitrage.
+
+    The S-N Linking Model
+    ---------------------
+    This model introduces two key concepts:
+
+    1. **SOC_boundary**: Absolute state-of-charge at the boundary between original periods.
+       With N original periods, there are N+1 boundary points (including start and end).
+
+    2. **charge_state (ΔE)**: Relative change in SOC within each representative cluster,
+       measured from the cluster start (where ΔE = 0).
+
+    The actual SOC at any timestep t within original period d is::
+
+        SOC(t) = SOC_boundary[d] + ΔE(t)
+
+    Key Constraints
+    ---------------
+    1. **Cluster start constraint**: ``ΔE(cluster_start) = 0``
+       Each representative cluster starts with zero relative charge.
+
+    2. **Linking constraint**: ``SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]``
+       The boundary SOC after period d equals the boundary before plus the net
+       charge/discharge of the representative cluster for that period.
+
+    3. **Combined bounds**: ``0 ≤ SOC_boundary[d] + ΔE(t) ≤ capacity``
+       The actual SOC must stay within physical bounds.
+
+    4. **Cyclic constraint** (for ``intercluster_cyclic`` mode):
+       ``SOC_boundary[0] = SOC_boundary[N]``
+       The storage returns to its initial state over the full time horizon.
+
+    Variables Created
+    -----------------
+    - ``SOC_boundary``: Absolute SOC at each original period boundary.
+      Shape: (n_original_periods + 1,) plus any period/scenario dimensions.
+
+    Constraints Created
+    -------------------
+    - ``cluster_start``: Forces ΔE = 0 at start of each representative cluster.
+    - ``link``: Links consecutive SOC_boundary values via delta_SOC.
+    - ``cyclic`` or ``initial_SOC_boundary``: Initial/final boundary condition.
+    - ``soc_lb_start/mid/end``: Lower bound on combined SOC at sample points.
+    - ``soc_ub_start/mid/end``: Upper bound on combined SOC (if investment).
+    - ``SOC_boundary_ub``: Links SOC_boundary to investment size (if investment).
+    - ``charge_state|lb/ub``: Symmetric bounds on ΔE for intercluster modes.
+
+    References
+    ----------
+    - Blanke, T., et al. (2022). "Inter-Cluster Storage Linking for Time Series
+      Aggregation in Energy System Optimization Models."
+    - Kotzur, L., et al. (2018). "Time series aggregation for energy system design:
+      Modeling seasonal storage."
+
+    See Also
+    --------
+    :class:`StorageModel` : Base storage model without inter-cluster linking.
+    :class:`Storage` : The element class that creates this model.
+
+    Example
+    -------
+    The model is automatically used when a Storage has ``cluster_mode='intercluster'``
+    or ``cluster_mode='intercluster_cyclic'`` and the FlowSystem has been clustered::
+
+        storage = Storage(
+            label='seasonal_storage',
+            charging=charge_flow,
+            discharging=discharge_flow,
+            capacity_in_flow_hours=InvestParameters(maximum_size=10000),
+            cluster_mode='intercluster_cyclic',  # Enable inter-cluster linking
+        )
+
+        # Cluster the flow system
+        fs_clustered = flow_system.transform.cluster(n_clusters=8)
+        fs_clustered.optimize(solver)
+
+        # Access the SOC_boundary in results
+        soc_boundary = fs_clustered.solution['seasonal_storage|SOC_boundary']
+    """
+
+    def _do_modeling(self):
+        """Create storage model with inter-cluster linking constraints.
+
+        Extends the base StorageModel by:
+        1. Skipping initial/final charge state constraints (handled via SOC_boundary)
+        2. Using symmetric bounds on charge_state (ΔE can be negative)
+        3. Adding SOC_boundary variable and linking constraints
+        """
+        # Call grandparent's _do_modeling (ComponentModel), not parent's
+        # We need to rebuild because intercluster mode changes bounds and constraints
+        ComponentModel._do_modeling(self)
+
+        # Create charge_state with symmetric bounds for ΔE
+        lb, ub = self._absolute_charge_state_bounds
+        self.add_variables(
+            lower=lb,
+            upper=ub,
+            coords=self._model.get_coords(extra_timestep=True),
+            short_name='charge_state',
+        )
+
+        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+
+        # Create netto_discharge constraint
+        self.add_constraints(
+            self.netto_discharge
+            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
+            short_name='netto_discharge',
+        )
+
+        # Build energy balance (same as base class, but with cluster boundary masking)
+        charge_state = self.charge_state
+        rel_loss = self.element.relative_loss_per_hour
+        timestep_duration = self._model.timestep_duration
+        charge_rate = self.element.charging.submodel.flow_rate
+        discharge_rate = self.element.discharging.submodel.flow_rate
+        eff_charge = self.element.eta_charge
+        eff_discharge = self.element.eta_discharge
+
+        lhs = (
+            charge_state.isel(time=slice(1, None))
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rate * eff_charge * timestep_duration
+            + discharge_rate * timestep_duration / eff_discharge
+        )
+
+        # Mask out inter-cluster boundaries
+        clustering = self._model.flow_system.clustering
+        mask = np.ones(lhs.sizes['time'], dtype=bool)
+        mask[clustering.cluster_start_positions[1:] - 1] = False
+        mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
+
+        self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
+
+        # Create InvestmentModel if needed
+        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            self.add_submodels(
+                InvestmentModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=self.label_of_element,
+                    parameters=self.element.capacity_in_flow_hours,
+                ),
+                short_name='investment',
+            )
+
+            # Symmetric bounds: -size <= charge_state <= size
+            self.add_constraints(
+                self.charge_state >= -self.investment.size,
+                short_name='charge_state|lb',
+            )
+            self.add_constraints(
+                self.charge_state <= self.investment.size,
+                short_name='charge_state|ub',
+            )
+
+        # Add inter-cluster linking (the main contribution of this class)
+        self._add_intercluster_linking()
+
+        # Balanced sizes
+        if self.element.balanced:
+            self.add_constraints(
+                self.element.charging.submodel._investment.size * 1
+                == self.element.discharging.submodel._investment.size * 1,
+                short_name='balanced_sizes',
+            )
+
+    def _add_intercluster_linking(self) -> None:
+        """Add inter-cluster storage linking following the S-N model.
+
+        This method implements the core inter-cluster linking logic:
+
+        1. Constrains charge_state (ΔE) at each cluster start to 0
+        2. Creates SOC_boundary variables to track absolute SOC
+        3. Links boundaries via: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC
+        4. Adds combined bounds: 0 ≤ SOC_boundary + ΔE ≤ capacity
+        5. Enforces initial/cyclic constraint on SOC_boundary
+        """
+        from .clustering.intercluster_helpers import (
+            build_boundary_coords,
+            extract_capacity_bounds,
+        )
+
+        clustering = self._model.flow_system.clustering
+        if clustering is None or clustering.result.cluster_structure is None:
+            return
+
+        cluster_structure = clustering.result.cluster_structure
+        n_clusters = (
+            int(cluster_structure.n_clusters)
+            if isinstance(cluster_structure.n_clusters, (int, np.integer))
+            else int(cluster_structure.n_clusters.values)
+        )
+        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
+        n_original_periods = cluster_structure.n_original_periods
+        cluster_order = cluster_structure.cluster_order
+
+        # 1. Constrain ΔE = 0 at cluster starts
+        self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)
+
+        # 2. Create SOC_boundary variable
+        flow_system = self._model.flow_system
+        boundary_coords, boundary_dims = build_boundary_coords(n_original_periods, flow_system)
+        capacity_bounds = extract_capacity_bounds(self.element.capacity_in_flow_hours, boundary_coords, boundary_dims)
+
+        soc_boundary = self.add_variables(
+            lower=capacity_bounds.lower,
+            upper=capacity_bounds.upper,
+            coords=boundary_coords,
+            dims=boundary_dims,
+            short_name='SOC_boundary',
+        )
+
+        # 3. Link SOC_boundary to investment size
+        if capacity_bounds.has_investment and self.investment is not None:
+            self.add_constraints(
+                soc_boundary <= self.investment.size,
+                short_name='SOC_boundary_ub',
+            )
+
+        # 4. Compute delta_SOC for each cluster
+        delta_soc = self._compute_delta_soc(n_clusters, timesteps_per_cluster)
+
+        # 5. Add linking constraints
+        self._add_linking_constraints(soc_boundary, delta_soc, cluster_order, n_original_periods)
+
+        # 6. Add cyclic or initial constraint
+        if self.element.cluster_mode == 'intercluster_cyclic':
+            self.add_constraints(
+                soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
+                short_name='cyclic',
+            )
+        else:
+            # Apply initial_charge_state to SOC_boundary[0]
+            initial = self.element.initial_charge_state
+            if initial is not None:
+                if isinstance(initial, str):
+                    # 'equals_final' means cyclic
+                    self.add_constraints(
+                        soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_periods),
+                        short_name='initial_SOC_boundary',
+                    )
+                else:
+                    self.add_constraints(
+                        soc_boundary.isel(cluster_boundary=0) == initial,
+                        short_name='initial_SOC_boundary',
+                    )
+
+        # 7. Add combined bound constraints
+        self._add_combined_bound_constraints(
+            soc_boundary,
+            cluster_order,
+            capacity_bounds.has_investment,
+            n_original_periods,
+            timesteps_per_cluster,
+        )
+
+    def _add_cluster_start_constraints(self, n_clusters: int, timesteps_per_cluster: int) -> None:
+        """Constrain ΔE = 0 at the start of each representative cluster.
+
+        This ensures that the relative charge state is measured from a known
+        reference point (the cluster start).
+
+        Args:
+            n_clusters: Number of representative clusters.
+            timesteps_per_cluster: Timesteps in each cluster.
+        """
+        cluster_starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
+        self.add_constraints(
+            self.charge_state.isel(time=cluster_starts) == 0,
+            short_name='cluster_start',
+        )
+
+    def _compute_delta_soc(self, n_clusters: int, timesteps_per_cluster: int) -> xr.DataArray:
+        """Compute net SOC change (delta_SOC) for each representative cluster.
+
+        The delta_SOC is the difference between the charge_state at the end
+        and start of each cluster: delta_SOC[c] = ΔE(end_c) - ΔE(start_c).
+
+        Since ΔE(start) = 0 by constraint, this simplifies to delta_SOC[c] = ΔE(end_c).
+
+        Args:
+            n_clusters: Number of representative clusters.
+            timesteps_per_cluster: Timesteps in each cluster.
+
+        Returns:
+            DataArray with 'cluster' dimension containing delta_SOC for each cluster.
+        """
+        starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
+        ends = starts + timesteps_per_cluster - 1
+
+        delta_soc = self.charge_state.isel(time=ends) - self.charge_state.isel(time=starts)
+        return delta_soc.assign_coords(time=np.arange(n_clusters)).rename({'time': 'cluster'})
+
+    def _add_linking_constraints(
+        self,
+        soc_boundary: xr.DataArray,
+        delta_soc: xr.DataArray,
+        cluster_order: xr.DataArray,
+        n_original_periods: int,
+    ) -> None:
+        """Add constraints linking consecutive SOC_boundary values.
+
+        Implements: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+
+        This connects the SOC at the end of original period d to the SOC at the
+        start of period d+1, using the net charge change from the representative
+        cluster that was mapped to period d.
+
+        Args:
+            soc_boundary: SOC_boundary variable.
+            delta_soc: Net SOC change per cluster.
+            cluster_order: Mapping from original periods to representative clusters.
+            n_original_periods: Number of original (non-clustered) periods.
+        """
+        soc_after = soc_boundary.isel(cluster_boundary=slice(1, None))
+        soc_before = soc_boundary.isel(cluster_boundary=slice(None, -1))
+
+        # Rename for alignment
+        soc_after = soc_after.rename({'cluster_boundary': 'original_period'})
+        soc_after = soc_after.assign_coords(original_period=np.arange(n_original_periods))
+        soc_before = soc_before.rename({'cluster_boundary': 'original_period'})
+        soc_before = soc_before.assign_coords(original_period=np.arange(n_original_periods))
+
+        # Get delta_soc for each original period using cluster_order
+        delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
+
+        lhs = soc_after - soc_before - delta_soc_ordered
+        self.add_constraints(lhs == 0, short_name='link')
+
+    def _add_combined_bound_constraints(
+        self,
+        soc_boundary: xr.DataArray,
+        cluster_order: xr.DataArray,
+        has_investment: bool,
+        n_original_periods: int,
+        timesteps_per_cluster: int,
+    ) -> None:
+        """Add constraints ensuring actual SOC stays within bounds.
+
+        The actual SOC is: SOC(t) = SOC_boundary[d] + ΔE(t)
+
+        This must satisfy: 0 ≤ SOC(t) ≤ capacity
+
+        Since checking every timestep is expensive, we sample at the start,
+        middle, and end of each cluster.
+
+        Args:
+            soc_boundary: SOC_boundary variable.
+            cluster_order: Mapping from original periods to clusters.
+            has_investment: Whether the storage has investment sizing.
+            n_original_periods: Number of original periods.
+            timesteps_per_cluster: Timesteps in each cluster.
+        """
+        charge_state = self.charge_state
+
+        soc_d = soc_boundary.isel(cluster_boundary=slice(None, -1))
+        soc_d = soc_d.rename({'cluster_boundary': 'original_period'})
+        soc_d = soc_d.assign_coords(original_period=np.arange(n_original_periods))
+
+        sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
+        max_time_idx = len(charge_state.coords['time']) - 1
+
+        cluster_order_vals = cluster_order.values.astype(int)
+        cluster_starts = cluster_order_vals * timesteps_per_cluster
+
+        for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
+            time_indices = np.clip(cluster_starts + offset, 0, max_time_idx)
+
+            cs_t = charge_state.isel(time=time_indices)
+            cs_t = cs_t.rename({'time': 'original_period'})
+            cs_t = cs_t.assign_coords(original_period=np.arange(n_original_periods))
+
+            combined = soc_d + cs_t
+
+            self.add_constraints(combined >= 0, short_name=f'soc_lb_{sample_name}')
+
+            if has_investment and self.investment is not None:
+                self.add_constraints(combined <= self.investment.size, short_name=f'soc_ub_{sample_name}')
 
 
 @register_class_for_io
