@@ -953,8 +953,7 @@ class StorageModel(ComponentModel):
 
     def _add_energy_balance_constraint(self):
         """Add energy balance constraint linking charge states across timesteps."""
-        lhs = self._build_energy_balance_lhs()
-        self.add_constraints(lhs == 0, short_name='charge_state')
+        self.add_constraints(self._build_energy_balance_lhs(), short_name='charge_state')
 
     def _add_cluster_cyclic_constraint(self):
         """For 'cyclic' cluster mode: each cluster's start equals its end."""
@@ -1039,9 +1038,9 @@ class StorageModel(ComponentModel):
 
         return (
             charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rate * eff_charge * timestep_duration
-            + discharge_rate * timestep_duration / eff_discharge
+            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            + charge_rate * eff_charge * timestep_duration
+            - discharge_rate * timestep_duration / eff_discharge
         )
 
     @property
