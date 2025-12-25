@@ -385,9 +385,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
 
         if extra_timestep and coords:
-            if self.flow_system.is_clustered:
+            if self.flow_system._use_true_cluster_dims:
                 # For clustered: extend time by 1 within each cluster (for charge_state)
-                n_time = self.flow_system.clustering.timesteps_per_cluster + 1
+                n_time = self.flow_system._cluster_timesteps_per_cluster + 1
                 coords['time'] = pd.Index(range(n_time), name='time')
             else:
                 coords['time'] = self.flow_system.timesteps_extra

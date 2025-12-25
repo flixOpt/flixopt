@@ -658,6 +658,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         the solution will be restored to the FlowSystem. Solution time coordinates
         are renamed back from 'solution_time' to 'time'.
 
+        Supports clustered datasets with (cluster, time) dimensions. When detected,
+        creates a synthetic DatetimeIndex for compatibility and stores the clustered
+        data structure for later use.
+
         Args:
             ds: Dataset containing the FlowSystem data
 
@@ -682,9 +686,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Create arrays dictionary from config variables only
         arrays_dict = config_vars
 
+        # Detect clustered dataset with (cluster, time) dimensions
+        is_clustered_dataset = 'cluster' in ds.dims and reference_structure.get('is_clustered', False)
+
+        if is_clustered_dataset:
+            # Clustered dataset: create synthetic DatetimeIndex
+            n_clusters = ds.sizes['cluster']
+            timesteps_per_cluster = ds.sizes['time']
+            n_total_timesteps = n_clusters * timesteps_per_cluster
+            timestep_duration_hours = reference_structure.get('timestep_duration', 1.0)
+
+            # Create synthetic DatetimeIndex for compatibility
+            synthetic_timesteps = pd.date_range(
+                start='2000-01-01',
+                periods=n_total_timesteps,
+                freq=pd.Timedelta(hours=timestep_duration_hours),
+                name='time',
+            )
+
+            # cluster_weight for clustered mode is (cluster,) shaped - don't pass to constructor
+            # It will be set separately after FlowSystem creation
+            cluster_weight_for_constructor = None
+        else:
+            # Regular dataset: use time index directly
+            synthetic_timesteps = ds.indexes['time']
+            cluster_weight_for_constructor = (
+                cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+                if 'cluster_weight' in reference_structure
+                else None
+            )
+
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=ds.indexes['time'],
+            timesteps=synthetic_timesteps,
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
@@ -693,13 +727,29 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario_weights=cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
             if 'scenario_weights' in reference_structure
             else None,
-            cluster_weight=cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
-            if 'cluster_weight' in reference_structure
-            else None,
+            cluster_weight=cluster_weight_for_constructor,
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
             name=reference_structure.get('name'),
         )
+
+        # For clustered datasets, store the 2D data and set up cluster structure
+        if is_clustered_dataset:
+            flow_system._clustered_data = ds
+            flow_system._cluster_info = {
+                'n_clusters': n_clusters,
+                'timesteps_per_cluster': timesteps_per_cluster,
+                'timestep_duration': timestep_duration_hours,
+            }
+            # Override timestep_duration to have correct shape for 2D cluster structure
+            # Shape: (time,) = (timesteps_per_cluster,) - broadcasts with (cluster, time)
+            flow_system.timestep_duration = xr.DataArray(
+                np.full(timesteps_per_cluster, timestep_duration_hours),
+                dims=['time'],
+                coords={'time': np.arange(timesteps_per_cluster)},
+                name='timestep_duration',
+            )
+            # cluster_weight will be set after Clustering object is attached
 
         # Restore components
         components_structure = reference_structure.get('components', {})
@@ -1847,11 +1897,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             Dict mapping dimension names to coordinate arrays.
         """
-        if self.is_clustered and self._use_true_cluster_dims:
+        if self._use_true_cluster_dims:
             # True (cluster, time) dimensions
+            n_clusters = self._cluster_n_clusters
+            timesteps_per_cluster = self._cluster_timesteps_per_cluster
             active_coords = {
-                'cluster': pd.Index(range(self.clustering.n_clusters), name='cluster'),
-                'time': pd.Index(range(self.clustering.timesteps_per_cluster), name='time'),
+                'cluster': pd.Index(range(n_clusters), name='cluster'),
+                'time': pd.Index(range(timesteps_per_cluster), name='time'),
             }
         else:
             active_coords = {'time': self.timesteps}
@@ -1866,16 +1918,38 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _use_true_cluster_dims(self) -> bool:
         """Check if true (cluster, time) dimensions should be used.
 
-        This enables the new 2D cluster structure. Currently checks if the
-        clustered data is stored with (cluster, time) dimensions.
+        This enables the new 2D cluster structure. Returns True if:
+        1. The FlowSystem has _clustered_data with 'cluster' dimension, OR
+        2. The FlowSystem has _cluster_info set (from from_dataset)
+
+        Note: This can be True even before clustering is fully set up,
+        to allow variable creation with correct dimensions.
         """
-        if not self.is_clustered:
-            return False
-        # Check if the clustered data has 2D structure
-        # This is indicated by 'cluster' being a dimension in the dataset
+        # Check for 2D clustered data structure
         if hasattr(self, '_clustered_data') and self._clustered_data is not None:
             return 'cluster' in self._clustered_data.dims
+        # Check for cluster info from from_dataset
+        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
+            return True
         return False
+
+    @property
+    def _cluster_n_clusters(self) -> int | None:
+        """Get number of clusters from cluster info or clustering object."""
+        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
+            return self._cluster_info['n_clusters']
+        if self.is_clustered:
+            return self.clustering.n_clusters
+        return None
+
+    @property
+    def _cluster_timesteps_per_cluster(self) -> int | None:
+        """Get timesteps per cluster from cluster info or clustering object."""
+        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
+            return self._cluster_info['timesteps_per_cluster']
+        if self.is_clustered:
+            return self.clustering.timesteps_per_cluster
+        return None
 
     @property
     def n_timesteps(self) -> int:

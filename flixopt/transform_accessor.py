@@ -720,55 +720,77 @@ class TransformAccessor:
         n_reduced_timesteps = len(first_tsam.typicalPeriods)
         actual_n_clusters = len(first_tsam.clusterPeriodNoOccur)
 
-        # Create new time index (needed for weights and typical periods)
-        # Currently using flat time dimension - true (cluster, time) dims to be implemented
-        new_time_index = pd.date_range(
-            start=self._fs.timesteps[0], periods=n_reduced_timesteps, freq=pd.Timedelta(hours=dt)
-        )
+        # ═══════════════════════════════════════════════════════════════════════
+        # TRUE (cluster, time) DIMENSIONS
+        # ═══════════════════════════════════════════════════════════════════════
+        # Create coordinates for the 2D cluster structure
+        cluster_coords = np.arange(actual_n_clusters)
+        time_coords = np.arange(timesteps_per_cluster)  # Integer indices within cluster
 
-        # Create timestep weights from cluster occurrences (per period/scenario)
-        def _build_weights_for_key(key: tuple) -> xr.DataArray:
+        # Create cluster_weight: shape (cluster,) - one weight per cluster
+        # This is the number of original periods each cluster represents
+        def _build_cluster_weight_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            weights = np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
-            return xr.DataArray(weights, dims=['time'], coords={'time': new_time_index})
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
 
-        # Build weights - use _combine_slices_to_dataarray for consistent multi-dim handling
-        weights_slices = {key: _build_weights_for_key(key) for key in cluster_occurrences_all}
-        # Create a dummy 1D DataArray as template for _combine_slices_to_dataarray
-        dummy_template = xr.DataArray(np.zeros(n_reduced_timesteps), dims=['time'])
-        timestep_weights = self._combine_slices_to_dataarray(
-            weights_slices, dummy_template, new_time_index, periods, scenarios
+        # Build cluster_weight - use _combine_slices_to_dataarray_generic for multi-dim handling
+        weight_slices = {key: _build_cluster_weight_for_key(key) for key in cluster_occurrences_all}
+        cluster_weight = self._combine_slices_to_dataarray_generic(
+            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
         )
 
-        logger.info(f'Reduced from {len(self._fs.timesteps)} to {n_reduced_timesteps} timesteps')
+        logger.info(
+            f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
+        )
         logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
 
-        # Build typical periods DataArrays keyed by (variable_name, (period, scenario))
+        # Build typical periods DataArrays with (cluster, time) shape
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
         for key, tsam_agg in tsam_results.items():
             typical_df = tsam_agg.typicalPeriods
             for col in typical_df.columns:
+                # Reshape flat data to (cluster, time)
+                flat_data = typical_df[col].values
+                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
                 typical_das.setdefault(col, {})[key] = xr.DataArray(
-                    typical_df[col].values, dims=['time'], coords={'time': new_time_index}
+                    reshaped,
+                    dims=['cluster', 'time'],
+                    coords={'cluster': cluster_coords, 'time': time_coords},
                 )
 
-        # Build reduced dataset
+        # Build reduced dataset with (cluster, time) dimensions
         all_keys = {(p, s) for p in periods for s in scenarios}
         ds_new_vars = {}
         for name, original_da in ds.data_vars.items():
             if 'time' not in original_da.dims:
                 ds_new_vars[name] = original_da.copy()
             elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
-                # Time-dependent but constant (or not present in all clustering results): slice to new time length
-                ds_new_vars[name] = original_da.isel(time=slice(0, n_reduced_timesteps)).assign_coords(
-                    time=new_time_index
+                # Time-dependent but constant: reshape to (cluster, time, ...)
+                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
+                # Get the shape - time is first, other dims follow
+                other_dims = [d for d in sliced.dims if d != 'time']
+                other_shape = [sliced.sizes[d] for d in other_dims]
+                # Reshape: (n_reduced_timesteps, ...) -> (n_clusters, timesteps_per_cluster, ...)
+                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
+                reshaped = sliced.values.reshape(new_shape)
+                # Build coords
+                new_coords = {'cluster': cluster_coords, 'time': time_coords}
+                for dim in other_dims:
+                    new_coords[dim] = sliced.coords[dim].values
+                ds_new_vars[name] = xr.DataArray(
+                    reshaped,
+                    dims=['cluster', 'time'] + other_dims,
+                    coords=new_coords,
+                    attrs=original_da.attrs,
                 )
             else:
-                # Time-varying: combine per-(period, scenario) slices
-                da = self._combine_slices_to_dataarray(
+                # Time-varying: combine per-(period, scenario) slices with (cluster, time) dims
+                da = self._combine_slices_to_dataarray_2d(
                     slices=typical_das[name],
                     original_da=original_da,
-                    new_time_index=new_time_index,
+                    cluster_coords=cluster_coords,
+                    time_coords=time_coords,
                     periods=periods,
                     scenarios=scenarios,
                 )
@@ -779,12 +801,12 @@ class TransformAccessor:
         ds_new = xr.Dataset(ds_new_vars, attrs=ds.attrs)
         ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
         ds_new.attrs['timestep_duration'] = dt
+        ds_new.attrs['n_clusters'] = actual_n_clusters
+        ds_new.attrs['is_clustered'] = True
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
-        # Set cluster_weight - might have period/scenario dimensions
-        reduced_fs.cluster_weight = reduced_fs.fit_to_model_coords(
-            'cluster_weight', timestep_weights, dims=['scenario', 'period', 'time']
-        )
+        # Set cluster_weight - shape (cluster,) possibly with period/scenario dimensions
+        reduced_fs.cluster_weight = cluster_weight
 
         # Remove 'equals_final' from storages - doesn't make sense on reduced timesteps
         # Set to None so initial SOC is free (handled by storage_mode constraints)
@@ -863,10 +885,22 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
+        # Create representative_weights in flat format for ClusterResult compatibility
+        # This repeats each cluster's weight for all timesteps within that cluster
+        def _build_flat_weights_for_key(key: tuple) -> xr.DataArray:
+            occurrences = cluster_occurrences_all[key]
+            weights = np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
+            return xr.DataArray(weights, dims=['time'], name='representative_weights')
+
+        flat_weights_slices = {key: _build_flat_weights_for_key(key) for key in cluster_occurrences_all}
+        representative_weights = self._combine_slices_to_dataarray_generic(
+            flat_weights_slices, ['time'], periods, scenarios, 'representative_weights'
+        )
+
         aggregation_result = ClusterResult(
             timestep_mapping=timestep_mapping_da,
             n_representatives=n_reduced_timesteps,
-            representative_weights=timestep_weights.rename('representative_weights'),
+            representative_weights=representative_weights,
             cluster_structure=cluster_structure,
             original_data=ds,
             aggregated_data=ds_new,
