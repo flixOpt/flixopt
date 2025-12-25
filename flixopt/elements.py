@@ -679,7 +679,8 @@ class FlowModel(ElementModel):
         # Total flow hours tracking (per period)
         # Sum over all temporal dimensions (time, and cluster if present)
         weighted_flow = self.flow_rate * self._model.aggregation_weight
-        temporal_dims = [d for d in weighted_flow.dims if d not in ('period', 'scenario')]
+        # Get temporal_dims from aggregation_weight (not weighted_flow which has linopy's _term dim)
+        temporal_dims = [d for d in self._model.aggregation_weight.dims if d not in ('period', 'scenario')]
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
