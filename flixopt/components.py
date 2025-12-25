@@ -1515,6 +1515,11 @@ class InterclusterStorageModel(StorageModel):
 
             if has_investment and self.investment is not None:
                 self.add_constraints(combined <= self.investment.size, short_name=f'soc_ub_{sample_name}')
+            elif not has_investment and isinstance(self.element.capacity_in_flow_hours, (int, float)):
+                # Fixed-capacity storage: upper bound is the fixed capacity
+                self.add_constraints(
+                    combined <= self.element.capacity_in_flow_hours, short_name=f'soc_ub_{sample_name}'
+                )
 
 
 @register_class_for_io
