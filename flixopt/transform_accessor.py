@@ -721,6 +721,7 @@ class TransformAccessor:
         actual_n_clusters = len(first_tsam.clusterPeriodNoOccur)
 
         # Create new time index (needed for weights and typical periods)
+        # Currently using flat time dimension - true (cluster, time) dims to be implemented
         new_time_index = pd.date_range(
             start=self._fs.timesteps[0], periods=n_reduced_timesteps, freq=pd.Timedelta(hours=dt)
         )
@@ -972,6 +973,54 @@ class TransformAccessor:
         result = result.transpose(base_dims[0], ...)
 
         return result.rename(name)
+
+    @staticmethod
+    def _combine_slices_to_dataarray_2d(
+        slices: dict[tuple, xr.DataArray],
+        original_da: xr.DataArray,
+        cluster_coords: np.ndarray,
+        time_coords: np.ndarray,
+        periods: list,
+        scenarios: list,
+    ) -> xr.DataArray:
+        """Combine per-(period, scenario) slices into a multi-dimensional DataArray with (cluster, time) dims.
+
+        Args:
+            slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
+            original_da: Original DataArray to get attrs from.
+            cluster_coords: Cluster coordinate values.
+            time_coords: Within-cluster time coordinate values.
+            periods: List of period labels ([None] if no periods dimension).
+            scenarios: List of scenario labels ([None] if no scenarios dimension).
+
+        Returns:
+            DataArray with dimensions (cluster, time, period?, scenario?).
+        """
+        first_key = (periods[0], scenarios[0])
+        has_periods = periods != [None]
+        has_scenarios = scenarios != [None]
+
+        # Simple case: no period/scenario dimensions
+        if not has_periods and not has_scenarios:
+            return slices[first_key].assign_attrs(original_da.attrs)
+
+        # Multi-dimensional: use xr.concat to stack along period/scenario dims
+        if has_periods and has_scenarios:
+            # Stack scenarios first, then periods
+            period_arrays = []
+            for p in periods:
+                scenario_arrays = [slices[(p, s)] for s in scenarios]
+                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
+            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
+        elif has_periods:
+            result = xr.concat([slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
+        else:
+            result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
+
+        # Put cluster and time first (standard order for clustered data)
+        result = result.transpose('cluster', 'time', ...)
+
+        return result.assign_attrs(original_da.attrs)
 
     def expand_solution(self) -> FlowSystem:
         """Expand a reduced (clustered) FlowSystem back to full original timesteps.

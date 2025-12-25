@@ -367,7 +367,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         Args:
             dims: The dimensions to include in the coordinates. If None, includes all dimensions
-            extra_timestep: If True, uses extra timesteps instead of regular timesteps
+            extra_timestep: If True, uses extra timesteps instead of regular timesteps.
+                For clustered FlowSystems, extends time by 1 (for charge_state boundaries).
 
         Returns:
             The coordinates of the model, or None if no coordinates are available
@@ -384,7 +385,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
 
         if extra_timestep and coords:
-            coords['time'] = self.flow_system.timesteps_extra
+            if self.flow_system.is_clustered:
+                # For clustered: extend time by 1 within each cluster (for charge_state)
+                n_time = self.flow_system.clustering.timesteps_per_cluster + 1
+                coords['time'] = pd.Index(range(n_time), name='time')
+            else:
+                coords['time'] = self.flow_system.timesteps_extra
 
         return xr.Coordinates(coords) if coords else None
 

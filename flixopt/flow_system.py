@@ -1839,12 +1839,50 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
-        active_coords = {'time': self.timesteps}
+        """Active coordinates for variable creation.
+
+        Returns a dict of dimension names to coordinate arrays. When clustered
+        with true dimensions enabled, includes 'cluster' dimension before 'time'.
+
+        Returns:
+            Dict mapping dimension names to coordinate arrays.
+        """
+        if self.is_clustered and self._use_true_cluster_dims:
+            # True (cluster, time) dimensions
+            active_coords = {
+                'cluster': pd.Index(range(self.clustering.n_clusters), name='cluster'),
+                'time': pd.Index(range(self.clustering.timesteps_per_cluster), name='time'),
+            }
+        else:
+            active_coords = {'time': self.timesteps}
+
         if self.periods is not None:
             active_coords['period'] = self.periods
         if self.scenarios is not None:
             active_coords['scenario'] = self.scenarios
         return active_coords
+
+    @property
+    def _use_true_cluster_dims(self) -> bool:
+        """Check if true (cluster, time) dimensions should be used.
+
+        This enables the new 2D cluster structure. Currently checks if the
+        clustered data is stored with (cluster, time) dimensions.
+        """
+        if not self.is_clustered:
+            return False
+        # Check if the clustered data has 2D structure
+        # This is indicated by 'cluster' being a dimension in the dataset
+        if hasattr(self, '_clustered_data') and self._clustered_data is not None:
+            return 'cluster' in self._clustered_data.dims
+        return False
+
+    @property
+    def n_timesteps(self) -> int:
+        """Number of timesteps (within each cluster if clustered)."""
+        if self.is_clustered:
+            return self.clustering.timesteps_per_cluster
+        return len(self.timesteps)
 
     @property
     def used_in_calculation(self) -> bool:
@@ -1924,6 +1962,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             interface (via `flow_system.weights`) is recommended for new code.
         """
         return self.timestep_duration * self.cluster_weight
+
+    @property
+    def is_clustered(self) -> bool:
+        """Check if this FlowSystem uses time series clustering.
+
+        Returns:
+            True if the FlowSystem was created with transform.cluster(),
+            False otherwise.
+
+        Example:
+            >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+            >>> fs_clustered.is_clustered
+            True
+            >>> flow_system.is_clustered
+            False
+        """
+        return getattr(self, 'clustering', None) is not None
 
     def _validate_scenario_parameter(self, value: bool | list[str], param_name: str, element_type: str) -> None:
         """

@@ -964,7 +964,15 @@ class Clustering:
 
     @property
     def timesteps_per_period(self) -> int:
-        """Number of timesteps in each period/cluster."""
+        """Number of timesteps in each period/cluster.
+
+        Alias for :attr:`timesteps_per_cluster`.
+        """
+        return self.timesteps_per_cluster
+
+    @property
+    def timesteps_per_cluster(self) -> int:
+        """Number of timesteps in each cluster."""
         if self.result.cluster_structure is None:
             raise ValueError('No cluster_structure available')
         return self.result.cluster_structure.timesteps_per_cluster
