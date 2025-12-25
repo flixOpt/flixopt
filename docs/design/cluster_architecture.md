@@ -238,31 +238,64 @@ Given the requirements for:
 
 ## Part 3: Impact on Features
 
-### 3.1 StatusModel Impact
+### 3.1 StatusModel Impact - CRITICAL ISSUE
 
-**Current Code (features.py:200-211):**
-```python
-# Active hours tracking
-tracked_expression=(self.status * self._model.aggregation_weight).sum('time')
+**Problem:** StatusModel has temporal constraints that span timesteps:
+
+| Constraint | Current Behavior | Problem with Clustering |
+|------------|------------------|------------------------|
+| `min_uptime=4` | Must stay on 4 consecutive hours | Spans cluster boundaries incorrectly |
+| `min_downtime=2` | Must stay off 2 consecutive hours | Same issue |
+| `initial_status` | Status before t=0 | Undefined at each cluster start |
+| `effects_per_startup` | Cost per on→off transition | Counted per cluster, not per original period |
+
+**Example of the bug:**
+```
+Cluster 0: [t=0...t=95]  - component turns ON at t=90
+Cluster 1: [t=96...t=191] - different typical day!
+
+With min_uptime=8:
+- Current: Constraint forces component to stay on t=90→t=97 (spans into cluster 1)
+- Reality: Cluster 1 is a DIFFERENT day, constraint makes no sense
 ```
 
-**With Enhanced Helpers:**
-No changes needed - `aggregation_weight` already handles clustering correctly.
+**Options for StatusModel with Clustering:**
 
-**Potential Enhancement:**
-Could add per-cluster status summaries for visualization:
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **independent** | Each cluster has independent status constraints | Most common - typical days are independent |
+| **cyclic** | Status at cluster end = status at cluster start | Repeating patterns |
+| **ignore_temporal** | Disable min_uptime/downtime when clustered | Simple approximation |
+
+**Recommended Approach:**
 ```python
-@property
-def status_per_cluster(self) -> xr.DataArray:
-    """Active hours per cluster."""
-    clustering = self.flow_system.clustering
-    if clustering is None:
-        return None
-    # Use helpers to compute per-cluster active time
-    return clustering.aggregate_per_cluster(
-        self.status * self._model.timestep_duration
-    )
+class StatusParameters:
+    # Existing
+    min_uptime: float | None = None
+    min_downtime: float | None = None
+    initial_status: bool | None = None
+
+    # NEW: How to handle with clustering
+    cluster_mode: Literal['independent', 'cyclic', 'ignore_temporal'] = 'independent'
 ```
+
+**Implementation for `cluster_mode='independent'`:**
+```python
+# In StatusModel, when adding consecutive duration constraints:
+if clustering is not None and self.cluster_mode == 'independent':
+    # Mask out constraints at cluster boundaries
+    # Each cluster is treated independently
+    for constraint in [uptime_constraint, downtime_constraint]:
+        # Don't enforce across cluster boundaries
+        mask = np.ones(n_timesteps, dtype=bool)
+        mask[clustering.cluster_start.values[1:]] = False  # Break at cluster starts
+        constraint = constraint.where(mask)
+```
+
+**What works correctly already:**
+- `active_hours` tracking uses `aggregation_weight` → ✅ correct
+- `effects_per_active_hour` uses `timestep_duration` → ✅ correct
+- Total startup count (if properly weighted) → needs `cluster_weight`
 
 ### 3.2 StorageModel Impact
 
@@ -297,6 +330,20 @@ No changes needed - `cluster_weight` structure preserved.
 
 **With Enhanced Helpers:**
 No changes needed - operates on flat time dimension.
+
+### 3.5 Summary: Models Requiring Cluster-Awareness
+
+| Model | Has Cross-Timestep Constraints | Clustering Impact | Action Needed |
+|-------|-------------------------------|-------------------|---------------|
+| **StorageModel** | charge_state[t] depends on charge_state[t-1] | ✅ Already handled | InterclusterStorageModel exists |
+| **StatusModel** | min_uptime, min_downtime, initial_status | ❌ **BUG** | Add cluster_mode parameter |
+| **consecutive_duration_tracking** | State machine for uptime/downtime | ❌ **BUG** | Break at cluster boundaries |
+| **state_transition_bounds** | activate[t] depends on status[t-1] | ⚠️ Partial | May span boundaries incorrectly |
+| **PiecewiseModel** | Per-timestep only | ✅ OK | No changes needed |
+| **ShareAllocationModel** | Uses cluster_weight | ✅ OK | No changes needed |
+| **InvestmentModel** | No time dimension | ✅ OK | No changes needed |
+
+**Key Insight:** Any constraint of the form `x[t] - x[t-1]` or `x[t:t+n]` needs cluster boundary handling.
 
 ---
 
@@ -664,7 +711,35 @@ def expand_solution():
             expanded = result.expand_data(var_data)
 ```
 
-### Phase 4: Cluster-Aware Plotting (Minimal Code)
+### Phase 4: Fix StatusModel & Temporal Constraints
+
+**Goal:** Handle cross-timestep constraints correctly with clustering.
+
+**Tasks:**
+1. Add `cluster_mode` parameter to `StatusParameters` (default: `'independent'`)
+2. Update `consecutive_duration_tracking` to break at cluster boundaries
+3. Update `state_transition_bounds` to handle cluster boundaries
+4. Add warning/error if incompatible constraints used with clustering
+
+**Implementation:**
+```python
+# In modeling.py consecutive_duration_tracking:
+def consecutive_duration_tracking(..., clustering=None):
+    ...
+    if clustering is not None:
+        # Don't track duration across cluster boundaries
+        # Reset tracking at start of each cluster
+        reset_mask = np.zeros(n_timesteps, dtype=bool)
+        reset_mask[clustering.cluster_start.values] = True
+        # Modify constraints to reset at cluster starts
+```
+
+**Files:**
+- `flixopt/interface.py` - Add `cluster_mode` to `StatusParameters`
+- `flixopt/modeling.py` - Update `consecutive_duration_tracking`, `state_transition_bounds`
+- `flixopt/features.py` - Update `StatusModel` to use cluster_mode
+
+### Phase 5: Cluster-Aware Plotting (Minimal Code)
 
 **Goal:** Leverage existing plot infrastructure - no new methods needed!
 
