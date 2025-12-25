@@ -643,6 +643,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
+        # Include cluster info for 2D clustered FlowSystems
+        if self._use_true_cluster_dims:
+            ds.attrs['is_clustered'] = True
+            ds.attrs['n_clusters'] = self._cluster_n_clusters
+            ds.attrs['timesteps_per_cluster'] = self._cluster_timesteps_per_cluster
+            if hasattr(self, '_cluster_info') and self._cluster_info is not None:
+                ds.attrs['timestep_duration'] = self._cluster_info.get('timestep_duration', 1.0)
+            elif hasattr(self, 'timestep_duration') and self.timestep_duration is not None:
+                ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
+            else:
+                ds.attrs['timestep_duration'] = 1.0
+
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
