@@ -664,18 +664,46 @@ def expand_solution():
             expanded = result.expand_data(var_data)
 ```
 
-### Phase 4: Cluster Plotting
+### Phase 4: Cluster-Aware Plotting (Minimal Code)
 
-**Goal:** Individual cluster visualization.
+**Goal:** Leverage existing plot infrastructure - no new methods needed!
+
+**Key Insight:** Add `cluster` as a coordinate to solution data, then existing faceting works:
+
+```python
+# EXISTING API - no new methods needed!
+fs.statistics.plot.storage('Battery', facet_col='cluster')  # faceted by cluster
+fs.statistics.plot.balance('Heat', facet_col='cluster')     # works automatically
+fs.statistics.plot.flows(..., facet_col='cluster')          # same pattern
+```
 
 **Tasks:**
-1. Add `storage_by_cluster()` - faceted view of each cluster
-2. Add `cluster_heatmap()` - clusters on y-axis, within-cluster time on x-axis
-3. Add cluster separator lines to existing time series plots
-4. Add `intercluster_soc()` for SOC_boundary visualization
+1. Add `cluster` coordinate to solution Dataset when clustered
+2. Auto-add cluster separator lines in time series plots (if clustered)
+3. Ensure `facet_col='cluster'` works with existing plot methods
+
+**Implementation:**
+```python
+# In expand_solution() or statistics accessor:
+if flow_system.is_clustered:
+    # Add cluster coordinate to all time-dimensioned variables
+    solution = solution.assign_coords(cluster=('time', clustering.cluster.values))
+
+# In plot methods (minimal change):
+def _create_base_plot(self, data, **kwargs):
+    fig = ...  # existing logic
+
+    # Auto-add cluster separators if clustered
+    if self._fs.is_clustered and 'time' in data.dims:
+        for idx in self._fs.clustering.cluster_start.values[1:]:
+            fig.add_vline(x=idx, line_dash='dot', opacity=0.3)
+
+    return fig
+```
 
 **Files:**
-- `flixopt/statistics_accessor.py` - Add plot methods
+- `flixopt/transform_accessor.py` - Add cluster coord in expand_solution()
+- `flixopt/statistics_accessor.py` - Add separator lines (small change to base plot)
 
 ---
 
@@ -783,17 +811,25 @@ peak_mask = clustering.within_cluster_time == 18
 peak_values = data.where(peak_mask, drop=True)
 ```
 
-### B.2 Faceted Storage Plot
+### B.2 Cluster Plotting (Uses Existing API!)
 
 ```python
-# Plot storage with each cluster as separate subplot
-fs.statistics.plot.storage_by_cluster('Battery')
+# ═══════════════════════════════════════════════════════════════
+# Facet by cluster - uses existing facet_col parameter
+# ═══════════════════════════════════════════════════════════════
+fs.statistics.plot.storage('Battery', facet_col='cluster')
+fs.statistics.plot.balance('Heat', facet_col='cluster')
+fs.statistics.plot.flows(..., facet_col='cluster')
 
-# Heatmap: clusters on y-axis, within-cluster time on x-axis
-fs.statistics.plot.cluster_heatmap('HeatDemand|Q_th')
+# ═══════════════════════════════════════════════════════════════
+# Regular plots auto-add cluster separator lines when clustered
+# ═══════════════════════════════════════════════════════════════
+fs.statistics.plot.storage('Battery')  # separators added automatically
 
-# Inter-cluster SOC trajectory
-fs.statistics.plot.intercluster_soc('Battery')
+# ═══════════════════════════════════════════════════════════════
+# Combine with other facets
+# ═══════════════════════════════════════════════════════════════
+fs.statistics.plot.balance('Heat', facet_col='cluster', facet_row='scenario')
 ```
 
 ### B.3 Check Clustering Status
