@@ -1,4 +1,4 @@
-The enhanced# Design Document: Cluster Architecture for flixopt
+# Design Document: Cluster Architecture for flixopt
 
 ## Executive Summary
 
@@ -57,42 +57,135 @@ time: (n_clusters × timesteps_per_cluster,)  # Flat, e.g., (864,) for 9 cluster
 
 ## Part 2: Architectural Options
 
-### 2.1 Option A: Enhanced Flat with Cluster Helpers (Recommended)
+### 2.1 Option A: Enhanced Flat with xarray-based Indexers (Recommended)
 
-Keep flat `time` dimension but add rich helper infrastructure:
+Keep flat `time` dimension but add **xarray-based indexer properties** that work seamlessly with `.isel()`:
 
 ```python
 class Clustering:
-    # Core properties
-    cluster_labels: xr.DataArray      # (time,) or (time, period, scenario)
-    timesteps_per_cluster: xr.DataArray  # (cluster,) or (cluster, period, scenario)
+    # ═══════════════════════════════════════════════════════════════
+    # CORE INDEXER PROPERTIES (xarray DataArrays)
+    # ═══════════════════════════════════════════════════════════════
 
-    # Index helpers (period/scenario-aware)
-    def cluster_start_indices(self, period=None, scenario=None) -> np.ndarray
-    def cluster_end_indices(self, period=None, scenario=None) -> np.ndarray
-    def cluster_slices(self, period=None, scenario=None) -> dict[int, slice]
+    @property
+    def cluster_start(self) -> xr.DataArray:
+        """Time indices of cluster starts.
 
-    # Data access helpers
-    def get_cluster_data(self, data, cluster_id, period=None, scenario=None)
-    def iter_clusters(self, data, period=None, scenario=None)
-    def get_cluster_boundaries(self, data, period=None, scenario=None)
-    def compute_delta_per_cluster(self, data, period=None, scenario=None)
+        Shape: (cluster,)
+        Values: [0, 96, 192, ...] for 96 timesteps per cluster
 
-    # Boundary variability
-    boundaries_vary: bool
-    boundaries_vary_by_period: bool
-    boundaries_vary_by_scenario: bool
+        Usage:
+            # Select start of each cluster (broadcasts across period/scenario)
+            data.isel(time=clustering.cluster_start)
+
+            # Shift by 1 for "second timestep of each cluster"
+            data.isel(time=clustering.cluster_start + 1)
+        """
+
+    @property
+    def cluster_end(self) -> xr.DataArray:
+        """Time indices of cluster ends (last timestep, inclusive).
+
+        Shape: (cluster,)
+        Values: [95, 191, 287, ...] for 96 timesteps per cluster
+
+        Usage:
+            # Select end of each cluster
+            data.isel(time=clustering.cluster_end)
+
+            # Compute delta (end - start) for each cluster
+            delta = data.isel(time=clustering.cluster_end) - data.isel(time=clustering.cluster_start)
+        """
+
+    @property
+    def within_cluster_time(self) -> xr.DataArray:
+        """Within-cluster time index for each timestep.
+
+        Shape: (time,)
+        Values: [0, 1, 2, ..., 95, 0, 1, 2, ..., 95, ...]  # repeating pattern
+
+        Usage:
+            # Select all timesteps at position 12 within their cluster
+            mask = clustering.within_cluster_time == 12
+            data.where(mask, drop=True)
+        """
+
+    @property
+    def cluster(self) -> xr.DataArray:
+        """Cluster ID for each timestep.
+
+        Shape: (time,)
+        Values: [0, 0, ..., 0, 1, 1, ..., 1, ...]  # cluster assignment
+
+        Usage:
+            # Group by cluster
+            data.groupby(clustering.cluster).mean()
+        """
+
+    # ═══════════════════════════════════════════════════════════════
+    # CONVENIENCE PROPERTIES
+    # ═══════════════════════════════════════════════════════════════
+
+    @property
+    def n_clusters(self) -> int:
+        """Number of clusters."""
+
+    @property
+    def timesteps_per_cluster(self) -> int:
+        """Timesteps in each cluster (uniform)."""
+
+    @property
+    def cluster_coords(self) -> xr.DataArray:
+        """Cluster coordinate values: [0, 1, 2, ..., n_clusters-1]"""
+```
+
+**Key Design Principle: Indexers are xarray DataArrays**
+
+This enables powerful, dimension-preserving operations:
+
+```python
+# ═══════════════════════════════════════════════════════════════
+# EXAMPLE: Select start of each cluster (works across all dims!)
+# ═══════════════════════════════════════════════════════════════
+charge_state = ...  # shape: (time, period, scenario) e.g., (864, 2, 3)
+
+# Get cluster starts - returns shape (cluster, period, scenario)
+cs_at_starts = charge_state.isel(time=clustering.cluster_start)
+# Result shape: (9, 2, 3) for 9 clusters
+
+# ═══════════════════════════════════════════════════════════════
+# EXAMPLE: Compute delta per cluster
+# ═══════════════════════════════════════════════════════════════
+delta = (
+    charge_state.isel(time=clustering.cluster_end) -
+    charge_state.isel(time=clustering.cluster_start)
+)
+# Result shape: (cluster, period, scenario) = (9, 2, 3)
+
+# ═══════════════════════════════════════════════════════════════
+# EXAMPLE: Shift indexer for charge_state (has extra timestep!)
+# ═══════════════════════════════════════════════════════════════
+# charge_state has shape (time+1,) due to extra boundary timestep
+# Need to shift indices by cluster position
+cs_at_ends = charge_state.isel(time=clustering.cluster_end + 1)  # +1 for boundary
+
+# ═══════════════════════════════════════════════════════════════
+# EXAMPLE: Select specific within-cluster position
+# ═══════════════════════════════════════════════════════════════
+# Get all values at hour 12 within each cluster
+hour_12_mask = clustering.within_cluster_time == 12
+peak_values = data.where(hour_12_mask, drop=True)
 ```
 
 **Pros:**
-- Supports variable-length clusters
-- Supports different boundaries per period/scenario
-- Minimal breaking changes
-- linopy-compatible
+- Pure xarray - no numpy/dict gymnastics
+- Dimension-preserving: indexers broadcast across period/scenario automatically
+- Easy adjustments: `cluster_start + 1`, `cluster_end - 1`
+- Works with linopy variables directly
+- Clean, intuitive API
 
 **Cons:**
-- Less intuitive than true `(cluster, time)` shape
-- Requires helper methods for clean code
+- tsam uniform segments only (sufficient per user requirement)
 
 ### 2.2 Option B: True (cluster, time) Dimensions
 
@@ -485,67 +578,104 @@ def _add_charge_state_for_slice(self, period, scenario):
 
 ---
 
-## Part 6: Implementation Roadmap
+## Part 6: Implementation Roadmap (Focused)
 
-### Phase 1: Core Helpers (Minimal Change)
+### Phase 1: xarray-based Indexers (PRIORITY)
 
-**Goal:** Add cluster helpers without changing existing behavior.
-
-**Tasks:**
-1. Add `is_clustered`, `n_clusters` to FlowSystem
-2. Add `cluster_labels`, `cluster_slices`, index methods to Clustering
-3. Add `boundaries_vary` flag infrastructure
-4. Refactor InterclusterStorageModel to use helpers
-
-**Files:**
-- `flixopt/clustering/base.py`
-- `flixopt/flow_system.py`
-- `flixopt/components.py`
-
-### Phase 2: Plotting Improvements
-
-**Goal:** Better cluster visualization UX.
+**Goal:** Add xarray-based cluster indexer properties to `Clustering`.
 
 **Tasks:**
-1. Add cluster separator lines to time series plots
-2. Implement `storage_by_cluster()` faceted view
-3. Add `cluster_summary()` statistics
-4. Implement `cluster_heatmap()`
-5. Add `intercluster_soc()` for inter-cluster storage
+1. Add `cluster_start` property → `xr.DataArray` with dims `(cluster,)`
+2. Add `cluster_end` property → `xr.DataArray` with dims `(cluster,)`
+3. Add `cluster` property → `xr.DataArray` with dims `(time,)` for cluster labels
+4. Add `within_cluster_time` property → `xr.DataArray` with dims `(time,)`
+5. Add convenience: `n_clusters`, `timesteps_per_cluster`, `cluster_coords`
+6. Add `is_clustered` property to `FlowSystem`
 
 **Files:**
-- `flixopt/statistics_accessor.py`
-- `flixopt/plotting.py`
+- `flixopt/clustering/base.py` - Add indexer properties to `Clustering`
+- `flixopt/flow_system.py` - Add `is_clustered` convenience property
 
-### Phase 3: Period/Scenario-Aware Helpers
+**Example Implementation:**
+```python
+@property
+def cluster_start(self) -> xr.DataArray:
+    """Time indices where each cluster starts."""
+    indices = np.arange(0, self.n_clusters * self.timesteps_per_cluster, self.timesteps_per_cluster)
+    return xr.DataArray(indices, dims=['cluster'], coords={'cluster': np.arange(self.n_clusters)})
 
-**Goal:** Support different cluster boundaries per period/scenario.
+@property
+def cluster_end(self) -> xr.DataArray:
+    """Time indices where each cluster ends (inclusive)."""
+    return self.cluster_start + self.timesteps_per_cluster - 1
+```
+
+### Phase 2: Refactor InterclusterStorageModel
+
+**Goal:** Use new xarray indexers in `InterclusterStorageModel`.
 
 **Tasks:**
-1. Extend helper methods with period/scenario parameters
-2. Add `_get_boundaries(period, scenario)` dispatch
-3. Update constraint generation to loop when needed
-4. Update tests for varying boundaries
+1. Replace manual index calculations with `clustering.cluster_start`, `clustering.cluster_end`
+2. Simplify `_compute_delta_soc()` using indexer arithmetic
+3. Simplify `_add_cluster_start_constraints()` using indexers
+4. Handle charge_state offset (extra timestep) cleanly
 
 **Files:**
-- `flixopt/clustering/base.py`
-- `flixopt/components.py`
-- `flixopt/features.py` (if needed)
+- `flixopt/components.py` - Refactor `InterclusterStorageModel`
 
-### Phase 4: Segmentation Infrastructure
+**Before/After Example:**
+```python
+# BEFORE: Manual calculation
+start_positions = clustering.cluster_start_positions
+end_positions = start_positions[1:] - 1
+delta = charge_state.isel(time=end_indices) - charge_state.isel(time=start_indices)
 
-**Goal:** Prepare for tsam segmentation support.
+# AFTER: xarray indexers
+# Note: charge_state has +1 timesteps, so shift accordingly
+delta = (
+    self.charge_state.isel(time=clustering.cluster_end + 1) -
+    self.charge_state.isel(time=clustering.cluster_start)
+)
+```
+
+### Phase 3: expand_solution() with Offset Handling
+
+**Goal:** Proper solution expansion for variables with different time structures.
 
 **Tasks:**
-1. Define `SegmentStructure` dataclass
-2. Integrate with `ClusterStructure`
-3. Update `transform_accessor.cluster()` to accept segmentation params
-4. Update constraint generation for segments
+1. Update `expand_solution()` to detect variable type (regular vs charge_state)
+2. Add offset handling for intercluster charge_state expansion
+3. Map SOC_boundary values to original timeline correctly
+4. Test with all storage cluster_modes
 
 **Files:**
-- `flixopt/clustering/base.py`
-- `flixopt/transform_accessor.py`
-- `flixopt/components.py`
+- `flixopt/transform_accessor.py` - Update `expand_solution()`
+- `flixopt/clustering/base.py` - Add expansion helpers if needed
+
+**Key Insight:**
+```python
+def expand_solution():
+    for var_name, var_data in solution.items():
+        if 'charge_state' in var_name and is_intercluster:
+            # Special handling: map SOC_boundary to original period boundaries
+            expanded = _expand_intercluster_soc(var_data)
+        else:
+            # Normal expansion using timestep_mapping
+            expanded = result.expand_data(var_data)
+```
+
+### Phase 4: Cluster Plotting
+
+**Goal:** Individual cluster visualization.
+
+**Tasks:**
+1. Add `storage_by_cluster()` - faceted view of each cluster
+2. Add `cluster_heatmap()` - clusters on y-axis, within-cluster time on x-axis
+3. Add cluster separator lines to existing time series plots
+4. Add `intercluster_soc()` for SOC_boundary visualization
+
+**Files:**
+- `flixopt/statistics_accessor.py` - Add plot methods
 
 ---
 
@@ -589,12 +719,14 @@ def test_cluster_heatmap():
 
 ---
 
-## Part 8: Open Questions
+## Part 8: Decisions (Resolved)
 
-1. **Naming**: Should the coordinate be `cluster` or `cluster_idx`?
-2. **Default behavior**: When boundaries vary, should helpers require period/scenario or auto-detect?
-3. **Segmentation granularity**: Support arbitrary segments or only tsam's uniform segments?
-4. **Backwards compatibility**: Keep old `cluster_start_positions` property or deprecate?
+| Question | Decision |
+|----------|----------|
+| **Naming** | Use `cluster` as the dimension/coordinate name |
+| **Indexer return type** | Always return proper multi-dimensional xarray DataArrays |
+| **Segmentation** | tsam uniform segments only (sufficient for current needs) |
+| **Backwards compatibility** | Not a concern - this is not released yet |
 
 ---
 
@@ -613,40 +745,67 @@ def test_cluster_heatmap():
 
 ## Appendix B: Code Examples
 
-### B.1 Using Enhanced Helpers
+### B.1 Using xarray Indexers
 
 ```python
-# Get cluster boundaries
 clustering = flow_system.clustering
-starts, ends = clustering.get_cluster_boundaries(charge_state)
 
-# Compute delta SOC per cluster
-delta_soc = clustering.compute_delta_per_cluster(charge_state)
+# ═══════════════════════════════════════════════════════════════
+# Select values at cluster boundaries
+# ═══════════════════════════════════════════════════════════════
+flow_at_starts = flow_rate.isel(time=clustering.cluster_start)
+flow_at_ends = flow_rate.isel(time=clustering.cluster_end)
 
-# Iterate over clusters
-for cluster_id, cluster_data in clustering.iter_clusters(flow_rate):
-    process(cluster_data)
+# ═══════════════════════════════════════════════════════════════
+# Compute delta per cluster (e.g., for storage charge change)
+# ═══════════════════════════════════════════════════════════════
+delta = data.isel(time=clustering.cluster_end) - data.isel(time=clustering.cluster_start)
+# Result has dims: (cluster, period, scenario) if those exist
+
+# ═══════════════════════════════════════════════════════════════
+# Handle charge_state (has extra timestep at end of each cluster)
+# ═══════════════════════════════════════════════════════════════
+# charge_state shape: (time + n_clusters,) due to boundary timesteps
+cs_at_cluster_start = charge_state.isel(time=clustering.cluster_start)
+cs_at_cluster_end = charge_state.isel(time=clustering.cluster_end + 1)  # +1 for boundary
+
+# ═══════════════════════════════════════════════════════════════
+# Group operations by cluster
+# ═══════════════════════════════════════════════════════════════
+mean_per_cluster = data.groupby(clustering.cluster).mean()
+max_per_cluster = data.groupby(clustering.cluster).max()
+
+# ═══════════════════════════════════════════════════════════════
+# Select specific within-cluster timestep
+# ═══════════════════════════════════════════════════════════════
+# Get all peak hours (e.g., hour 18) from each cluster
+peak_mask = clustering.within_cluster_time == 18
+peak_values = data.where(peak_mask, drop=True)
 ```
 
 ### B.2 Faceted Storage Plot
 
 ```python
-# Plot storage with cluster facets
+# Plot storage with each cluster as separate subplot
 fs.statistics.plot.storage_by_cluster('Battery')
 
-# Plot cluster summary
-fs.statistics.plot.cluster_summary('HeatDemand|Q_th', statistic='max')
+# Heatmap: clusters on y-axis, within-cluster time on x-axis
+fs.statistics.plot.cluster_heatmap('HeatDemand|Q_th')
+
+# Inter-cluster SOC trajectory
+fs.statistics.plot.intercluster_soc('Battery')
 ```
 
-### B.3 Variable Boundaries
+### B.3 Check Clustering Status
 
 ```python
-# Check if boundaries vary
-if clustering.boundaries_vary:
-    for period in fs.periods:
-        slices = clustering.cluster_slices(period=period)
-        # Process per-period
+if flow_system.is_clustered:
+    clustering = flow_system.clustering
+    print(f"Clustered: {clustering.n_clusters} clusters × {clustering.timesteps_per_cluster} timesteps")
+
+    # Access indexers
+    print(f"Cluster starts: {clustering.cluster_start.values}")
+    print(f"Cluster ends: {clustering.cluster_end.values}")
 else:
-    slices = clustering.cluster_slices()
-    # Single set of slices
+    print("Not clustered - full time resolution")
 ```
