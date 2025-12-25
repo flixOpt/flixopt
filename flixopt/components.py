@@ -910,6 +910,10 @@ class StorageModel(ComponentModel):
 
     Mathematical Formulation:
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Storage/>
+
+    Note:
+        This class uses a template method pattern. Subclasses (e.g., InterclusterStorageModel)
+        can override individual methods to customize behavior without duplicating code.
     """
 
     element: Storage
@@ -918,10 +922,18 @@ class StorageModel(ComponentModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Create charge state variables, energy balance equations, and optional investment submodels"""
+        """Create charge state variables, energy balance equations, and optional investment submodels."""
         super()._do_modeling()
+        self._create_storage_variables()
+        self._add_netto_discharge_constraint()
+        self._add_energy_balance_constraint()
+        self._add_cluster_cyclic_constraint()
+        self._add_investment_model()
+        self._add_initial_final_constraints()
+        self._add_balanced_sizes_constraint()
 
-        # Create variables
+    def _create_storage_variables(self):
+        """Create charge_state and netto_discharge variables."""
         lb, ub = self._absolute_charge_state_bounds
         self.add_variables(
             lower=lb,
@@ -929,33 +941,31 @@ class StorageModel(ComponentModel):
             coords=self._model.get_coords(extra_timestep=True),
             short_name='charge_state',
         )
-
         self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
 
-        # Create constraints (can now access flow.submodel.flow_rate)
-        # netto_discharge:
-        # eq: nettoFlow(t) - discharging(t) + charging(t) = 0
+    def _add_netto_discharge_constraint(self):
+        """Add constraint: netto_discharge = discharging - charging."""
         self.add_constraints(
             self.netto_discharge
             == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
             short_name='netto_discharge',
         )
 
-        # Build and add energy balance constraint
+    def _add_energy_balance_constraint(self):
+        """Add energy balance constraint linking charge states across timesteps."""
         lhs = self._build_energy_balance_lhs()
-
-        # With 2D (cluster, time) structure, no masking needed - constraint applies within each cluster
         self.add_constraints(lhs == 0, short_name='charge_state')
 
-        # For 'cyclic' mode: each cluster's start equals its end
+    def _add_cluster_cyclic_constraint(self):
+        """For 'cyclic' cluster mode: each cluster's start equals its end."""
         if self._model.flow_system._use_true_cluster_dims and self.element.cluster_mode == 'cyclic':
-            # 2D structure: time=0 is start, time=-2 is last regular timestep (before extra timestep)
             self.add_constraints(
                 self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
                 short_name='cluster_cyclic',
             )
 
-        # Create InvestmentModel and bounding constraints for investment
+    def _add_investment_model(self):
+        """Create InvestmentModel and add capacity-scaled bounds if using investment sizing."""
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
                 InvestmentModel(
@@ -966,7 +976,6 @@ class StorageModel(ComponentModel):
                 ),
                 short_name='investment',
             )
-
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.charge_state,
@@ -974,10 +983,34 @@ class StorageModel(ComponentModel):
                 relative_bounds=self._relative_charge_state_bounds,
             )
 
-        # Initial and final charge state constraints
-        self._initial_and_final_charge_state()
+    def _add_initial_final_constraints(self):
+        """Add initial and final charge state constraints."""
+        if self.element.initial_charge_state is not None:
+            if isinstance(self.element.initial_charge_state, str):
+                self.add_constraints(
+                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1),
+                    short_name='initial_charge_state',
+                )
+            else:
+                self.add_constraints(
+                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
+                    short_name='initial_charge_state',
+                )
 
-        # Balanced sizes
+        if self.element.maximal_final_charge_state is not None:
+            self.add_constraints(
+                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
+                short_name='final_charge_max',
+            )
+
+        if self.element.minimal_final_charge_state is not None:
+            self.add_constraints(
+                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
+                short_name='final_charge_min',
+            )
+
+    def _add_balanced_sizes_constraint(self):
+        """Add constraint ensuring charging and discharging capacities are equal."""
         if self.element.balanced:
             self.add_constraints(
                 self.element.charging.submodel._investment.size * 1
@@ -1010,30 +1043,6 @@ class StorageModel(ComponentModel):
             - charge_rate * eff_charge * timestep_duration
             + discharge_rate * timestep_duration / eff_discharge
         )
-
-    def _initial_and_final_charge_state(self):
-        if self.element.initial_charge_state is not None:
-            if isinstance(self.element.initial_charge_state, str):
-                self.add_constraints(
-                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1), short_name='initial_charge_state'
-                )
-            else:
-                self.add_constraints(
-                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
-                    short_name='initial_charge_state',
-                )
-
-        if self.element.maximal_final_charge_state is not None:
-            self.add_constraints(
-                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
-                short_name='final_charge_max',
-            )
-
-        if self.element.minimal_final_charge_state is not None:
-            self.add_constraints(
-                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
-                short_name='final_charge_min',
-            )
 
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -1220,42 +1229,41 @@ class InterclusterStorageModel(StorageModel):
         soc_boundary = fs_clustered.solution['seasonal_storage|SOC_boundary']
     """
 
+    @property
+    def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+        """Get symmetric bounds for charge_state (ΔE) variable.
+
+        For InterclusterStorageModel, charge_state represents ΔE (relative change
+        from cluster start), which can be negative. Therefore, we need symmetric
+        bounds: -capacity <= ΔE <= capacity.
+
+        Note that for investment-based sizing, additional constraints are added
+        in _add_investment_model to link bounds to the actual investment size.
+        """
+        if self.element.capacity_in_flow_hours is None:
+            return (-np.inf, np.inf)
+        elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
+            return (-cap_max, cap_max)
+        else:
+            cap = self.element.capacity_in_flow_hours
+            return (-cap, cap)
+
     def _do_modeling(self):
         """Create storage model with inter-cluster linking constraints.
 
-        Extends the base StorageModel by:
-        1. Skipping initial/final charge state constraints (handled via SOC_boundary)
-        2. Using symmetric bounds on charge_state (ΔE can be negative)
-        3. Adding SOC_boundary variable and linking constraints
+        Uses template method pattern: calls parent's _do_modeling, then adds
+        inter-cluster linking. Overrides specific methods to customize behavior.
         """
-        # Call grandparent's _do_modeling (ComponentModel), not parent's
-        # We need to rebuild because intercluster mode changes bounds and constraints
-        ComponentModel._do_modeling(self)
+        super()._do_modeling()
+        self._add_intercluster_linking()
 
-        # Create charge_state with symmetric bounds for ΔE
-        lb, ub = self._absolute_charge_state_bounds
-        self.add_variables(
-            lower=lb,
-            upper=ub,
-            coords=self._model.get_coords(extra_timestep=True),
-            short_name='charge_state',
-        )
+    def _add_cluster_cyclic_constraint(self):
+        """Skip cluster cyclic constraint - handled by inter-cluster linking."""
+        pass
 
-        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
-
-        # Create netto_discharge constraint
-        self.add_constraints(
-            self.netto_discharge
-            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
-            short_name='netto_discharge',
-        )
-
-        # Build energy balance using shared helper method
-        # With 2D (cluster, time) structure, no masking needed - constraint applies within each cluster
-        lhs = self._build_energy_balance_lhs()
-        self.add_constraints(lhs == 0, short_name='charge_state')
-
-        # Create InvestmentModel if needed
+    def _add_investment_model(self):
+        """Create InvestmentModel with symmetric bounds for ΔE."""
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
                 InvestmentModel(
@@ -1266,7 +1274,6 @@ class InterclusterStorageModel(StorageModel):
                 ),
                 short_name='investment',
             )
-
             # Symmetric bounds: -size <= charge_state <= size
             self.add_constraints(
                 self.charge_state >= -self.investment.size,
@@ -1277,16 +1284,9 @@ class InterclusterStorageModel(StorageModel):
                 short_name='charge_state|ub',
             )
 
-        # Add inter-cluster linking (the main contribution of this class)
-        self._add_intercluster_linking()
-
-        # Balanced sizes
-        if self.element.balanced:
-            self.add_constraints(
-                self.element.charging.submodel._investment.size * 1
-                == self.element.discharging.submodel._investment.size * 1,
-                short_name='balanced_sizes',
-            )
+    def _add_initial_final_constraints(self):
+        """Skip initial/final constraints - handled by SOC_boundary in inter-cluster linking."""
+        pass
 
     def _add_intercluster_linking(self) -> None:
         """Add inter-cluster storage linking following the S-N model.
