@@ -725,7 +725,13 @@ class TransformAccessor:
         # ═══════════════════════════════════════════════════════════════════════
         # Create coordinates for the 2D cluster structure
         cluster_coords = np.arange(actual_n_clusters)
-        time_coords = np.arange(timesteps_per_cluster)  # Integer indices within cluster
+        # Use DatetimeIndex for time within cluster (e.g., 00:00-23:00 for daily clustering)
+        time_coords = pd.date_range(
+            start='2000-01-01',
+            periods=timesteps_per_cluster,
+            freq=pd.Timedelta(hours=dt),
+            name='time',
+        )
 
         # Create cluster_weight: shape (cluster,) - one weight per cluster
         # This is the number of original periods each cluster represents

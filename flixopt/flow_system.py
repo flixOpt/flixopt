@@ -743,10 +743,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             }
             # Override timestep_duration to have correct shape for 2D cluster structure
             # Shape: (time,) = (timesteps_per_cluster,) - broadcasts with (cluster, time)
+            # Use DatetimeIndex consistent with _cluster_time_coords
+            time_coords_2d = pd.date_range(
+                start='2000-01-01',
+                periods=timesteps_per_cluster,
+                freq=pd.Timedelta(hours=timestep_duration_hours),
+                name='time',
+            )
             flow_system.timestep_duration = xr.DataArray(
                 np.full(timesteps_per_cluster, timestep_duration_hours),
                 dims=['time'],
-                coords={'time': np.arange(timesteps_per_cluster)},
+                coords={'time': time_coords_2d},
                 name='timestep_duration',
             )
             # cluster_weight will be set after Clustering object is attached
@@ -1900,10 +1907,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self._use_true_cluster_dims:
             # True (cluster, time) dimensions
             n_clusters = self._cluster_n_clusters
-            timesteps_per_cluster = self._cluster_timesteps_per_cluster
+            time_coords = self._cluster_time_coords
             active_coords = {
                 'cluster': pd.Index(range(n_clusters), name='cluster'),
-                'time': pd.Index(range(timesteps_per_cluster), name='time'),
+                'time': time_coords,
             }
         else:
             active_coords = {'time': self.timesteps}
@@ -1949,6 +1956,47 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return self._cluster_info['timesteps_per_cluster']
         if self.is_clustered:
             return self.clustering.timesteps_per_cluster
+        return None
+
+    @property
+    def _cluster_time_coords(self) -> pd.DatetimeIndex | None:
+        """Get time coordinates for clustered system.
+
+        Returns DatetimeIndex for time within cluster (e.g., 00:00-23:00 for daily clustering).
+        """
+        # Try to get from _clustered_data first (has the actual coords)
+        if hasattr(self, '_clustered_data') and self._clustered_data is not None:
+            if 'time' in self._clustered_data.coords:
+                time_coord = self._clustered_data.coords['time'].values
+                if isinstance(time_coord, np.ndarray) and np.issubdtype(time_coord.dtype, np.datetime64):
+                    return pd.DatetimeIndex(time_coord, name='time')
+
+        # Fall back to generating from _cluster_info
+        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
+            timesteps_per_cluster = self._cluster_info['timesteps_per_cluster']
+            dt = self._cluster_info.get('timestep_duration', 1.0)
+            return pd.date_range(
+                start='2000-01-01',
+                periods=timesteps_per_cluster,
+                freq=pd.Timedelta(hours=dt),
+                name='time',
+            )
+
+        # Fall back to clustering object
+        if self.is_clustered:
+            timesteps_per_cluster = self.clustering.timesteps_per_cluster
+            # Try to get dt from timestep_duration
+            if hasattr(self, 'timestep_duration') and self.timestep_duration is not None:
+                dt = float(self.timestep_duration.mean())
+            else:
+                dt = 1.0
+            return pd.date_range(
+                start='2000-01-01',
+                periods=timesteps_per_cluster,
+                freq=pd.Timedelta(hours=dt),
+                name='time',
+            )
+
         return None
 
     @property

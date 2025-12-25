@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
@@ -1067,7 +1068,15 @@ class StorageModel(ComponentModel):
         Returns:
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
-        final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
+        # Get the final time coordinate (DatetimeIndex for both clustered and non-clustered)
+        if self._model.flow_system._use_true_cluster_dims:
+            # For clustered systems, add one timestep to the DatetimeIndex
+            time_coords = self._model.flow_system._cluster_time_coords
+            dt = self._model.flow_system._cluster_info.get('timestep_duration', 1.0)
+            final_time = time_coords[-1] + pd.Timedelta(hours=dt)
+            final_coords = {'time': [final_time]}
+        else:
+            final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
