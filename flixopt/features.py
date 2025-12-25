@@ -629,7 +629,10 @@ class ShareAllocationModel(Submodel):
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
             # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
-            self._eq_total.lhs -= (self.total_per_timestep * self._model.cluster_weight).sum(dim='time')
+            # Sum over all temporal dimensions (time, and cluster if present)
+            weighted_per_timestep = self.total_per_timestep * self._model.cluster_weight
+            temporal_dims = [d for d in weighted_per_timestep.dims if d not in ('period', 'scenario')]
+            self._eq_total.lhs -= weighted_per_timestep.sum(dim=temporal_dims)
 
     def add_share(
         self,

@@ -382,7 +382,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if dims is None:
             coords = dict(self.flow_system.coords)
         else:
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
+            # In clustered systems, 'time' is always paired with 'cluster'
+            # So when 'time' is requested, also include 'cluster' if available
+            effective_dims = set(dims)
+            if 'time' in dims and self.flow_system._use_true_cluster_dims:
+                effective_dims.add('cluster')
+            coords = {k: v for k, v in self.flow_system.coords.items() if k in effective_dims}
 
         if extra_timestep and coords:
             if self.flow_system._use_true_cluster_dims:
