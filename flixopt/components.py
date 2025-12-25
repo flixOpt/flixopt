@@ -941,39 +941,17 @@ class StorageModel(ComponentModel):
             short_name='netto_discharge',
         )
 
-        charge_state = self.charge_state
-        rel_loss = self.element.relative_loss_per_hour
-        timestep_duration = self._model.timestep_duration
-        charge_rate = self.element.charging.submodel.flow_rate
-        discharge_rate = self.element.discharging.submodel.flow_rate
-        eff_charge = self.element.eta_charge
-        eff_discharge = self.element.eta_discharge
+        # Build and add energy balance constraint
+        lhs = self._build_energy_balance_lhs()
 
-        # Build balance expression
-        lhs = (
-            charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rate * eff_charge * timestep_duration
-            + discharge_rate * timestep_duration / eff_discharge
-        )
-
-        # Handle clustering modes for storage
-        clustering = self._model.flow_system.clustering
-        mask = None
-
-        if clustering is not None:
-            # All modes skip inter-cluster boundaries: removes naive link between end of cluster N and start of N+1
-            mask = np.ones(lhs.sizes['time'], dtype=bool)
-            mask[clustering.cluster_start_positions[1:] - 1] = False
-            mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
-
-        self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
+        # With 2D (cluster, time) structure, no masking needed - constraint applies within each cluster
+        self.add_constraints(lhs == 0, short_name='charge_state')
 
         # For 'cyclic' mode: each cluster's start equals its end
-        if clustering is not None and self.element.cluster_mode == 'cyclic':
+        if self._model.flow_system._use_true_cluster_dims and self.element.cluster_mode == 'cyclic':
+            # 2D structure: time=0 is start, time=-2 is last regular timestep (before extra timestep)
             self.add_constraints(
-                charge_state.isel(time=clustering.cluster_start_positions)
-                == charge_state.isel(time=clustering.cluster_start_positions + clustering.timesteps_per_period - 1),
+                self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
                 short_name='cluster_cyclic',
             )
 
@@ -1006,6 +984,32 @@ class StorageModel(ComponentModel):
                 == self.element.discharging.submodel._investment.size * 1,
                 short_name='balanced_sizes',
             )
+
+    def _build_energy_balance_lhs(self):
+        """Build the left-hand side of the energy balance constraint.
+
+        The energy balance equation is:
+            charge_state[t+1] = charge_state[t] * (1 - loss)^dt
+                              + charge_rate * eta_charge * dt
+                              - discharge_rate / eta_discharge * dt
+
+        Returns:
+            The LHS expression (should equal 0).
+        """
+        charge_state = self.charge_state
+        rel_loss = self.element.relative_loss_per_hour
+        timestep_duration = self._model.timestep_duration
+        charge_rate = self.element.charging.submodel.flow_rate
+        discharge_rate = self.element.discharging.submodel.flow_rate
+        eff_charge = self.element.eta_charge
+        eff_discharge = self.element.eta_discharge
+
+        return (
+            charge_state.isel(time=slice(1, None))
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rate * eff_charge * timestep_duration
+            + discharge_rate * timestep_duration / eff_discharge
+        )
 
     def _initial_and_final_charge_state(self):
         if self.element.initial_charge_state is not None:
@@ -1246,29 +1250,10 @@ class InterclusterStorageModel(StorageModel):
             short_name='netto_discharge',
         )
 
-        # Build energy balance (same as base class, but with cluster boundary masking)
-        charge_state = self.charge_state
-        rel_loss = self.element.relative_loss_per_hour
-        timestep_duration = self._model.timestep_duration
-        charge_rate = self.element.charging.submodel.flow_rate
-        discharge_rate = self.element.discharging.submodel.flow_rate
-        eff_charge = self.element.eta_charge
-        eff_discharge = self.element.eta_discharge
-
-        lhs = (
-            charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rate * eff_charge * timestep_duration
-            + discharge_rate * timestep_duration / eff_discharge
-        )
-
-        # Mask out inter-cluster boundaries
-        clustering = self._model.flow_system.clustering
-        mask = np.ones(lhs.sizes['time'], dtype=bool)
-        mask[clustering.cluster_start_positions[1:] - 1] = False
-        mask = xr.DataArray(mask, coords={'time': lhs.coords['time']})
-
-        self.add_constraints(lhs == 0, short_name='charge_state', mask=mask)
+        # Build energy balance using shared helper method
+        # With 2D (cluster, time) structure, no masking needed - constraint applies within each cluster
+        lhs = self._build_energy_balance_lhs()
+        self.add_constraints(lhs == 0, short_name='charge_state')
 
         # Create InvestmentModel if needed
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
@@ -1399,13 +1384,16 @@ class InterclusterStorageModel(StorageModel):
         This ensures that the relative charge state is measured from a known
         reference point (the cluster start).
 
+        With 2D (cluster, time) structure, time=0 is the start of every cluster,
+        so we simply select isel(time=0) which broadcasts across the cluster dimension.
+
         Args:
-            n_clusters: Number of representative clusters.
-            timesteps_per_cluster: Timesteps in each cluster.
+            n_clusters: Number of representative clusters (unused with 2D structure).
+            timesteps_per_cluster: Timesteps in each cluster (unused with 2D structure).
         """
-        cluster_starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
+        # With 2D structure: time=0 is start of every cluster
         self.add_constraints(
-            self.charge_state.isel(time=cluster_starts) == 0,
+            self.charge_state.isel(time=0) == 0,
             short_name='cluster_start',
         )
 
@@ -1417,18 +1405,18 @@ class InterclusterStorageModel(StorageModel):
 
         Since ΔE(start) = 0 by constraint, this simplifies to delta_SOC[c] = ΔE(end_c).
 
+        With 2D (cluster, time) structure, we can simply select isel(time=-1) and isel(time=0),
+        which already have the 'cluster' dimension.
+
         Args:
-            n_clusters: Number of representative clusters.
-            timesteps_per_cluster: Timesteps in each cluster.
+            n_clusters: Number of representative clusters (unused with 2D structure).
+            timesteps_per_cluster: Timesteps in each cluster (unused with 2D structure).
 
         Returns:
             DataArray with 'cluster' dimension containing delta_SOC for each cluster.
         """
-        starts = np.arange(0, n_clusters * timesteps_per_cluster, timesteps_per_cluster)
-        ends = starts + timesteps_per_cluster - 1
-
-        delta_soc = self.charge_state.isel(time=ends) - self.charge_state.isel(time=starts)
-        return delta_soc.assign_coords(time=np.arange(n_clusters)).rename({'time': 'cluster'})
+        # With 2D structure: result already has cluster dimension
+        return self.charge_state.isel(time=-1) - self.charge_state.isel(time=0)
 
     def _add_linking_constraints(
         self,
@@ -1483,6 +1471,9 @@ class InterclusterStorageModel(StorageModel):
         Since checking every timestep is expensive, we sample at the start,
         middle, and end of each cluster.
 
+        With 2D (cluster, time) structure, we simply select charge_state at a
+        given time offset, then reorder by cluster_order to get original_period order.
+
         Args:
             soc_boundary: SOC_boundary variable.
             cluster_order: Mapping from original periods to clusters.
@@ -1492,21 +1483,18 @@ class InterclusterStorageModel(StorageModel):
         """
         charge_state = self.charge_state
 
+        # soc_d: SOC at start of each original period
         soc_d = soc_boundary.isel(cluster_boundary=slice(None, -1))
         soc_d = soc_d.rename({'cluster_boundary': 'original_period'})
         soc_d = soc_d.assign_coords(original_period=np.arange(n_original_periods))
 
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
-        max_time_idx = len(charge_state.coords['time']) - 1
-
-        cluster_order_vals = cluster_order.values.astype(int)
-        cluster_starts = cluster_order_vals * timesteps_per_cluster
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
-            time_indices = np.clip(cluster_starts + offset, 0, max_time_idx)
-
-            cs_t = charge_state.isel(time=time_indices)
-            cs_t = cs_t.rename({'time': 'original_period'})
+            # With 2D structure: select time offset, then reorder by cluster_order
+            cs_at_offset = charge_state.isel(time=offset)  # Shape: (cluster, ...)
+            cs_t = cs_at_offset.isel(cluster=cluster_order)  # Reorder to original_period order
+            cs_t = cs_t.rename({'cluster': 'original_period'})
             cs_t = cs_t.assign_coords(original_period=np.arange(n_original_periods))
 
             combined = soc_d + cs_t
