@@ -1058,7 +1058,7 @@ class StorageModel(ComponentModel):
         relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
 
         if self.element.capacity_in_flow_hours is None:
-            return (0, np.inf)
+            return 0, np.inf
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             cap_min = self.element.capacity_in_flow_hours.minimum_or_fixed_size
             cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
@@ -1241,13 +1241,15 @@ class InterclusterStorageModel(StorageModel):
         in _add_investment_model to link bounds to the actual investment size.
         """
         if self.element.capacity_in_flow_hours is None:
-            return (-np.inf, np.inf)
+            return -np.inf, np.inf
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
-            return (-cap_max, cap_max)
+            cap_max = (
+                self.element.capacity_in_flow_hours.maximum_or_fixed_size * self.element.relative_maximum_charge_state
+            )
+            return -cap_max, cap_max
         else:
-            cap = self.element.capacity_in_flow_hours
-            return (-cap, cap)
+            cap = self.element.capacity_in_flow_hours * self.element.relative_maximum_charge_state
+            return -cap, cap
 
     def _do_modeling(self):
         """Create storage model with inter-cluster linking constraints.
