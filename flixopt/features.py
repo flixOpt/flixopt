@@ -197,14 +197,20 @@ class StatusModel(Submodel):
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
         # 3. Total duration tracking using existing pattern
+        # Sum over all temporal dimensions (time, and cluster if present)
+        weighted_status = self.status * self._model.aggregation_weight
+        temporal_dims = [d for d in weighted_status.dims if d not in ('period', 'scenario')]
+        agg_weight_sum = self._model.aggregation_weight.sum(temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=(self.status * self._model.aggregation_weight).sum('time'),
+            tracked_expression=weighted_status.sum(temporal_dims),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
                 self.parameters.active_hours_max
                 if self.parameters.active_hours_max is not None
-                else self._model.aggregation_weight.sum('time').max().item(),
+                else agg_weight_sum.max().item()
+                if hasattr(agg_weight_sum, 'max')
+                else agg_weight_sum,
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
@@ -232,7 +238,9 @@ class StatusModel(Submodel):
                     coords=self._model.get_coords(('period', 'scenario')),
                     short_name='startup_count',
                 )
-                self.add_constraints(count == self.startup.sum('time'), short_name='startup_count')
+                # Sum over all temporal dimensions (time, and cluster if present)
+                startup_temporal_dims = [d for d in self.startup.dims if d not in ('period', 'scenario')]
+                self.add_constraints(count == self.startup.sum(startup_temporal_dims), short_name='startup_count')
 
         # 5. Consecutive active duration (uptime) using existing pattern
         if self.parameters.use_uptime_tracking:

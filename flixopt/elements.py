@@ -677,10 +677,13 @@ class FlowModel(ElementModel):
         self._constraint_flow_rate()
 
         # Total flow hours tracking (per period)
+        # Sum over all temporal dimensions (time, and cluster if present)
+        weighted_flow = self.flow_rate * self._model.aggregation_weight
+        temporal_dims = [d for d in weighted_flow.dims if d not in ('period', 'scenario')]
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
-            tracked_expression=(self.flow_rate * self._model.aggregation_weight).sum('time'),
+            tracked_expression=weighted_flow.sum(temporal_dims),
             bounds=(
                 self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
                 self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
@@ -837,9 +840,13 @@ class FlowModel(ElementModel):
         # Get the size (either from element or investment)
         size = self.investment.size if self.with_investment else self.element.size
 
+        # Sum over all temporal dimensions (time, and cluster if present)
+        temporal_dims = [d for d in self._model.aggregation_weight.dims if d not in ('period', 'scenario')]
+        total_hours = self._model.aggregation_weight.sum(temporal_dims)
+
         # Maximum load factor constraint
         if self.element.load_factor_max is not None:
-            flow_hours_per_size_max = self._model.aggregation_weight.sum('time') * self.element.load_factor_max
+            flow_hours_per_size_max = total_hours * self.element.load_factor_max
             self.add_constraints(
                 self.total_flow_hours <= size * flow_hours_per_size_max,
                 short_name='load_factor_max',
@@ -847,7 +854,7 @@ class FlowModel(ElementModel):
 
         # Minimum load factor constraint
         if self.element.load_factor_min is not None:
-            flow_hours_per_size_min = self._model.aggregation_weight.sum('time') * self.element.load_factor_min
+            flow_hours_per_size_min = total_hours * self.element.load_factor_min
             self.add_constraints(
                 self.total_flow_hours >= size * flow_hours_per_size_min,
                 short_name='load_factor_min',
