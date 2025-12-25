@@ -191,13 +191,17 @@ if __name__ == '__main__':
 
     if aggregated:
         # Use the new transform.cluster() API
-        time_series_for_high_peaks = [TS_heat_demand] if keep_extreme_periods else None
-        time_series_for_low_peaks = [TS_electricity_demand, TS_heat_demand] if keep_extreme_periods else None
+        # Note: time_series_for_high_peaks/low_peaks expect string labels matching dataset variables
+        time_series_for_high_peaks = ['Wärmelast(Q_th_Last)|fixed_relative_profile'] if keep_extreme_periods else None
+        time_series_for_low_peaks = (
+            ['Stromlast(P_el_Last)|fixed_relative_profile', 'Wärmelast(Q_th_Last)|fixed_relative_profile']
+            if keep_extreme_periods
+            else None
+        )
 
         clustered_fs = flow_system.copy().transform.cluster(
             n_clusters=n_clusters,
             cluster_duration=cluster_duration,
-            include_storage=include_storage,
             time_series_for_high_peaks=time_series_for_high_peaks,
             time_series_for_low_peaks=time_series_for_low_peaks,
         )

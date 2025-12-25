@@ -1,1 +1,1 @@
-"""Tests for the flixopt.aggregation module."""
+"""Tests for the flixopt.clustering module."""

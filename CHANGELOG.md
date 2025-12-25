@@ -57,28 +57,25 @@ Until here -->
 
 ### ✨ Added
 
-**New Aggregation Module** (`flixopt.aggregation`): A backend-agnostic abstraction for time series aggregation:
+**New Clustering Module** (`flixopt.clustering`): Data structures for time series clustering:
 
 ```python
-from flixopt import aggregation
+from flixopt import clustering
 
-# Available backends
-aggregation.list_backends()  # ['tsam', 'manual']
-
-# Core data structures for any aggregation method
-aggregation.AggregationResult      # Universal result format
-aggregation.ClusterStructure       # For storage inter-cluster linking
-aggregation.Aggregator             # Protocol for custom backends
+# Core data structures for clustering
+clustering.ClusterResult       # Universal result format
+clustering.ClusterStructure    # For storage inter-cluster linking
+clustering.Clustering          # Stored on FlowSystem after clustering
 ```
 
-**Unified Aggregation API**: New `transform.aggregate()` method supporting multiple backends:
+**Unified Clustering API**: New `transform.cluster()` method for time series reduction:
 
 ```python
 # TSAM clustering (default) - clusters 365 days into 8 typical days
-fs_reduced = flow_system.transform.aggregate(
-    method='tsam',
-    n_representatives=8,
+fs_reduced = flow_system.transform.cluster(
+    n_clusters=8,
     cluster_duration='1D',
+    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
 )
 fs_reduced.optimize(solver)
 
@@ -100,20 +97,17 @@ weights.effective_objective  # For objective function (with optional override)
 total_energy = weights.sum_over_time(flow_rates)
 ```
 
-**Manual Aggregation Backend**: Enables PyPSA-style workflow with external clustering tools:
+**Manual Clustering Support**: Helper function for creating cluster structures from external tools:
 
 ```python
-from flixopt.aggregation import ManualBackend, create_manual_backend_from_labels
+from flixopt.clustering import create_cluster_structure_from_mapping
 
 # Use sklearn or any clustering algorithm
 from sklearn.cluster import KMeans
 # ... perform clustering, get labels ...
 
-# Create backend from cluster labels
-backend = create_manual_backend_from_labels(labels, timesteps_per_cluster=24)
-
-# Or directly with mapping and weights
-backend = ManualBackend(
+# Create cluster structure from mapping
+cluster_structure = create_cluster_structure_from_mapping(
     timestep_mapping=my_mapping,      # xr.DataArray: original → representative
     representative_weights=my_weights, # xr.DataArray: weight per representative
 )
@@ -131,50 +125,46 @@ fs_agg = flow_system.transform.set_aggregation(
 
 ### 💥 Breaking Changes
 
-**Removed `transform.cluster()` method**: The constraint-based clustering approach has been removed. Use `cluster_reduce()` instead:
+**Simplified `transform.cluster()` API**: The constraint-based clustering approach has been replaced with timestep reduction:
 
 ```python
-# Old (removed):
-clustered_fs = flow_system.transform.cluster(
+# New API - reduces timesteps via TSAM clustering
+reduced_fs = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
+    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
 )
-
-# New (use cluster_reduce instead):
-reduced_fs = flow_system.transform.cluster_reduce(
-    n_clusters=8,
-    cluster_duration='1D',
-)
+reduced_fs.optimize(solver)
 ```
 
 **Removed constraint-based clustering infrastructure**:
-- `transform.cluster()` - removed (use `cluster_reduce()`)
+- `ClusteredOptimization` class - removed (use `transform.cluster()` + `Optimization`)
+- `ClusteringParameters` class - removed (parameters passed directly to `transform.cluster()`)
 - `transform.add_clustering()` - removed
-- `FlowSystem._clustering_info` - removed (only `_cluster_info` for `cluster_reduce` remains)
 - `FlowSystem._add_clustering_constraints()` - removed
 
 ### ♻️ Changed
 
-**Terminology clarification** in aggregation module:
+**Terminology clarification** in clustering module:
 - "cluster" = a group of similar time chunks (e.g., similar days grouped together)
 - "typical period" = a representative time chunk for a cluster (TSAM terminology)
 - "cluster duration" = the length of each time chunk (e.g., 24h for daily clustering)
 
 Note: This is separate from the model's "period" dimension (years/months) and "scenario" dimension.
 
-**xarray-native data structures**: All aggregation interfaces use `xr.DataArray` and `xr.Dataset` for proper coordinate handling.
+**xarray-native data structures**: All clustering interfaces use `xr.DataArray` and `xr.Dataset` for proper coordinate handling.
 
 ### 🔥 Removed
 
-- `transform.cluster()` method (constraint-based clustering)
+- `ClusteredOptimization` class (use `transform.cluster()` + `Optimization`)
+- `ClusteringParameters` class (parameters passed directly to `transform.cluster()`)
 - `transform.add_clustering()` method
 - `ClusteringModel` constraint generation (internal)
-- `_clustering_info` storage on FlowSystem
 
 ### 📝 Docs
 
 - Improved terminology: clarified distinction between clustering "typical periods" and model "period" dimension
-- Added aggregation module documentation with backend examples
+- Added clustering module documentation with examples
 
 ---
 
