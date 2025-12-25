@@ -368,11 +368,20 @@ class ClusterResult:
         timestep_mapping = self.timestep_mapping
         has_periods = 'period' in timestep_mapping.dims
         has_scenarios = 'scenario' in timestep_mapping.dims
+        has_cluster_dim = 'cluster' in aggregated.dims
 
         # Simple case: no period/scenario dimensions
         if not has_periods and not has_scenarios:
             mapping = timestep_mapping.values
-            expanded_values = aggregated.values[mapping]
+            if has_cluster_dim:
+                # 2D cluster structure: convert flat indices to (cluster, time_within)
+                # n_clusters = aggregated.sizes['cluster']
+                timesteps_per_cluster = aggregated.sizes['time']
+                cluster_ids = mapping // timesteps_per_cluster
+                time_within = mapping % timesteps_per_cluster
+                expanded_values = aggregated.values[cluster_ids, time_within]
+            else:
+                expanded_values = aggregated.values[mapping]
             return xr.DataArray(
                 expanded_values,
                 coords={'time': original_time},
@@ -403,7 +412,17 @@ class ClusterResult:
                     selector['scenario'] = s
 
                 slice_da = aggregated.sel(**selector, drop=True) if selector else aggregated
-                expanded = slice_da.isel(time=xr.DataArray(mapping, dims=['time']))
+
+                if has_cluster_dim:
+                    # 2D cluster structure: convert flat indices to (cluster, time_within)
+                    _n_clusters = slice_da.sizes['cluster']
+                    timesteps_per_cluster = slice_da.sizes['time']
+                    cluster_ids = mapping // timesteps_per_cluster
+                    time_within = mapping % timesteps_per_cluster
+                    expanded_values = slice_da.values[cluster_ids, time_within]
+                    expanded = xr.DataArray(expanded_values, dims=['time'])
+                else:
+                    expanded = slice_da.isel(time=xr.DataArray(mapping, dims=['time']))
                 expanded_slices[(p, s)] = expanded.assign_coords(time=original_time)
 
         # Recombine slices using xr.concat

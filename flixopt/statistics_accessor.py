@@ -785,8 +785,11 @@ class StatisticsAccessor:
                         if label in solution:
                             da = solution[label] * factor
                             # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
+                            # Sum over all temporal dimensions (time, and cluster if present)
                             if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                                da = (da * self._fs.cluster_weight).sum('time')
+                                weighted = da * self._fs.cluster_weight
+                                temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
+                                da = weighted.sum(temporal_dims)
                             if share_total is None:
                                 share_total = da
                             else:

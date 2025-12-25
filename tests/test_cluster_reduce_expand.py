@@ -127,12 +127,17 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
         orig_start = orig_segment_idx * timesteps_per_cluster
         orig_end = orig_start + timesteps_per_cluster
 
-        typical_start = cluster_id * timesteps_per_cluster
-        typical_end = typical_start + timesteps_per_cluster
-
         # Values in the expanded solution for this original segment
         # should match the reduced solution for the corresponding typical cluster
-        expected = reduced_flow[typical_start:typical_end]
+        # With 2D cluster structure, use cluster_id to index the cluster dimension
+        if reduced_flow.ndim == 2:
+            # 2D structure: (cluster, time)
+            expected = reduced_flow[cluster_id, :]
+        else:
+            # Flat structure: (time,)
+            typical_start = cluster_id * timesteps_per_cluster
+            typical_end = typical_start + timesteps_per_cluster
+            expected = reduced_flow[typical_start:typical_end]
         actual = expanded_flow[orig_start:orig_end]
 
         assert_allclose(actual, expected, rtol=1e-10)
@@ -178,12 +183,11 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     assert_allclose(reduced_total, expanded_total, rtol=1e-6)
 
     # Flow hours should also match (need to sum over time with proper weighting)
-    reduced_flow_hours = (
-        (fs_reduced.statistics.flow_hours['Boiler(Q_th)'] * fs_reduced.cluster_weight).sum('time').item()
-    )
-    expanded_flow_hours = (
-        (fs_expanded.statistics.flow_hours['Boiler(Q_th)'] * fs_expanded.cluster_weight).sum('time').item()
-    )
+    # With 2D cluster structure, sum over both cluster and time dimensions
+    reduced_fh = fs_reduced.statistics.flow_hours['Boiler(Q_th)'] * fs_reduced.cluster_weight
+    reduced_flow_hours = reduced_fh.sum().item()  # Sum over all dimensions
+    expanded_fh = fs_expanded.statistics.flow_hours['Boiler(Q_th)'] * fs_expanded.cluster_weight
+    expanded_flow_hours = expanded_fh.sum().item()
 
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
@@ -338,10 +342,15 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
             orig_start = orig_segment_idx * timesteps_per_cluster
             orig_end = orig_start + timesteps_per_cluster
 
-            typical_start = cluster_id * timesteps_per_cluster
-            typical_end = typical_start + timesteps_per_cluster
-
-            expected = reduced_scenario[typical_start:typical_end]
+            # With 2D cluster structure, use cluster_id to index the cluster dimension
+            if reduced_scenario.ndim == 2:
+                # 2D structure: (cluster, time)
+                expected = reduced_scenario[cluster_id, :]
+            else:
+                # Flat structure: (time,)
+                typical_start = cluster_id * timesteps_per_cluster
+                typical_end = typical_start + timesteps_per_cluster
+                expected = reduced_scenario[typical_start:typical_end]
             actual = expanded_scenario[orig_start:orig_end]
 
             assert_allclose(actual, expected, rtol=1e-10, err_msg=f'Mismatch for scenario {scenario}')
