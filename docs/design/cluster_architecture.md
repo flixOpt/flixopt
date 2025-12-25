@@ -16,8 +16,7 @@ data.shape = (9, 24, ...)  # 9 clusters × 24 timesteps each
 **Why True Dimensions?**
 1. **Temporal constraints just work** - `x[:, 1:] - x[:, :-1]` naturally stays within clusters
 2. **No boundary masking** - StorageModel, StatusModel constraints are clean and vectorized
-3. **Variable segment durations supported** - `timestep_duration[cluster, time]` handles different segment lengths
-4. **Plotting trivial** - existing `facet_col='cluster'` works automatically
+3. **Plotting trivial** - existing `facet_col='cluster'` works automatically
 
 ### Document Scope
 
@@ -25,7 +24,7 @@ data.shape = (9, 24, ...)  # 9 clusters × 24 timesteps each
 2. Architectural options and recommendation (Part 2)
 3. Impact on Features - StatusModel, StorageModel, etc. (Part 3)
 4. Plotting improvements (Part 4)
-5. Variable segment durations (Part 5)
+5. Future considerations (Part 5)
 6. Implementation roadmap (Part 6)
 
 ---
@@ -380,84 +379,15 @@ def cluster_heatmap(self, variable):
 
 ---
 
-## Part 5: Variable Segment Durations (Future)
+## Part 5: Future Considerations
 
-### 5.1 Clarification: Variable Durations, NOT Variable Counts
+### 5.1 Variable Segment Durations (Out of Scope)
 
-With true `(cluster, time)` dimensions:
-- **Same number** of timesteps per cluster (required for rectangular array)
-- **Different durations** per timestep within each cluster (via `timestep_duration`)
+tsam supports intra-period segmentation with variable segment durations. This could be supported in the future via:
+- Integer-based `time` index (0, 1, 2, ...) instead of timestamps
+- `timestep_duration[cluster, time]` array for variable durations per segment
 
-This is exactly what tsam segmentation provides and what we need.
-
-### 5.2 TSAM Segmentation Features
-
-TSAM supports intra-period segmentation:
-```python
-tsam.TimeSeriesAggregation(
-    segmentation=True,       # Enable subdivision
-    noSegments=6,            # Segments per typical period
-    segmentRepresentationMethod='meanRepresentation'
-)
-```
-
-**What TSAM provides:**
-- Uniform segment count across all typical periods ✅
-- Various representation methods (mean, medoid, distribution)
-- Different segment durations per cluster ✅
-
-### 5.3 Implementation with True Dimensions
-
-With `(cluster, time)` dimensions, variable segment durations are trivial:
-
-```python
-# ═══════════════════════════════════════════════════════════════
-# DIMENSION STRUCTURE
-# ═══════════════════════════════════════════════════════════════
-data.dims = ('cluster', 'time', 'period', 'scenario')
-data.shape = (9, 6, ...)  # 9 clusters × 6 segments each
-
-# ═══════════════════════════════════════════════════════════════
-# VARIABLE SEGMENT DURATIONS - just a 2D array!
-# ═══════════════════════════════════════════════════════════════
-timestep_duration = xr.DataArray(
-    [
-        [2, 2, 4, 4, 6, 6],  # Cluster 0: short-short-long pattern
-        [1, 1, 4, 8, 4, 6],  # Cluster 1: different pattern
-        [3, 3, 3, 3, 6, 6],  # Cluster 2: uniform start, longer end
-        ...
-    ],
-    dims=['cluster', 'time'],
-    coords={'cluster': range(9), 'time': range(6)}
-)
-
-# ═══════════════════════════════════════════════════════════════
-# AGGREGATION WEIGHT - combines duration and cluster weight
-# ═══════════════════════════════════════════════════════════════
-# cluster_weight shape: (cluster,) - how many days each cluster represents
-# timestep_duration shape: (cluster, time) - duration of each segment
-aggregation_weight = timestep_duration * cluster_weight  # Broadcasting!
-
-# ═══════════════════════════════════════════════════════════════
-# ALL EXISTING CONSTRAINTS JUST WORK
-# ═══════════════════════════════════════════════════════════════
-# Storage balance: uses aggregation_weight correctly
-# StatusModel: active_hours weighted by aggregation_weight
-# Cost calculations: weighted by aggregation_weight
-```
-
-### 5.4 No Complex Infrastructure Needed
-
-With true dimensions, segmentation requires **no special infrastructure**:
-
-| Aspect | With True Dims |
-|--------|----------------|
-| Different segment durations | Just set `timestep_duration[cluster, time]` |
-| Constraint generation | No changes - already works |
-| Cost calculations | No changes - uses `aggregation_weight` |
-| Plotting | No changes - `cluster` dim exists |
-
-**The only addition needed:** Update `transform_accessor.cluster()` to accept tsam segmentation parameters and construct the 2D `timestep_duration` array.
+**Not implemented in initial version** - the architecture supports it, but it's not a priority.
 
 ---
 
@@ -840,28 +770,4 @@ if flow_system.is_clustered:
     print(f"Aggregation weight shape: {flow_system.aggregation_weight.shape}")
 else:
     print("Not clustered - full time resolution")
-```
-
-### B.5 Variable Segment Durations (Future)
-
-```python
-# ═══════════════════════════════════════════════════════════════
-# timestep_duration varies per (cluster, time)
-# ═══════════════════════════════════════════════════════════════
-timestep_duration = xr.DataArray(
-    [
-        [2, 2, 4, 4, 6, 6],  # Cluster 0: short-short-long pattern
-        [1, 1, 4, 8, 4, 6],  # Cluster 1: different pattern
-        ...
-    ],
-    dims=['cluster', 'time'],
-    coords={'cluster': range(9), 'time': range(6)}
-)
-
-# aggregation_weight combines duration and cluster importance
-aggregation_weight = timestep_duration * cluster_weight
-# Shape: (cluster, time) × (cluster,) → (cluster, time) via broadcasting
-
-# All constraints use aggregation_weight for proper weighting
-total_cost = (cost_per_timestep * aggregation_weight).sum(dim=['cluster', 'time'])
 ```
