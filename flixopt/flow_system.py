@@ -172,6 +172,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         timesteps: pd.DatetimeIndex,
         periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
+        clusters: pd.Index | None = None,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
         weight_of_last_period: int | float | None = None,
@@ -193,6 +194,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
+        self.clusters = clusters  # Cluster dimension for clustered FlowSystems
 
         self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
 
@@ -643,17 +645,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
-        # Include cluster info for 2D clustered FlowSystems
-        if self._use_true_cluster_dims:
+        # Include cluster info for clustered FlowSystems
+        if self.clusters is not None:
             ds.attrs['is_clustered'] = True
-            ds.attrs['n_clusters'] = self._cluster_n_clusters
-            ds.attrs['timesteps_per_cluster'] = self._cluster_timesteps_per_cluster
-            if hasattr(self, '_cluster_info') and self._cluster_info is not None:
-                ds.attrs['timestep_duration'] = self._cluster_info.get('timestep_duration', 1.0)
-            elif hasattr(self, 'timestep_duration') and self.timestep_duration is not None:
-                ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
-            else:
-                ds.attrs['timestep_duration'] = 1.0
+            ds.attrs['n_clusters'] = len(self.clusters)
+            ds.attrs['timesteps_per_cluster'] = len(self.timesteps)
+            ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -698,30 +695,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Create arrays dictionary from config variables only
         arrays_dict = config_vars
 
-        # Detect clustered dataset with (cluster, time) dimensions
-        is_clustered_dataset = 'cluster' in ds.dims and reference_structure.get('is_clustered', False)
+        # Extract cluster index if present (clustered FlowSystem)
+        clusters = ds.indexes.get('cluster')
 
-        if is_clustered_dataset:
-            # Clustered dataset: use intra-cluster time coordinate
-            n_clusters = ds.sizes['cluster']
-            timesteps_per_cluster = ds.sizes['time']
-            timestep_duration_hours = reference_structure.get('timestep_duration', 1.0)
-
-            # Use the actual intra-cluster time coordinate (e.g., 96 elements for daily clustering)
-            # This matches coords['time'] and the 2D (cluster, time) data structure
-            cluster_timesteps = pd.date_range(
-                start='2000-01-01',
-                periods=timesteps_per_cluster,
-                freq=pd.Timedelta(hours=timestep_duration_hours),
-                name='time',
-            )
-
-            # cluster_weight for clustered mode is (cluster,) shaped - don't pass to constructor
-            # It will be set separately after FlowSystem creation
+        # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
+        if clusters is not None:
             cluster_weight_for_constructor = None
         else:
-            # Regular dataset: use time index directly
-            synthetic_timesteps = ds.indexes['time']
             cluster_weight_for_constructor = (
                 cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
                 if 'cluster_weight' in reference_structure
@@ -730,9 +710,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=cluster_timesteps if is_clustered_dataset else synthetic_timesteps,
+            timesteps=ds.indexes['time'],
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
+            clusters=clusters,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
             weight_of_last_period=reference_structure.get('weight_of_last_period'),
@@ -744,25 +725,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
             name=reference_structure.get('name'),
         )
-
-        # For clustered datasets, store the 2D data and set up cluster structure
-        if is_clustered_dataset:
-            flow_system._clustered_data = ds
-            flow_system._cluster_info = {
-                'n_clusters': n_clusters,
-                'timesteps_per_cluster': timesteps_per_cluster,
-                'timestep_duration': timestep_duration_hours,
-            }
-            # Override timestep_duration to have correct shape for 2D cluster structure
-            # Shape: (time,) = (timesteps_per_cluster,) - broadcasts with (cluster, time)
-            # Use flow_system.timesteps which is now the intra-cluster time coordinate
-            flow_system.timestep_duration = xr.DataArray(
-                np.full(timesteps_per_cluster, timestep_duration_hours),
-                dims=['time'],
-                coords={'time': flow_system.timesteps},
-                name='timestep_duration',
-            )
-            # cluster_weight will be set after Clustering object is attached
 
         # Restore components
         components_structure = reference_structure.get('components', {})
@@ -1904,22 +1866,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         """Active coordinates for variable creation.
 
-        Returns a dict of dimension names to coordinate arrays. When clustered
-        with true dimensions enabled, includes 'cluster' dimension before 'time'.
+        Returns a dict of dimension names to coordinate arrays. When clustered,
+        includes 'cluster' dimension before 'time'.
 
         Returns:
             Dict mapping dimension names to coordinate arrays.
         """
-        if self._use_true_cluster_dims:
-            # True (cluster, time) dimensions
-            n_clusters = self._cluster_n_clusters
-            time_coords = self._cluster_time_coords
-            active_coords = {
-                'cluster': pd.Index(range(n_clusters), name='cluster'),
-                'time': time_coords,
-            }
-        else:
-            active_coords = {'time': self.timesteps}
+        active_coords: dict[str, pd.Index] = {}
+
+        if self.clusters is not None:
+            active_coords['cluster'] = self.clusters
+        active_coords['time'] = self.timesteps
 
         if self.periods is not None:
             active_coords['period'] = self.periods
@@ -1929,81 +1886,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def _use_true_cluster_dims(self) -> bool:
-        """Check if true (cluster, time) dimensions should be used.
-
-        This enables the new 2D cluster structure. Returns True if:
-        1. The FlowSystem has _clustered_data with 'cluster' dimension, OR
-        2. The FlowSystem has _cluster_info set (from from_dataset)
-
-        Note: This can be True even before clustering is fully set up,
-        to allow variable creation with correct dimensions.
-        """
-        # Check for 2D clustered data structure
-        if hasattr(self, '_clustered_data') and self._clustered_data is not None:
-            return 'cluster' in self._clustered_data.dims
-        # Check for cluster info from from_dataset
-        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
-            return True
-        return False
+        """Check if true (cluster, time) dimensions should be used."""
+        return self.clusters is not None
 
     @property
     def _cluster_n_clusters(self) -> int | None:
-        """Get number of clusters from cluster info or clustering object."""
-        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
-            return self._cluster_info['n_clusters']
-        if self.is_clustered:
-            return self.clustering.n_clusters
-        return None
+        """Get number of clusters."""
+        return len(self.clusters) if self.clusters is not None else None
 
     @property
     def _cluster_timesteps_per_cluster(self) -> int | None:
-        """Get timesteps per cluster from cluster info or clustering object."""
-        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
-            return self._cluster_info['timesteps_per_cluster']
-        if self.is_clustered:
-            return self.clustering.timesteps_per_cluster
-        return None
+        """Get timesteps per cluster (same as len(timesteps) for clustered systems)."""
+        return len(self.timesteps) if self.clusters is not None else None
 
     @property
     def _cluster_time_coords(self) -> pd.DatetimeIndex | None:
-        """Get time coordinates for clustered system.
-
-        Returns DatetimeIndex for time within cluster (e.g., 00:00-23:00 for daily clustering).
-        """
-        # Try to get from _clustered_data first (has the actual coords)
-        if hasattr(self, '_clustered_data') and self._clustered_data is not None:
-            if 'time' in self._clustered_data.coords:
-                time_coord = self._clustered_data.coords['time'].values
-                if isinstance(time_coord, np.ndarray) and np.issubdtype(time_coord.dtype, np.datetime64):
-                    return pd.DatetimeIndex(time_coord, name='time')
-
-        # Fall back to generating from _cluster_info
-        if hasattr(self, '_cluster_info') and self._cluster_info is not None:
-            timesteps_per_cluster = self._cluster_info['timesteps_per_cluster']
-            dt = self._cluster_info.get('timestep_duration', 1.0)
-            return pd.date_range(
-                start='2000-01-01',
-                periods=timesteps_per_cluster,
-                freq=pd.Timedelta(hours=dt),
-                name='time',
-            )
-
-        # Fall back to clustering object
-        if self.is_clustered:
-            timesteps_per_cluster = self.clustering.timesteps_per_cluster
-            # Try to get dt from timestep_duration
-            if hasattr(self, 'timestep_duration') and self.timestep_duration is not None:
-                dt = float(self.timestep_duration.mean())
-            else:
-                dt = 1.0
-            return pd.date_range(
-                start='2000-01-01',
-                periods=timesteps_per_cluster,
-                freq=pd.Timedelta(hours=dt),
-                name='time',
-            )
-
-        return None
+        """Get time coordinates for clustered system (same as timesteps)."""
+        return self.timesteps if self.clusters is not None else None
 
     @property
     def n_timesteps(self) -> int:
