@@ -8,7 +8,6 @@ import logging
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
@@ -1037,11 +1036,11 @@ class StorageModel(ComponentModel):
         eff_discharge = self.element.eta_discharge
 
         return (
-            charge_state.isel(time=slice(1, None))
-            == charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            + charge_rate * eff_charge * timestep_duration
-            - discharge_rate * timestep_duration / eff_discharge
-        )
+            charge_state.shift(time=-1)
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rate * eff_charge * timestep_duration
+            + discharge_rate * timestep_duration / eff_discharge
+        ).isel(time=slice(None, -1)) == 0
 
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -1080,15 +1079,7 @@ class StorageModel(ComponentModel):
         Returns:
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
-        # Get the final time coordinate (DatetimeIndex for both clustered and non-clustered)
-        if self._model.flow_system._use_true_cluster_dims:
-            # For clustered systems, add one timestep to the DatetimeIndex
-            time_coords = self._model.flow_system._cluster_time_coords
-            dt = self._model.flow_system._cluster_info.get('timestep_duration', 1.0)
-            final_time = time_coords[-1] + pd.Timedelta(hours=dt)
-            final_coords = {'time': [final_time]}
-        else:
-            final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
+        final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
@@ -1239,15 +1230,15 @@ class InterclusterStorageModel(StorageModel):
         Note that for investment-based sizing, additional constraints are added
         in _add_investment_model to link bounds to the actual investment size.
         """
+        _, relative_upper_bound = self._relative_charge_state_bounds
+
         if self.element.capacity_in_flow_hours is None:
             return -np.inf, np.inf
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            cap_max = (
-                self.element.capacity_in_flow_hours.maximum_or_fixed_size * self.element.relative_maximum_charge_state
-            )
+            cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size * relative_upper_bound
             return -cap_max, cap_max
         else:
-            cap = self.element.capacity_in_flow_hours * self.element.relative_maximum_charge_state
+            cap = self.element.capacity_in_flow_hours * relative_upper_bound
             return -cap, cap
 
     def _do_modeling(self):
