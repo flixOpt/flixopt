@@ -290,8 +290,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
-        # Skip reindexing for clustered systems which use integer time indices
-        if 'time' in solution.coords and not self.flow_system._use_true_cluster_dims:
+        if 'time' in solution.coords:
             if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
                 solution = solution.reindex(time=self.flow_system.timesteps_extra)
         return solution
@@ -387,7 +386,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             # In clustered systems, 'time' is always paired with 'cluster'
             # So when 'time' is requested, also include 'cluster' if available
             effective_dims = set(dims)
-            if 'time' in dims and self.flow_system._use_true_cluster_dims:
+            if 'time' in dims and 'cluster' in self.flow_system.coords:
                 effective_dims.add('cluster')
             coords = {k: v for k, v in self.flow_system.coords.items() if k in effective_dims}
 

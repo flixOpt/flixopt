@@ -956,7 +956,7 @@ class StorageModel(ComponentModel):
 
     def _add_cluster_cyclic_constraint(self):
         """For 'cyclic' cluster mode: each cluster's start equals its end."""
-        if self._model.flow_system._use_true_cluster_dims and self.element.cluster_mode == 'cyclic':
+        if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
             self.add_constraints(
                 self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
                 short_name='cluster_cyclic',
