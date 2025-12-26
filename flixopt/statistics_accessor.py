@@ -228,15 +228,76 @@ def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Da
     return ds[matching_vars] if matching_vars else xr.Dataset()
 
 
+def _resolve_auto_facets(
+    ds: xr.Dataset,
+    facet_col: str | Literal['auto'] | None,
+    facet_row: str | Literal['auto'] | None,
+    animation_frame: str | Literal['auto'] | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve 'auto' facet/animation dimensions based on available data dimensions.
+
+    When 'auto' is specified, dimensions are assigned based on priority:
+    - facet_col: cluster → period → scenario (first available with size > 1)
+    - facet_row: period → scenario (after facet_col is assigned)
+    - animation_frame: scenario (after others are assigned)
+
+    Priority order is configurable via CONFIG.Plotting.facet_col_priority, etc.
+
+    Args:
+        ds: Dataset to check for available dimensions.
+        facet_col: Dimension name, 'auto', or None.
+        facet_row: Dimension name, 'auto', or None.
+        animation_frame: Dimension name, 'auto', or None.
+
+    Returns:
+        Tuple of (resolved_facet_col, resolved_facet_row, resolved_animation_frame).
+        Each is either a valid dimension name or None.
+    """
+    # Get available dimensions with size > 1
+    available = {d for d in ds.dims if ds.sizes[d] > 1}
+    used: set[str] = set()
+
+    def resolve_one(
+        value: str | Literal['auto'] | None,
+        priority: tuple[str, ...],
+    ) -> str | None:
+        if value is None:
+            return None
+        if value != 'auto':
+            # Explicit dimension - use if available, else None
+            return value if value in available and value not in used else None
+
+        # Auto mode: pick first available from priority list
+        for dim in priority:
+            if dim in available and dim not in used:
+                used.add(dim)
+                return dim
+        return None
+
+    resolved_col = resolve_one(facet_col, CONFIG.Plotting.facet_col_priority)
+    if resolved_col:
+        used.add(resolved_col)
+
+    resolved_row = resolve_one(facet_row, CONFIG.Plotting.facet_row_priority)
+    if resolved_row:
+        used.add(resolved_row)
+
+    resolved_anim = resolve_one(animation_frame, CONFIG.Plotting.animation_frame_priority)
+
+    return resolved_col, resolved_row, resolved_anim
+
+
 def _resolve_facets(
     ds: xr.Dataset,
-    facet_col: str | None,
-    facet_row: str | None,
+    facet_col: str | Literal['auto'] | None,
+    facet_row: str | Literal['auto'] | None,
 ) -> tuple[str | None, str | None]:
-    """Resolve facet dimensions, returning None if not present in data."""
-    actual_facet_col = facet_col if facet_col and facet_col in ds.dims else None
-    actual_facet_row = facet_row if facet_row and facet_row in ds.dims else None
-    return actual_facet_col, actual_facet_row
+    """Resolve facet dimensions, returning None if not present in data.
+
+    Legacy wrapper for _resolve_auto_facets for backward compatibility.
+    """
+    resolved_col, resolved_row, _ = _resolve_auto_facets(ds, facet_col, facet_row, None)
+    return resolved_col, resolved_row
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
@@ -258,6 +319,7 @@ def _create_stacked_bar(
     title: str,
     facet_col: str | None,
     facet_row: str | None,
+    animation_frame: str | None = None,
     **plotly_kwargs: Any,
 ) -> go.Figure:
     """Create a stacked bar chart from xarray Dataset."""
@@ -274,6 +336,7 @@ def _create_stacked_bar(
         color='variable',
         facet_col=facet_col,
         facet_row=facet_row,
+        animation_frame=animation_frame,
         color_discrete_map=color_map,
         title=title,
         **plotly_kwargs,
@@ -289,6 +352,7 @@ def _create_line(
     title: str,
     facet_col: str | None,
     facet_row: str | None,
+    animation_frame: str | None = None,
     **plotly_kwargs: Any,
 ) -> go.Figure:
     """Create a line chart from xarray Dataset."""
@@ -305,6 +369,7 @@ def _create_line(
         color='variable',
         facet_col=facet_col,
         facet_row=facet_row,
+        animation_frame=animation_frame,
         color_discrete_map=color_map,
         title=title,
         **plotly_kwargs,
@@ -1377,8 +1442,9 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1391,8 +1457,11 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
-            facet_row: Dimension for row facets.
+            facet_col: Dimension for column facets. 'auto' uses first available of
+                cluster/period/scenario. None disables.
+            facet_row: Dimension for row facets. 'auto' uses first available after facet_col.
+            animation_frame: Dimension for animation slider. 'auto' uses first available
+                after facets.
             show: Whether to display the plot.
 
         Returns:
@@ -1429,7 +1498,9 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         # Build color map from Element.color attributes if no colors specified
         if colors is None:
@@ -1447,6 +1518,7 @@ class StatisticsPlotAccessor:
             title=f'{node} [{unit_label}]' if unit_label else node,
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             **plotly_kwargs,
         )
 
@@ -1466,8 +1538,9 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1483,8 +1556,10 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
-            facet_row: Dimension for row facets.
+            facet_col: Dimension for column facets. 'auto' uses first available of
+                cluster/period/scenario.
+            facet_row: Dimension for row facets. 'auto' uses first available after facet_col.
+            animation_frame: Dimension for animation slider.
             show: Whether to display the plot.
 
         Returns:
@@ -1535,7 +1610,9 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         # Use cached component colors for flows
         if colors is None:
@@ -1566,6 +1643,7 @@ class StatisticsPlotAccessor:
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             **plotly_kwargs,
         )
 
@@ -1581,18 +1659,20 @@ class StatisticsPlotAccessor:
         variables: str | list[str],
         *,
         select: SelectType | None = None,
-        reshape: tuple[str, str] | None = ('D', 'h'),
+        reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
         colors: str | list[str] | None = None,
-        facet_col: str | None = 'period',
-        animation_frame: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot heatmap of time series data.
 
-        Time is reshaped into 2D (e.g., days × hours) when possible. Multiple variables
-        are shown as facets. If too many dimensions exist to display without data loss,
-        reshaping is skipped and variables are shown on the y-axis with time on x-axis.
+        Time is reshaped into 2D (e.g., days × hours) when possible. For clustered data,
+        the natural (cluster, time) shape is used directly without reshaping.
+
+        Multiple variables are shown as facets. If too many dimensions exist to display
+        without data loss, reshaping is skipped and variables are shown on the y-axis.
 
         Args:
             variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
@@ -1600,12 +1680,13 @@ class StatisticsPlotAccessor:
                 names like 'Storage|charge_state' are used as-is.
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
-                    days × hours. Set to None to disable reshaping.
+                days × hours. 'auto' uses (cluster, time) for clustered data or
+                ('D', 'h') otherwise. None disables reshaping.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps (use str or list[str]).
-            facet_col: Dimension for subplot columns (default: 'period').
-                      With multiple variables, 'variable' is used instead.
-            animation_frame: Dimension for animation slider (default: 'scenario').
+            facet_col: Dimension for subplot columns. 'auto' uses first available of
+                cluster/period/scenario. With multiple variables, 'variable' is used.
+            animation_frame: Dimension for animation slider. 'auto' uses first available.
             show: Whether to display the figure.
             **plotly_kwargs: Additional arguments passed to px.imshow.
 
@@ -1628,38 +1709,48 @@ class StatisticsPlotAccessor:
         dataarrays = [ds[var] for var in variable_names]
         da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
 
+        # Check if data is clustered (has cluster dimension with size > 1)
+        is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
+
         # Determine facet and animation from available dims
         has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
         if has_multiple_vars:
             actual_facet = 'variable'
-            actual_animation = (
-                animation_frame
-                if animation_frame in da.dims
-                else (facet_col if facet_col in da.dims and da.sizes.get(facet_col, 1) > 1 else None)
-            )
+            # Resolve animation using auto logic, excluding 'variable' which is used for facet
+            _, _, actual_animation = _resolve_auto_facets(da.to_dataset(name='value'), None, None, animation_frame)
+            if actual_animation == 'variable':
+                actual_animation = None
         else:
-            actual_facet = facet_col if facet_col in da.dims and da.sizes.get(facet_col, 0) > 1 else None
-            actual_animation = (
-                animation_frame if animation_frame in da.dims and da.sizes.get(animation_frame, 0) > 1 else None
+            # Resolve facet and animation using auto logic
+            actual_facet, _, actual_animation = _resolve_auto_facets(
+                da.to_dataset(name='value'), facet_col, None, animation_frame
             )
 
-        # Count non-time dims with size > 1 (these need facet/animation slots)
-        extra_dims = [d for d in da.dims if d != 'time' and da.sizes[d] > 1]
+        # Count non-time/non-cluster dims with size > 1 (these need facet/animation slots)
+        heatmap_core_dims = {'time', 'cluster'} if is_clustered else {'time'}
+        extra_dims = [d for d in da.dims if d not in heatmap_core_dims and da.sizes[d] > 1]
         used_slots = len([d for d in [actual_facet, actual_animation] if d])
         would_drop = len(extra_dims) > used_slots
 
-        # Reshape time only if we wouldn't lose data (all extra dims fit in facet + animation)
-        if reshape and 'time' in da.dims and not would_drop:
+        # Determine heatmap dimensions based on data structure
+        if is_clustered and (reshape == 'auto' or reshape is None):
+            # Clustered data: use (time, cluster) as natural 2D heatmap axes
+            heatmap_dims = ['time', 'cluster']
+        elif reshape and reshape != 'auto' and 'time' in da.dims and not would_drop:
+            # Non-clustered with explicit reshape: reshape time to (day, hour) etc.
             da = _reshape_time_for_heatmap(da, reshape)
+            heatmap_dims = ['timestep', 'timeframe']
+        elif reshape == 'auto' and 'time' in da.dims and not would_drop and not is_clustered:
+            # Auto mode for non-clustered: use default ('D', 'h') reshape
+            da = _reshape_time_for_heatmap(da, ('D', 'h'))
             heatmap_dims = ['timestep', 'timeframe']
         elif has_multiple_vars:
             # Can't reshape but have multiple vars: use variable + time as heatmap axes
             heatmap_dims = ['variable', 'time']
             # variable is now a heatmap dim, use period/scenario for facet/animation
-            actual_facet = facet_col if facet_col in da.dims and da.sizes.get(facet_col, 0) > 1 else None
-            actual_animation = (
-                animation_frame if animation_frame in da.dims and da.sizes.get(animation_frame, 0) > 1 else None
+            actual_facet, _, actual_animation = _resolve_auto_facets(
+                da.to_dataset(name='value'), facet_col, None, animation_frame
             )
         else:
             heatmap_dims = ['time'] if 'time' in da.dims else list(da.dims)[:1]
@@ -1702,8 +1793,9 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1716,8 +1808,9 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
+            facet_col: Dimension for column facets. 'auto' uses first available.
             facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -1760,7 +1853,9 @@ class StatisticsPlotAccessor:
             ds = ds[[lbl for lbl in matching_labels if lbl in ds]]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1774,6 +1869,7 @@ class StatisticsPlotAccessor:
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             **plotly_kwargs,
         )
 
@@ -1790,8 +1886,9 @@ class StatisticsPlotAccessor:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1801,8 +1898,9 @@ class StatisticsPlotAccessor:
             max_size: Maximum size to include (filters defaults).
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
+            facet_col: Dimension for column facets. 'auto' uses first available.
             facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -1817,7 +1915,9 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         df = _dataset_to_long_df(ds)
         if df.empty:
@@ -1832,6 +1932,7 @@ class StatisticsPlotAccessor:
                 color='variable',
                 facet_col=actual_facet_col,
                 facet_row=actual_facet_row,
+                animation_frame=actual_anim,
                 color_discrete_map=color_map,
                 title='Investment Sizes',
                 labels={'variable': 'Flow', 'value': 'Size'},
@@ -1852,8 +1953,9 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1867,8 +1969,9 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
+            facet_col: Dimension for column facets. 'auto' uses first available.
             facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -1927,7 +2030,9 @@ class StatisticsPlotAccessor:
         duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
         result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
-        actual_facet_col, actual_facet_row = _resolve_facets(result_ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            result_ds, facet_col, facet_row, animation_frame
+        )
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1941,6 +2046,7 @@ class StatisticsPlotAccessor:
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             **plotly_kwargs,
         )
 
@@ -1962,8 +2068,9 @@ class StatisticsPlotAccessor:
         by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1977,8 +2084,9 @@ class StatisticsPlotAccessor:
                 or None to show aggregated totals per effect.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets (ignored if not in data).
-            facet_row: Dimension for row facets (ignored if not in data).
+            facet_col: Dimension for column facets. 'auto' uses first available.
+            facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -2068,7 +2176,9 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
         # Resolve facets
-        actual_facet_col, actual_facet_row = _resolve_facets(combined.to_dataset(name='value'), facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            combined.to_dataset(name='value'), facet_col, facet_row, animation_frame
+        )
 
         # Convert to DataFrame for plotly express
         df = combined.to_dataframe(name='value').reset_index()
@@ -2097,6 +2207,7 @@ class StatisticsPlotAccessor:
             color_discrete_map=color_map,
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             title=title,
             **plotly_kwargs,
         )
@@ -2116,8 +2227,9 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -2127,8 +2239,9 @@ class StatisticsPlotAccessor:
             storages: Storage label(s) to plot. If None, plots all storages.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for column facets.
+            facet_col: Dimension for column facets. 'auto' uses first available.
             facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -2143,7 +2256,9 @@ class StatisticsPlotAccessor:
             ds = ds[[s for s in storages if s in ds]]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         fig = _create_line(
             ds,
@@ -2151,6 +2266,7 @@ class StatisticsPlotAccessor:
             title='Storage Charge States',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             **plotly_kwargs,
         )
         fig.update_yaxes(title_text='Charge State')
@@ -2170,8 +2286,9 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -2187,8 +2304,9 @@ class StatisticsPlotAccessor:
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification for flow bars.
             charge_state_color: Color for the charge state line overlay.
-            facet_col: Dimension for column facets.
+            facet_col: Dimension for column facets. 'auto' uses first available.
             facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
             show: Whether to display.
 
         Returns:
@@ -2232,7 +2350,9 @@ class StatisticsPlotAccessor:
 
         # Apply selection
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row = _resolve_facets(ds, facet_col, facet_row)
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            ds, facet_col, facet_row, animation_frame
+        )
 
         # Build color map
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
@@ -2244,7 +2364,7 @@ class StatisticsPlotAccessor:
         # Convert to long-form DataFrame
         df = _dataset_to_long_df(ds)
 
-        # Create figure with facets using px.bar for flows, then add charge_state line
+        # Create figure with facets using px.bar for flows
         flow_df = df[df['variable'] != 'charge_state']
         charge_df = df[df['variable'] == 'charge_state']
 
@@ -2255,6 +2375,7 @@ class StatisticsPlotAccessor:
             color='variable',
             facet_col=actual_facet_col,
             facet_row=actual_facet_row,
+            animation_frame=actual_anim,
             color_discrete_map=color_map,
             title=f'{storage} Operation ({unit})',
             **plotly_kwargs,
@@ -2262,32 +2383,51 @@ class StatisticsPlotAccessor:
         fig.update_layout(bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
 
-        # Add charge state as line on secondary y-axis using px.line, then merge traces
+        # Add charge state as line on secondary y-axis
         if not charge_df.empty:
+            # Create line figure with same facets to get matching trace structure
             line_fig = px.line(
                 charge_df,
                 x='time',
                 y='value',
                 facet_col=actual_facet_col,
                 facet_row=actual_facet_row,
+                animation_frame=actual_anim,
             )
-            # Update line traces and add to main figure
-            for trace in line_fig.data:
-                trace.name = 'charge_state'
-                trace.line = dict(color=charge_state_color, width=2)
-                trace.yaxis = 'y2'
-                trace.showlegend = True
-                fig.add_trace(trace)
 
-            # Add secondary y-axis
-            fig.update_layout(
-                yaxis2=dict(
-                    title='Charge State',
-                    overlaying='y',
+            # Get the primary y-axes from the bar figure to create matching secondary axes
+            # px creates axes named: yaxis, yaxis2, yaxis3, etc.
+            primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
+
+            # For each primary y-axis, create a secondary y-axis
+            for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
+                # Determine secondary axis name (y -> y2, y2 -> y3 pattern won't work)
+                # Instead use a consistent offset: yaxis -> yaxis10, yaxis2 -> yaxis11, etc.
+                primary_num = primary_key[5:] if primary_key[5:] else '1'
+                secondary_num = int(primary_num) + 100  # Use high offset to avoid conflicts
+                secondary_key = f'yaxis{secondary_num}'
+                secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
+
+                fig.layout[secondary_key] = dict(
+                    overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
                     side='right',
                     showgrid=False,
+                    title='Charge State' if i == len(primary_yaxes) - 1 else None,
+                    anchor=secondary_anchor,
                 )
-            )
+
+            # Add line traces with correct axis assignments
+            for i, trace in enumerate(line_fig.data):
+                # Map trace index to secondary y-axis
+                primary_num = i + 1 if i > 0 else 1
+                secondary_yaxis = f'y{primary_num + 100}'
+
+                trace.name = 'charge_state'
+                trace.line = dict(color=charge_state_color, width=2)
+                trace.yaxis = secondary_yaxis
+                trace.showlegend = i == 0  # Only show legend for first trace
+                trace.legendgroup = 'charge_state'
+                fig.add_trace(trace)
 
         if show is None:
             show = CONFIG.Plotting.default_show
