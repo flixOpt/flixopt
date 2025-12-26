@@ -702,16 +702,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         is_clustered_dataset = 'cluster' in ds.dims and reference_structure.get('is_clustered', False)
 
         if is_clustered_dataset:
-            # Clustered dataset: create synthetic DatetimeIndex
+            # Clustered dataset: use intra-cluster time coordinate
             n_clusters = ds.sizes['cluster']
             timesteps_per_cluster = ds.sizes['time']
-            n_total_timesteps = n_clusters * timesteps_per_cluster
             timestep_duration_hours = reference_structure.get('timestep_duration', 1.0)
 
-            # Create synthetic DatetimeIndex for compatibility
-            synthetic_timesteps = pd.date_range(
+            # Use the actual intra-cluster time coordinate (e.g., 96 elements for daily clustering)
+            # This matches coords['time'] and the 2D (cluster, time) data structure
+            cluster_timesteps = pd.date_range(
                 start='2000-01-01',
-                periods=n_total_timesteps,
+                periods=timesteps_per_cluster,
                 freq=pd.Timedelta(hours=timestep_duration_hours),
                 name='time',
             )
@@ -730,7 +730,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=synthetic_timesteps,
+            timesteps=cluster_timesteps if is_clustered_dataset else synthetic_timesteps,
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
@@ -755,17 +755,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             }
             # Override timestep_duration to have correct shape for 2D cluster structure
             # Shape: (time,) = (timesteps_per_cluster,) - broadcasts with (cluster, time)
-            # Use DatetimeIndex consistent with _cluster_time_coords
-            time_coords_2d = pd.date_range(
-                start='2000-01-01',
-                periods=timesteps_per_cluster,
-                freq=pd.Timedelta(hours=timestep_duration_hours),
-                name='time',
-            )
+            # Use flow_system.timesteps which is now the intra-cluster time coordinate
             flow_system.timestep_duration = xr.DataArray(
                 np.full(timesteps_per_cluster, timestep_duration_hours),
                 dims=['time'],
-                coords={'time': time_coords_2d},
+                coords={'time': flow_system.timesteps},
                 name='timestep_duration',
             )
             # cluster_weight will be set after Clustering object is attached
