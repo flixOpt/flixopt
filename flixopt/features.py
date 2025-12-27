@@ -272,7 +272,18 @@ class StatusModel(Submodel):
                 previous_duration=self._get_previous_downtime(),
             )
 
+        # 7. Cyclic constraint for clustered systems
+        self._add_cluster_cyclic_constraint()
+
         self._add_effects()
+
+    def _add_cluster_cyclic_constraint(self):
+        """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
+        if self._model.flow_system.clusters is not None and self.parameters.cluster_mode == 'cyclic':
+            self.add_constraints(
+                self.status.isel(time=0) == self.status.isel(time=-1),
+                short_name='cluster_cyclic',
+            )
 
     def _add_effects(self):
         """Add operational effects (use timestep_duration only, cluster_weight is applied when summing to total)"""
