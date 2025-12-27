@@ -42,6 +42,92 @@ logger = logging.getLogger('flixopt')
 CLASS_REGISTRY = {}
 
 
+@dataclass
+class TimeSeriesWeights:
+    """Unified weighting system for time series aggregation (PyPSA-inspired).
+
+    This class provides a clean, unified interface for time series weights,
+    combining the various weight types used in flixopt into a single object.
+
+    Attributes:
+        temporal: Combined weight for temporal operations (timestep_duration × cluster_weight).
+            Applied to all time-summing operations. dims: [time] or [time, period, scenario]
+        period: Weight for each period in multi-period optimization.
+            dims: [period] or None
+        scenario: Weight for each scenario in stochastic optimization.
+            dims: [scenario] or None
+        objective: Optional override weight for objective function calculations.
+            If None, uses temporal weight. dims: [time] or [time, period, scenario]
+        storage: Optional override weight for storage balance equations.
+            If None, uses temporal weight. dims: [time] or [time, period, scenario]
+
+    Example:
+        >>> # Access via FlowSystem
+        >>> weights = flow_system.weights
+        >>> weighted_sum = (flow_rate * weights.temporal).sum('time')
+        >>>
+        >>> # With period/scenario weighting
+        >>> total = weighted_sum * weights.period * weights.scenario
+
+    Note:
+        For backwards compatibility, the existing properties (cluster_weight,
+        timestep_duration, aggregation_weight) are still available on FlowSystem
+        and FlowSystemModel.
+    """
+
+    temporal: xr.DataArray
+    period: xr.DataArray | None = None
+    scenario: xr.DataArray | None = None
+    objective: xr.DataArray | None = None
+    storage: xr.DataArray | None = None
+
+    def __post_init__(self):
+        """Validate weights."""
+        if not isinstance(self.temporal, xr.DataArray):
+            raise TypeError('temporal must be an xarray DataArray')
+        if 'time' not in self.temporal.dims:
+            raise ValueError("temporal must have 'time' dimension")
+
+    @property
+    def effective_objective(self) -> xr.DataArray:
+        """Get effective objective weight (override or temporal)."""
+        return self.objective if self.objective is not None else self.temporal
+
+    @property
+    def effective_storage(self) -> xr.DataArray:
+        """Get effective storage weight (override or temporal)."""
+        return self.storage if self.storage is not None else self.temporal
+
+    def sum_over_time(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over time dimension with proper weighting.
+
+        Args:
+            data: DataArray with 'time' dimension.
+
+        Returns:
+            Data summed over time with temporal weighting applied.
+        """
+        if 'time' not in data.dims:
+            return data
+        return (data * self.temporal).sum('time')
+
+    def apply_period_scenario_weights(self, data: xr.DataArray) -> xr.DataArray:
+        """Apply period and scenario weights to data.
+
+        Args:
+            data: DataArray, optionally with 'period' and/or 'scenario' dims.
+
+        Returns:
+            Data with period and scenario weights applied.
+        """
+        result = data
+        if self.period is not None and 'period' in data.dims:
+            result = result * self.period
+        if self.scenario is not None and 'scenario' in data.dims:
+            result = result * self.scenario
+        return result
+
+
 def register_class_for_io(cls):
     """Register a class for serialization/deserialization."""
     name = cls.__name__
@@ -204,17 +290,37 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
-        if 'time' in solution.coords and not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
-            solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        if 'time' in solution.coords:
+            if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+                solution = solution.reindex(time=self.flow_system.timesteps_extra)
         return solution
 
     @property
-    def hours_per_step(self):
-        return self.flow_system.hours_per_timestep
+    def timestep_duration(self) -> xr.DataArray:
+        """Duration of each timestep in hours."""
+        return self.flow_system.timestep_duration
 
     @property
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
+
+    @property
+    def cluster_weight(self) -> xr.DataArray:
+        """Cluster weight for cluster() optimization.
+
+        Represents how many original timesteps each cluster represents.
+        Default is 1.0 for all timesteps.
+        """
+        return self.flow_system.cluster_weight
+
+    @property
+    def aggregation_weight(self) -> xr.DataArray:
+        """Combined weight for time aggregation.
+
+        Combines timestep_duration (physical duration) and cluster_weight (cluster representation).
+        Use this for proper time aggregation in clustered models.
+        """
+        return self.timestep_duration * self.cluster_weight
 
     @property
     def scenario_weights(self) -> xr.DataArray:
@@ -262,7 +368,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         Args:
             dims: The dimensions to include in the coordinates. If None, includes all dimensions
-            extra_timestep: If True, uses extra timesteps instead of regular timesteps
+            extra_timestep: If True, uses extra timesteps instead of regular timesteps.
+                For clustered FlowSystems, extends time by 1 (for charge_state boundaries).
 
         Returns:
             The coordinates of the model, or None if no coordinates are available
@@ -276,7 +383,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if dims is None:
             coords = dict(self.flow_system.coords)
         else:
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
+            # In clustered systems, 'time' is always paired with 'cluster'
+            # So when 'time' is requested, also include 'cluster' if available
+            effective_dims = set(dims)
+            if 'time' in dims and 'cluster' in self.flow_system.coords:
+                effective_dims.add('cluster')
+            coords = {k: v for k, v in self.flow_system.coords.items() if k in effective_dims}
 
         if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra
@@ -1703,8 +1815,8 @@ class Submodel(SubmodelsMixin):
         return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
-    def hours_per_step(self):
-        return self._model.hours_per_step
+    def timestep_duration(self):
+        return self._model.timestep_duration
 
     def _do_modeling(self):
         """

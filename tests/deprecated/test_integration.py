@@ -258,15 +258,15 @@ class TestComplex:
 
 @pytest.mark.slow
 class TestModelingTypes:
-    @pytest.fixture(params=['full', 'segmented', 'aggregated'])
+    # Note: 'aggregated' case removed - ClusteredOptimization has been replaced by
+    # FlowSystem.transform.cluster(). See tests/test_clustering/ for new clustering tests.
+    @pytest.fixture(params=['full', 'segmented'])
     def modeling_calculation(self, request, flow_system_long, highs_solver):
         """
         Fixture to run optimizations with different modeling types
         """
         # Extract flow system and data from the fixture
         flow_system = flow_system_long[0]
-        thermal_load_ts = flow_system_long[1]['thermal_load_ts']
-        electrical_load_ts = flow_system_long[1]['electrical_load_ts']
 
         # Create calculation based on modeling type
         modeling_type = request.param
@@ -277,23 +277,6 @@ class TestModelingTypes:
         elif modeling_type == 'segmented':
             calc = fx.SegmentedOptimization('segModel', flow_system, timesteps_per_segment=96, overlap_timesteps=1)
             calc.do_modeling_and_solve(highs_solver)
-        elif modeling_type == 'aggregated':
-            calc = fx.ClusteredOptimization(
-                'aggModel',
-                flow_system,
-                fx.ClusteringParameters(
-                    hours_per_period=6,
-                    nr_of_periods=4,
-                    fix_storage_flows=False,
-                    aggregate_data_and_fix_non_binary_vars=True,
-                    percentage_of_period_freedom=0,
-                    penalty_of_period_freedom=0,
-                    time_series_for_low_peaks=[electrical_load_ts, thermal_load_ts],
-                    time_series_for_high_peaks=[thermal_load_ts],
-                ),
-            )
-            calc.do_modeling()
-            calc.solve(highs_solver)
 
         return calc, modeling_type
 
@@ -306,16 +289,15 @@ class TestModelingTypes:
         expected_costs = {
             'full': 343613,
             'segmented': 343613,  # Approximate value
-            'aggregated': 342967.0,
         }
 
-        if modeling_type in ['full', 'aggregated']:
+        if modeling_type == 'full':
             assert_almost_equal_numeric(
                 calc.results.model['costs'].solution.item(),
                 expected_costs[modeling_type],
                 f'costs do not match for {modeling_type} modeling type',
             )
-        else:
+        elif modeling_type == 'segmented':
             assert_almost_equal_numeric(
                 calc.results.solution_without_overlap('costs(temporal)|per_timestep').sum(),
                 expected_costs[modeling_type],

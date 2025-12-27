@@ -163,6 +163,9 @@ _DEFAULTS = MappingProxyType(
                 'default_facet_cols': 3,
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
+                'facet_col_priority': ('cluster', 'period', 'scenario'),
+                'facet_row_priority': ('period', 'scenario'),
+                'animation_frame_priority': ('scenario',),
             }
         ),
         'solving': MappingProxyType(
@@ -558,6 +561,9 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
+            facet_col_priority: Priority order for auto-resolving facet_col dimension.
+            facet_row_priority: Priority order for auto-resolving facet_row dimension.
+            animation_frame_priority: Priority order for auto-resolving animation_frame dimension.
 
         Examples:
             ```python
@@ -565,6 +571,9 @@ class CONFIG:
             CONFIG.Plotting.default_dpi = 600
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
+
+            # Customize auto-faceting priority
+            CONFIG.Plotting.facet_col_priority = ('period', 'cluster', 'scenario')
             ```
         """
 
@@ -574,6 +583,9 @@ class CONFIG:
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
+        facet_col_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_col_priority']
+        facet_row_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_row_priority']
+        animation_frame_priority: tuple[str, ...] = _DEFAULTS['plotting']['animation_frame_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -674,6 +686,9 @@ class CONFIG:
                 'default_facet_cols': cls.Plotting.default_facet_cols,
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
+                'facet_col_priority': cls.Plotting.facet_col_priority,
+                'facet_row_priority': cls.Plotting.facet_row_priority,
+                'animation_frame_priority': cls.Plotting.animation_frame_priority,
             },
         }
 

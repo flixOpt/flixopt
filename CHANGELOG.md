@@ -51,6 +51,124 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [5.1.0] - Upcoming
+
+**Summary**: This release introduces a new **aggregation abstraction layer** for time series clustering, making flixopt future-proof for alternative clustering methods beyond TSAM. The API is simplified to focus on timestep reduction (`cluster_reduce`), removing the constraint-based clustering approach.
+
+### ✨ Added
+
+**New Clustering Module** (`flixopt.clustering`): Data structures for time series clustering:
+
+```python
+from flixopt import clustering
+
+# Core data structures for clustering
+clustering.ClusterResult       # Universal result format
+clustering.ClusterStructure    # For storage inter-cluster linking
+clustering.Clustering          # Stored on FlowSystem after clustering
+```
+
+**Unified Clustering API**: New `transform.cluster()` method for time series reduction:
+
+```python
+# TSAM clustering (default) - clusters 365 days into 8 typical days
+fs_reduced = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
+)
+fs_reduced.optimize(solver)
+
+# Expand back to full resolution
+fs_expanded = fs_reduced.transform.expand_solution()
+```
+
+**TimeSeriesWeights Class**: PyPSA-inspired unified weighting system:
+
+```python
+# Access weights on any FlowSystem
+weights = flow_system.weights
+
+# temporal = timestep_duration × cluster_weight
+weights.temporal          # Applied to objective and constraints
+weights.effective_objective  # For objective function (with optional override)
+
+# Convenience method for weighted summation
+total_energy = weights.sum_over_time(flow_rates)
+```
+
+**Manual Clustering Support**: Helper function for creating cluster structures from external tools:
+
+```python
+from flixopt.clustering import create_cluster_structure_from_mapping
+
+# Use sklearn or any clustering algorithm
+from sklearn.cluster import KMeans
+# ... perform clustering, get labels ...
+
+# Create cluster structure from mapping
+cluster_structure = create_cluster_structure_from_mapping(
+    timestep_mapping=my_mapping,      # xr.DataArray: original → representative
+    representative_weights=my_weights, # xr.DataArray: weight per representative
+)
+```
+
+**set_aggregation() Method** (placeholder): Future PyPSA-style manual aggregation:
+
+```python
+# Coming soon - apply external clustering results directly
+fs_agg = flow_system.transform.set_aggregation(
+    timestep_mapping=mapping,
+    weights=weights,
+)
+```
+
+### 💥 Breaking Changes
+
+**Simplified `transform.cluster()` API**: The constraint-based clustering approach has been replaced with timestep reduction:
+
+```python
+# New API - reduces timesteps via TSAM clustering
+reduced_fs = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
+)
+reduced_fs.optimize(solver)
+```
+
+**Removed constraint-based clustering infrastructure**:
+- `ClusteredOptimization` class - removed (use `transform.cluster()` + `Optimization`)
+- `ClusteringParameters` class - removed (parameters passed directly to `transform.cluster()`)
+- `transform.add_clustering()` - removed
+- `FlowSystem._add_clustering_constraints()` - removed
+
+### ♻️ Changed
+
+**Terminology clarification** in clustering module:
+- "cluster" = a group of similar time chunks (e.g., similar days grouped together)
+- "typical period" = a representative time chunk for a cluster (TSAM terminology)
+- "cluster duration" = the length of each time chunk (e.g., 24h for daily clustering)
+
+Note: This is separate from the model's "period" dimension (years/months) and "scenario" dimension.
+
+**xarray-native data structures**: All clustering interfaces use `xr.DataArray` and `xr.Dataset` for proper coordinate handling.
+
+### 🔥 Removed
+
+- `ClusteredOptimization` class (use `transform.cluster()` + `Optimization`)
+- `ClusteringParameters` class (parameters passed directly to `transform.cluster()`)
+- `transform.add_clustering()` method
+- `ClusteringModel` constraint generation (internal)
+
+### 📝 Docs
+
+- Improved terminology: clarified distinction between clustering "typical periods" and model "period" dimension
+- Added clustering module documentation with examples
+
+---
+
+
 ## [5.0.3] - 2025-12-18
 
 **Summary**: Cleaner notebook outputs and improved `CONFIG.notebook()` preset.
