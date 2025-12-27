@@ -982,7 +982,22 @@ class StorageModel(ComponentModel):
             )
 
     def _add_initial_final_constraints(self):
-        """Add initial and final charge state constraints."""
+        """Add initial and final charge state constraints.
+
+        For clustered systems with 'independent' or 'cyclic' mode, these constraints
+        are skipped because:
+        - 'independent': Each cluster has free start/end SOC
+        - 'cyclic': Start == end is handled by _add_cluster_cyclic_constraint,
+          but no specific initial value is enforced
+        """
+        # Skip initial/final constraints for clustered systems with independent/cyclic mode
+        # These modes should have free or cyclic SOC, not a fixed initial value per cluster
+        if self._model.flow_system.clusters is not None and self.element.cluster_mode in (
+            'independent',
+            'cyclic',
+        ):
+            return
+
         if self.element.initial_charge_state is not None:
             if isinstance(self.element.initial_charge_state, str):
                 self.add_constraints(

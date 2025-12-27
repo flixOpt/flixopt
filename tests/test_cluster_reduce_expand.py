@@ -53,8 +53,13 @@ def test_cluster_creates_reduced_timesteps(timesteps_8_days):
         cluster_duration='1D',
     )
 
-    # Should have 2 * 24 = 48 timesteps instead of 192
-    assert len(fs_reduced.timesteps) == 48
+    # Clustered FlowSystem has 2D structure: (cluster, time)
+    # - timesteps: within-cluster time (24 hours)
+    # - clusters: cluster indices (2 clusters)
+    # Total effective timesteps = 2 * 24 = 48
+    assert len(fs_reduced.timesteps) == 24  # Within-cluster time
+    assert len(fs_reduced.clusters) == 2  # Number of clusters
+    assert len(fs_reduced.timesteps) * len(fs_reduced.clusters) == 48  # Total
     assert hasattr(fs_reduced, 'clustering')
     assert fs_reduced.clustering.result.cluster_structure.n_clusters == 2
 
@@ -72,13 +77,16 @@ def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_day
     # Optimize
     fs_reduced.optimize(solver_fixture)
     assert fs_reduced.solution is not None
-    assert len(fs_reduced.timesteps) == 48
+    # Clustered: 24 within-cluster timesteps, 2 clusters
+    assert len(fs_reduced.timesteps) == 24
+    assert len(fs_reduced.clusters) == 2
 
     # Expand back to full
     fs_expanded = fs_reduced.transform.expand_solution()
 
-    # Should have original timestep count
+    # Should have original timestep count (flat, no clusters)
     assert len(fs_expanded.timesteps) == 192
+    assert fs_expanded.clusters is None  # Expanded FlowSystem has no cluster dimension
     assert fs_expanded.solution is not None
 
 
@@ -130,9 +138,10 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
         # Values in the expanded solution for this original segment
         # should match the reduced solution for the corresponding typical cluster
         # With 2D cluster structure, use cluster_id to index the cluster dimension
+        # Note: solution may have extra timesteps (timesteps_extra), so slice to timesteps_per_cluster
         if reduced_flow.ndim == 2:
-            # 2D structure: (cluster, time)
-            expected = reduced_flow[cluster_id, :]
+            # 2D structure: (cluster, time) - exclude extra timestep if present
+            expected = reduced_flow[cluster_id, :timesteps_per_cluster]
         else:
             # Flat structure: (time,)
             typical_start = cluster_id * timesteps_per_cluster
@@ -272,8 +281,11 @@ def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
         cluster_duration='1D',
     )
 
-    # Should have 2 * 24 = 48 timesteps
-    assert len(fs_reduced.timesteps) == 48
+    # Clustered: 24 within-cluster timesteps, 2 clusters
+    # Total effective timesteps = 2 * 24 = 48
+    assert len(fs_reduced.timesteps) == 24
+    assert len(fs_reduced.clusters) == 2
+    assert len(fs_reduced.timesteps) * len(fs_reduced.clusters) == 48
 
     # Should have aggregation info with cluster structure
     info = fs_reduced.clustering
@@ -343,9 +355,10 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
             orig_end = orig_start + timesteps_per_cluster
 
             # With 2D cluster structure, use cluster_id to index the cluster dimension
+            # Note: solution may have extra timesteps (timesteps_extra), so slice to timesteps_per_cluster
             if reduced_scenario.ndim == 2:
-                # 2D structure: (cluster, time)
-                expected = reduced_scenario[cluster_id, :]
+                # 2D structure: (cluster, time) - exclude extra timestep if present
+                expected = reduced_scenario[cluster_id, :timesteps_per_cluster]
             else:
                 # Flat structure: (time,)
                 typical_start = cluster_id * timesteps_per_cluster
