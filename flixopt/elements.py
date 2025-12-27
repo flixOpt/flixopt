@@ -371,8 +371,7 @@ class Flow(Element):
             Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
-        previous_flow_rate: Initial flow state for status tracking at model start. If not set,
-            no startup/shutdown is forced at the first timestep (relaxed behavior).
+        previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
         meta_data: Additional info stored in results. Python native types only.
 
     Examples:
