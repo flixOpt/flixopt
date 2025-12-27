@@ -222,13 +222,16 @@ class StatusModel(Submodel):
             self.add_variables(binary=True, short_name='startup', coords=self.get_coords())
             self.add_variables(binary=True, short_name='shutdown', coords=self.get_coords())
 
+            # Determine previous_state: None means relaxed (no constraint at t=0)
+            previous_state = self._previous_status.isel(time=-1) if self._previous_status is not None else None
+
             BoundingPatterns.state_transition_bounds(
                 self,
                 state=self.status,
                 activate=self.startup,
                 deactivate=self.shutdown,
                 name=f'{self.label_of_model}|switch',
-                previous_state=self._previous_status.isel(time=-1) if self._previous_status is not None else 0,
+                previous_state=previous_state,
                 coord='time',
             )
 
@@ -337,24 +340,22 @@ class StatusModel(Submodel):
     def _get_previous_uptime(self):
         """Get previous uptime (consecutive active hours).
 
-        Returns 0 if no previous status is provided (assumes previously inactive).
+        Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
         """
-        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
-            return 0
-        else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status, hours_per_step)
+            return None  # Relaxed mode
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
+        return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status, hours_per_step)
 
     def _get_previous_downtime(self):
         """Get previous downtime (consecutive inactive hours).
 
-        Returns one timestep duration if no previous status is provided (assumes previously inactive).
+        Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
         """
-        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
-            return hours_per_step
-        else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(1 - self._previous_status, hours_per_step)
+            return None  # Relaxed mode
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
+        return ModelingUtilities.compute_consecutive_hours_in_state(1 - self._previous_status, hours_per_step)
 
 
 class PieceModel(Submodel):

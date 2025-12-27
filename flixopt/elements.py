@@ -371,12 +371,16 @@ class Flow(Element):
             Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
-        previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
+        previous_flow_rate: Initial flow state for status tracking at model start. If not set,
+            no startup/shutdown is forced at the first timestep (relaxed behavior).
         cluster_mode: How inter-timestep constraints are handled at cluster boundaries.
             Only relevant when using ``transform.cluster()``. Options:
 
-            - ``'independent'``: Each cluster uses ``previous_flow_rate`` as initial state.
-              Clusters are optimized independently. (default)
+            - ``'relaxed'``: No constraint at cluster boundaries. Startups at the first
+              timestep of each cluster are not forced - the optimizer is free to choose.
+              This prevents clustering from inducing "phantom" startups. (default)
+            - ``'independent'``: Each cluster assumes previous_state=0 at boundaries.
+              Startups are counted if the unit is on at the first timestep.
             - ``'cyclic'``: Each cluster's final state equals its initial state.
               Ensures consistent behavior within each representative period.
         meta_data: Additional info stored in results. Python native types only.
@@ -492,7 +496,7 @@ class Flow(Element):
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
-        cluster_mode: Literal['independent', 'cyclic'] = 'independent',
+        cluster_mode: Literal['relaxed', 'independent', 'cyclic'] = 'relaxed',
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -740,18 +744,43 @@ class FlowModel(ElementModel):
 
     def _create_status_model(self):
         status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+
+        # Determine previous_status based on cluster_mode
+        previous_status = self._get_effective_previous_status()
+
         self.add_submodels(
             StatusModel(
                 model=self._model,
                 label_of_element=self.label_of_element,
                 parameters=self.element.status_parameters,
                 status=status,
-                previous_status=self.previous_status,
+                previous_status=previous_status,
                 label_of_model=self.label_of_element,
             ),
             short_name='status',
         )
         self._add_cluster_cyclic_constraint()
+
+    def _get_effective_previous_status(self) -> xr.DataArray | None:
+        """Get the effective previous_status based on cluster_mode.
+
+        Returns:
+            - For 'relaxed' mode: self.previous_status (may be None → no constraint at t=0)
+            - For 'independent' mode in clustered systems: zero DataArray (forces startup if on at t=0)
+            - For 'cyclic' mode: self.previous_status (cyclic constraint added separately)
+            - For non-clustered systems: self.previous_status
+        """
+        # If previous_flow_rate is explicitly set, always use it
+        if self.previous_status is not None:
+            return self.previous_status
+
+        # For clustered systems with 'independent' mode, force startup at t=0
+        if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'independent':
+            # Return zero array to force startup if status[0]=1
+            return xr.DataArray([0], dims='time')
+
+        # For 'relaxed' and 'cyclic' modes, return None (relaxed behavior at t=0)
+        return None
 
     def _add_cluster_cyclic_constraint(self):
         """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
