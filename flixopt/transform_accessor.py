@@ -1180,7 +1180,9 @@ class TransformAccessor:
 
         # 3. Combine charge_state with SOC_boundary for InterclusterStorageModel storages
         # For intercluster storages, charge_state is relative (ΔE) and can be negative.
-        # The actual SOC is: SOC_boundary[d] + charge_state(t), where d is the original period.
+        # Per Blanke et al. (2022) Eq. 9, actual SOC at time t in period d is:
+        #   SOC(t) = SOC_boundary[d] * (1 - loss)^t_within_period + charge_state(t)
+        # where t_within_period is hours from period start (accounts for self-discharge decay).
         soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1201,8 +1203,26 @@ class TransformAccessor:
             )
             soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps)
 
-            # Combine: actual_SOC = SOC_boundary + charge_state
-            combined_charge_state = expanded_charge_state + soc_boundary_per_timestep
+            # Apply self-discharge decay to SOC_boundary based on time within period
+            # Get the storage's relative_loss_per_hour from original flow system
+            storage = original_fs.storages[storage_name]
+            if storage is not None:
+                # Time within period for each timestep (0, 1, 2, ..., timesteps_per_cluster-1, 0, 1, ...)
+                time_within_period = np.arange(n_original_timesteps) % timesteps_per_cluster
+                time_within_period_da = xr.DataArray(
+                    time_within_period, dims=['time'], coords={'time': original_timesteps}
+                )
+                # Decay factor: (1 - loss)^t, using mean loss over time
+                # Keep as DataArray to respect per-period/scenario values
+                loss_value = storage.relative_loss_per_hour.mean('time')
+                if (loss_value > 0).any():
+                    decay_da = (1 - loss_value) ** time_within_period_da
+                    soc_boundary_per_timestep = soc_boundary_per_timestep * decay_da
+
+            # Combine: actual_SOC = SOC_boundary * decay + charge_state
+            # Clip to non-negative since actual SOC cannot be negative
+            # (small negative values may occur due to constraint approximations in the model)
+            combined_charge_state = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
             expanded_fs._solution[charge_state_name] = combined_charge_state.assign_attrs(expanded_charge_state.attrs)
 
         n_combinations = len(periods) * len(scenarios)
