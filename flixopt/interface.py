@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -1337,6 +1337,14 @@ class StatusParameters(Interface):
         force_startup_tracking: When True, creates startup variables even without explicit
             startup_limit constraint. Useful for tracking or reporting startup
             events without enforcing limits.
+        cluster_mode: How inter-timestep constraints are handled at cluster boundaries.
+            Only relevant when using ``transform.cluster()``. Options:
+
+            - ``'relaxed'``: No constraint at cluster boundaries. Startups at the first
+              timestep of each cluster are not forced - the optimizer is free to choose.
+              This prevents clustering from inducing "phantom" startups. (default)
+            - ``'cyclic'``: Each cluster's final status equals its initial status.
+              Ensures consistent behavior within each representative period.
 
     Note:
         **Time Series Boundary Handling**: The final time period constraints for
@@ -1472,6 +1480,7 @@ class StatusParameters(Interface):
         max_downtime: Numeric_TPS | None = None,
         startup_limit: Numeric_PS | None = None,
         force_startup_tracking: bool = False,
+        cluster_mode: Literal['relaxed', 'cyclic'] = 'relaxed',
     ):
         self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
         self.effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
@@ -1483,6 +1492,7 @@ class StatusParameters(Interface):
         self.max_downtime = max_downtime
         self.startup_limit = startup_limit
         self.force_startup_tracking: bool = force_startup_tracking
+        self.cluster_mode = cluster_mode
 
     def transform_data(self) -> None:
         self.effects_per_startup = self._fit_effect_coords(

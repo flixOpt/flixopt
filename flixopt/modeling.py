@@ -251,7 +251,7 @@ class ModelingPrimitives:
         maximum_duration: xr.DataArray | None = None,
         duration_dim: str = 'time',
         duration_per_step: int | float | xr.DataArray = None,
-        previous_duration: xr.DataArray = 0,
+        previous_duration: xr.DataArray | None = None,
     ) -> tuple[dict[str, linopy.Variable], dict[str, linopy.Constraint]]:
         """Creates consecutive duration tracking for a binary state variable.
 
@@ -262,7 +262,7 @@ class ModelingPrimitives:
             duration[t] ≤ state[t] · M  ∀t
             duration[t+1] ≤ duration[t] + duration_per_step[t]  ∀t
             duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) · M  ∀t
-            duration[0] = (duration_per_step[0] + previous_duration) · state[0]
+            duration[0] = (duration_per_step[0] + previous_duration) · state[0]  (if previous_duration is not None)
 
             If minimum_duration provided:
                 duration[t] ≥ (state[t-1] - state[t]) · minimum_duration[t-1]  ∀t > 0
@@ -278,16 +278,19 @@ class ModelingPrimitives:
             maximum_duration: Optional maximum consecutive duration (upper bound on duration variable)
             duration_dim: Dimension name to track duration along (default 'time')
             duration_per_step: Time increment per step in duration_dim
-            previous_duration: Initial duration value before first timestep (default 0)
+            previous_duration: Initial duration value before first timestep. If None (default),
+                the initial constraint is skipped ("relaxed" mode) - duration at t=0 is unconstrained.
 
         Returns:
             Tuple of (duration_variable, constraints_dict)
-            where constraints_dict contains: 'ub', 'forward', 'backward', 'initial', and optionally 'lb', 'initial_lb'
+            where constraints_dict contains: 'ub', 'forward', 'backward', and optionally 'initial', 'lb', 'initial_lb'
         """
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
 
-        mega = duration_per_step.sum(duration_dim) + previous_duration  # Big-M value
+        # Big-M value (use 0 for previous_duration if None/relaxed mode)
+        prev_for_mega = previous_duration if previous_duration is not None else 0
+        mega = duration_per_step.sum(duration_dim) + prev_for_mega
 
         # Duration variable
         duration = model.add_variables(
@@ -319,12 +322,14 @@ class ModelingPrimitives:
             name=f'{duration.name}|backward',
         )
 
-        # Initial condition: duration[0] = (duration_per_step[0] + previous_duration) * state[0]
-        constraints['initial'] = model.add_constraints(
-            duration.isel({duration_dim: 0})
-            == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state.isel({duration_dim: 0}),
-            name=f'{duration.name}|initial',
-        )
+        # Initial condition (skip if previous_duration is None = relaxed mode)
+        if previous_duration is not None:
+            # duration[0] = (duration_per_step[0] + previous_duration) * state[0]
+            constraints['initial'] = model.add_constraints(
+                duration.isel({duration_dim: 0})
+                == (duration_per_step.isel({duration_dim: 0}) + previous_duration) * state.isel({duration_dim: 0}),
+                name=f'{duration.name}|initial',
+            )
 
         # Minimum duration constraint if provided
         if minimum_duration is not None:
@@ -335,17 +340,18 @@ class ModelingPrimitives:
                 name=f'{duration.name}|lb',
             )
 
-            # Handle initial condition for minimum duration
-            prev = (
-                float(previous_duration)
-                if not isinstance(previous_duration, xr.DataArray)
-                else float(previous_duration.max().item())
-            )
-            min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
-            if prev > 0 and prev < min0:
-                constraints['initial_lb'] = model.add_constraints(
-                    state.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
+            # Handle initial condition for minimum duration (only if not relaxed mode)
+            if previous_duration is not None:
+                prev = (
+                    float(previous_duration)
+                    if not isinstance(previous_duration, xr.DataArray)
+                    else float(previous_duration.max().item())
                 )
+                min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
+                if prev > 0 and prev < min0:
+                    constraints['initial_lb'] = model.add_constraints(
+                        state.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
+                    )
 
         variables = {'duration': duration}
 
@@ -578,9 +584,9 @@ class BoundingPatterns:
         activate: linopy.Variable,
         deactivate: linopy.Variable,
         name: str,
-        previous_state: float | xr.DataArray = 0,
+        previous_state: float | xr.DataArray | None = None,
         coord: str = 'time',
-    ) -> tuple[linopy.Constraint, linopy.Constraint, linopy.Constraint]:
+    ) -> tuple[linopy.Constraint, linopy.Constraint | None, linopy.Constraint]:
         """Creates state transition constraints for binary state variables.
 
         Tracks transitions between active (1) and inactive (0) states using
@@ -588,7 +594,7 @@ class BoundingPatterns:
 
         Mathematical formulation:
             activate[t] - deactivate[t] = state[t] - state[t-1]  ∀t > 0
-            activate[0] - deactivate[0] = state[0] - previous_state
+            activate[0] - deactivate[0] = state[0] - previous_state  (if previous_state is not None)
             activate[t] + deactivate[t] ≤ 1  ∀t
             activate[t], deactivate[t] ∈ {0, 1}
 
@@ -598,11 +604,13 @@ class BoundingPatterns:
             activate: Binary variable for transitions from inactive to active (0→1)
             deactivate: Binary variable for transitions from active to inactive (1→0)
             name: Base name for constraints
-            previous_state: State value before first timestep (default 0)
+            previous_state: State value before first timestep. If None (default), the initial
+                constraint is skipped ("relaxed" mode) - startup/shutdown at t=0 is not forced.
             coord: Time dimension name (default 'time')
 
         Returns:
-            Tuple of (transition_constraint, initial_constraint, mutex_constraint)
+            Tuple of (transition_constraint, initial_constraint, mutex_constraint).
+            initial_constraint is None if previous_state is None (relaxed mode).
         """
         if not isinstance(model, Submodel):
             raise ValueError('BoundingPatterns.state_transition_bounds() can only be used with a Submodel')
@@ -614,11 +622,14 @@ class BoundingPatterns:
             name=f'{name}|transition',
         )
 
-        # Initial state transition for t = 0
-        initial = model.add_constraints(
-            activate.isel({coord: 0}) - deactivate.isel({coord: 0}) == state.isel({coord: 0}) - previous_state,
-            name=f'{name}|initial',
-        )
+        # Initial state transition for t = 0 (skip if previous_state is None = relaxed mode)
+        if previous_state is not None:
+            initial = model.add_constraints(
+                activate.isel({coord: 0}) - deactivate.isel({coord: 0}) == state.isel({coord: 0}) - previous_state,
+                name=f'{name}|initial',
+            )
+        else:
+            initial = None  # Relaxed mode: no constraint at t=0, startup/shutdown is "free"
 
         # At most one transition per timestep (mutual exclusivity)
         mutex = model.add_constraints(activate + deactivate <= 1, name=f'{name}|mutex')
