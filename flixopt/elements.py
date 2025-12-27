@@ -5,7 +5,7 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
@@ -372,13 +372,6 @@ class Flow(Element):
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
         previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
-        cluster_mode: How inter-timestep constraints are handled at cluster boundaries.
-            Only relevant when using ``transform.cluster()``. Options:
-
-            - ``'independent'``: Each cluster uses ``previous_flow_rate`` as initial state.
-              Clusters are optimized independently. (default)
-            - ``'cyclic'``: Each cluster's final state equals its initial state.
-              Ensures consistent behavior within each representative period.
         meta_data: Additional info stored in results. Python native types only.
 
     Examples:
@@ -492,7 +485,6 @@ class Flow(Element):
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
-        cluster_mode: Literal['independent', 'cyclic'] = 'independent',
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
@@ -513,7 +505,6 @@ class Flow(Element):
         self.status_parameters = status_parameters
 
         self.previous_flow_rate = previous_flow_rate
-        self.cluster_mode = cluster_mode
 
         self.component: str = 'UnknownComponent'
         self.is_input_in_component: bool | None = None
@@ -751,15 +742,6 @@ class FlowModel(ElementModel):
             ),
             short_name='status',
         )
-        self._add_cluster_cyclic_constraint()
-
-    def _add_cluster_cyclic_constraint(self):
-        """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
-        if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
-            self.add_constraints(
-                self.status.status.isel(time=0) == self.status.status.isel(time=-1),
-                short_name='cluster_cyclic',
-            )
 
     def _create_investment_model(self):
         self.add_submodels(
