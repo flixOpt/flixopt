@@ -125,9 +125,13 @@ class TestClusterMethod:
             cluster_duration='1D',
         )
 
-        # Check that timesteps were reduced (from 168 hours to 48 hours = 2 days x 24 hours)
-        assert len(fs_clustered.timesteps) < len(fs.timesteps)
-        assert len(fs_clustered.timesteps) == 48  # 2 representative days x 24 hours
+        # Clustered FlowSystem has 2D structure: (cluster, time)
+        # - timesteps: within-cluster time (24 hours)
+        # - clusters: cluster indices (2 clusters)
+        # Total effective timesteps = 2 * 24 = 48
+        assert len(fs_clustered.timesteps) == 24  # Within-cluster time
+        assert len(fs_clustered.clusters) == 2  # Number of clusters
+        assert len(fs_clustered.timesteps) * len(fs_clustered.clusters) == 48
 
 
 class TestClusteringModuleImports:
