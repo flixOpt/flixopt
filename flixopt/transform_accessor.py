@@ -1178,6 +1178,33 @@ class TransformAccessor:
             attrs=reduced_solution.attrs,
         )
 
+        # 3. Combine charge_state with SOC_boundary for InterclusterStorageModel storages
+        # For intercluster storages, charge_state is relative (ΔE) and can be negative.
+        # The actual SOC is: SOC_boundary[d] + charge_state(t), where d is the original period.
+        soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
+        for soc_boundary_name in soc_boundary_vars:
+            storage_name = soc_boundary_name.rsplit('|', 1)[0]
+            charge_state_name = f'{storage_name}|charge_state'
+            if charge_state_name not in expanded_fs._solution:
+                continue
+
+            soc_boundary = reduced_solution[soc_boundary_name]
+            expanded_charge_state = expanded_fs._solution[charge_state_name]
+
+            # Map each original timestep to its original period index
+            original_period_indices = np.arange(n_original_timesteps) // timesteps_per_cluster
+
+            # Select SOC_boundary for each timestep (boundary[d] for period d)
+            # SOC_boundary has dim 'cluster_boundary', we select indices 0..n_original_periods-1
+            soc_boundary_per_timestep = soc_boundary.isel(
+                cluster_boundary=xr.DataArray(original_period_indices, dims=['time'])
+            )
+            soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps)
+
+            # Combine: actual_SOC = SOC_boundary + charge_state
+            combined_charge_state = expanded_charge_state + soc_boundary_per_timestep
+            expanded_fs._solution[charge_state_name] = combined_charge_state.assign_attrs(expanded_charge_state.attrs)
+
         n_combinations = len(periods) * len(scenarios)
         n_original_segments = cluster_structure.n_original_periods
         logger.info(
