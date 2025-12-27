@@ -138,9 +138,10 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
         # Values in the expanded solution for this original segment
         # should match the reduced solution for the corresponding typical cluster
         # With 2D cluster structure, use cluster_id to index the cluster dimension
+        # Note: solution may have extra timesteps (timesteps_extra), so slice to timesteps_per_cluster
         if reduced_flow.ndim == 2:
-            # 2D structure: (cluster, time)
-            expected = reduced_flow[cluster_id, :]
+            # 2D structure: (cluster, time) - exclude extra timestep if present
+            expected = reduced_flow[cluster_id, :timesteps_per_cluster]
         else:
             # Flat structure: (time,)
             typical_start = cluster_id * timesteps_per_cluster
@@ -354,9 +355,10 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
             orig_end = orig_start + timesteps_per_cluster
 
             # With 2D cluster structure, use cluster_id to index the cluster dimension
+            # Note: solution may have extra timesteps (timesteps_extra), so slice to timesteps_per_cluster
             if reduced_scenario.ndim == 2:
-                # 2D structure: (cluster, time)
-                expected = reduced_scenario[cluster_id, :]
+                # 2D structure: (cluster, time) - exclude extra timestep if present
+                expected = reduced_scenario[cluster_id, :timesteps_per_cluster]
             else:
                 # Flat structure: (time,)
                 typical_start = cluster_id * timesteps_per_cluster

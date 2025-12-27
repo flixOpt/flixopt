@@ -375,8 +375,9 @@ class ClusterResult:
             mapping = timestep_mapping.values
             if has_cluster_dim:
                 # 2D cluster structure: convert flat indices to (cluster, time_within)
-                # n_clusters = aggregated.sizes['cluster']
-                timesteps_per_cluster = aggregated.sizes['time']
+                # Use cluster_structure's timesteps_per_cluster, not aggregated.sizes['time']
+                # because the solution may include extra timesteps (timesteps_extra)
+                timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
                 cluster_ids = mapping // timesteps_per_cluster
                 time_within = mapping % timesteps_per_cluster
                 expanded_values = aggregated.values[cluster_ids, time_within]
@@ -415,8 +416,9 @@ class ClusterResult:
 
                 if has_cluster_dim:
                     # 2D cluster structure: convert flat indices to (cluster, time_within)
-                    _n_clusters = slice_da.sizes['cluster']
-                    timesteps_per_cluster = slice_da.sizes['time']
+                    # Use cluster_structure's timesteps_per_cluster, not slice_da.sizes['time']
+                    # because the solution may include extra timesteps (timesteps_extra)
+                    timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
                     cluster_ids = mapping // timesteps_per_cluster
                     time_within = mapping % timesteps_per_cluster
                     expanded_values = slice_da.values[cluster_ids, time_within]
