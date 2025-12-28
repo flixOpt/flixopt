@@ -16,6 +16,7 @@ Example:
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import holidays
@@ -23,6 +24,8 @@ import numpy as np
 import pandas as pd
 import pvlib
 from demandlib import bdew
+
+warnings.resetwarnings()  # Reset to default behavior due to weird dependency behaviour
 
 # Data directory
 DATA_DIR = Path(__file__).parent / 'raw'

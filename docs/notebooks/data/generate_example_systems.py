@@ -15,13 +15,23 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from generate_realistic_profiles import (
-    ElectricityLoadGenerator,
-    GasPriceGenerator,
-    ThermalLoadGenerator,
-    load_electricity_prices,
-    load_weather,
-)
+
+try:
+    from .generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
+except ImportError:
+    from generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
 
 import flixopt as fx
 
