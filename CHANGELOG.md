@@ -53,118 +53,82 @@ Until here -->
 
 ## [5.1.0] - Upcoming
 
-**Summary**: This release introduces a new **aggregation abstraction layer** for time series clustering, making flixopt future-proof for alternative clustering methods beyond TSAM. The API is simplified to focus on timestep reduction (`cluster_reduce`), removing the constraint-based clustering approach.
+**Summary**: Time-series clustering for faster optimization with configurable storage behavior across typical periods.
 
 ### ✨ Added
 
-**New Clustering Module** (`flixopt.clustering`): Data structures for time series clustering:
+**Time-Series Clustering**: Reduce large time series to representative typical periods for faster investment optimization, then expand results back to full resolution.
 
 ```python
-from flixopt import clustering
-
-# Core data structures for clustering
-clustering.ClusterResult       # Universal result format
-clustering.ClusterStructure    # For storage inter-cluster linking
-clustering.Clustering          # Stored on FlowSystem after clustering
-```
-
-**Unified Clustering API**: New `transform.cluster()` method for time series reduction:
-
-```python
-# TSAM clustering (default) - clusters 365 days into 8 typical days
-fs_reduced = flow_system.transform.cluster(
-    n_clusters=8,
-    cluster_duration='1D',
-    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
+# Stage 1: Cluster and optimize (fast sizing)
+fs_clustered = flow_system.transform.cluster(
+    n_clusters=12,                    # 12 typical days from a year
+    cluster_duration='1D',            # Each cluster represents one day
+    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
 )
-fs_reduced.optimize(solver)
+fs_clustered.optimize(solver)
 
-# Expand back to full resolution
-fs_expanded = fs_reduced.transform.expand_solution()
+# Stage 2: Expand back to full resolution
+fs_expanded = fs_clustered.transform.expand_solution()
 ```
 
-**TimeSeriesWeights Class**: PyPSA-inspired unified weighting system:
+**Storage Modes for Clustering**: Control how storage behaves across clustered periods via `Storage(cluster_mode=...)`:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `'intercluster_cyclic'` | Links storage across clusters + yearly cyclic (default) | Seasonal storage with yearly optimization |
+| `'intercluster'` | Links storage across clusters, free start/end | Multi-year optimization without cyclic constraint |
+| `'cyclic'` | Each cluster independent, but cyclic (start = end) | Daily storage only, ignores seasonal patterns |
+| `'independent'` | Each cluster fully independent, free start/end | Fastest solve, no long-term storage value |
+
+**Clustering Parameters**:
+
+- `n_clusters` (int): Number of representative periods to create
+- `cluster_duration` (str): Duration of each cluster period (e.g., `'1D'`, `'24h'`, or integer hours)
+- `time_series_for_high_peaks` (list[str]): Ensure clusters containing peak values are captured
+- `time_series_for_low_peaks` (list[str]): Ensure clusters containing minimum values are captured
+
+**Key Features**:
+
+- **Inter-cluster storage linking**: For `'intercluster'` and `'intercluster_cyclic'` modes, a `SOC_boundary` variable tracks absolute state-of-charge at period boundaries, enabling accurate seasonal storage modeling
+- **Self-discharge decay**: Storage losses are correctly applied during solution expansion using the formula: `actual_SOC(t) = SOC_boundary × (1 - loss)^t + ΔE(t)`
+- **Multi-dimensional support**: Works with periods, scenarios, and clusters dimensions simultaneously
+- **Solution expansion**: `transform.expand_solution()` maps clustered results back to original timesteps with proper storage state reconstruction
+
+**Example: Seasonal Storage with Clustering**:
 
 ```python
-# Access weights on any FlowSystem
-weights = flow_system.weights
-
-# temporal = timestep_duration × cluster_weight
-weights.temporal          # Applied to objective and constraints
-weights.effective_objective  # For objective function (with optional override)
-
-# Convenience method for weighted summation
-total_energy = weights.sum_over_time(flow_rates)
-```
-
-**Manual Clustering Support**: Helper function for creating cluster structures from external tools:
-
-```python
-from flixopt.clustering import create_cluster_structure_from_mapping
-
-# Use sklearn or any clustering algorithm
-from sklearn.cluster import KMeans
-# ... perform clustering, get labels ...
-
-# Create cluster structure from mapping
-cluster_structure = create_cluster_structure_from_mapping(
-    timestep_mapping=my_mapping,      # xr.DataArray: original → representative
-    representative_weights=my_weights, # xr.DataArray: weight per representative
+# Configure storage for seasonal behavior
+storage = fx.Storage(
+    'SeasonalPit',
+    capacity_in_flow_hours=5000,
+    cluster_mode='intercluster_cyclic',  # Enable seasonal storage in clustering
+    relative_loss_per_hour=0.0001,       # Small self-discharge
+    ...
 )
+
+# Cluster, optimize, and expand
+fs_clustered = flow_system.transform.cluster(n_clusters=12, cluster_duration='1D')
+fs_clustered.optimize(solver)
+fs_expanded = fs_clustered.transform.expand_solution()
+
+# Full-resolution charge state now available
+charge_state = fs_expanded.solution['SeasonalPit|charge_state']
 ```
 
-**set_aggregation() Method** (placeholder): Future PyPSA-style manual aggregation:
+!!! tip "Choosing the Right Storage Mode"
+    Use `'intercluster_cyclic'` (default) for seasonal storage like pit storage or underground thermal storage.
+    Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
+    Use `'independent'` for quick estimates when storage behavior isn't critical.
 
-```python
-# Coming soon - apply external clustering results directly
-fs_agg = flow_system.transform.set_aggregation(
-    timestep_mapping=mapping,
-    weights=weights,
-)
-```
+### 👷 Development
 
-### 💥 Breaking Changes
+**New Test Suites for Clustering**:
 
-**Simplified `transform.cluster()` API**: The constraint-based clustering approach has been replaced with timestep reduction:
-
-```python
-# New API - reduces timesteps via TSAM clustering
-reduced_fs = flow_system.transform.cluster(
-    n_clusters=8,
-    cluster_duration='1D',
-    time_series_for_high_peaks=['Demand|fixed_relative_profile'],
-)
-reduced_fs.optimize(solver)
-```
-
-**Removed constraint-based clustering infrastructure**:
-- `ClusteredOptimization` class - removed (use `transform.cluster()` + `Optimization`)
-- `ClusteringParameters` class - removed (parameters passed directly to `transform.cluster()`)
-- `transform.add_clustering()` - removed
-- `FlowSystem._add_clustering_constraints()` - removed
-
-### ♻️ Changed
-
-**Terminology clarification** in clustering module:
-- "cluster" = a group of similar time chunks (e.g., similar days grouped together)
-- "typical period" = a representative time chunk for a cluster (TSAM terminology)
-- "cluster duration" = the length of each time chunk (e.g., 24h for daily clustering)
-
-Note: This is separate from the model's "period" dimension (years/months) and "scenario" dimension.
-
-**xarray-native data structures**: All clustering interfaces use `xr.DataArray` and `xr.Dataset` for proper coordinate handling.
-
-### 🔥 Removed
-
-- `ClusteredOptimization` class (use `transform.cluster()` + `Optimization`)
-- `ClusteringParameters` class (parameters passed directly to `transform.cluster()`)
-- `transform.add_clustering()` method
-- `ClusteringModel` constraint generation (internal)
-
-### 📝 Docs
-
-- Improved terminology: clarified distinction between clustering "typical periods" and model "period" dimension
-- Added clustering module documentation with examples
+- `TestStorageClusterModes`: Tests for all 4 storage `cluster_mode` options
+- `TestInterclusterStorageLinking`: Tests for `SOC_boundary` variable and expansion logic
+- `TestMultiPeriodClustering`: Tests for clustering with periods and scenarios dimensions
+- `TestPeakSelection`: Tests for `time_series_for_high_peaks` and `time_series_for_low_peaks` parameters
 
 ---
 
