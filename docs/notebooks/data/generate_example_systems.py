@@ -7,7 +7,6 @@ This script creates FlowSystems of varying complexity:
 4. district_heating_system - Real-world district heating data with investments (1 month)
 5. operational_system - Real-world district heating for operational planning (2 weeks, no investments)
 6. seasonal_storage_system - Solar thermal + seasonal pit storage (full year, 8760h)
-7. realistic_system - BDEW profiles + PVGIS weather + OPSD prices (requires demandlib, pvlib)
 
 Run this script to regenerate the example data files.
 """
