@@ -236,12 +236,9 @@ def _resolve_auto_facets(
 ) -> tuple[str | None, str | None, str | None]:
     """Resolve 'auto' facet/animation dimensions based on available data dimensions.
 
-    When 'auto' is specified, dimensions are assigned based on priority:
-    - facet_col: cluster → period → scenario (first available with size > 1)
-    - facet_row: period → scenario (after facet_col is assigned)
-    - animation_frame: scenario (after others are assigned)
-
-    Priority order is configurable via CONFIG.Plotting.facet_col_priority, etc.
+    When 'auto' is specified, extra dimensions are assigned to slots based on:
+    - CONFIG.Plotting.extra_dim_priority: Order of dimensions (default: cluster → period → scenario)
+    - CONFIG.Plotting.dim_slot_priority: Order of slots (default: facet_col → facet_row → animation_frame)
 
     Args:
         ds: Dataset to check for available dimensions.
@@ -253,38 +250,36 @@ def _resolve_auto_facets(
         Tuple of (resolved_facet_col, resolved_facet_row, resolved_animation_frame).
         Each is either a valid dimension name or None.
     """
-    # Get available dimensions with size > 1
+    # Get available extra dimensions with size > 1, sorted by priority
     available = {d for d in ds.dims if ds.sizes[d] > 1}
+    extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
     used: set[str] = set()
 
-    def resolve_one(
-        value: str | Literal['auto'] | None,
-        priority: tuple[str, ...],
-    ) -> str | None:
-        if value is None:
-            return None
-        if value != 'auto':
-            # Explicit dimension - use if available, else None
-            return value if value in available and value not in used else None
+    # Map slot names to their input values
+    slots = {
+        'facet_col': facet_col,
+        'facet_row': facet_row,
+        'animation_frame': animation_frame,
+    }
+    results: dict[str, str | None] = {'facet_col': None, 'facet_row': None, 'animation_frame': None}
 
-        # Auto mode: pick first available from priority list
-        for dim in priority:
-            if dim in available and dim not in used:
-                used.add(dim)
-                return dim
-        return None
+    # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
+    for slot_name, value in slots.items():
+        if value is not None and value != 'auto':
+            if value in available and value not in used:
+                used.add(value)
+                results[slot_name] = value
 
-    resolved_col = resolve_one(facet_col, CONFIG.Plotting.facet_col_priority)
-    if resolved_col:
-        used.add(resolved_col)
+    # Second pass: resolve 'auto' slots in dim_slot_priority order
+    dim_iter = iter(d for d in extra_dims if d not in used)
+    for slot_name in CONFIG.Plotting.dim_slot_priority:
+        if slots.get(slot_name) == 'auto':
+            next_dim = next(dim_iter, None)
+            if next_dim:
+                used.add(next_dim)
+                results[slot_name] = next_dim
 
-    resolved_row = resolve_one(facet_row, CONFIG.Plotting.facet_row_priority)
-    if resolved_row:
-        used.add(resolved_row)
-
-    resolved_anim = resolve_one(animation_frame, CONFIG.Plotting.animation_frame_priority)
-
-    return resolved_col, resolved_row, resolved_anim
+    return results['facet_col'], results['facet_row'], results['animation_frame']
 
 
 def _resolve_facets(
@@ -1443,8 +1438,8 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1539,8 +1534,8 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1727,22 +1722,18 @@ class StatisticsPlotAccessor:
                 da.to_dataset(name='value'), facet_col, None, animation_frame
             )
 
-        # Count non-time/non-cluster dims with size > 1 (these need facet/animation slots)
-        heatmap_core_dims = {'time', 'cluster'} if is_clustered else {'time'}
-        extra_dims = [d for d in da.dims if d not in heatmap_core_dims and da.sizes[d] > 1]
-        used_slots = len([d for d in [actual_facet, actual_animation] if d])
-        would_drop = len(extra_dims) > used_slots
-
         # Determine heatmap dimensions based on data structure
         if is_clustered and (reshape == 'auto' or reshape is None):
             # Clustered data: use (time, cluster) as natural 2D heatmap axes
             heatmap_dims = ['time', 'cluster']
-        elif reshape and reshape != 'auto' and 'time' in da.dims and not would_drop:
+        elif reshape and reshape != 'auto' and 'time' in da.dims:
             # Non-clustered with explicit reshape: reshape time to (day, hour) etc.
+            # Extra dims will be handled via facet/animation or dropped
             da = _reshape_time_for_heatmap(da, reshape)
             heatmap_dims = ['timestep', 'timeframe']
-        elif reshape == 'auto' and 'time' in da.dims and not would_drop and not is_clustered:
+        elif reshape == 'auto' and 'time' in da.dims and not is_clustered:
             # Auto mode for non-clustered: use default ('D', 'h') reshape
+            # Extra dims will be handled via facet/animation or dropped
             da = _reshape_time_for_heatmap(da, ('D', 'h'))
             heatmap_dims = ['timestep', 'timeframe']
         elif has_multiple_vars:
@@ -1753,7 +1744,14 @@ class StatisticsPlotAccessor:
                 da.to_dataset(name='value'), facet_col, None, animation_frame
             )
         else:
-            heatmap_dims = ['time'] if 'time' in da.dims else list(da.dims)[:1]
+            # Fallback: use first two available dimensions
+            available_dims = [d for d in da.dims if da.sizes[d] > 1]
+            if len(available_dims) >= 2:
+                heatmap_dims = available_dims[:2]
+            elif 'time' in da.dims:
+                heatmap_dims = ['time']
+            else:
+                heatmap_dims = list(da.dims)[:1]
 
         # Keep only dims we need
         keep_dims = set(heatmap_dims) | {d for d in [actual_facet, actual_animation] if d is not None}
@@ -1794,8 +1792,8 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1887,8 +1885,8 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1954,8 +1952,8 @@ class StatisticsPlotAccessor:
         normalize: bool = False,
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -2069,8 +2067,8 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -2228,8 +2226,8 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         colors: ColorType | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -2287,8 +2285,8 @@ class StatisticsPlotAccessor:
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
         facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = None,
-        animation_frame: str | Literal['auto'] | None = None,
+        facet_row: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:

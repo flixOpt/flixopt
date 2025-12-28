@@ -163,9 +163,8 @@ _DEFAULTS = MappingProxyType(
                 'default_facet_cols': 3,
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
-                'facet_col_priority': ('cluster', 'period', 'scenario'),
-                'facet_row_priority': ('period', 'scenario'),
-                'animation_frame_priority': ('scenario',),
+                'extra_dim_priority': ('cluster', 'period', 'scenario'),
+                'dim_slot_priority': ('facet_col', 'facet_row', 'animation_frame'),
             }
         ),
         'solving': MappingProxyType(
@@ -561,9 +560,10 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
-            facet_col_priority: Priority order for auto-resolving facet_col dimension.
-            facet_row_priority: Priority order for auto-resolving facet_row dimension.
-            animation_frame_priority: Priority order for auto-resolving animation_frame dimension.
+            extra_dim_priority: Order of extra dimensions when auto-assigning to slots.
+                Default: ('cluster', 'period', 'scenario').
+            dim_slot_priority: Order of slots to fill with extra dimensions.
+                Default: ('facet_col', 'facet_row', 'animation_frame').
 
         Examples:
             ```python
@@ -572,8 +572,10 @@ class CONFIG:
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
 
-            # Customize auto-faceting priority
-            CONFIG.Plotting.facet_col_priority = ('period', 'cluster', 'scenario')
+            # Customize dimension handling
+            # With 2 extra dims (period, scenario): period → facet_col, scenario → facet_row
+            CONFIG.Plotting.extra_dim_priority = ('cluster', 'period', 'scenario')
+            CONFIG.Plotting.dim_slot_priority = ('facet_col', 'facet_row', 'animation_frame')
             ```
         """
 
@@ -583,9 +585,8 @@ class CONFIG:
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
-        facet_col_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_col_priority']
-        facet_row_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_row_priority']
-        animation_frame_priority: tuple[str, ...] = _DEFAULTS['plotting']['animation_frame_priority']
+        extra_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['extra_dim_priority']
+        dim_slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_slot_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -686,9 +687,8 @@ class CONFIG:
                 'default_facet_cols': cls.Plotting.default_facet_cols,
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
-                'facet_col_priority': cls.Plotting.facet_col_priority,
-                'facet_row_priority': cls.Plotting.facet_row_priority,
-                'animation_frame_priority': cls.Plotting.animation_frame_priority,
+                'extra_dim_priority': cls.Plotting.extra_dim_priority,
+                'dim_slot_priority': cls.Plotting.dim_slot_priority,
             },
         }
 
