@@ -822,8 +822,6 @@ def create_realistic_system() -> fx.FlowSystem:
 
 def main():
     """Generate all example systems and save to netCDF."""
-    solver = fx.solvers.HighsSolver(log_to_console=False)
-
     systems = [
         ('simple_system', create_simple_system),
         ('complex_system', create_complex_system),
@@ -838,15 +836,9 @@ def main():
         print(f'Creating {name}...')
         fs = create_func()
 
-        print('  Optimizing...')
-        fs.optimize(solver)
-
         output_path = OUTPUT_DIR / f'{name}.nc4'
         print(f'  Saving to {output_path}...')
         fs.to_netcdf(output_path, overwrite=True)
-
-        print(f'  Done. Objective: {fs.solution["objective"].item():.2f}')
-        print()
 
     print('All systems generated successfully!')
 
