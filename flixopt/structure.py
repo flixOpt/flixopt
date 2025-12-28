@@ -255,7 +255,17 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     @property
     def solution(self):
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
-        solution = super().solution
+        import warnings
+
+        # Suppress the linopy warning about coordinate mismatch.
+        # This warning is expected when storage charge_state has one more timestep than other variables.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                category=UserWarning,
+                message='Coordinates across variables not equal',
+            )
+            solution = super().solution
         solution['objective'] = self.objective.value
         # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
