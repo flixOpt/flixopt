@@ -513,23 +513,50 @@ class ClusterResult:
         if max_idx >= n_rep:
             raise ValueError(f'timestep_mapping contains index {max_idx} but n_representatives is {n_rep}')
 
-        # Check weights size matches n_representatives
-        # representative_weights can be (cluster, time) or flat (time,)
-        weights_size = self.representative_weights.size
-        if weights_size != n_rep:
-            raise ValueError(f'representative_weights has {weights_size} elements but n_representatives is {n_rep}')
+        # Check weights dimensions
+        # representative_weights should have (cluster,) dimension with n_clusters elements
+        # (plus optional period/scenario dimensions)
+        if self.cluster_structure is not None:
+            n_clusters = self.cluster_structure.n_clusters
+            if 'cluster' in self.representative_weights.dims:
+                weights_n_clusters = self.representative_weights.sizes['cluster']
+                if weights_n_clusters != n_clusters:
+                    raise ValueError(
+                        f'representative_weights has {weights_n_clusters} clusters '
+                        f'but cluster_structure has {n_clusters}'
+                    )
 
-        # Check weights sum roughly equals original timesteps
-        weight_sum = float(self.representative_weights.sum().values)
-        n_original = self.n_original_timesteps
-        if abs(weight_sum - n_original) > 1e-6:
-            # Warning only - some aggregation methods may not preserve this exactly
-            import warnings
+        # Check weights sum roughly equals number of original periods
+        # (each weight is how many original periods that cluster represents)
+        # Sum should be checked per period/scenario slice, not across all dimensions
+        if self.cluster_structure is not None:
+            n_original_periods = self.cluster_structure.n_original_periods
+            # Sum over cluster dimension only (keep period/scenario if present)
+            weight_sum_per_slice = self.representative_weights.sum(dim='cluster')
+            # Check each slice
+            if weight_sum_per_slice.size == 1:
+                # Simple case: no period/scenario
+                weight_sum = float(weight_sum_per_slice.values)
+                if abs(weight_sum - n_original_periods) > 1e-6:
+                    import warnings
 
-            warnings.warn(
-                f'representative_weights sum ({weight_sum}) does not match n_original_timesteps ({n_original})',
-                stacklevel=2,
-            )
+                    warnings.warn(
+                        f'representative_weights sum ({weight_sum}) does not match '
+                        f'n_original_periods ({n_original_periods})',
+                        stacklevel=2,
+                    )
+            else:
+                # Multi-dimensional: check each slice
+                for val in weight_sum_per_slice.values.flat:
+                    if abs(float(val) - n_original_periods) > 1e-6:
+                        import warnings
+
+                        warnings.warn(
+                            f'representative_weights sum per slice ({float(val)}) does not match '
+                            f'n_original_periods ({n_original_periods})',
+                            stacklevel=2,
+                        )
+                        break  # Only warn once
 
 
 class ClusteringPlotAccessor:
