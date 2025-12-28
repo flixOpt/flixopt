@@ -10,6 +10,7 @@ import json
 import logging
 import pathlib
 import re
+import warnings
 from dataclasses import dataclass
 from difflib import get_close_matches
 from typing import (
@@ -255,8 +256,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     @property
     def solution(self):
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
-        import warnings
-
         # Suppress the linopy warning about coordinate mismatch.
         # This warning is expected when storage charge_state has one more timestep than other variables.
         with warnings.catch_warnings():
