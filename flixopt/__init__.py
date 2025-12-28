@@ -98,7 +98,3 @@ warnings.filterwarnings(
     message="In a future version of xarray the default value for join will change from join='outer' to join='exact'",
     module='linopy',
 )
-
-# numpy: Core numerical library
-# - RuntimeWarning: Binary incompatibility warnings from compiled extensions (safe to ignore). numpy 1->2
-warnings.filterwarnings('ignore', category=RuntimeWarning, message='numpy\\.ndarray size changed')
