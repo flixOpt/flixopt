@@ -576,7 +576,7 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             'SeasonalStorage',
             capacity_in_flow_hours=fx.InvestParameters(
                 minimum_size=0,
-                maximum_size=5000,  # MWh - large for seasonal storage
+                maximum_size=50000,  # MWh - large for seasonal storage
                 effects_of_investment_per_size={'costs': 20},  # €/MWh (pit storage is cheap)
             ),
             initial_charge_state='equals_final',  # Yearly cyclic
