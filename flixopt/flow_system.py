@@ -45,6 +45,11 @@ if TYPE_CHECKING:
 
 from .carrier import Carrier, CarrierContainer
 
+# Register clustering classes for IO (deferred to avoid circular imports)
+from .clustering.base import _register_clustering_classes
+
+_register_clustering_classes()
+
 logger = logging.getLogger('flixopt')
 
 
@@ -669,12 +674,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
-        # Include cluster info for clustered FlowSystems
+        # Include cluster info for clustered FlowSystems (old structure)
         if self.clusters is not None:
             ds.attrs['is_clustered'] = True
             ds.attrs['n_clusters'] = len(self.clusters)
             ds.attrs['timesteps_per_cluster'] = len(self.timesteps)
             ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
+
+        # Serialize Clustering object if present (new structure)
+        if self.clustering is not None:
+            clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
+            # Add clustering arrays with prefix and rename conflicting dimensions
+            for name, arr in clustering_arrays.items():
+                # Rename 'time' dimension to 'clustering_time' to avoid conflicts
+                if 'time' in arr.dims:
+                    arr = arr.rename({'time': 'clustering_time'})
+                ds[f'clustering|{name}'] = arr
+            ds.attrs['clustering'] = json.dumps(clustering_ref)
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -791,6 +807,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
+
+        # Restore Clustering object if present
+        if 'clustering' in reference_structure:
+            clustering_structure = json.loads(reference_structure['clustering'])
+            # Collect clustering arrays (prefixed with 'clustering|')
+            clustering_arrays = {}
+            for name, arr in ds.data_vars.items():
+                if name.startswith('clustering|'):
+                    # Remove 'clustering|' prefix (11 chars) and rename dimension back
+                    arr_name = name[11:]
+                    if 'clustering_time' in arr.dims:
+                        arr = arr.rename({'clustering_time': 'time'})
+                    clustering_arrays[arr_name] = arr
+            clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
+            flow_system.clustering = clustering
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()

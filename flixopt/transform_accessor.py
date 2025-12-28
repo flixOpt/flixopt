@@ -851,6 +851,9 @@ class TransformAccessor:
             timestep_mapping_slices = {}
             cluster_occurrences_slices = {}
 
+            # Use renamed timesteps as coordinates for multi-dimensional case
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
+
             for p in periods:
                 for s in scenarios:
                     key = (p, s)
@@ -858,7 +861,10 @@ class TransformAccessor:
                         cluster_orders[key], dims=['original_period'], name='cluster_order'
                     )
                     timestep_mapping_slices[key] = xr.DataArray(
-                        _build_timestep_mapping_for_key(key), dims=['original_time'], name='timestep_mapping'
+                        _build_timestep_mapping_for_key(key),
+                        dims=['original_time'],
+                        coords={'original_time': original_timesteps_coord},
+                        name='timestep_mapping',
                     )
                     cluster_occurrences_slices[key] = xr.DataArray(
                         _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
@@ -877,8 +883,13 @@ class TransformAccessor:
         else:
             # Simple case: single (None, None) slice
             cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_period'], name='cluster_order')
+            # Use renamed timesteps as coordinates
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
             timestep_mapping_da = xr.DataArray(
-                _build_timestep_mapping_for_key(first_key), dims=['original_time'], name='timestep_mapping'
+                _build_timestep_mapping_for_key(first_key),
+                dims=['original_time'],
+                coords={'original_time': original_timesteps_coord},
+                name='timestep_mapping',
             )
             cluster_occurrences_da = xr.DataArray(
                 _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
@@ -914,7 +925,6 @@ class TransformAccessor:
 
         reduced_fs.clustering = Clustering(
             result=aggregation_result,
-            original_flow_system=self._fs,
             backend_name='tsam',
         )
 
@@ -1130,19 +1140,21 @@ class TransformAccessor:
             raise ValueError('No cluster structure available for expansion.')
 
         timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        original_fs: FlowSystem = info.original_flow_system
         n_clusters = (
             int(cluster_structure.n_clusters)
             if isinstance(cluster_structure.n_clusters, (int, np.integer))
             else int(cluster_structure.n_clusters.values)
         )
-        has_periods = original_fs.periods is not None
-        has_scenarios = original_fs.scenarios is not None
 
-        periods = list(original_fs.periods) if has_periods else [None]
-        scenarios = list(original_fs.scenarios) if has_scenarios else [None]
+        # Use derived properties from Clustering instead of original_flow_system
+        original_timesteps = info.original_timesteps
+        original_periods = info.original_periods
+        original_scenarios = info.original_scenarios
+        has_periods = original_periods is not None
+        has_scenarios = original_scenarios is not None
 
-        original_timesteps = original_fs.timesteps
+        periods = list(original_periods) if has_periods else [None]
+        scenarios = list(original_scenarios) if has_scenarios else [None]
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
@@ -1154,11 +1166,23 @@ class TransformAccessor:
 
         # 1. Expand FlowSystem data (with cluster_weight set to 1.0 for all timesteps)
         reduced_ds = self._fs.to_dataset(include_solution=False)
-        expanded_ds = xr.Dataset(
-            {name: expand_da(da) for name, da in reduced_ds.data_vars.items() if name != 'cluster_weight'},
-            attrs=reduced_ds.attrs,
-        )
-        expanded_ds.attrs['timestep_duration'] = original_fs.timestep_duration.values.tolist()
+        # Filter out cluster-related variables and copy attrs without clustering info
+        data_vars = {
+            name: expand_da(da)
+            for name, da in reduced_ds.data_vars.items()
+            if name != 'cluster_weight' and not name.startswith('clustering|')
+        }
+        attrs = {
+            k: v
+            for k, v in reduced_ds.attrs.items()
+            if k not in ('is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering')
+        }
+        expanded_ds = xr.Dataset(data_vars, attrs=attrs)
+        # Compute timestep_duration from original timesteps
+        # Add extra timestep for duration calculation (assume same interval as last)
+        original_timesteps_extra = FlowSystem._create_timesteps_with_extra(original_timesteps, None)
+        timestep_duration = FlowSystem.calculate_timestep_duration(original_timesteps_extra)
+        expanded_ds.attrs['timestep_duration'] = timestep_duration.values.tolist()
 
         # Create cluster_weight with value 1.0 for all timesteps (no weighting needed for expanded)
         # Use _combine_slices_to_dataarray for consistent multi-dim handling
@@ -1204,8 +1228,8 @@ class TransformAccessor:
             soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps)
 
             # Apply self-discharge decay to SOC_boundary based on time within period
-            # Get the storage's relative_loss_per_hour from original flow system
-            storage = original_fs.storages[storage_name]
+            # Get the storage's relative_loss_per_hour from the clustered flow system
+            storage = self._fs.storages.get(storage_name)
             if storage is not None:
                 # Time within period for each timestep (0, 1, 2, ..., timesteps_per_cluster-1, 0, 1, ...)
                 time_within_period = np.arange(n_original_timesteps) % timesteps_per_cluster

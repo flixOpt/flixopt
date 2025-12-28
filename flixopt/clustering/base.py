@@ -21,11 +21,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
     from ..color_processing import ColorType
-    from ..flow_system import FlowSystem
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
@@ -97,6 +97,29 @@ class ClusterStructure:
             f'  occurrences={occ}\n'
             f')'
         )
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store DataArrays with references
+        arrays[str(self.cluster_order.name)] = self.cluster_order
+        ref['cluster_order'] = f':::{self.cluster_order.name}'
+
+        arrays[str(self.cluster_occurrences.name)] = self.cluster_occurrences
+        ref['cluster_occurrences'] = f':::{self.cluster_occurrences.name}'
+
+        # Store scalar values
+        if isinstance(self.n_clusters, xr.DataArray):
+            arrays[str(self.n_clusters.name)] = self.n_clusters
+            ref['n_clusters'] = f':::{self.n_clusters.name}'
+        else:
+            ref['n_clusters'] = int(self.n_clusters)
+
+        ref['timesteps_per_cluster'] = self.timesteps_per_cluster
+
+        return ref, arrays
 
     @property
     def n_original_periods(self) -> int:
@@ -303,6 +326,37 @@ class ClusterResult:
             f'  cluster_structure={has_structure}, data={has_data}\n'
             f')'
         )
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store DataArrays with references
+        arrays[str(self.timestep_mapping.name)] = self.timestep_mapping
+        ref['timestep_mapping'] = f':::{self.timestep_mapping.name}'
+
+        arrays[str(self.representative_weights.name)] = self.representative_weights
+        ref['representative_weights'] = f':::{self.representative_weights.name}'
+
+        # Store scalar values
+        if isinstance(self.n_representatives, xr.DataArray):
+            n_rep_name = self.n_representatives.name or 'n_representatives'
+            self.n_representatives = self.n_representatives.rename(n_rep_name)
+            arrays[n_rep_name] = self.n_representatives
+            ref['n_representatives'] = f':::{n_rep_name}'
+        else:
+            ref['n_representatives'] = int(self.n_representatives)
+
+        # Store nested ClusterStructure if present
+        if self.cluster_structure is not None:
+            cs_ref, cs_arrays = self.cluster_structure._create_reference_structure()
+            ref['cluster_structure'] = cs_ref
+            arrays.update(cs_arrays)
+
+        # Skip aggregated_data and original_data - not needed for serialization
+
+        return ref, arrays
 
     @property
     def n_original_timesteps(self) -> int:
@@ -911,7 +965,6 @@ class Clustering:
 
     Attributes:
         result: The ClusterResult from the aggregation backend.
-        original_flow_system: Reference to the FlowSystem before aggregation.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
 
     Example:
@@ -923,8 +976,22 @@ class Clustering:
     """
 
     result: ClusterResult
-    original_flow_system: FlowSystem  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store nested ClusterResult
+        result_ref, result_arrays = self.result._create_reference_structure()
+        ref['result'] = result_ref
+        arrays.update(result_arrays)
+
+        # Store scalar values
+        ref['backend_name'] = self.backend_name
+
+        return ref, arrays
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -1024,6 +1091,36 @@ class Clustering:
         n_timesteps = self.n_clusters * self.timesteps_per_period
         return np.arange(0, n_timesteps, self.timesteps_per_period)
 
+    # Properties to derive original coordinates from existing DataArrays
+
+    @property
+    def original_timesteps(self) -> pd.DatetimeIndex:
+        """Original timesteps before clustering.
+
+        Derived from the 'original_time' coordinate of timestep_mapping.
+        """
+        return pd.DatetimeIndex(self.result.timestep_mapping.coords['original_time'].values)
+
+    @property
+    def original_periods(self) -> pd.Index | None:
+        """Original periods before clustering (if multi-period system).
+
+        Returns None if the FlowSystem had no period dimension.
+        """
+        if 'period' in self.result.timestep_mapping.dims:
+            return pd.Index(self.result.timestep_mapping.coords['period'].values)
+        return None
+
+    @property
+    def original_scenarios(self) -> pd.Index | None:
+        """Original scenarios before clustering (if multi-scenario system).
+
+        Returns None if the FlowSystem had no scenario dimension.
+        """
+        if 'scenario' in self.result.timestep_mapping.dims:
+            return pd.Index(self.result.timestep_mapping.coords['scenario'].values)
+        return None
+
 
 def create_cluster_structure_from_mapping(
     timestep_mapping: xr.DataArray,
@@ -1073,3 +1170,15 @@ def create_cluster_structure_from_mapping(
         n_clusters=n_clusters,
         timesteps_per_cluster=timesteps_per_cluster,
     )
+
+
+def _register_clustering_classes():
+    """Register clustering classes for IO.
+
+    Called from flow_system.py after all imports are complete to avoid circular imports.
+    """
+    from ..structure import CLASS_REGISTRY
+
+    CLASS_REGISTRY['ClusterStructure'] = ClusterStructure
+    CLASS_REGISTRY['ClusterResult'] = ClusterResult
+    CLASS_REGISTRY['Clustering'] = Clustering
