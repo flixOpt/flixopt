@@ -19,7 +19,6 @@ import pandas as pd
 from generate_realistic_profiles import (
     ElectricityLoadGenerator,
     GasPriceGenerator,
-    SolarGenerator,
     ThermalLoadGenerator,
     load_electricity_prices,
     load_weather,
@@ -696,130 +695,6 @@ def create_multiperiod_system() -> fx.FlowSystem:
     return fs
 
 
-def create_realistic_system() -> fx.FlowSystem:
-    """Create a system with realistic German profiles from BDEW/PVGIS/OPSD data.
-
-    Uses:
-    - demandlib: BDEW standard load profiles for heat and electricity
-    - pvlib: PV generation from PVGIS TMY weather data (Dresden)
-    - OPSD: Historical German electricity prices (2020)
-
-    Components:
-    - Heat pump with COP varying by temperature
-    - PV system
-    - Gas boiler (backup)
-    - Thermal storage
-    - Grid connection (buy/sell)
-
-    One month (January 2020), hourly resolution.
-    """
-    # January 2020
-    timesteps = pd.date_range('2020-01-01', '2020-01-31 23:00:00', freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
-
-    # Generate profiles
-    thermal_gen = ThermalLoadGenerator()
-    heat_demand = thermal_gen.generate(timesteps, temp, 'residential_multi', annual_demand_kwh=500_000)
-
-    elec_gen = ElectricityLoadGenerator()
-    elec_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=200_000)
-
-    solar_gen = SolarGenerator()
-    pv_profile = solar_gen.generate_pv_profile(timesteps, _weather, capacity_kw=1)  # Normalized to 1 kW
-
-    gas_gen = GasPriceGenerator()
-    gas_price = gas_gen.generate(timesteps) / 1000  # EUR/kWh
-
-    # Electricity price (EUR/kWh)
-    elec_price = _elec_prices.reindex(timesteps, method='ffill').values / 1000
-
-    # Temperature-dependent COP (Carnot-based approximation)
-    t_supply = 45  # °C supply temperature
-    cop = 0.5 * (t_supply + 273.15) / (t_supply - temp + 1)  # Simplified Carnot
-    cop = np.clip(cop, 2.5, 5.0)
-
-    fs = fx.FlowSystem(timesteps)
-    fs.add_carriers(
-        fx.Carrier('gas', '#3498db', 'kW'),
-        fx.Carrier('electricity', '#f1c40f', 'kW'),
-        fx.Carrier('heat', '#e74c3c', 'kW'),
-    )
-    fs.add_elements(
-        # Buses
-        fx.Bus('Gas', carrier='gas'),
-        fx.Bus('Electricity', carrier='electricity'),
-        fx.Bus('Heat', carrier='heat'),
-        # Effects
-        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
-        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
-        # Gas supply
-        fx.Source(
-            'GasGrid',
-            outputs=[fx.Flow('Gas', bus='Gas', size=1500, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.2})],
-        ),
-        # Electricity grid (import)
-        fx.Source(
-            'GridImport',
-            outputs=[
-                fx.Flow('El', bus='Electricity', size=500, effects_per_flow_hour={'costs': elec_price, 'CO2': 0.4})
-            ],
-        ),
-        # Electricity grid (export)
-        fx.Sink(
-            'GridExport',
-            inputs=[fx.Flow('El', bus='Electricity', size=100, effects_per_flow_hour=-elec_price * 0.8)],
-        ),
-        # PV system (investment)
-        fx.Source(
-            'PV',
-            outputs=[
-                fx.Flow(
-                    'El',
-                    bus='Electricity',
-                    size=fx.InvestParameters(maximum_size=100, effects_of_investment_per_size={'costs': 1000}),
-                    fixed_relative_profile=pv_profile,
-                )
-            ],
-        ),
-        # Heat pump with variable COP
-        fx.linear_converters.HeatPump(
-            'HeatPump',
-            cop=cop,
-            thermal_flow=fx.Flow(
-                'Heat',
-                bus='Heat',
-                size=fx.InvestParameters(maximum_size=800, effects_of_investment_per_size={'costs': 500}),
-            ),
-            electrical_flow=fx.Flow('El', bus='Electricity'),
-        ),
-        # Gas boiler (backup)
-        fx.linear_converters.Boiler(
-            'GasBoiler',
-            thermal_efficiency=0.92,
-            thermal_flow=fx.Flow(
-                'Heat',
-                bus='Heat',
-                size=fx.InvestParameters(maximum_size=1200, effects_of_investment_per_size={'costs': 50}),
-            ),
-            fuel_flow=fx.Flow('Gas', bus='Gas'),
-        ),
-        # Thermal storage
-        fx.Storage(
-            'ThermalStorage',
-            capacity_in_flow_hours=fx.InvestParameters(maximum_size=500, effects_of_investment_per_size={'costs': 20}),
-            eta_charge=0.98,
-            eta_discharge=0.98,
-            relative_loss_per_hour=0.005,
-            charging=fx.Flow('Charge', bus='Heat', size=100),
-            discharging=fx.Flow('Discharge', bus='Heat', size=100),
-        ),
-        # Demands
-        fx.Sink('HeatDemand', inputs=[fx.Flow('Heat', bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
-        fx.Sink('ElecDemand', inputs=[fx.Flow('El', bus='Electricity', size=1, fixed_relative_profile=elec_demand)]),
-    )
-    return fs
-
-
 def main():
     """Generate all example systems and save to netCDF."""
     systems = [
@@ -829,7 +704,6 @@ def main():
         ('district_heating_system', create_district_heating_system),
         ('operational_system', create_operational_system),
         ('seasonal_storage_system', create_seasonal_storage_system),
-        ('realistic_system', create_realistic_system),
     ]
 
     for name, create_func in systems:
