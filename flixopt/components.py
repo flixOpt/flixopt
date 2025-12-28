@@ -5,6 +5,7 @@ This module contains the basic components of the flixopt framework.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -1520,8 +1521,12 @@ class InterclusterStorageModel(StorageModel):
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
             # With 2D structure: select time offset, then reorder by cluster_order
             cs_at_offset = charge_state.isel(time=offset)  # Shape: (cluster, ...)
-            cs_t = cs_at_offset.isel(cluster=cluster_order)  # Reorder to original_period order
-            cs_t = cs_t.rename({'cluster': 'original_period'})
+            # Reorder to original_period order using cluster_order indexer
+            cs_t = cs_at_offset.isel(cluster=cluster_order)
+            # Suppress xarray warning about index loss - we immediately assign new coords anyway
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='.*does not create an index anymore.*')
+                cs_t = cs_t.rename({'cluster': 'original_period'})
             cs_t = cs_t.assign_coords(original_period=np.arange(n_original_periods))
 
             # Apply decay factor (1-loss)^t to SOC_boundary per Eq. 9
