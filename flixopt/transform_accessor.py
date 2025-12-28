@@ -73,7 +73,7 @@ class TransformAccessor:
                 weights[name] = da.attrs.get('clustering_weight', 1)
 
         if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.info('All Clustering weights were set to 1')
+            logger.debug('All Clustering weights were set to 1')
 
         return weights
 
@@ -668,9 +668,6 @@ class TransformAccessor:
         timesteps_per_cluster = int(round(hours_per_cluster / dt))
         has_periods = self._fs.periods is not None
         has_scenarios = self._fs.scenarios is not None
-
-        logger.info(f'{"":#^80}')
-        logger.info(f'{" Creating Typical Clusters ":#^80}')
 
         # Determine iteration dimensions
         periods = list(self._fs.periods) if has_periods else [None]
