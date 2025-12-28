@@ -73,13 +73,6 @@ class TestIselSingleScenario:
         assert fs_selected.scenarios is None
         assert 'scenario' not in fs_selected.to_dataset().dims
 
-    def test_isel_single_scenario_stores_selected_value(self, fs_with_scenarios):
-        """The selected scenario value should be stored in attrs."""
-        fs_selected = fs_with_scenarios.transform.isel(scenario=1)
-
-        ds = fs_selected.to_dataset()
-        assert ds.attrs.get('selected_scenario') == 'B'
-
     def test_isel_single_scenario_removes_scenario_weights(self, fs_with_scenarios):
         """scenario_weights should be removed when scenario dimension is dropped."""
         fs_selected = fs_with_scenarios.transform.isel(scenario=0)
@@ -114,13 +107,6 @@ class TestSelSingleScenario:
 
         assert fs_selected.scenarios is None
 
-    def test_sel_single_scenario_stores_selected_value(self, fs_with_scenarios):
-        """The selected scenario value should be stored in attrs."""
-        fs_selected = fs_with_scenarios.transform.sel(scenario='C')
-
-        ds = fs_selected.to_dataset()
-        assert ds.attrs.get('selected_scenario') == 'C'
-
 
 class TestIselSinglePeriod:
     """Test isel with single period selection."""
@@ -131,13 +117,6 @@ class TestIselSinglePeriod:
 
         assert fs_selected.periods is None
         assert 'period' not in fs_selected.to_dataset().dims
-
-    def test_isel_single_period_stores_selected_value(self, fs_with_periods):
-        """The selected period value should be stored in attrs."""
-        fs_selected = fs_with_periods.transform.isel(period=1)
-
-        ds = fs_selected.to_dataset()
-        assert ds.attrs.get('selected_period') == 2030
 
     def test_isel_single_period_removes_period_weights(self, fs_with_periods):
         """period_weights should be removed when period dimension is dropped."""
@@ -165,13 +144,6 @@ class TestSelSinglePeriod:
         fs_selected = fs_with_periods.transform.sel(period=2030)
 
         assert fs_selected.periods is None
-
-    def test_sel_single_period_stores_selected_value(self, fs_with_periods):
-        """The selected period value should be stored in attrs."""
-        fs_selected = fs_with_periods.transform.sel(period=2040)
-
-        ds = fs_selected.to_dataset()
-        assert ds.attrs.get('selected_period') == 2040
 
 
 class TestMixedSelection:

@@ -237,10 +237,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Aggregation info - populated by transform.cluster()
         self.clustering: Clustering | None = None
 
-        # Context about dropped dimensions from sel/isel operations
-        self.selected_period: int | None = None
-        self.selected_scenario: str | None = None
-
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
@@ -506,10 +502,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         period index. This ensures period metadata stays synchronized with the actual
         periods after operations like selection.
 
-        When the period dimension is dropped (single value selected), this method:
-        - Stores the selected period in attrs as 'selected_period'
-        - Removes the scalar coordinate and period_weights DataArray
-        - Cleans up period-related attributes
+        When the period dimension is dropped (single value selected), this method
+        removes the scalar coordinate, period_weights DataArray, and cleans up attributes.
 
         This is analogous to _update_time_metadata() for time-related metadata.
 
@@ -525,11 +519,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         if new_period_index is None:
             # Period dimension was dropped (single value selected)
-            # Store which period was selected in attrs for context
             if 'period' in dataset.coords:
-                dataset.attrs['selected_period'] = int(dataset.coords['period'].values)
-                dataset = dataset.drop_vars('period')  # Remove scalar coordinate
-            # Remove period-related data that no longer makes sense
+                dataset = dataset.drop_vars('period')
             dataset = dataset.drop_vars(['period_weights'], errors='ignore')
             dataset.attrs.pop('weight_of_last_period', None)
             return dataset
@@ -563,10 +554,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Recomputes or removes scenario weights. This ensures scenario metadata stays synchronized with the actual
         scenarios after operations like selection.
 
-        When the scenario dimension is dropped (single value selected), this method:
-        - Stores the selected scenario in attrs as 'selected_scenario'
-        - Removes the scalar coordinate and scenario_weights DataArray
-        - Cleans up scenario-related attributes
+        When the scenario dimension is dropped (single value selected), this method
+        removes the scalar coordinate, scenario_weights DataArray, and cleans up attributes.
 
         This is analogous to _update_period_metadata() for time-related metadata.
 
@@ -580,11 +569,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         if new_scenario_index is None:
             # Scenario dimension was dropped (single value selected)
-            # Store which scenario was selected in attrs for context
             if 'scenario' in dataset.coords:
-                dataset.attrs['selected_scenario'] = str(dataset.coords['scenario'].values)
-                dataset = dataset.drop_vars('scenario')  # Remove scalar coordinate
-            # Remove scenario-related data that no longer makes sense
+                dataset = dataset.drop_vars('scenario')
             dataset = dataset.drop_vars(['scenario_weights'], errors='ignore')
             dataset.attrs.pop('scenario_weights', None)
             return dataset
@@ -689,12 +675,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             ds.attrs['n_clusters'] = len(self.clusters)
             ds.attrs['timesteps_per_cluster'] = len(self.timesteps)
             ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
-
-        # Include context about dropped dimensions from sel/isel operations
-        if self.selected_period is not None:
-            ds.attrs['selected_period'] = self.selected_period
-        if self.selected_scenario is not None:
-            ds.attrs['selected_scenario'] = self.selected_scenario
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -811,12 +791,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
-
-        # Restore context about dropped dimensions from sel/isel operations
-        if 'selected_period' in reference_structure:
-            flow_system.selected_period = reference_structure['selected_period']
-        if 'selected_scenario' in reference_structure:
-            flow_system.selected_scenario = reference_structure['selected_scenario']
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
