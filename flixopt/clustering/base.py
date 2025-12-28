@@ -304,10 +304,9 @@ class ClusterResult:
             self.timestep_mapping = self.timestep_mapping.rename('timestep_mapping')
 
         # Ensure representative_weights is a DataArray
+        # Can be (cluster, time) for 2D structure or (time,) for flat structure
         if not isinstance(self.representative_weights, xr.DataArray):
-            self.representative_weights = xr.DataArray(
-                self.representative_weights, dims=['time'], name='representative_weights'
-            )
+            self.representative_weights = xr.DataArray(self.representative_weights, name='representative_weights')
         elif self.representative_weights.name is None:
             self.representative_weights = self.representative_weights.rename('representative_weights')
 
@@ -514,12 +513,11 @@ class ClusterResult:
         if max_idx >= n_rep:
             raise ValueError(f'timestep_mapping contains index {max_idx} but n_representatives is {n_rep}')
 
-        # Check weights length matches n_representatives
-        if len(self.representative_weights) != n_rep:
-            raise ValueError(
-                f'representative_weights has {len(self.representative_weights)} elements '
-                f'but n_representatives is {n_rep}'
-            )
+        # Check weights size matches n_representatives
+        # representative_weights can be (cluster, time) or flat (time,)
+        weights_size = self.representative_weights.size
+        if weights_size != n_rep:
+            raise ValueError(f'representative_weights has {weights_size} elements but n_representatives is {n_rep}')
 
         # Check weights sum roughly equals original timesteps
         weight_sum = float(self.representative_weights.sum().values)

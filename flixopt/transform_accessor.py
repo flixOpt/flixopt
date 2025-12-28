@@ -902,16 +902,17 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
-        # Create representative_weights in flat format for ClusterResult compatibility
-        # This repeats each cluster's weight for all timesteps within that cluster
-        def _build_flat_weights_for_key(key: tuple) -> xr.DataArray:
+        # Create representative_weights with (cluster,) dimension only
+        # Each cluster has one weight (same for all timesteps within it)
+        def _build_cluster_weights_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            weights = np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
-            return xr.DataArray(weights, dims=['time'], name='representative_weights')
+            # Shape: (n_clusters,) - one weight per cluster
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
 
-        flat_weights_slices = {key: _build_flat_weights_for_key(key) for key in cluster_occurrences_all}
+        weights_slices = {key: _build_cluster_weights_for_key(key) for key in cluster_occurrences_all}
         representative_weights = self._combine_slices_to_dataarray_generic(
-            flat_weights_slices, ['time'], periods, scenarios, 'representative_weights'
+            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
         )
 
         aggregation_result = ClusterResult(
