@@ -1091,8 +1091,6 @@ class Clustering:
         n_timesteps = self.n_clusters * self.timesteps_per_period
         return np.arange(0, n_timesteps, self.timesteps_per_period)
 
-    # Properties to derive original coordinates from existing DataArrays
-
     @property
     def original_timesteps(self) -> pd.DatetimeIndex:
         """Original timesteps before clustering.
@@ -1100,26 +1098,6 @@ class Clustering:
         Derived from the 'original_time' coordinate of timestep_mapping.
         """
         return pd.DatetimeIndex(self.result.timestep_mapping.coords['original_time'].values)
-
-    @property
-    def original_periods(self) -> pd.Index | None:
-        """Original periods before clustering (if multi-period system).
-
-        Returns None if the FlowSystem had no period dimension.
-        """
-        if 'period' in self.result.timestep_mapping.dims:
-            return pd.Index(self.result.timestep_mapping.coords['period'].values)
-        return None
-
-    @property
-    def original_scenarios(self) -> pd.Index | None:
-        """Original scenarios before clustering (if multi-scenario system).
-
-        Returns None if the FlowSystem had no scenario dimension.
-        """
-        if 'scenario' in self.result.timestep_mapping.dims:
-            return pd.Index(self.result.timestep_mapping.coords['scenario'].values)
-        return None
 
 
 def create_cluster_structure_from_mapping(

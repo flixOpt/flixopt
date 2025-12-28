@@ -1146,15 +1146,14 @@ class TransformAccessor:
             else int(cluster_structure.n_clusters.values)
         )
 
-        # Use derived properties from Clustering instead of original_flow_system
+        # Get original timesteps from clustering, but periods/scenarios from the FlowSystem
+        # (the clustered FlowSystem preserves the same periods/scenarios)
         original_timesteps = info.original_timesteps
-        original_periods = info.original_periods
-        original_scenarios = info.original_scenarios
-        has_periods = original_periods is not None
-        has_scenarios = original_scenarios is not None
+        has_periods = self._fs.periods is not None
+        has_scenarios = self._fs.scenarios is not None
 
-        periods = list(original_periods) if has_periods else [None]
-        scenarios = list(original_scenarios) if has_scenarios else [None]
+        periods = list(self._fs.periods) if has_periods else [None]
+        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 

@@ -686,9 +686,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
             # Add clustering arrays with prefix and rename conflicting dimensions
             for name, arr in clustering_arrays.items():
-                # Rename 'time' dimension to 'clustering_time' to avoid conflicts
+                # Rename 'time' dimension to 'representative_time' to avoid conflicts
+                # (representative_weights has n_clusters * timesteps_per_cluster elements,
+                # different from FlowSystem's time dimension)
                 if 'time' in arr.dims:
-                    arr = arr.rename({'time': 'clustering_time'})
+                    arr = arr.rename({'time': 'representative_time'})
                 ds[f'clustering|{name}'] = arr
             ds.attrs['clustering'] = json.dumps(clustering_ref)
 
@@ -817,8 +819,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 if name.startswith('clustering|'):
                     # Remove 'clustering|' prefix (11 chars) and rename dimension back
                     arr_name = name[11:]
-                    if 'clustering_time' in arr.dims:
-                        arr = arr.rename({'clustering_time': 'time'})
+                    if 'representative_time' in arr.dims:
+                        arr = arr.rename({'representative_time': 'time'})
                     clustering_arrays[arr_name] = arr
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering

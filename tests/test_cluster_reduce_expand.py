@@ -292,8 +292,9 @@ def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
     assert info is not None
     assert info.result.cluster_structure is not None
     assert info.result.cluster_structure.n_clusters == 2
-    # Original FlowSystem had scenarios
-    assert info.original_scenarios is not None
+    # Clustered FlowSystem preserves scenarios
+    assert fs_reduced.scenarios is not None
+    assert len(fs_reduced.scenarios) == 2
 
 
 def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, scenarios_2):

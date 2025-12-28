@@ -192,19 +192,14 @@ class TestClusteringDerivedProperties:
             check_names=False,
         )
 
-    def test_original_periods_none_for_simple_system(self, simple_system_8_days):
-        """original_periods should be None for system without periods."""
+    def test_simple_system_has_no_periods_or_scenarios(self, simple_system_8_days):
+        """Clustered simple system should preserve that it has no periods/scenarios."""
         fs = simple_system_8_days
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        assert fs_clustered.clustering.original_periods is None
-
-    def test_original_scenarios_none_for_simple_system(self, simple_system_8_days):
-        """original_scenarios should be None for system without scenarios."""
-        fs = simple_system_8_days
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
-
-        assert fs_clustered.clustering.original_scenarios is None
+        # FlowSystem without periods/scenarios should remain so after clustering
+        assert fs_clustered.periods is None
+        assert fs_clustered.scenarios is None
 
 
 class TestClusteringWithScenarios:
@@ -230,17 +225,17 @@ class TestClusteringWithScenarios:
         )
         return fs
 
-    def test_clustering_roundtrip_preserves_original_scenarios(self, system_with_scenarios):
-        """original_scenarios should be preserved after roundtrip."""
+    def test_clustering_roundtrip_preserves_scenarios(self, system_with_scenarios):
+        """Scenarios should be preserved after clustering and roundtrip."""
         fs = system_with_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
         ds = fs_clustered.to_dataset(include_solution=False)
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
-        # Original scenarios should be preserved (check values, name attribute may differ)
+        # Scenarios should be preserved in the FlowSystem itself
         pd.testing.assert_index_equal(
-            fs_restored.clustering.original_scenarios,
+            fs_restored.scenarios,
             pd.Index(['Low', 'High'], name='scenario'),
             check_names=False,
         )
