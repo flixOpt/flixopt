@@ -1236,7 +1236,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             if self.model is None:
                 logger.critical('No model in the Results. Saving the model is not possible.')
             else:
-                self.model.to_netcdf(paths.linopy_model, engine='netcdf4')
+                self.model.to_netcdf(paths.linopy_model, engine='h5netcdf')
 
         if document_model:
             if self.model is None:

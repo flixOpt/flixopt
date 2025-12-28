@@ -37,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
-    "netcdf4 >= 1.6.1, < 2",
+    "h5netcdf >= 1.0.0, < 2",
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "colorlog >= 6.8.0, < 7",
@@ -215,7 +215,6 @@ filterwarnings = [
     "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
     "ignore:Coordinates across variables not equal:UserWarning:linopy",
     "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
-    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
 

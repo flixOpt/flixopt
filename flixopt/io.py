@@ -564,7 +564,7 @@ def save_dataset_to_netcdf(
         encoding=None
         if compression == 0
         else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
-        engine='netcdf4',
+        engine='h5netcdf',
     )
 
 
@@ -578,7 +578,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset with restored attrs.
     """
-    ds = xr.load_dataset(str(path), engine='netcdf4')
+    ds = xr.load_dataset(str(path), engine='h5netcdf')
 
     # Restore Dataset attrs
     if 'attrs' in ds.attrs:
