@@ -1301,14 +1301,14 @@ class InterclusterStorageModel(StorageModel):
         pass
 
     def _add_intercluster_linking(self) -> None:
-        """Add inter-cluster storage linking following the S-N model.
+        """Add inter-cluster storage linking following the S-K model from Blanke et al. (2022).
 
         This method implements the core inter-cluster linking logic:
 
         1. Constrains charge_state (ΔE) at each cluster start to 0
-        2. Creates SOC_boundary variables to track absolute SOC
-        3. Links boundaries via: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC
-        4. Adds combined bounds: 0 ≤ SOC_boundary + ΔE ≤ capacity
+        2. Creates SOC_boundary variables to track absolute SOC at period boundaries
+        3. Links boundaries via Eq. 5: SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC
+        4. Adds combined bounds per Eq. 9: 0 ≤ SOC_boundary * (1-loss)^t + ΔE ≤ capacity
         5. Enforces initial/cyclic constraint on SOC_boundary
         """
         from .clustering.intercluster_helpers import (
@@ -1357,7 +1357,7 @@ class InterclusterStorageModel(StorageModel):
         delta_soc = self._compute_delta_soc(n_clusters, timesteps_per_cluster)
 
         # 5. Add linking constraints
-        self._add_linking_constraints(soc_boundary, delta_soc, cluster_order, n_original_periods)
+        self._add_linking_constraints(soc_boundary, delta_soc, cluster_order, n_original_periods, timesteps_per_cluster)
 
         # 6. Add cyclic or initial constraint
         if self.element.cluster_mode == 'intercluster_cyclic':
@@ -1436,20 +1436,24 @@ class InterclusterStorageModel(StorageModel):
         delta_soc: xr.DataArray,
         cluster_order: xr.DataArray,
         n_original_periods: int,
+        timesteps_per_cluster: int,
     ) -> None:
         """Add constraints linking consecutive SOC_boundary values.
 
-        Implements: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+        Per Blanke et al. (2022) Eq. 5, implements:
+            SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC[cluster_order[d]]
+
+        where N is timesteps_per_cluster and loss is self-discharge rate per timestep.
 
         This connects the SOC at the end of original period d to the SOC at the
-        start of period d+1, using the net charge change from the representative
-        cluster that was mapped to period d.
+        start of period d+1, accounting for self-discharge decay over the period.
 
         Args:
             soc_boundary: SOC_boundary variable.
             delta_soc: Net SOC change per cluster.
             cluster_order: Mapping from original periods to representative clusters.
             n_original_periods: Number of original (non-clustered) periods.
+            timesteps_per_cluster: Number of timesteps in each cluster period.
         """
         soc_after = soc_boundary.isel(cluster_boundary=slice(1, None))
         soc_before = soc_boundary.isel(cluster_boundary=slice(None, -1))
@@ -1463,7 +1467,13 @@ class InterclusterStorageModel(StorageModel):
         # Get delta_soc for each original period using cluster_order
         delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
 
-        lhs = soc_after - soc_before - delta_soc_ordered
+        # Apply self-discharge decay factor (1-loss)^N to soc_before per Eq. 5
+        # Use mean over time (linking operates at period level, not timestep)
+        # Keep as DataArray to respect per-period/scenario values
+        rel_loss = self.element.relative_loss_per_hour.mean('time')
+        decay_n = (1 - rel_loss) ** timesteps_per_cluster
+
+        lhs = soc_after - soc_before * decay_n - delta_soc_ordered
         self.add_constraints(lhs == 0, short_name='link')
 
     def _add_combined_bound_constraints(
@@ -1476,7 +1486,8 @@ class InterclusterStorageModel(StorageModel):
     ) -> None:
         """Add constraints ensuring actual SOC stays within bounds.
 
-        The actual SOC is: SOC(t) = SOC_boundary[d] + ΔE(t)
+        Per Blanke et al. (2022) Eq. 9, the actual SOC at time t in period d is:
+            SOC(t) = SOC_boundary[d] * (1-loss)^t + ΔE(t)
 
         This must satisfy: 0 ≤ SOC(t) ≤ capacity
 
@@ -1500,6 +1511,10 @@ class InterclusterStorageModel(StorageModel):
         soc_d = soc_d.rename({'cluster_boundary': 'original_period'})
         soc_d = soc_d.assign_coords(original_period=np.arange(n_original_periods))
 
+        # Get self-discharge rate for decay calculation
+        # Keep as DataArray to respect per-period/scenario values
+        rel_loss = self.element.relative_loss_per_hour.mean('time')
+
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
@@ -1509,7 +1524,9 @@ class InterclusterStorageModel(StorageModel):
             cs_t = cs_t.rename({'cluster': 'original_period'})
             cs_t = cs_t.assign_coords(original_period=np.arange(n_original_periods))
 
-            combined = soc_d + cs_t
+            # Apply decay factor (1-loss)^t to SOC_boundary per Eq. 9
+            decay_t = (1 - rel_loss) ** offset
+            combined = soc_d * decay_t + cs_t
 
             self.add_constraints(combined >= 0, short_name=f'soc_lb_{sample_name}')
 
