@@ -74,8 +74,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_weights: The weights of each scenario. If None, all scenarios have the same weight (normalized to 1).
             Period weights are always computed internally from the period index (like timestep_duration for time).
             The final `weights` array (accessible via `flow_system.model.objective_weights`) is computed as period_weights × normalized_scenario_weights, with normalization applied to the scenario weights by default.
-        cluster_weight: Weight for each timestep representing cluster representation count.
-            If None (default), all timesteps have weight 1.0. Used by cluster() to specify
+        cluster_weight: Weight for each cluster.
+            If None (default), all clusters have weight 1.0. Used by cluster() to specify
             how many original timesteps each cluster represents. Combined with timestep_duration
             via aggregation_weight for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
@@ -206,10 +206,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Cluster weight for cluster() optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
         # May have period/scenario dimensions if cluster() was used with those
-        self.cluster_weight = self.fit_to_model_coords(
-            'cluster_weight',
-            np.ones(len(self.timesteps)) if cluster_weight is None else cluster_weight,
-            dims=['time', 'period', 'scenario'],  # Gracefully ignores dims not present
+        self.cluster_weight = (
+            self.fit_to_model_coords(
+                'cluster_weight',
+                cluster_weight,
+            )
+            if cluster_weight is not None
+            else None
         )
 
         self.scenario_weights = scenario_weights  # Use setter
@@ -2024,8 +2027,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         from .structure import TimeSeriesWeights
 
+        # cluster_weight defaults to 1.0 when not set
+        cluster_weight = self.cluster_weight if self.cluster_weight is not None else 1.0
         return TimeSeriesWeights(
-            temporal=self.timestep_duration * self.cluster_weight,
+            temporal=self.timestep_duration * cluster_weight,
             period=self.period_weights,
             scenario=self._scenario_weights,
         )
@@ -2041,7 +2046,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             This is equivalent to `weights.temporal`. The unified TimeSeriesWeights
             interface (via `flow_system.weights`) is recommended for new code.
         """
-        return self.timestep_duration * self.cluster_weight
+        # cluster_weight defaults to 1.0 when not set
+        cluster_weight = self.cluster_weight if self.cluster_weight is not None else 1.0
+        return self.timestep_duration * cluster_weight
 
     @property
     def is_clustered(self) -> bool:

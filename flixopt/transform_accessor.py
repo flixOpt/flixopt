@@ -801,7 +801,11 @@ class TransformAccessor:
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
                 ds_new_vars[name] = da
 
-        ds_new = xr.Dataset(ds_new_vars, attrs=ds.attrs)
+        # Copy attrs but remove cluster_weight - the clustered FlowSystem gets its own
+        # cluster_weight set after from_dataset (original reference has wrong shape)
+        new_attrs = dict(ds.attrs)
+        new_attrs.pop('cluster_weight', None)
+        ds_new = xr.Dataset(ds_new_vars, attrs=new_attrs)
         ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
         ds_new.attrs['timestep_duration'] = dt
         ds_new.attrs['n_clusters'] = actual_n_clusters

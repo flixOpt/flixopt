@@ -314,12 +314,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return self.flow_system.hours_of_previous_timesteps
 
     @property
-    def cluster_weight(self) -> xr.DataArray:
+    def cluster_weight(self) -> xr.DataArray | float:
         """Cluster weight for cluster() optimization.
 
         Represents how many original timesteps each cluster represents.
         Default is 1.0 for all timesteps.
         """
+        if self.flow_system.cluster_weight is None:
+            return 1.0
         return self.flow_system.cluster_weight
 
     @property
