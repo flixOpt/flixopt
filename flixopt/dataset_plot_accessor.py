@@ -444,3 +444,176 @@ class DatasetPlotAccessor:
             imshow_args['animation_frame'] = actual_anim
 
         return px.imshow(**imshow_args)
+
+
+@xr.register_dataarray_accessor('fxplot')
+class DataArrayPlotAccessor:
+    """Plot accessor for any xr.DataArray. Access via ``dataarray.fxplot``.
+
+    Provides convenient plotting methods. For bar/stacked_bar/line/area,
+    the DataArray is converted to a Dataset first. For heatmap, it works
+    directly with the DataArray.
+
+    Examples:
+        Basic usage::
+
+            import flixopt
+            import xarray as xr
+
+            da = xr.DataArray([1, 2, 3], dims=['time'], name='temperature')
+            da.fxplot.line()
+            da.fxplot.heatmap()
+    """
+
+    def __init__(self, xarray_obj: xr.DataArray) -> None:
+        """Initialize the accessor with an xr.DataArray object."""
+        self._da = xarray_obj
+
+    def _to_dataset(self) -> xr.Dataset:
+        """Convert DataArray to Dataset for plotting."""
+        name = self._da.name or 'value'
+        return self._da.to_dataset(name=name)
+
+    def bar(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a grouped bar chart. See DatasetPlotAccessor.bar for details."""
+        return self._to_dataset().fxplot.bar(
+            colors=colors,
+            title=title,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            facet_cols=facet_cols,
+            **px_kwargs,
+        )
+
+    def stacked_bar(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a stacked bar chart. See DatasetPlotAccessor.stacked_bar for details."""
+        return self._to_dataset().fxplot.stacked_bar(
+            colors=colors,
+            title=title,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            facet_cols=facet_cols,
+            **px_kwargs,
+        )
+
+    def line(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        line_shape: str = 'hv',
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a line chart. See DatasetPlotAccessor.line for details."""
+        return self._to_dataset().fxplot.line(
+            colors=colors,
+            title=title,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            facet_cols=facet_cols,
+            line_shape=line_shape,
+            **px_kwargs,
+        )
+
+    def area(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        line_shape: str = 'hv',
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a stacked area chart. See DatasetPlotAccessor.area for details."""
+        return self._to_dataset().fxplot.area(
+            colors=colors,
+            title=title,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            facet_cols=facet_cols,
+            line_shape=line_shape,
+            **px_kwargs,
+        )
+
+    def heatmap(
+        self,
+        *,
+        colors: str | list[str] | None = None,
+        title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        **imshow_kwargs: Any,
+    ) -> go.Figure:
+        """Create a heatmap visualization directly from the DataArray.
+
+        Args:
+            colors: Colorscale name or list of colors.
+            title: Plot title.
+            facet_col: Dimension for column facets.
+            animation_frame: Dimension for animation slider.
+            facet_cols: Number of columns in facet grid wrap.
+            **imshow_kwargs: Additional arguments passed to plotly.express.imshow.
+
+        Returns:
+            Plotly Figure.
+        """
+        da = self._da
+
+        if da.size == 0:
+            return go.Figure()
+
+        colors = colors or CONFIG.Plotting.default_sequential_colorscale
+        facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
+
+        # Use Dataset for facet resolution
+        ds_for_resolution = da.to_dataset(name='_temp')
+        actual_facet_col, _, actual_anim = _resolve_auto_facets(ds_for_resolution, facet_col, None, animation_frame)
+
+        imshow_args: dict[str, Any] = {
+            'img': da,
+            'color_continuous_scale': colors,
+            'title': title or (da.name if da.name else ''),
+            **imshow_kwargs,
+        }
+
+        if actual_facet_col and actual_facet_col in da.dims:
+            imshow_args['facet_col'] = actual_facet_col
+            if facet_col_wrap < da.sizes[actual_facet_col]:
+                imshow_args['facet_col_wrap'] = facet_col_wrap
+
+        if actual_anim and actual_anim in da.dims:
+            imshow_args['animation_frame'] = actual_anim
+
+        return px.imshow(**imshow_args)
