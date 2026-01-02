@@ -204,27 +204,26 @@ class DatasetPlotAccessor:
             'y': 'value',
             'title': title,
             'barmode': 'group',
-            **px_kwargs,
         }
-        # Only color by variable if it's not already on x-axis
-        if x_col != 'variable':
+        # Only color by variable if it's not already on x-axis (and user didn't override)
+        if x_col != 'variable' and 'color' not in px_kwargs:
             fig_kwargs['color'] = 'variable'
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
-            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+            fig_kwargs['labels'] = {x_col: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col:
+        if actual_facet_col and 'facet_col' not in px_kwargs:
             fig_kwargs['facet_col'] = actual_facet_col
             if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
+        if actual_facet_row and 'facet_row' not in px_kwargs:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
+        if actual_anim and 'animation_frame' not in px_kwargs:
             fig_kwargs['animation_frame'] = actual_anim
 
-        return px.bar(**fig_kwargs)
+        return px.bar(**{**fig_kwargs, **px_kwargs})
 
     def stacked_bar(
         self,
@@ -280,27 +279,26 @@ class DatasetPlotAccessor:
             'x': x_col,
             'y': 'value',
             'title': title,
-            **px_kwargs,
         }
-        # Only color by variable if it's not already on x-axis
-        if x_col != 'variable':
+        # Only color by variable if it's not already on x-axis (and user didn't override)
+        if x_col != 'variable' and 'color' not in px_kwargs:
             fig_kwargs['color'] = 'variable'
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
-            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+            fig_kwargs['labels'] = {x_col: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col:
+        if actual_facet_col and 'facet_col' not in px_kwargs:
             fig_kwargs['facet_col'] = actual_facet_col
             if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
+        if actual_facet_row and 'facet_row' not in px_kwargs:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
+        if actual_anim and 'animation_frame' not in px_kwargs:
             fig_kwargs['animation_frame'] = actual_anim
 
-        fig = px.bar(**fig_kwargs)
+        fig = px.bar(**{**fig_kwargs, **px_kwargs})
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
         return fig
@@ -362,27 +360,26 @@ class DatasetPlotAccessor:
             'y': 'value',
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
-            **px_kwargs,
         }
-        # Only color by variable if it's not already on x-axis
-        if x_col != 'variable':
+        # Only color by variable if it's not already on x-axis (and user didn't override)
+        if x_col != 'variable' and 'color' not in px_kwargs:
             fig_kwargs['color'] = 'variable'
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
-            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+            fig_kwargs['labels'] = {x_col: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col:
+        if actual_facet_col and 'facet_col' not in px_kwargs:
             fig_kwargs['facet_col'] = actual_facet_col
             if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
+        if actual_facet_row and 'facet_row' not in px_kwargs:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
+        if actual_anim and 'animation_frame' not in px_kwargs:
             fig_kwargs['animation_frame'] = actual_anim
 
-        return px.line(**fig_kwargs)
+        return px.line(**{**fig_kwargs, **px_kwargs})
 
     def area(
         self,
@@ -438,27 +435,26 @@ class DatasetPlotAccessor:
             'y': 'value',
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
-            **px_kwargs,
         }
-        # Only color by variable if it's not already on x-axis
-        if x_col != 'variable':
+        # Only color by variable if it's not already on x-axis (and user didn't override)
+        if x_col != 'variable' and 'color' not in px_kwargs:
             fig_kwargs['color'] = 'variable'
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
-            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+            fig_kwargs['labels'] = {x_col: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col:
+        if actual_facet_col and 'facet_col' not in px_kwargs:
             fig_kwargs['facet_col'] = actual_facet_col
             if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
+        if actual_facet_row and 'facet_row' not in px_kwargs:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
+        if actual_anim and 'animation_frame' not in px_kwargs:
             fig_kwargs['animation_frame'] = actual_anim
 
-        return px.area(**fig_kwargs)
+        return px.area(**{**fig_kwargs, **px_kwargs})
 
     def heatmap(
         self,
