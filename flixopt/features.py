@@ -197,21 +197,20 @@ class StatusModel(Submodel):
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
         # 3. Total duration tracking using existing pattern
-        # Sum over all temporal dimensions (time, and cluster if present)
-        weighted_status = self.status * self._model.aggregation_weight
-        # Get temporal_dims from aggregation_weight (not weighted_status which has linopy's _term dim)
-        temporal_dims = [d for d in self._model.aggregation_weight.dims if d not in ('period', 'scenario')]
-        agg_weight_sum = self._model.aggregation_weight.sum(temporal_dims)
+        # Sum over temporal dimensions, weighted by cluster_weight
+        active_hours = self.status * self._model.timestep_duration
+        weighted_active_hours = active_hours * self._model.cluster_weight
+        total_hours = (self._model.timestep_duration * self._model.cluster_weight).sum(self._model.temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=weighted_status.sum(temporal_dims),
+            tracked_expression=weighted_active_hours.sum(self._model.temporal_dims),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
                 self.parameters.active_hours_max
                 if self.parameters.active_hours_max is not None
-                else agg_weight_sum.max().item()
-                if hasattr(agg_weight_sum, 'max')
-                else agg_weight_sum,
+                else total_hours.max().item()
+                if hasattr(total_hours, 'max')
+                else total_hours,
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],

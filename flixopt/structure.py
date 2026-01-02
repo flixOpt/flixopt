@@ -71,9 +71,9 @@ class TimeSeriesWeights:
         >>> total = weighted_sum * weights.period * weights.scenario
 
     Note:
-        For backwards compatibility, the existing properties (cluster_weight,
-        timestep_duration, aggregation_weight) are still available on FlowSystem
-        and FlowSystemModel.
+        For backwards compatibility, cluster_weight and timestep_duration are
+        still available on FlowSystem and FlowSystemModel. The aggregation_weight
+        property is deprecated; use ``timestep_duration * cluster_weight`` instead.
     """
 
     temporal: xr.DataArray
@@ -315,22 +315,40 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def cluster_weight(self) -> xr.DataArray | float:
-        """Cluster weight for cluster() optimization.
+        """Cluster weight for time aggregation.
 
-        Represents how many original timesteps each cluster represents.
-        Default is 1.0 for all timesteps.
+        Represents how many original time periods each cluster represents.
+        Returns 1.0 for non-clustered systems.
         """
         if self.flow_system.cluster_weight is None:
             return 1.0
         return self.flow_system.cluster_weight
 
     @property
+    def temporal_dims(self) -> list[str]:
+        """Temporal dimensions for summing over time.
+
+        Returns ['time', 'cluster'] for clustered systems, ['time'] otherwise.
+        Use this when summing temporal values to totals.
+        """
+        if self.flow_system.clusters is not None:
+            return ['time', 'cluster']
+        return ['time']
+
+    @property
     def aggregation_weight(self) -> xr.DataArray:
         """Combined weight for time aggregation.
 
-        Combines timestep_duration (physical duration) and cluster_weight (cluster representation).
-        Use this for proper time aggregation in clustered models.
+        .. deprecated::
+            Use ``timestep_duration * cluster_weight`` instead.
         """
+        import warnings
+
+        warnings.warn(
+            'aggregation_weight is deprecated. Use `timestep_duration * cluster_weight` instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.timestep_duration * self.cluster_weight
 
     @property
