@@ -132,6 +132,8 @@ class DatasetPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
@@ -143,6 +145,8 @@ class DatasetPlotAccessor:
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
+            xlabel: X-axis label.
+            ylabel: Y-axis label.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets. 'auto' uses CONFIG priority.
             animation_frame: Dimension for animation slider.
@@ -175,6 +179,10 @@ class DatasetPlotAccessor:
             'barmode': 'group',
             **px_kwargs,
         }
+        if xlabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+        if ylabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
         if actual_facet_col:
             fig_kwargs['facet_col'] = actual_facet_col
@@ -192,6 +200,8 @@ class DatasetPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
@@ -206,6 +216,8 @@ class DatasetPlotAccessor:
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
+            xlabel: X-axis label.
+            ylabel: Y-axis label.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
@@ -237,6 +249,10 @@ class DatasetPlotAccessor:
             'title': title,
             **px_kwargs,
         }
+        if xlabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+        if ylabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
         if actual_facet_col:
             fig_kwargs['facet_col'] = actual_facet_col
@@ -257,11 +273,13 @@ class DatasetPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
         facet_cols: int | None = None,
-        line_shape: str = 'hv',
+        line_shape: str | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a line chart from the dataset.
@@ -271,12 +289,14 @@ class DatasetPlotAccessor:
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
+            xlabel: X-axis label.
+            ylabel: Y-axis label.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             facet_cols: Number of columns in facet grid wrap.
             line_shape: Line interpolation ('linear', 'hv', 'vh', 'hvh', 'vhv', 'spline').
-                Default 'hv' for stepped lines.
+                Default from CONFIG.Plotting.default_line_shape.
             **px_kwargs: Additional arguments passed to plotly.express.line.
 
         Returns:
@@ -302,9 +322,13 @@ class DatasetPlotAccessor:
             'color': 'variable',
             'color_discrete_map': color_map,
             'title': title,
-            'line_shape': line_shape,
+            'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
             **px_kwargs,
         }
+        if xlabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+        if ylabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
         if actual_facet_col:
             fig_kwargs['facet_col'] = actual_facet_col
@@ -322,11 +346,13 @@ class DatasetPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
         facet_cols: int | None = None,
-        line_shape: str = 'hv',
+        line_shape: str | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked area chart from the dataset.
@@ -334,11 +360,13 @@ class DatasetPlotAccessor:
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
+            xlabel: X-axis label.
+            ylabel: Y-axis label.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             facet_cols: Number of columns in facet grid wrap.
-            line_shape: Line interpolation. Default 'hv' for stepped.
+            line_shape: Line interpolation. Default from CONFIG.Plotting.default_line_shape.
             **px_kwargs: Additional arguments passed to plotly.express.area.
 
         Returns:
@@ -364,9 +392,13 @@ class DatasetPlotAccessor:
             'color': 'variable',
             'color_discrete_map': color_map,
             'title': title,
-            'line_shape': line_shape,
+            'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
             **px_kwargs,
         }
+        if xlabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
+        if ylabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
         if actual_facet_col:
             fig_kwargs['facet_col'] = actual_facet_col
@@ -445,6 +477,202 @@ class DatasetPlotAccessor:
 
         return px.imshow(**imshow_args)
 
+    def scatter(
+        self,
+        x: str,
+        y: str,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a scatter plot from two variables in the dataset.
+
+        Args:
+            x: Variable name for x-axis.
+            y: Variable name for y-axis.
+            colors: Color specification (colorscale name, color list, or dict mapping).
+            title: Plot title.
+            xlabel: X-axis label.
+            ylabel: Y-axis label.
+            facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
+            facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
+            facet_cols: Number of columns in facet grid wrap.
+            **px_kwargs: Additional arguments passed to plotly.express.scatter.
+
+        Returns:
+            Plotly Figure.
+        """
+        if x not in self._ds.data_vars:
+            raise ValueError(f"Variable '{x}' not found in dataset. Available: {list(self._ds.data_vars)}")
+        if y not in self._ds.data_vars:
+            raise ValueError(f"Variable '{y}' not found in dataset. Available: {list(self._ds.data_vars)}")
+
+        df = self._ds[[x, y]].to_dataframe().reset_index()
+        if df.empty:
+            return go.Figure()
+
+        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, facet_col, facet_row, animation_frame
+        )
+
+        facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
+        fig_kwargs: dict[str, Any] = {
+            'data_frame': df,
+            'x': x,
+            'y': y,
+            'title': title,
+            **px_kwargs,
+        }
+        if xlabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x: xlabel}
+        if ylabel:
+            fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), y: ylabel}
+
+        if actual_facet_col:
+            fig_kwargs['facet_col'] = actual_facet_col
+            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+                fig_kwargs['facet_col_wrap'] = facet_col_wrap
+        if actual_facet_row:
+            fig_kwargs['facet_row'] = actual_facet_row
+        if actual_anim:
+            fig_kwargs['animation_frame'] = actual_anim
+
+        return px.scatter(**fig_kwargs)
+
+    def pie(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a pie chart from aggregated dataset values.
+
+        The dataset should be reduced to scalar values per variable (e.g., via .sum()).
+        Each variable becomes a slice of the pie.
+
+        Args:
+            colors: Color specification (colorscale name, color list, or dict mapping).
+            title: Plot title.
+            **px_kwargs: Additional arguments passed to plotly.express.pie.
+
+        Returns:
+            Plotly Figure.
+
+        Example:
+            >>> ds.sum('time').fxplot.pie()  # Sum over time, then pie chart
+        """
+        # Check that all variables are scalar
+        non_scalar = [v for v in self._ds.data_vars if self._ds[v].ndim > 0]
+        if non_scalar:
+            raise ValueError(
+                f'Pie chart requires scalar values per variable. '
+                f'Non-scalar variables: {non_scalar}. '
+                f"Try reducing first: ds.sum('time').fxplot.pie()"
+            )
+
+        names = list(self._ds.data_vars)
+        values = [float(self._ds[v].values) for v in names]
+        df = pd.DataFrame({'variable': names, 'value': values})
+
+        color_map = process_colors(colors, names, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+
+        return px.pie(
+            df,
+            names='variable',
+            values='value',
+            title=title,
+            color='variable',
+            color_discrete_map=color_map,
+            **px_kwargs,
+        )
+
+    def duration_curve(
+        self,
+        *,
+        colors: ColorType | None = None,
+        title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
+        normalize: bool = True,
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
+        line_shape: str | None = None,
+        **px_kwargs: Any,
+    ) -> go.Figure:
+        """Create a duration curve (sorted values) from the dataset.
+
+        Values are sorted in descending order along the 'time' dimension.
+        The x-axis shows duration (percentage or timesteps).
+
+        Args:
+            colors: Color specification (colorscale name, color list, or dict mapping).
+            title: Plot title.
+            xlabel: X-axis label. Default 'Duration [%]' or 'Timesteps'.
+            ylabel: Y-axis label.
+            normalize: If True, x-axis shows percentage (0-100). If False, shows timestep index.
+            facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
+            facet_row: Dimension for row facets.
+            animation_frame: Dimension for animation slider.
+            facet_cols: Number of columns in facet grid wrap.
+            line_shape: Line interpolation. Default from CONFIG.Plotting.default_line_shape.
+            **px_kwargs: Additional arguments passed to plotly.express.line.
+
+        Returns:
+            Plotly Figure.
+        """
+        import numpy as np
+
+        if 'time' not in self._ds.dims:
+            raise ValueError("Duration curve requires a 'time' dimension.")
+
+        # Sort each variable along time dimension (descending)
+        sorted_ds = self._ds.copy()
+        for var in sorted_ds.data_vars:
+            da = sorted_ds[var]
+            # Sort along time axis
+            sorted_values = np.sort(da.values, axis=da.dims.index('time'))[::-1]
+            sorted_ds[var] = (da.dims, sorted_values)
+
+        # Replace time coordinate with duration
+        n_timesteps = sorted_ds.sizes['time']
+        if normalize:
+            duration_coord = np.linspace(0, 100, n_timesteps)
+            sorted_ds = sorted_ds.assign_coords({'time': duration_coord})
+            sorted_ds = sorted_ds.rename({'time': 'duration_pct'})
+            default_xlabel = 'Duration [%]'
+        else:
+            duration_coord = np.arange(n_timesteps)
+            sorted_ds = sorted_ds.assign_coords({'time': duration_coord})
+            sorted_ds = sorted_ds.rename({'time': 'duration'})
+            default_xlabel = 'Timesteps'
+
+        # Use line plot
+        fig = sorted_ds.fxplot.line(
+            colors=colors,
+            title=title or 'Duration Curve',
+            xlabel=xlabel or default_xlabel,
+            ylabel=ylabel,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            facet_cols=facet_cols,
+            line_shape=line_shape,
+            **px_kwargs,
+        )
+
+        return fig
+
 
 @xr.register_dataarray_accessor('fxplot')
 class DataArrayPlotAccessor:
@@ -479,6 +707,8 @@ class DataArrayPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
@@ -489,6 +719,8 @@ class DataArrayPlotAccessor:
         return self._to_dataset().fxplot.bar(
             colors=colors,
             title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
@@ -501,6 +733,8 @@ class DataArrayPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
@@ -511,6 +745,8 @@ class DataArrayPlotAccessor:
         return self._to_dataset().fxplot.stacked_bar(
             colors=colors,
             title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
@@ -523,17 +759,21 @@ class DataArrayPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
         facet_cols: int | None = None,
-        line_shape: str = 'hv',
+        line_shape: str | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a line chart. See DatasetPlotAccessor.line for details."""
         return self._to_dataset().fxplot.line(
             colors=colors,
             title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
@@ -547,17 +787,21 @@ class DataArrayPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        xlabel: str = '',
+        ylabel: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = None,
         animation_frame: str | Literal['auto'] | None = None,
         facet_cols: int | None = None,
-        line_shape: str = 'hv',
+        line_shape: str | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked area chart. See DatasetPlotAccessor.area for details."""
         return self._to_dataset().fxplot.area(
             colors=colors,
             title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,

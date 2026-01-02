@@ -163,6 +163,7 @@ _DEFAULTS = MappingProxyType(
                 'default_facet_cols': 3,
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
+                'default_line_shape': 'hv',
                 'extra_dim_priority': ('cluster', 'period', 'scenario'),
                 'dim_slot_priority': ('facet_col', 'facet_row', 'animation_frame'),
             }
@@ -585,6 +586,7 @@ class CONFIG:
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
+        default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
         extra_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['extra_dim_priority']
         dim_slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_slot_priority']
 
@@ -687,6 +689,7 @@ class CONFIG:
                 'default_facet_cols': cls.Plotting.default_facet_cols,
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
+                'default_line_shape': cls.Plotting.default_line_shape,
                 'extra_dim_priority': cls.Plotting.extra_dim_priority,
                 'dim_slot_priority': cls.Plotting.dim_slot_priority,
             },
