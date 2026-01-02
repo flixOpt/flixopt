@@ -71,9 +71,8 @@ class TimeSeriesWeights:
         >>> total = weighted_sum * weights.period * weights.scenario
 
     Note:
-        For backwards compatibility, cluster_weight and timestep_duration are
-        still available on FlowSystem and FlowSystemModel. The aggregation_weight
-        property is deprecated; use ``timestep_duration * cluster_weight`` instead.
+        The individual properties ``cluster_weight``, ``timestep_duration``, and
+        ``temporal_dims`` are available on FlowSystemModel for direct access.
     """
 
     temporal: xr.DataArray
@@ -334,22 +333,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if self.flow_system.clusters is not None:
             return ['time', 'cluster']
         return ['time']
-
-    @property
-    def aggregation_weight(self) -> xr.DataArray:
-        """Combined weight for time aggregation.
-
-        .. deprecated::
-            Use ``timestep_duration * cluster_weight`` instead.
-        """
-        import warnings
-
-        warnings.warn(
-            'aggregation_weight is deprecated. Use `timestep_duration * cluster_weight` instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.timestep_duration * self.cluster_weight
 
     @property
     def scenario_weights(self) -> xr.DataArray:

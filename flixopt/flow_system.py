@@ -2035,21 +2035,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
 
     @property
-    def aggregation_weight(self) -> xr.DataArray:
-        """Combined weight for time aggregation.
-
-        .. deprecated::
-            Use ``timestep_duration * cluster_weight`` instead.
-        """
-        warnings.warn(
-            'aggregation_weight is deprecated. Use `timestep_duration * cluster_weight` instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        cluster_weight = self.cluster_weight if self.cluster_weight is not None else 1.0
-        return self.timestep_duration * cluster_weight
-
-    @property
     def is_clustered(self) -> bool:
         """Check if this FlowSystem uses time series clustering.
 
