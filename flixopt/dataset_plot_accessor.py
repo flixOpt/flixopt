@@ -112,9 +112,9 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
         rows = [{var_name: var, value_name: float(ds[var].values)} for var in ds.data_vars]
         return pd.DataFrame(rows)
     df = ds.to_dataframe().reset_index()
-    # Only use coordinates that are actually present as columns after reset_index
-    coord_cols = [c for c in ds.coords.keys() if c in df.columns]
-    return df.melt(id_vars=coord_cols, var_name=var_name, value_name=value_name)
+    # Use dims (not just coords) as id_vars - dims without coords become integer indices
+    id_cols = [c for c in ds.dims if c in df.columns]
+    return df.melt(id_vars=id_cols, var_name=var_name, value_name=value_name)
 
 
 @xr.register_dataset_accessor('fxplot')
@@ -202,12 +202,14 @@ class DatasetPlotAccessor:
             'data_frame': df,
             'x': x_col,
             'y': 'value',
-            'color': 'variable',
-            'color_discrete_map': color_map,
             'title': title,
             'barmode': 'group',
             **px_kwargs,
         }
+        # Only color by variable if it's not already on x-axis
+        if x_col != 'variable':
+            fig_kwargs['color'] = 'variable'
+            fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
         if ylabel:
@@ -277,11 +279,13 @@ class DatasetPlotAccessor:
             'data_frame': df,
             'x': x_col,
             'y': 'value',
-            'color': 'variable',
-            'color_discrete_map': color_map,
             'title': title,
             **px_kwargs,
         }
+        # Only color by variable if it's not already on x-axis
+        if x_col != 'variable':
+            fig_kwargs['color'] = 'variable'
+            fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
         if ylabel:
@@ -356,12 +360,14 @@ class DatasetPlotAccessor:
             'data_frame': df,
             'x': x_col,
             'y': 'value',
-            'color': 'variable',
-            'color_discrete_map': color_map,
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
             **px_kwargs,
         }
+        # Only color by variable if it's not already on x-axis
+        if x_col != 'variable':
+            fig_kwargs['color'] = 'variable'
+            fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
         if ylabel:
@@ -430,12 +436,14 @@ class DatasetPlotAccessor:
             'data_frame': df,
             'x': x_col,
             'y': 'value',
-            'color': 'variable',
-            'color_discrete_map': color_map,
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
             **px_kwargs,
         }
+        # Only color by variable if it's not already on x-axis
+        if x_col != 'variable':
+            fig_kwargs['color'] = 'variable'
+            fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), x_col: xlabel}
         if ylabel:
