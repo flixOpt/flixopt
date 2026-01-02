@@ -50,17 +50,16 @@ class Weights:
     Access via ``flow_system.weights`` or ``model.weights``.
 
     Attributes:
-        timestep: Duration of each timestep in hours.
+        time: Duration of each timestep in hours.
         cluster: Cluster weight (1.0 for non-clustered systems).
-        temporal: Combined weight (timestep × cluster) for time aggregation.
-        dims: Temporal dimensions ['time'] or ['time', 'cluster'].
+        temporal: Combined weight (time × cluster) for full temporal weighting.
+        temporal_dims: Temporal dimensions ['time'] or ['time', 'cluster'].
         period: Period weights (None if no periods).
         scenario: Scenario weights (None if no scenarios).
 
     Example:
-        >>> weights = model.weights
-        >>> flow_hours = flow_rate * weights.timestep
-        >>> total = weights.sum_temporal(flow_hours)
+        >>> # Sum rate to total with full temporal weighting
+        >>> total_energy = model.weights.sum_temporal(flow_rate)
     """
 
     def __init__(self, flow_system: FlowSystem):
@@ -101,13 +100,21 @@ class Weights:
         return self._fs._scenario_weights
 
     def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
-        """Sum data over temporal dimensions with cluster weighting.
+        """Sum data over temporal dimensions with full temporal weighting.
+
+        Applies both timestep_duration and cluster_weight, then sums over temporal dimensions.
+        Use this to convert rates to totals (e.g., flow_rate → total_energy).
 
         Args:
             data: Data with time dimension (and optionally cluster).
+                  Typically a rate (e.g., flow_rate in MW, status as 0/1).
 
         Returns:
-            Data summed over temporal dims, weighted by cluster_weight.
+            Data summed over temporal dims with full temporal weighting applied.
+
+        Example:
+            >>> total_energy = model.weights.sum_temporal(flow_rate)  # MW → MWh total
+            >>> active_hours = model.weights.sum_temporal(status)  # count → hours
         """
         return (data * self.temporal).sum(self.temporal_dims)
 
@@ -323,8 +330,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Unified weighting system.
 
         Example:
-            >>> flow_hours = flow_rate * model.weights.timestep
-            >>> total = model.weights.sum_temporal(flow_hours)
+            >>> total_energy = model.weights.sum_temporal(flow_rate)
         """
         return Weights(self.flow_system)
 
