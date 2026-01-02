@@ -196,14 +196,11 @@ class StatusModel(Submodel):
             inactive = self.add_variables(binary=True, short_name='inactive', coords=self._model.get_coords())
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
-        # 3. Total duration tracking using existing pattern
-        # Sum over temporal dimensions, weighted by cluster_weight
-        active_hours = self.status * self._model.timestep_duration
-        weighted_active_hours = active_hours * self._model.cluster_weight
-        total_hours = (self._model.timestep_duration * self._model.cluster_weight).sum(self._model.temporal_dims)
+        # 3. Total duration tracking
+        total_hours = self._model.weights.temporal.sum(self._model.weights.temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=weighted_active_hours.sum(self._model.temporal_dims),
+            tracked_expression=self._model.weights.sum_temporal(self.status),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
                 self.parameters.active_hours_max
@@ -630,10 +627,8 @@ class ShareAllocationModel(Submodel):
 
             # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
             # Sum over all temporal dimensions (time, and cluster if present)
-            weighted_per_timestep = self.total_per_timestep * self._model.cluster_weight
-            # Get temporal_dims from total_per_timestep (linopy Variable) - its coords are the actual dims
-            temporal_dims = [d for d in self.total_per_timestep.dims if d not in ('period', 'scenario')]
-            self._eq_total.lhs -= weighted_per_timestep.sum(dim=temporal_dims)
+            weighted_per_timestep = self.total_per_timestep * self._model.weights.cluster
+            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.weights.temporal_dims)
 
     def add_share(
         self,
