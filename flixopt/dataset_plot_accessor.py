@@ -552,16 +552,22 @@ class DatasetPlotAccessor:
         *,
         colors: ColorType | None = None,
         title: str = '',
+        facet_col: str | Literal['auto'] | None = 'auto',
+        facet_row: str | Literal['auto'] | None = None,
+        facet_cols: int | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a pie chart from aggregated dataset values.
 
-        The dataset should be reduced to scalar values per variable (e.g., via .sum()).
-        Each variable becomes a slice of the pie.
+        The dataset should be reduced so each variable has at most one remaining
+        dimension (for faceting). For scalar values, a single pie is shown.
 
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
+            facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
+            facet_row: Dimension for row facets.
+            facet_cols: Number of columns in facet grid wrap.
             **px_kwargs: Additional arguments passed to plotly.express.pie.
 
         Returns:
@@ -569,31 +575,59 @@ class DatasetPlotAccessor:
 
         Example:
             >>> ds.sum('time').fxplot.pie()  # Sum over time, then pie chart
+            >>> ds.sum('time').fxplot.pie(facet_col='scenario')  # Pie per scenario
         """
-        # Check that all variables are scalar
-        non_scalar = [v for v in self._ds.data_vars if self._ds[v].ndim > 0]
-        if non_scalar:
+        # Check dimensionality - allow at most 1D for faceting
+        max_ndim = max((self._ds[v].ndim for v in self._ds.data_vars), default=0)
+        if max_ndim > 1:
             raise ValueError(
-                f'Pie chart requires scalar values per variable. '
-                f'Non-scalar variables: {non_scalar}. '
-                f"Try reducing first: ds.sum('time').fxplot.pie()"
+                'Pie chart requires at most 1D data per variable (for faceting). '
+                "Try reducing first: ds.sum('time').fxplot.pie()"
             )
 
         names = list(self._ds.data_vars)
-        values = [float(self._ds[v].values) for v in names]
-        df = pd.DataFrame({'variable': names, 'value': values})
-
         color_map = process_colors(colors, names, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
 
-        return px.pie(
-            df,
-            names='variable',
-            values='value',
-            title=title,
-            color='variable',
-            color_discrete_map=color_map,
+        # Scalar case - single pie
+        if max_ndim == 0:
+            values = [float(self._ds[v].values) for v in names]
+            df = pd.DataFrame({'variable': names, 'value': values})
+            return px.pie(
+                df,
+                names='variable',
+                values='value',
+                title=title,
+                color='variable',
+                color_discrete_map=color_map,
+                **px_kwargs,
+            )
+
+        # 1D case - faceted pies
+        df = _dataset_to_long_df(self._ds)
+        if df.empty:
+            return go.Figure()
+
+        actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, facet_col, facet_row, None)
+
+        facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
+        fig_kwargs: dict[str, Any] = {
+            'data_frame': df,
+            'names': 'variable',
+            'values': 'value',
+            'title': title,
+            'color': 'variable',
+            'color_discrete_map': color_map,
             **px_kwargs,
-        )
+        }
+
+        if actual_facet_col:
+            fig_kwargs['facet_col'] = actual_facet_col
+            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+                fig_kwargs['facet_col_wrap'] = facet_col_wrap
+        if actual_facet_row:
+            fig_kwargs['facet_row'] = actual_facet_row
+
+        return px.pie(**fig_kwargs)
 
     def duration_curve(
         self,
