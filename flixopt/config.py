@@ -166,6 +166,7 @@ _DEFAULTS = MappingProxyType(
                 'default_line_shape': 'hv',
                 'extra_dim_priority': ('cluster', 'period', 'scenario'),
                 'dim_slot_priority': ('facet_col', 'facet_row', 'animation_frame'),
+                'x_dim_priority': ('time', 'duration', 'duration_pct', 'period', 'scenario', 'cluster'),
             }
         ),
         'solving': MappingProxyType(
@@ -565,6 +566,8 @@ class CONFIG:
                 Default: ('cluster', 'period', 'scenario').
             dim_slot_priority: Order of slots to fill with extra dimensions.
                 Default: ('facet_col', 'facet_row', 'animation_frame').
+            x_dim_priority: Order of dimensions to prefer for x-axis when 'auto'.
+                Default: ('time', 'duration', 'duration_pct').
 
         Examples:
             ```python
@@ -589,6 +592,7 @@ class CONFIG:
         default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
         extra_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['extra_dim_priority']
         dim_slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_slot_priority']
+        x_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['x_dim_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -692,6 +696,7 @@ class CONFIG:
                 'default_line_shape': cls.Plotting.default_line_shape,
                 'extra_dim_priority': cls.Plotting.extra_dim_priority,
                 'dim_slot_priority': cls.Plotting.dim_slot_priority,
+                'x_dim_priority': cls.Plotting.x_dim_priority,
             },
         }
 
