@@ -1,16 +1,4 @@
-"""Dataset plot accessor for xarray Datasets.
-
-Provides convenient plotting methods for any xr.Dataset via the .fxplot accessor.
-This is globally registered and available on all xr.Dataset objects when flixopt is imported.
-
-Example:
-    >>> import flixopt
-    >>> import xarray as xr
-    >>> ds = xr.Dataset({'temp': (['time', 'location'], data)})
-    >>> ds.fxplot.line()  # Line plot of all variables
-    >>> ds.fxplot.stacked_bar()  # Stacked bar chart
-    >>> ds.fxplot.heatmap('temp')  # Heatmap of specific variable
-"""
+"""Xarray accessors for plotting (``.fxplot``) and statistics (``.fxstats``)."""
 
 from __future__ import annotations
 
@@ -26,15 +14,7 @@ from .config import CONFIG
 
 
 def _get_x_dim(dims: list[str], x: str | Literal['auto'] | None = 'auto') -> str:
-    """Determine the x-axis dimension from available dimensions.
-
-    Args:
-        dims: List of available dimension names.
-        x: Explicit dimension name, 'auto' to use priority list, or None.
-
-    Returns:
-        Dimension name to use for x-axis. Returns 'variable' for scalar data.
-    """
+    """Select x-axis dim from priority list, or 'variable' for scalar data."""
     if x and x != 'auto':
         return x
 
@@ -54,23 +34,7 @@ def _resolve_auto_facets(
     animation_frame: str | Literal['auto'] | None = None,
     exclude_dims: set[str] | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    """Resolve 'auto' facet/animation dimensions based on available data dimensions.
-
-    When 'auto' is specified, extra dimensions are assigned to slots based on:
-    - CONFIG.Plotting.extra_dim_priority: Order of dimensions (default: cluster -> period -> scenario)
-    - CONFIG.Plotting.dim_slot_priority: Order of slots (default: facet_col -> facet_row -> animation_frame)
-
-    Args:
-        ds: Dataset to check for available dimensions.
-        facet_col: Dimension name, 'auto', or None.
-        facet_row: Dimension name, 'auto', or None.
-        animation_frame: Dimension name, 'auto', or None.
-        exclude_dims: Dimensions to exclude (e.g., x-axis dimension).
-
-    Returns:
-        Tuple of (resolved_facet_col, resolved_facet_row, resolved_animation_frame).
-        Each is either a valid dimension name or None.
-    """
+    """Assign 'auto' facet slots from available dims using CONFIG priority lists."""
     # Get available extra dimensions with size > 1, excluding specified dims
     exclude = exclude_dims or set()
     available = {d for d in ds.dims if ds.sizes[d] > 1 and d not in exclude}
@@ -105,7 +69,7 @@ def _resolve_auto_facets(
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
-    """Convert xarray Dataset to long-form DataFrame for plotly express."""
+    """Convert Dataset to long-form DataFrame for Plotly Express."""
     if not ds.data_vars:
         return pd.DataFrame()
     if all(ds[var].ndim == 0 for var in ds.data_vars):

@@ -73,6 +73,7 @@ nav:
       - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
+      - Custom Data Plotting: notebooks/fxplot_accessor_demo.ipynb
 
   - API Reference: api-reference/
 
