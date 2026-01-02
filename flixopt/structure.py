@@ -43,89 +43,73 @@ logger = logging.getLogger('flixopt')
 CLASS_REGISTRY = {}
 
 
-@dataclass
-class TimeSeriesWeights:
-    """Unified weighting system for time series aggregation (PyPSA-inspired).
+class Weights:
+    """Unified weighting system for time series aggregation.
 
-    This class provides a clean, unified interface for time series weights,
-    combining the various weight types used in flixopt into a single object.
+    Provides a clean interface for all weight types used in flixopt.
+    Access via ``flow_system.weights`` or ``model.weights``.
 
     Attributes:
-        temporal: Combined weight for temporal operations (timestep_duration × cluster_weight).
-            Applied to all time-summing operations. dims: [time] or [time, period, scenario]
-        period: Weight for each period in multi-period optimization.
-            dims: [period] or None
-        scenario: Weight for each scenario in stochastic optimization.
-            dims: [scenario] or None
-        objective: Optional override weight for objective function calculations.
-            If None, uses temporal weight. dims: [time] or [time, period, scenario]
-        storage: Optional override weight for storage balance equations.
-            If None, uses temporal weight. dims: [time] or [time, period, scenario]
+        timestep: Duration of each timestep in hours.
+        cluster: Cluster weight (1.0 for non-clustered systems).
+        temporal: Combined weight (timestep × cluster) for time aggregation.
+        dims: Temporal dimensions ['time'] or ['time', 'cluster'].
+        period: Period weights (None if no periods).
+        scenario: Scenario weights (None if no scenarios).
 
     Example:
-        >>> # Access via FlowSystem
-        >>> weights = flow_system.weights
-        >>> weighted_sum = (flow_rate * weights.temporal).sum('time')
-        >>>
-        >>> # With period/scenario weighting
-        >>> total = weighted_sum * weights.period * weights.scenario
-
-    Note:
-        The individual properties ``cluster_weight``, ``timestep_duration``, and
-        ``temporal_dims`` are available on FlowSystemModel for direct access.
+        >>> weights = model.weights
+        >>> flow_hours = flow_rate * weights.timestep
+        >>> total = weights.sum_temporal(flow_hours)
     """
 
-    temporal: xr.DataArray
-    period: xr.DataArray | None = None
-    scenario: xr.DataArray | None = None
-    objective: xr.DataArray | None = None
-    storage: xr.DataArray | None = None
-
-    def __post_init__(self):
-        """Validate weights."""
-        if not isinstance(self.temporal, xr.DataArray):
-            raise TypeError('temporal must be an xarray DataArray')
-        if 'time' not in self.temporal.dims:
-            raise ValueError("temporal must have 'time' dimension")
+    def __init__(self, flow_system: FlowSystem):
+        self._fs = flow_system
 
     @property
-    def effective_objective(self) -> xr.DataArray:
-        """Get effective objective weight (override or temporal)."""
-        return self.objective if self.objective is not None else self.temporal
+    def time(self) -> xr.DataArray:
+        """Duration of each timestep in hours."""
+        return self._fs.timestep_duration
 
     @property
-    def effective_storage(self) -> xr.DataArray:
-        """Get effective storage weight (override or temporal)."""
-        return self.storage if self.storage is not None else self.temporal
+    def cluster(self) -> xr.DataArray | float:
+        """Cluster weight. Returns 1.0 for non-clustered systems."""
+        if self._fs.cluster_weight is None:
+            return 1.0
+        return self._fs.cluster_weight
 
-    def sum_over_time(self, data: xr.DataArray) -> xr.DataArray:
-        """Sum data over time dimension with proper weighting.
+    @property
+    def temporal(self) -> xr.DataArray:
+        """Combined weight for time aggregation (timestep × cluster)."""
+        return self.time * self.cluster
+
+    @property
+    def temporal_dims(self) -> list[str]:
+        """Temporal dimensions for summing over time (and clusters)."""
+        if self._fs.clusters is not None:
+            return ['time', 'cluster']
+        return ['time']
+
+    @property
+    def period(self) -> xr.DataArray | None:
+        """Period weights (None if no periods)."""
+        return self._fs.period_weights
+
+    @property
+    def scenario(self) -> xr.DataArray | None:
+        """Scenario weights (None if no scenarios)."""
+        return self._fs._scenario_weights
+
+    def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over temporal dimensions with cluster weighting.
 
         Args:
-            data: DataArray with 'time' dimension.
+            data: Data with time dimension (and optionally cluster).
 
         Returns:
-            Data summed over time with temporal weighting applied.
+            Data summed over temporal dims, weighted by cluster_weight.
         """
-        if 'time' not in data.dims:
-            return data
-        return (data * self.temporal).sum('time')
-
-    def apply_period_scenario_weights(self, data: xr.DataArray) -> xr.DataArray:
-        """Apply period and scenario weights to data.
-
-        Args:
-            data: DataArray, optionally with 'period' and/or 'scenario' dims.
-
-        Returns:
-            Data with period and scenario weights applied.
-        """
-        result = data
-        if self.period is not None and 'period' in data.dims:
-            result = result * self.period
-        if self.scenario is not None and 'scenario' in data.dims:
-            result = result * self.scenario
-        return result
+        return (data * self.temporal).sum(self.temporal_dims)
 
 
 def register_class_for_io(cls):
@@ -333,6 +317,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if self.flow_system.clusters is not None:
             return ['time', 'cluster']
         return ['time']
+
+    @property
+    def weights(self) -> Weights:
+        """Unified weighting system.
+
+        Example:
+            >>> flow_hours = flow_rate * model.weights.timestep
+            >>> total = model.weights.sum_temporal(flow_hours)
+        """
+        return Weights(self.flow_system)
 
     @property
     def scenario_weights(self) -> xr.DataArray:

@@ -31,7 +31,7 @@ from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
-from .structure import TimeSeriesWeights
+from .structure import Weights
 
 __all__ = [
     'TimeSeriesData',
@@ -58,7 +58,7 @@ __all__ = [
     'PiecewiseConversion',
     'PiecewiseEffects',
     'PlotResult',
-    'TimeSeriesWeights',
+    'Weights',
     'clustering',
     'plotting',
     'results',

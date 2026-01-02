@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
     from .clustering import Clustering
     from .solvers import _Solver
-    from .structure import TimeSeriesWeights
+    from .structure import Weights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 from .carrier import Carrier, CarrierContainer
@@ -2006,33 +2006,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
 
     @property
-    def weights(self) -> TimeSeriesWeights:
+    def weights(self) -> Weights:
         """Unified weighting system for time series aggregation.
 
-        Returns a TimeSeriesWeights object providing a clean, unified interface
-        for all weight types used in flixopt. This is the recommended way to
-        access weights for new code (PyPSA-inspired design).
-
-        The temporal weight combines timestep_duration and cluster_weight,
-        which is the proper weight for summing over time.
-
-        Returns:
-            TimeSeriesWeights with temporal, period, and scenario weights.
+        Provides access to all weight types: timestep, cluster, temporal, period, scenario.
 
         Example:
             >>> weights = flow_system.weights
-            >>> weighted_total = (flow_rate * weights.temporal).sum('time')
-            >>> # Or use the convenience method:
-            >>> weighted_total = weights.sum_over_time(flow_rate)
+            >>> flow_hours = flow_rate * weights.timestep
+            >>> total = weights.sum_temporal(flow_hours)
         """
-        from .structure import TimeSeriesWeights
+        from .structure import Weights
 
-        cluster_weight = self.cluster_weight if self.cluster_weight is not None else 1.0
-        return TimeSeriesWeights(
-            temporal=self.timestep_duration * cluster_weight,
-            period=self.period_weights,
-            scenario=self._scenario_weights,
-        )
+        return Weights(self)
 
     @property
     def is_clustered(self) -> bool:
