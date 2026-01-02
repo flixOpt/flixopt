@@ -33,7 +33,7 @@ def _get_x_dim(dims: list[str], x: str | Literal['auto'] | None = 'auto') -> str
         x: Explicit dimension name, 'auto' to use priority list, or None.
 
     Returns:
-        Dimension name to use for x-axis.
+        Dimension name to use for x-axis. Returns 'variable' for scalar data.
     """
     if x and x != 'auto':
         return x
@@ -43,8 +43,8 @@ def _get_x_dim(dims: list[str], x: str | Literal['auto'] | None = 'auto') -> str
         if dim in dims:
             return dim
 
-    # Fallback to first available dimension
-    return dims[0] if dims else ''
+    # Fallback to first available dimension, or 'variable' for scalar data
+    return dims[0] if dims else 'variable'
 
 
 def _resolve_auto_facets(
