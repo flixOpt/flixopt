@@ -57,6 +57,33 @@ Until here -->
 
 ### ✨ Added
 
+**FlowSystem Comparison**: New `Comparison` class for comparing multiple FlowSystems side-by-side:
+
+```python
+# Compare systems (uses FlowSystem.name by default)
+comp = fx.Comparison([fs_base, fs_modified])
+
+# Or with custom names
+comp = fx.Comparison([fs1, fs2, fs3], names=['baseline', 'low_cost', 'high_eff'])
+
+# Side-by-side plots (auto-facets by 'case' dimension)
+comp.statistics.plot.balance('Heat')
+comp.statistics.flow_rates.fxplot.line()
+
+# Access combined data with 'case' dimension
+comp.solution  # xr.Dataset
+comp.statistics.flow_rates  # xr.Dataset
+
+# Compute differences relative to a reference case
+comp.diff()  # vs first case
+comp.diff('baseline')  # vs named case
+```
+
+- Concatenates solutions and statistics from multiple FlowSystems with a `'case'` dimension
+- Mirrors all `StatisticsAccessor` properties (`flow_rates`, `flow_hours`, `sizes`, `charge_states`, `temporal_effects`, `periodic_effects`, `total_effects`)
+- Mirrors all `StatisticsPlotAccessor` methods (`balance`, `carrier_balance`, `flows`, `sizes`, `duration_curve`, `effects`, `charge_states`, `heatmap`, `storage`)
+- Existing plotting infrastructure automatically handles faceting by `'case'`
+
 **Time-Series Clustering**: Reduce large time series to representative typical periods for faster investment optimization, then expand results back to full resolution.
 
 ```python
