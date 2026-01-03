@@ -27,9 +27,17 @@ class Comparison:
     xarray Datasets with a 'case' dimension. The existing plotting infrastructure
     automatically handles faceting by the 'case' dimension.
 
+    All FlowSystems must have matching dimensions (time, period, scenario, etc.).
+    Use `flow_system.transform.sel()` to align dimensions before comparing.
+
     Args:
-        flow_systems: List of FlowSystems to compare.
+        flow_systems: List of FlowSystems to compare. All must be optimized
+            and have matching dimensions.
         names: Optional names for each case. If None, uses FlowSystem.name.
+
+    Raises:
+        ValueError: If FlowSystems have mismatched dimensions.
+        RuntimeError: If any FlowSystem has no solution.
 
     Examples:
         ```python
@@ -50,6 +58,12 @@ class Comparison:
         # Compute differences relative to first case
         comp.diff()  # Returns xr.Dataset of differences
         comp.diff('baseline')  # Or specify reference by name
+
+        # For systems with different dimensions, align first:
+        fs_both = ...  # Has scenario dimension
+        fs_mild = fs_both.transform.sel(scenario='Mild')  # Select one scenario
+        fs_other = ...  # Also select to match
+        comp = fx.Comparison([fs_mild, fs_other])  # Now dimensions match
         ```
     """
 
@@ -68,9 +82,36 @@ class Comparison:
         if len(set(self._names)) != len(self._names):
             raise ValueError(f'Case names must be unique, got: {self._names}')
 
+        # Validate all FlowSystems have solutions
+        for fs in flow_systems:
+            if fs.solution is None:
+                raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
+
+        # Validate matching dimensions across all FlowSystems
+        self._validate_matching_dimensions()
+
         # Caches
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
+
+    def _validate_matching_dimensions(self) -> None:
+        """Validate that all FlowSystems have matching dimensions."""
+        reference = self._systems[0]
+        ref_dims = set(reference.solution.dims)
+        ref_name = self._names[0]
+
+        for fs, name in zip(self._systems[1:], self._names[1:], strict=True):
+            fs_dims = set(fs.solution.dims)
+            if fs_dims != ref_dims:
+                missing = ref_dims - fs_dims
+                extra = fs_dims - ref_dims
+                msg_parts = [f"Dimension mismatch between '{ref_name}' and '{name}'."]
+                if missing:
+                    msg_parts.append(f"Missing in '{name}': {missing}.")
+                if extra:
+                    msg_parts.append(f"Extra in '{name}': {extra}.")
+                msg_parts.append('Use .transform.sel() to align dimensions before comparing.')
+                raise ValueError(' '.join(msg_parts))
 
     @property
     def names(self) -> list[str]:
@@ -83,11 +124,9 @@ class Comparison:
         if self._solution is None:
             datasets = []
             for fs, name in zip(self._systems, self._names, strict=True):
-                if fs.solution is None:
-                    raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
                 ds = fs.solution.expand_dims(case=[name])
                 datasets.append(ds)
-            self._solution = xr.concat(datasets, dim='case')
+            self._solution = xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
         return self._solution
 
     @property
@@ -151,7 +190,7 @@ class ComparisonStatistics:
         for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
             ds = getattr(fs.statistics, prop_name)
             datasets.append(ds.expand_dims(case=[name]))
-        return xr.concat(datasets, dim='case')
+        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
         """Merge a dict property from all cases (later cases override)."""
@@ -278,9 +317,29 @@ class ComparisonStatisticsPlot:
         self._stats = statistics
         self._comp = statistics._comp
 
-    def _get_first_stats_plot(self):
-        """Get StatisticsPlotAccessor from first FlowSystem for delegation."""
-        return self._comp._systems[0].statistics.plot
+    def _concat_plot_data(self, method_name: str, *args, **kwargs) -> xr.Dataset:
+        """Call a plot method on each system and concatenate the resulting data.
+
+        This ensures all data variables from all systems are included,
+        even if topologies differ between systems.
+        """
+        # Disable show for individual calls, we'll handle it after combining
+        kwargs['show'] = False
+        datasets = []
+        for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
+            try:
+                plot_method = getattr(fs.statistics.plot, method_name)
+                result = plot_method(*args, **kwargs)
+                ds = result.data.expand_dims(case=[name])
+                datasets.append(ds)
+            except (KeyError, ValueError):
+                # Node/element might not exist in this system - skip it
+                continue
+
+        if not datasets:
+            return xr.Dataset()
+
+        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
 
     def balance(
         self,
@@ -302,39 +361,16 @@ class ComparisonStatisticsPlot:
         See StatisticsPlotAccessor.balance for full documentation.
         The 'case' dimension is automatically used for faceting.
         """
-        from .statistics_accessor import _apply_selection, _filter_by_pattern, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        # Get flow labels from first system (assumes same topology)
-        fs = self._comp._systems[0]
-        if node in fs.buses:
-            element = fs.buses[node]
-        elif node in fs.components:
-            element = fs.components[node]
-        else:
-            raise KeyError(f"'{node}' not found in buses or components")
+        # Get combined data from all systems
+        ds = self._concat_plot_data('balance', node, select=select, include=include, exclude=exclude, unit=unit)
 
-        input_labels = [f.label_full for f in element.inputs]
-        output_labels = [f.label_full for f in element.outputs]
-        all_labels = input_labels + output_labels
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
-
-        if not filtered_labels:
+        if not ds.data_vars:
             import plotly.graph_objects as go
 
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Get combined data
-        if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
-        else:
-            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
-
-        # Negate inputs
-        for label in input_labels:
-            if label in ds:
-                ds[label] = -ds[label]
-
-        ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
         )
@@ -380,41 +416,18 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.carrier_balance for full documentation.
         """
-        from .statistics_accessor import _apply_selection, _filter_by_pattern, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        carrier = carrier.lower()
-        fs = self._comp._systems[0]
+        # Get combined data from all systems
+        ds = self._concat_plot_data(
+            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit
+        )
 
-        carrier_buses = [bus for bus in fs.buses.values() if bus.carrier == carrier]
-        if not carrier_buses:
-            raise KeyError(f"No buses found with carrier '{carrier}'")
-
-        input_labels: list[str] = []
-        output_labels: list[str] = []
-        for bus in carrier_buses:
-            for flow in bus.inputs:
-                input_labels.append(flow.label_full)
-            for flow in bus.outputs:
-                output_labels.append(flow.label_full)
-
-        all_labels = input_labels + output_labels
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
-
-        if not filtered_labels:
+        if not ds.data_vars:
             import plotly.graph_objects as go
 
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
-        else:
-            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
-
-        for label in output_labels:
-            if label in ds:
-                ds[label] = -ds[label]
-
-        ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
         )
@@ -459,39 +472,16 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.flows for full documentation.
         """
-        from .statistics_accessor import _apply_selection, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        ds = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
-        fs = self._comp._systems[0]
+        # Get combined data from all systems
+        ds = self._concat_plot_data('flows', start=start, end=end, component=component, select=select, unit=unit)
 
-        if start is not None or end is not None or component is not None:
-            matching_labels = []
-            starts = [start] if isinstance(start, str) else (start or [])
-            ends = [end] if isinstance(end, str) else (end or [])
-            components = [component] if isinstance(component, str) else (component or [])
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-            for flow in fs.flows.values():
-                bus_label = flow.bus
-                comp_label = flow.component
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-                if flow.is_input_in_component:
-                    if starts and bus_label not in starts:
-                        continue
-                    if ends and comp_label not in ends:
-                        continue
-                else:
-                    if starts and comp_label not in starts:
-                        continue
-                    if ends and bus_label not in ends:
-                        continue
-
-                if components and comp_label not in components:
-                    continue
-                matching_labels.append(flow.label_full)
-
-            ds = ds[[lbl for lbl in matching_labels if lbl in ds]]
-
-        ds = _apply_selection(ds, select)
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
         )
@@ -536,14 +526,15 @@ class ComparisonStatisticsPlot:
         import plotly.express as px
 
         from .color_processing import process_colors
-        from .statistics_accessor import _apply_selection, _dataset_to_long_df, _resolve_auto_facets
+        from .statistics_accessor import _dataset_to_long_df, _resolve_auto_facets
 
-        ds = self._stats.sizes
-        ds = _apply_selection(ds, select)
+        # Get combined data from all systems
+        ds = self._concat_plot_data('sizes', max_size=max_size, select=select)
 
-        if max_size is not None and ds.data_vars:
-            valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
-            ds = ds[valid_labels]
+        if not ds.data_vars:
+            import plotly.graph_objects as go
+
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
@@ -595,61 +586,18 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.duration_curve for full documentation.
         """
-        import numpy as np
+        from .statistics_accessor import _resolve_auto_facets
 
-        from .statistics_accessor import _apply_selection, _resolve_auto_facets
+        # Get combined data from all systems
+        ds = self._concat_plot_data('duration_curve', variables, select=select, normalize=normalize)
 
-        if isinstance(variables, str):
-            variables = [variables]
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-        flow_rates = self._stats.flow_rates
-        solution = self._comp.solution
-
-        normalized_vars = []
-        for var in variables:
-            if var.endswith('|flow_rate'):
-                var = var[: -len('|flow_rate')]
-            normalized_vars.append(var)
-
-        ds_parts = []
-        for var in normalized_vars:
-            if var in flow_rates:
-                ds_parts.append(flow_rates[[var]])
-            elif var in solution:
-                ds_parts.append(solution[[var]])
-            else:
-                flow_rate_var = f'{var}|flow_rate'
-                if flow_rate_var in solution:
-                    ds_parts.append(solution[[flow_rate_var]].rename({flow_rate_var: var}))
-                else:
-                    raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
-
-        ds = xr.merge(ds_parts)
-        ds = _apply_selection(ds, select)
-
-        if 'time' not in ds.dims:
-            raise ValueError('Duration curve requires time dimension')
-
-        def sort_descending(arr: np.ndarray) -> np.ndarray:
-            return np.sort(arr)[::-1]
-
-        result_ds = xr.apply_ufunc(
-            sort_descending,
-            ds,
-            input_core_dims=[['time']],
-            output_core_dims=[['time']],
-            vectorize=True,
-        )
-
-        duration_name = 'duration_pct' if normalize else 'duration'
-        result_ds = result_ds.rename({'time': duration_name})
-
-        n_timesteps = result_ds.sizes[duration_name]
-        duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
-        result_ds = result_ds.assign_coords({duration_name: duration_coord})
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            result_ds, facet_col, facet_row, animation_frame
+            ds, facet_col, facet_row, animation_frame
         )
 
         unit_label = ''
@@ -657,7 +605,7 @@ class ComparisonStatisticsPlot:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = result_ds.fxplot.line(
+        fig = ds.fxplot.line(
             colors=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             facet_col=actual_facet_col,
@@ -674,7 +622,7 @@ class ComparisonStatisticsPlot:
         if show:
             fig.show()
 
-        return PlotResult(data=result_ds, figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def effects(
         self,
@@ -697,68 +645,38 @@ class ComparisonStatisticsPlot:
         import plotly.express as px
 
         from .color_processing import process_colors
-        from .statistics_accessor import _apply_selection, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        if aspect == 'total':
-            effects_ds = self._stats.total_effects
-        elif aspect == 'temporal':
-            effects_ds = self._stats.temporal_effects
-        elif aspect == 'periodic':
-            effects_ds = self._stats.periodic_effects
-        else:
-            raise ValueError(f"Aspect '{aspect}' not valid. Choose from 'total', 'temporal', 'periodic'.")
+        # Get combined data from all systems
+        ds = self._concat_plot_data('effects', aspect, effect=effect, by=by, select=select)
 
-        available_effects = list(effects_ds.data_vars)
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-        if effect is not None:
-            if effect not in available_effects:
-                raise ValueError(f"Effect '{effect}' not found. Available: {available_effects}")
-            effects_to_plot = [effect]
-        else:
-            effects_to_plot = available_effects
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        effect_arrays = []
-        for eff in effects_to_plot:
-            da = effects_ds[eff]
-            if by == 'contributor':
-                effect_arrays.append(da.expand_dims(effect=[eff]))
-            else:
-                da_grouped = da.groupby('component').sum()
-                effect_arrays.append(da_grouped.expand_dims(effect=[eff]))
+        # The underlying effects method returns a Dataset with a single data var named after aspect
+        # Convert back to DataArray for processing
+        combined = ds[aspect] if aspect in ds else next(iter(ds.data_vars))
+        if isinstance(combined, xr.Dataset):
+            combined = combined[next(iter(combined.data_vars))]
 
-        combined = xr.concat(effect_arrays, dim='effect')
-        combined = _apply_selection(combined.to_dataset(name='value'), select)['value']
-
+        # Determine x_col and color_col based on dimensions
         if by is None:
-            if 'time' in combined.dims:
-                combined = combined.sum(dim='time')
-            if 'component' in combined.dims:
-                combined = combined.sum(dim='component')
-            if 'contributor' in combined.dims:
-                combined = combined.sum(dim='contributor')
             x_col = 'effect'
             color_col = 'effect'
         elif by == 'component':
-            if 'time' in combined.dims:
-                combined = combined.sum(dim='time')
             x_col = 'component'
-            color_col = 'effect' if len(effects_to_plot) > 1 else 'component'
+            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else 'component'
         elif by == 'contributor':
-            if 'time' in combined.dims:
-                combined = combined.sum(dim='time')
             x_col = 'contributor'
-            color_col = 'effect' if len(effects_to_plot) > 1 else 'contributor'
+            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else 'contributor'
         elif by == 'time':
-            if 'time' not in combined.dims:
-                raise ValueError(f"Cannot plot by 'time' for aspect '{aspect}' - no time dimension.")
-            if 'component' in combined.dims:
-                combined = combined.sum(dim='component')
-            if 'contributor' in combined.dims:
-                combined = combined.sum(dim='contributor')
             x_col = 'time'
-            color_col = 'effect' if len(effects_to_plot) > 1 else None
+            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else None
         else:
-            raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
+            x_col = 'effect'
+            color_col = 'effect'
 
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             combined.to_dataset(name='value'), facet_col, facet_row, animation_frame
@@ -773,12 +691,7 @@ class ComparisonStatisticsPlot:
             color_map = None
 
         effect_label = effect if effect else 'Effects'
-        if effect and effect in effects_ds:
-            unit_label = effects_ds[effect].attrs.get('unit', '')
-            title = f'{effect_label} [{unit_label}]' if unit_label else effect_label
-        else:
-            title = effect_label
-        title = f'{title} ({aspect})' if by is None else f'{title} ({aspect}) by {by}'
+        title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
 
         fig = px.bar(
             df,
@@ -800,7 +713,7 @@ class ComparisonStatisticsPlot:
         if show:
             fig.show()
 
-        return PlotResult(data=combined.to_dataset(name=aspect), figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def charge_states(
         self,
@@ -818,16 +731,16 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.charge_states for full documentation.
         """
-        from .statistics_accessor import _apply_selection, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        ds = self._stats.charge_states
+        # Get combined data from all systems
+        ds = self._concat_plot_data('charge_states', storages, select=select)
 
-        if storages is not None:
-            if isinstance(storages, str):
-                storages = [storages]
-            ds = ds[[s for s in storages if s in ds]]
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-        ds = _apply_selection(ds, select)
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
         )
@@ -865,87 +778,33 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.heatmap for full documentation.
         """
-        import pandas as pd
+        from .statistics_accessor import _resolve_auto_facets
 
-        from .statistics_accessor import _apply_selection, _reshape_time_for_heatmap, _resolve_auto_facets
+        # Get combined data from all systems
+        ds = self._concat_plot_data('heatmap', variables, select=select, reshape=reshape)
 
-        solution = self._comp.solution
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-        if isinstance(variables, str):
-            variables = [variables]
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Resolve flow labels
-        resolved_variables = []
-        for var in variables:
-            if var in solution:
-                resolved_variables.append(var)
-            elif '|' not in var:
-                flow_rate_var = f'{var}|flow_rate'
-                charge_state_var = f'{var}|charge_state'
-                if flow_rate_var in solution:
-                    resolved_variables.append(flow_rate_var)
-                elif charge_state_var in solution:
-                    resolved_variables.append(charge_state_var)
-                else:
-                    resolved_variables.append(var)
-            else:
-                resolved_variables.append(var)
-
-        ds = solution[resolved_variables]
-        ds = _apply_selection(ds, select)
-
-        variable_names = list(ds.data_vars)
-        dataarrays = [ds[var] for var in variable_names]
-        da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
-
-        is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
-        has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
-
-        if has_multiple_vars:
-            actual_facet = 'variable'
-            _, _, actual_animation = _resolve_auto_facets(da.to_dataset(name='value'), None, None, animation_frame)
-            if actual_animation == 'variable':
-                actual_animation = None
+        # Convert to DataArray for heatmap plotting
+        if len(ds.data_vars) == 1:
+            da = ds[next(iter(ds.data_vars))]
         else:
-            actual_facet, _, actual_animation = _resolve_auto_facets(
-                da.to_dataset(name='value'), facet_col, None, animation_frame
-            )
+            import pandas as pd
 
-        if is_clustered and (reshape == 'auto' or reshape is None):
-            heatmap_dims = ['time', 'cluster']
-        elif reshape and reshape != 'auto' and 'time' in da.dims:
-            da = _reshape_time_for_heatmap(da, reshape)
-            heatmap_dims = ['timestep', 'timeframe']
-        elif reshape == 'auto' and 'time' in da.dims and not is_clustered:
-            da = _reshape_time_for_heatmap(da, ('D', 'h'))
-            heatmap_dims = ['timestep', 'timeframe']
-        elif has_multiple_vars:
-            heatmap_dims = ['variable', 'time']
-            actual_facet, _, actual_animation = _resolve_auto_facets(
-                da.to_dataset(name='value'), facet_col, None, animation_frame
-            )
-        else:
-            available_dims = [d for d in da.dims if da.sizes[d] > 1]
-            if len(available_dims) >= 2:
-                heatmap_dims = available_dims[:2]
-            elif 'time' in da.dims:
-                heatmap_dims = ['time']
-            else:
-                heatmap_dims = list(da.dims)[:1]
+            variable_names = list(ds.data_vars)
+            dataarrays = [ds[var] for var in variable_names]
+            da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
 
-        keep_dims = set(heatmap_dims) | {d for d in [actual_facet, actual_animation] if d is not None}
-        for dim in [d for d in da.dims if d not in keep_dims]:
-            da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
-
-        dim_order = heatmap_dims + [d for d in [actual_facet, actual_animation] if d]
-        da = da.transpose(*dim_order)
-
-        if has_multiple_vars:
-            da = da.rename('')
+        actual_facet_col, _, actual_animation = _resolve_auto_facets(
+            da.to_dataset(name='value'), facet_col, None, animation_frame
+        )
 
         fig = da.fxplot.heatmap(
             colors=colors,
-            facet_col=actual_facet,
+            facet_col=actual_facet_col,
             animation_frame=actual_animation,
             **plotly_kwargs,
         )
@@ -955,8 +814,7 @@ class ComparisonStatisticsPlot:
         if show:
             fig.show()
 
-        reshaped_ds = da.to_dataset(name='value') if isinstance(da, xr.DataArray) else da
-        return PlotResult(data=reshaped_ds, figure=fig)
+        return PlotResult(data=ds, figure=fig)
 
     def storage(
         self,
@@ -976,39 +834,15 @@ class ComparisonStatisticsPlot:
 
         See StatisticsPlotAccessor.storage for full documentation.
         """
-        # Delegate to first system's plot method for now (complex subplot logic)
-        # This is a simplification - for full support would need to reimplement
-        from .statistics_accessor import _apply_selection, _resolve_auto_facets
+        from .statistics_accessor import _resolve_auto_facets
 
-        fs = self._comp._systems[0]
-        if storage not in fs.components:
-            raise KeyError(f"Storage '{storage}' not found in components")
+        # Get combined data from all systems
+        ds = self._concat_plot_data('storage', storage, select=select, unit=unit, charge_state_color=charge_state_color)
 
-        from .components import Storage as StorageComponent
+        if not ds.data_vars:
+            import plotly.graph_objects as go
 
-        comp = fs.components[storage]
-        if not isinstance(comp, StorageComponent):
-            raise ValueError(f"'{storage}' is not a Storage component")
-
-        # Get combined data
-        input_labels = [f.label_full for f in comp.inputs]
-        output_labels = [f.label_full for f in comp.outputs]
-        all_labels = input_labels + output_labels
-
-        if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in all_labels if lbl in self._stats.flow_rates]]
-        else:
-            ds = self._stats.flow_hours[[lbl for lbl in all_labels if lbl in self._stats.flow_hours]]
-
-        for label in input_labels:
-            if label in ds:
-                ds[label] = -ds[label]
-
-        charge_ds = self._stats.charge_states[[storage]] if storage in self._stats.charge_states else None
-
-        ds = _apply_selection(ds, select)
-        if charge_ds is not None:
-            charge_ds = _apply_selection(charge_ds, select)
+            return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
         actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
             ds, facet_col, facet_row, animation_frame
@@ -1029,10 +863,4 @@ class ComparisonStatisticsPlot:
         if show:
             fig.show()
 
-        # Combine data
-        if charge_ds is not None:
-            combined_ds = xr.merge([ds, charge_ds])
-        else:
-            combined_ds = ds
-
-        return PlotResult(data=combined_ds, figure=fig)
+        return PlotResult(data=ds, figure=fig)
