@@ -189,8 +189,8 @@ def _resolve_auto_facets(
     """Resolve 'auto' facet/animation dimensions based on available data dimensions.
 
     When 'auto' is specified, extra dimensions are assigned to slots based on:
-    - CONFIG.Plotting.extra_dim_priority: Order of dimensions (default: cluster → period → scenario)
-    - CONFIG.Plotting.dim_slot_priority: Order of slots (default: facet_col → facet_row → animation_frame)
+    - CONFIG.Plotting.extra_dim_priority: Order of dimensions to assign.
+    - CONFIG.Plotting.dim_slot_priority: Order of slots to fill.
 
     Args:
         ds: Dataset to check for available dimensions.
