@@ -30,7 +30,7 @@ SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
 # Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '6.0.0'
+DEPRECATION_REMOVAL_VERSION = '7.0.0'
 
 
 class MultilineFormatter(logging.Formatter):

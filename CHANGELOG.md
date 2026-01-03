@@ -173,12 +173,29 @@ dataset.fxstats.to_duration_curve()
 
 ### 🗑️ Deprecated
 
+The following items are deprecated and will be removed in **v7.0.0**:
+
+**Classes** (use FlowSystem methods instead):
+
+- `Optimization` class → Use `flow_system.optimize(solver)`
+- `SegmentedOptimization` class → Use `flow_system.optimize.rolling_horizon()`
+- `Results` class → Use `flow_system.solution` and `flow_system.statistics`
+- `SegmentedResults` class → Use segment FlowSystems directly
+
+**FlowSystem methods** (use `transform` accessor instead):
+
+- `flow_system.sel()` → Use `flow_system.transform.sel()`
+- `flow_system.isel()` → Use `flow_system.transform.isel()`
+- `flow_system.resample()` → Use `flow_system.transform.resample()`
+
+**Parameters:**
+
 - `normalize_weights` parameter in `create_model()`, `build_model()`, `optimize()`
 
-**Topology method name simplifications** (old names still work with deprecation warnings, removal in v6.0.0):
+**Topology method name simplifications** (old names still work with deprecation warnings, removal in v7.0.0):
 
-| Old (v5.0.0) | New (v5.1.0) |
-|--------------|--------------|
+| Old (v5.x) | New (v6.0.0) |
+|------------|--------------|
 | `topology.plot_network()` | `topology.plot()` |
 | `topology.start_network_app()` | `topology.start_app()` |
 | `topology.stop_network_app()` | `topology.stop_app()` |
