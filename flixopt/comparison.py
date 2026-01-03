@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import xarray as xr
 
@@ -94,18 +94,26 @@ class Comparison:
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
 
+    # Core dimensions that must match across FlowSystems
+    _CORE_DIMS = {'time', 'cluster', 'period', 'scenario'}
+
     def _validate_matching_dimensions(self) -> None:
-        """Validate that all FlowSystems have matching dimensions."""
+        """Validate that all FlowSystems have matching core dimensions.
+
+        Only validates core dimensions (time, period, scenario). Auxiliary
+        dimensions like 'cluster_boundary' are ignored as they don't affect
+        the comparison logic.
+        """
         reference = self._systems[0]
-        ref_dims = set(reference.solution.dims)
+        ref_core_dims = set(reference.solution.dims) & self._CORE_DIMS
         ref_name = self._names[0]
 
         for fs, name in zip(self._systems[1:], self._names[1:], strict=True):
-            fs_dims = set(fs.solution.dims)
-            if fs_dims != ref_dims:
-                missing = ref_dims - fs_dims
-                extra = fs_dims - ref_dims
-                msg_parts = [f"Dimension mismatch between '{ref_name}' and '{name}'."]
+            fs_core_dims = set(fs.solution.dims) & self._CORE_DIMS
+            if fs_core_dims != ref_core_dims:
+                missing = ref_core_dims - fs_core_dims
+                extra = fs_core_dims - ref_core_dims
+                msg_parts = [f"Core dimension mismatch between '{ref_name}' and '{name}'."]
                 if missing:
                     msg_parts.append(f"Missing in '{name}': {missing}.")
                 if extra:
@@ -308,559 +316,116 @@ class ComparisonStatistics:
 class ComparisonStatisticsPlot:
     """Plot accessor for comparison statistics.
 
-    Mirrors StatisticsPlotAccessor methods, operating on combined data
-    from multiple FlowSystems. The 'case' dimension is automatically
-    used for faceting.
+    Dynamically wraps StatisticsPlotAccessor methods, combining data from all
+    FlowSystems with a 'case' dimension for faceting.
     """
 
     def __init__(self, statistics: ComparisonStatistics) -> None:
         self._stats = statistics
         self._comp = statistics._comp
 
-    def _concat_plot_data(self, method_name: str, *args, **kwargs) -> xr.Dataset:
-        """Call a plot method on each system and concatenate the resulting data.
+    def __getattr__(self, name: str):
+        """Dynamically delegate any plot method to underlying systems."""
+        if name.startswith('_'):
+            raise AttributeError(name)
+        # Check if method exists on underlying accessor
+        if not hasattr(self._comp._systems[0].statistics.plot, name):
+            raise AttributeError(name)
+        return lambda *args, **kwargs: self._wrap_plot_method(name, *args, **kwargs)
 
-        This ensures all data variables from all systems are included,
-        even if topologies differ between systems.
-        """
-        # Disable show for individual calls, we'll handle it after combining
-        kwargs['show'] = False
+    def _wrap_plot_method(self, method_name: str, *args, show: bool | None = None, **kwargs) -> PlotResult:
+        """Call plot method on each system and combine results."""
+        import plotly.graph_objects as go
+
         datasets = []
-        for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
+        last_result = None
+
+        for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
-                plot_method = getattr(fs.statistics.plot, method_name)
-                result = plot_method(*args, **kwargs)
-                ds = result.data.expand_dims(case=[name])
-                datasets.append(ds)
+                method = getattr(fs.statistics.plot, method_name)
+                result = method(*args, show=False, **kwargs)
+                datasets.append(result.data.expand_dims(case=[case_name]))
+                last_result = result
             except (KeyError, ValueError):
-                # Node/element might not exist in this system - skip it
+                # Element might not exist in this system
                 continue
 
         if not datasets:
-            return xr.Dataset()
-
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
-
-    def balance(
-        self,
-        node: str,
-        *,
-        select: SelectType | None = None,
-        include: FilterType | None = None,
-        exclude: FilterType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot node balance comparison across cases.
-
-        See StatisticsPlotAccessor.balance for full documentation.
-        The 'case' dimension is automatically used for faceting.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('balance', node, select=select, include=include, exclude=exclude, unit=unit)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
+        combined = xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
 
-        # Get unit label
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
+        # Recreate figure with combined data
+        from .statistics_accessor import _resolve_auto_facets
 
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=f'{node} [{unit_label}]' if unit_label else node,
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
+        facet_col = kwargs.pop('facet_col', 'auto')
+        facet_row = kwargs.pop('facet_row', 'auto')
+        animation_frame = kwargs.pop('animation_frame', 'auto')
+        colors = kwargs.get('colors')
+
+        actual_col, actual_row, actual_anim = _resolve_auto_facets(combined, facet_col, facet_row, animation_frame)
+
+        # Determine plot type from last successful result's figure
+        fig = self._recreate_figure(combined, last_result, colors, actual_col, actual_row, actual_anim, kwargs)
 
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=combined, figure=fig)
 
-    def carrier_balance(
-        self,
-        carrier: str,
-        *,
-        select: SelectType | None = None,
-        include: FilterType | None = None,
-        exclude: FilterType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot carrier balance comparison across cases.
-
-        See StatisticsPlotAccessor.carrier_balance for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data(
-            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit
-        )
+    def _recreate_figure(
+        self, ds: xr.Dataset, last_result: PlotResult | None, colors, facet_col, facet_row, anim, kwargs
+    ):
+        """Recreate figure with combined data, inferring plot type from original."""
+        import plotly.graph_objects as go
 
         if not ds.data_vars:
-            import plotly.graph_objects as go
+            return go.Figure()
 
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
-
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def flows(
-        self,
-        *,
-        start: str | list[str] | None = None,
-        end: str | list[str] | None = None,
-        component: str | list[str] | None = None,
-        select: SelectType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot flows comparison across cases.
-
-        See StatisticsPlotAccessor.flows for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('flows', start=start, end=end, component=component, select=select, unit=unit)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
-
-        fig = ds.fxplot.line(
-            colors=colors,
-            title=f'Flows [{unit_label}]' if unit_label else 'Flows',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def sizes(
-        self,
-        *,
-        max_size: float | None = 1e6,
-        select: SelectType | None = None,
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot investment sizes comparison across cases.
-
-        See StatisticsPlotAccessor.sizes for full documentation.
-        """
-        import plotly.express as px
-
-        from .color_processing import process_colors
-        from .statistics_accessor import _dataset_to_long_df, _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('sizes', max_size=max_size, select=select)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        df = _dataset_to_long_df(ds)
-        if df.empty:
-            import plotly.graph_objects as go
-
-            fig = go.Figure()
+        # Infer plot type from original figure traces
+        if last_result and last_result.figure.data:
+            trace_type = type(last_result.figure.data[0]).__name__
         else:
-            variables = df['variable'].unique().tolist()
-            color_map = process_colors(colors, variables)
-            fig = px.bar(
-                df,
-                x='variable',
-                y='value',
-                color='variable',
-                facet_col=actual_facet_col,
-                facet_row=actual_facet_row,
-                animation_frame=actual_anim,
-                color_discrete_map=color_map,
-                title='Investment Sizes',
-                labels={'variable': 'Flow', 'value': 'Size'},
-                **plotly_kwargs,
-            )
+            trace_type = 'Bar'
 
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
+        title = last_result.figure.layout.title.text if last_result else ''
 
-        return PlotResult(data=ds, figure=fig)
+        if trace_type in ('Bar',) and 'Scatter' not in str(last_result.figure.data):
+            # Check if it's a stacked bar (has barmode='relative')
+            barmode = getattr(last_result.figure.layout, 'barmode', None) if last_result else None
+            if barmode == 'relative':
+                return ds.fxplot.stacked_bar(
+                    colors=colors, title=title, facet_col=facet_col, facet_row=facet_row, animation_frame=anim
+                )
+            else:
+                # Regular bar - use px.bar via long-form data
+                from .color_processing import process_colors
+                from .statistics_accessor import _dataset_to_long_df
 
-    def duration_curve(
-        self,
-        variables: str | list[str],
-        *,
-        select: SelectType | None = None,
-        normalize: bool = False,
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot duration curves comparison across cases.
+                df = _dataset_to_long_df(ds)
+                if df.empty:
+                    return go.Figure()
+                import plotly.express as px
 
-        See StatisticsPlotAccessor.duration_curve for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('duration_curve', variables, select=select, normalize=normalize)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
-
-        fig = ds.fxplot.line(
-            colors=colors,
-            title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
-
-        x_label = 'Duration [%]' if normalize else 'Timesteps'
-        fig.update_xaxes(title_text=x_label)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def effects(
-        self,
-        aspect: Literal['total', 'temporal', 'periodic'] = 'total',
-        *,
-        effect: str | None = None,
-        by: Literal['component', 'contributor', 'time'] | None = None,
-        select: SelectType | None = None,
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot effects comparison across cases.
-
-        See StatisticsPlotAccessor.effects for full documentation.
-        """
-        import plotly.express as px
-
-        from .color_processing import process_colors
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('effects', aspect, effect=effect, by=by, select=select)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        # The underlying effects method returns a Dataset with a single data var named after aspect
-        # Convert back to DataArray for processing
-        combined = ds[aspect] if aspect in ds else next(iter(ds.data_vars))
-        if isinstance(combined, xr.Dataset):
-            combined = combined[next(iter(combined.data_vars))]
-
-        # Determine x_col and color_col based on dimensions
-        if by is None:
-            x_col = 'effect'
-            color_col = 'effect'
-        elif by == 'component':
-            x_col = 'component'
-            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else 'component'
-        elif by == 'contributor':
-            x_col = 'contributor'
-            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else 'contributor'
-        elif by == 'time':
-            x_col = 'time'
-            color_col = 'effect' if 'effect' in combined.dims and combined.sizes.get('effect', 1) > 1 else None
-        else:
-            x_col = 'effect'
-            color_col = 'effect'
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            combined.to_dataset(name='value'), facet_col, facet_row, animation_frame
-        )
-
-        df = combined.to_dataframe(name='value').reset_index()
-
-        if color_col and color_col in df.columns:
-            color_items = df[color_col].unique().tolist()
-            color_map = process_colors(colors, color_items)
-        else:
-            color_map = None
-
-        effect_label = effect if effect else 'Effects'
-        title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
-
-        fig = px.bar(
-            df,
-            x=x_col,
-            y='value',
-            color=color_col,
-            color_discrete_map=color_map,
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            title=title,
-            **plotly_kwargs,
-        )
-        fig.update_layout(bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def charge_states(
-        self,
-        storages: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot charge states comparison across cases.
-
-        See StatisticsPlotAccessor.charge_states for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('charge_states', storages, select=select)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        fig = ds.fxplot.line(
-            colors=colors,
-            title='Storage Charge States',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
-        fig.update_yaxes(title_text='Charge State')
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def heatmap(
-        self,
-        variables: str | list[str],
-        *,
-        select: SelectType | None = None,
-        reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
-        colors: str | list[str] | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = None,
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot heatmap comparison across cases.
-
-        See StatisticsPlotAccessor.heatmap for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('heatmap', variables, select=select, reshape=reshape)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        # Convert to DataArray for heatmap plotting
-        if len(ds.data_vars) == 1:
+                color_map = process_colors(colors, df['variable'].unique().tolist())
+                return px.bar(
+                    df,
+                    x='variable',
+                    y='value',
+                    color='variable',
+                    facet_col=facet_col,
+                    facet_row=facet_row,
+                    animation_frame=anim,
+                    color_discrete_map=color_map,
+                    title=title,
+                )
+        elif trace_type == 'Heatmap':
             da = ds[next(iter(ds.data_vars))]
+            return da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=anim)
         else:
-            import pandas as pd
-
-            variable_names = list(ds.data_vars)
-            dataarrays = [ds[var] for var in variable_names]
-            da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
-
-        actual_facet_col, _, actual_animation = _resolve_auto_facets(
-            da.to_dataset(name='value'), facet_col, None, animation_frame
-        )
-
-        fig = da.fxplot.heatmap(
-            colors=colors,
-            facet_col=actual_facet_col,
-            animation_frame=actual_animation,
-            **plotly_kwargs,
-        )
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
-
-    def storage(
-        self,
-        storage: str,
-        *,
-        select: SelectType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType = None,
-        charge_state_color: str = 'black',
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot storage operation comparison across cases.
-
-        See StatisticsPlotAccessor.storage for full documentation.
-        """
-        from .statistics_accessor import _resolve_auto_facets
-
-        # Get combined data from all systems
-        ds = self._concat_plot_data('storage', storage, select=select, unit=unit, charge_state_color=charge_state_color)
-
-        if not ds.data_vars:
-            import plotly.graph_objects as go
-
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
-
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        # Create stacked bar for flows
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=f'{storage} Operation',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            **plotly_kwargs,
-        )
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            fig.show()
-
-        return PlotResult(data=ds, figure=fig)
+            # Default to line plot
+            return ds.fxplot.line(
+                colors=colors, title=title, facet_col=facet_col, facet_row=facet_row, animation_frame=anim
+            )

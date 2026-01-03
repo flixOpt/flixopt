@@ -312,19 +312,23 @@ comp.solution  # Combined solution dataset
 
 ### Requirements
 
-All FlowSystems in a comparison must have **matching dimensions** (time, period, scenario, etc.). If dimensions differ, use `.transform.sel()` to align them first:
+All FlowSystems must have **matching core dimensions** (`time`, `period`, `scenario`). Auxiliary dimensions like `cluster_boundary` are ignored. If core dimensions differ, use `.transform.sel()` to align them first:
 
 ```python
 # Systems with different scenarios
 fs_both = flow_system  # Has 'Mild Winter' and 'Harsh Winter' scenarios
 fs_mild = flow_system.transform.sel(scenario='Mild Winter')  # Single scenario
 
-# Cannot compare directly - dimension mismatch!
+# Cannot compare directly - scenario dimension mismatch!
 # fx.Comparison([fs_both, fs_mild])  # Raises ValueError
 
 # Instead, select matching dimensions
 fs_both_mild = fs_both.transform.sel(scenario='Mild Winter')
 comp = fx.Comparison([fs_both_mild, fs_mild])  # Works!
+
+# Auxiliary dimensions are OK (e.g., expanded clustered solutions)
+fs_expanded = fs_clustered.transform.expand_solution()  # Has cluster_boundary dim
+comp = fx.Comparison([fs_full, fs_expanded])  # Works! cluster_boundary is ignored
 ```
 
 ### Available Properties
