@@ -112,8 +112,10 @@ class ClusterStructure:
 
         # Store scalar values
         if isinstance(self.n_clusters, xr.DataArray):
-            arrays[str(self.n_clusters.name)] = self.n_clusters
-            ref['n_clusters'] = f':::{self.n_clusters.name}'
+            n_clusters_name = self.n_clusters.name or 'n_clusters'
+            self.n_clusters = self.n_clusters.rename(n_clusters_name)
+            arrays[n_clusters_name] = self.n_clusters
+            ref['n_clusters'] = f':::{n_clusters_name}'
         else:
             ref['n_clusters'] = int(self.n_clusters)
 
@@ -1121,7 +1123,15 @@ class Clustering:
         """Original timesteps before clustering.
 
         Derived from the 'original_time' coordinate of timestep_mapping.
+
+        Raises:
+            KeyError: If 'original_time' coordinate is missing from timestep_mapping.
         """
+        if 'original_time' not in self.result.timestep_mapping.coords:
+            raise KeyError(
+                "timestep_mapping is missing 'original_time' coordinate. "
+                'This may indicate corrupted or incompatible clustering results.'
+            )
         return pd.DatetimeIndex(self.result.timestep_mapping.coords['original_time'].values)
 
 

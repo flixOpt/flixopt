@@ -203,11 +203,7 @@ class StatusModel(Submodel):
             tracked_expression=self._model.sum_temporal(self.status),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
-                self.parameters.active_hours_max
-                if self.parameters.active_hours_max is not None
-                else total_hours.max().item()
-                if hasattr(total_hours, 'max')
-                else total_hours,
+                self.parameters.active_hours_max if self.parameters.active_hours_max is not None else total_hours,
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
