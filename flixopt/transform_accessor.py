@@ -8,6 +8,7 @@ transformations on FlowSystem like clustering, selection, and resampling.
 from __future__ import annotations
 
 import logging
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -705,7 +706,10 @@ class TransformAccessor:
                     addPeakMax=time_series_for_high_peaks or [],
                     addPeakMin=time_series_for_low_peaks or [],
                 )
-                tsam_agg.createTypicalPeriods()
+                # Suppress tsam warning about minimal value constraints (informational, not actionable)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+                    tsam_agg.createTypicalPeriods()
 
                 tsam_results[key] = tsam_agg
                 cluster_orders[key] = tsam_agg.clusterOrder
@@ -801,7 +805,11 @@ class TransformAccessor:
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
                 ds_new_vars[name] = da
 
-        ds_new = xr.Dataset(ds_new_vars, attrs=ds.attrs)
+        # Copy attrs but remove cluster_weight - the clustered FlowSystem gets its own
+        # cluster_weight set after from_dataset (original reference has wrong shape)
+        new_attrs = dict(ds.attrs)
+        new_attrs.pop('cluster_weight', None)
+        ds_new = xr.Dataset(ds_new_vars, attrs=new_attrs)
         ds_new.attrs['timesteps_per_cluster'] = timesteps_per_cluster
         ds_new.attrs['timestep_duration'] = dt
         ds_new.attrs['n_clusters'] = actual_n_clusters
@@ -848,6 +856,9 @@ class TransformAccessor:
             timestep_mapping_slices = {}
             cluster_occurrences_slices = {}
 
+            # Use renamed timesteps as coordinates for multi-dimensional case
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
+
             for p in periods:
                 for s in scenarios:
                     key = (p, s)
@@ -855,7 +866,10 @@ class TransformAccessor:
                         cluster_orders[key], dims=['original_period'], name='cluster_order'
                     )
                     timestep_mapping_slices[key] = xr.DataArray(
-                        _build_timestep_mapping_for_key(key), dims=['original_time'], name='timestep_mapping'
+                        _build_timestep_mapping_for_key(key),
+                        dims=['original_time'],
+                        coords={'original_time': original_timesteps_coord},
+                        name='timestep_mapping',
                     )
                     cluster_occurrences_slices[key] = xr.DataArray(
                         _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
@@ -874,8 +888,13 @@ class TransformAccessor:
         else:
             # Simple case: single (None, None) slice
             cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_period'], name='cluster_order')
+            # Use renamed timesteps as coordinates
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
             timestep_mapping_da = xr.DataArray(
-                _build_timestep_mapping_for_key(first_key), dims=['original_time'], name='timestep_mapping'
+                _build_timestep_mapping_for_key(first_key),
+                dims=['original_time'],
+                coords={'original_time': original_timesteps_coord},
+                name='timestep_mapping',
             )
             cluster_occurrences_da = xr.DataArray(
                 _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
@@ -888,16 +907,17 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
-        # Create representative_weights in flat format for ClusterResult compatibility
-        # This repeats each cluster's weight for all timesteps within that cluster
-        def _build_flat_weights_for_key(key: tuple) -> xr.DataArray:
+        # Create representative_weights with (cluster,) dimension only
+        # Each cluster has one weight (same for all timesteps within it)
+        def _build_cluster_weights_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            weights = np.repeat([occurrences.get(c, 1) for c in range(actual_n_clusters)], timesteps_per_cluster)
-            return xr.DataArray(weights, dims=['time'], name='representative_weights')
+            # Shape: (n_clusters,) - one weight per cluster
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
 
-        flat_weights_slices = {key: _build_flat_weights_for_key(key) for key in cluster_occurrences_all}
+        weights_slices = {key: _build_cluster_weights_for_key(key) for key in cluster_occurrences_all}
         representative_weights = self._combine_slices_to_dataarray_generic(
-            flat_weights_slices, ['time'], periods, scenarios, 'representative_weights'
+            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
         )
 
         aggregation_result = ClusterResult(
@@ -911,7 +931,6 @@ class TransformAccessor:
 
         reduced_fs.clustering = Clustering(
             result=aggregation_result,
-            original_flow_system=self._fs,
             backend_name='tsam',
         )
 
@@ -1127,19 +1146,20 @@ class TransformAccessor:
             raise ValueError('No cluster structure available for expansion.')
 
         timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        original_fs: FlowSystem = info.original_flow_system
         n_clusters = (
             int(cluster_structure.n_clusters)
             if isinstance(cluster_structure.n_clusters, (int, np.integer))
             else int(cluster_structure.n_clusters.values)
         )
-        has_periods = original_fs.periods is not None
-        has_scenarios = original_fs.scenarios is not None
 
-        periods = list(original_fs.periods) if has_periods else [None]
-        scenarios = list(original_fs.scenarios) if has_scenarios else [None]
+        # Get original timesteps from clustering, but periods/scenarios from the FlowSystem
+        # (the clustered FlowSystem preserves the same periods/scenarios)
+        original_timesteps = info.original_timesteps
+        has_periods = self._fs.periods is not None
+        has_scenarios = self._fs.scenarios is not None
 
-        original_timesteps = original_fs.timesteps
+        periods = list(self._fs.periods) if has_periods else [None]
+        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
 
@@ -1151,11 +1171,23 @@ class TransformAccessor:
 
         # 1. Expand FlowSystem data (with cluster_weight set to 1.0 for all timesteps)
         reduced_ds = self._fs.to_dataset(include_solution=False)
-        expanded_ds = xr.Dataset(
-            {name: expand_da(da) for name, da in reduced_ds.data_vars.items() if name != 'cluster_weight'},
-            attrs=reduced_ds.attrs,
-        )
-        expanded_ds.attrs['timestep_duration'] = original_fs.timestep_duration.values.tolist()
+        # Filter out cluster-related variables and copy attrs without clustering info
+        data_vars = {
+            name: expand_da(da)
+            for name, da in reduced_ds.data_vars.items()
+            if name != 'cluster_weight' and not name.startswith('clustering|')
+        }
+        attrs = {
+            k: v
+            for k, v in reduced_ds.attrs.items()
+            if k not in ('is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering')
+        }
+        expanded_ds = xr.Dataset(data_vars, attrs=attrs)
+        # Compute timestep_duration from original timesteps
+        # Add extra timestep for duration calculation (assume same interval as last)
+        original_timesteps_extra = FlowSystem._create_timesteps_with_extra(original_timesteps, None)
+        timestep_duration = FlowSystem.calculate_timestep_duration(original_timesteps_extra)
+        expanded_ds.attrs['timestep_duration'] = timestep_duration.values.tolist()
 
         # Create cluster_weight with value 1.0 for all timesteps (no weighting needed for expanded)
         # Use _combine_slices_to_dataarray for consistent multi-dim handling
@@ -1201,8 +1233,8 @@ class TransformAccessor:
             soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps)
 
             # Apply self-discharge decay to SOC_boundary based on time within period
-            # Get the storage's relative_loss_per_hour from original flow system
-            storage = original_fs.storages[storage_name]
+            # Get the storage's relative_loss_per_hour from the clustered flow system
+            storage = self._fs.storages.get(storage_name)
             if storage is not None:
                 # Time within period for each timestep (0, 1, 2, ..., timesteps_per_cluster-1, 0, 1, ...)
                 time_within_period = np.arange(n_original_timesteps) % timesteps_per_cluster

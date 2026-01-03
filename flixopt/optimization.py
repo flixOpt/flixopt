@@ -82,7 +82,7 @@ def _initialize_optimization_common(
     name: str,
     flow_system: FlowSystem,
     folder: pathlib.Path | None = None,
-    normalize_weights: bool = True,
+    normalize_weights: bool | None = None,
 ) -> None:
     """
     Shared initialization logic for all optimization types.
@@ -95,7 +95,7 @@ def _initialize_optimization_common(
         name: Name of the optimization
         flow_system: FlowSystem to optimize
         folder: Directory for saving results
-        normalize_weights: Whether to normalize scenario weights
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
     """
     obj.name = name
 
@@ -106,7 +106,8 @@ def _initialize_optimization_common(
         )
         flow_system = flow_system.copy()
 
-    obj.normalize_weights = normalize_weights
+    # normalize_weights is deprecated but kept for backwards compatibility
+    obj.normalize_weights = True  # Always True now
 
     flow_system._used_in_optimization = True
 
@@ -186,7 +187,7 @@ class Optimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model(self.normalize_weights)
+        self.model = self.flow_system.create_model()
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)

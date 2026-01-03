@@ -53,7 +53,7 @@ Until here -->
 
 ## [5.1.0] - Upcoming
 
-**Summary**: Time-series clustering for faster optimization with configurable storage behavior across typical periods.
+**Summary**: Time-series clustering for faster optimization with configurable storage behavior across typical periods. Improved weights API with always-normalized scenario weights.
 
 ### ✨ Added
 
@@ -120,6 +120,23 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'intercluster_cyclic'` (default) for seasonal storage like pit storage or underground thermal storage.
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
+
+### 💥 Breaking Changes
+
+- `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
+
+### ♻️ Changed
+
+- `FlowSystem.weights` returns `dict[str, xr.DataArray]` (unit weights instead of `1.0` float fallback)
+- `FlowSystemDimensions` type now includes `'cluster'`
+
+### 🗑️ Deprecated
+
+- `normalize_weights` parameter in `create_model()`, `build_model()`, `optimize()`
+
+### 🐛 Fixed
+
+- `temporal_weight` and `sum_temporal()` now use consistent implementation
 
 ### 👷 Development
 
