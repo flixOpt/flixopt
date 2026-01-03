@@ -1257,10 +1257,12 @@ class InterclusterStorageModel(StorageModel):
             return -np.inf, np.inf
         elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size * relative_upper_bound
-            return -cap_max, cap_max
+            # Adding 0.0 converts -0.0 to 0.0 (linopy LP writer bug workaround)
+            return -cap_max + 0.0, cap_max + 0.0
         else:
             cap = self.element.capacity_in_flow_hours * relative_upper_bound
-            return -cap, cap
+            # Adding 0.0 converts -0.0 to 0.0 (linopy LP writer bug workaround)
+            return -cap + 0.0, cap + 0.0
 
     def _do_modeling(self):
         """Create storage model with inter-cluster linking constraints.

@@ -152,7 +152,6 @@ class TestClustering:
 
         info = Clustering(
             result=result,
-            original_flow_system=None,  # Would be FlowSystem in practice
             backend_name='tsam',
         )
 

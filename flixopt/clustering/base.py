@@ -21,11 +21,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
     from ..color_processing import ColorType
-    from ..flow_system import FlowSystem
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
@@ -97,6 +97,31 @@ class ClusterStructure:
             f'  occurrences={occ}\n'
             f')'
         )
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store DataArrays with references
+        arrays[str(self.cluster_order.name)] = self.cluster_order
+        ref['cluster_order'] = f':::{self.cluster_order.name}'
+
+        arrays[str(self.cluster_occurrences.name)] = self.cluster_occurrences
+        ref['cluster_occurrences'] = f':::{self.cluster_occurrences.name}'
+
+        # Store scalar values
+        if isinstance(self.n_clusters, xr.DataArray):
+            n_clusters_name = self.n_clusters.name or 'n_clusters'
+            self.n_clusters = self.n_clusters.rename(n_clusters_name)
+            arrays[n_clusters_name] = self.n_clusters
+            ref['n_clusters'] = f':::{n_clusters_name}'
+        else:
+            ref['n_clusters'] = int(self.n_clusters)
+
+        ref['timesteps_per_cluster'] = self.timesteps_per_cluster
+
+        return ref, arrays
 
     @property
     def n_original_periods(self) -> int:
@@ -281,10 +306,9 @@ class ClusterResult:
             self.timestep_mapping = self.timestep_mapping.rename('timestep_mapping')
 
         # Ensure representative_weights is a DataArray
+        # Can be (cluster, time) for 2D structure or (time,) for flat structure
         if not isinstance(self.representative_weights, xr.DataArray):
-            self.representative_weights = xr.DataArray(
-                self.representative_weights, dims=['time'], name='representative_weights'
-            )
+            self.representative_weights = xr.DataArray(self.representative_weights, name='representative_weights')
         elif self.representative_weights.name is None:
             self.representative_weights = self.representative_weights.rename('representative_weights')
 
@@ -303,6 +327,37 @@ class ClusterResult:
             f'  cluster_structure={has_structure}, data={has_data}\n'
             f')'
         )
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store DataArrays with references
+        arrays[str(self.timestep_mapping.name)] = self.timestep_mapping
+        ref['timestep_mapping'] = f':::{self.timestep_mapping.name}'
+
+        arrays[str(self.representative_weights.name)] = self.representative_weights
+        ref['representative_weights'] = f':::{self.representative_weights.name}'
+
+        # Store scalar values
+        if isinstance(self.n_representatives, xr.DataArray):
+            n_rep_name = self.n_representatives.name or 'n_representatives'
+            self.n_representatives = self.n_representatives.rename(n_rep_name)
+            arrays[n_rep_name] = self.n_representatives
+            ref['n_representatives'] = f':::{n_rep_name}'
+        else:
+            ref['n_representatives'] = int(self.n_representatives)
+
+        # Store nested ClusterStructure if present
+        if self.cluster_structure is not None:
+            cs_ref, cs_arrays = self.cluster_structure._create_reference_structure()
+            ref['cluster_structure'] = cs_ref
+            arrays.update(cs_arrays)
+
+        # Skip aggregated_data and original_data - not needed for serialization
+
+        return ref, arrays
 
     @property
     def n_original_timesteps(self) -> int:
@@ -460,24 +515,50 @@ class ClusterResult:
         if max_idx >= n_rep:
             raise ValueError(f'timestep_mapping contains index {max_idx} but n_representatives is {n_rep}')
 
-        # Check weights length matches n_representatives
-        if len(self.representative_weights) != n_rep:
-            raise ValueError(
-                f'representative_weights has {len(self.representative_weights)} elements '
-                f'but n_representatives is {n_rep}'
-            )
+        # Check weights dimensions
+        # representative_weights should have (cluster,) dimension with n_clusters elements
+        # (plus optional period/scenario dimensions)
+        if self.cluster_structure is not None:
+            n_clusters = self.cluster_structure.n_clusters
+            if 'cluster' in self.representative_weights.dims:
+                weights_n_clusters = self.representative_weights.sizes['cluster']
+                if weights_n_clusters != n_clusters:
+                    raise ValueError(
+                        f'representative_weights has {weights_n_clusters} clusters '
+                        f'but cluster_structure has {n_clusters}'
+                    )
 
-        # Check weights sum roughly equals original timesteps
-        weight_sum = float(self.representative_weights.sum().values)
-        n_original = self.n_original_timesteps
-        if abs(weight_sum - n_original) > 1e-6:
-            # Warning only - some aggregation methods may not preserve this exactly
-            import warnings
+        # Check weights sum roughly equals number of original periods
+        # (each weight is how many original periods that cluster represents)
+        # Sum should be checked per period/scenario slice, not across all dimensions
+        if self.cluster_structure is not None:
+            n_original_periods = self.cluster_structure.n_original_periods
+            # Sum over cluster dimension only (keep period/scenario if present)
+            weight_sum_per_slice = self.representative_weights.sum(dim='cluster')
+            # Check each slice
+            if weight_sum_per_slice.size == 1:
+                # Simple case: no period/scenario
+                weight_sum = float(weight_sum_per_slice.values)
+                if abs(weight_sum - n_original_periods) > 1e-6:
+                    import warnings
 
-            warnings.warn(
-                f'representative_weights sum ({weight_sum}) does not match n_original_timesteps ({n_original})',
-                stacklevel=2,
-            )
+                    warnings.warn(
+                        f'representative_weights sum ({weight_sum}) does not match '
+                        f'n_original_periods ({n_original_periods})',
+                        stacklevel=2,
+                    )
+            else:
+                # Multi-dimensional: check each slice
+                for val in weight_sum_per_slice.values.flat:
+                    if abs(float(val) - n_original_periods) > 1e-6:
+                        import warnings
+
+                        warnings.warn(
+                            f'representative_weights sum per slice ({float(val)}) does not match '
+                            f'n_original_periods ({n_original_periods})',
+                            stacklevel=2,
+                        )
+                        break  # Only warn once
 
 
 class ClusteringPlotAccessor:
@@ -911,7 +992,6 @@ class Clustering:
 
     Attributes:
         result: The ClusterResult from the aggregation backend.
-        original_flow_system: Reference to the FlowSystem before aggregation.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
 
     Example:
@@ -923,8 +1003,22 @@ class Clustering:
     """
 
     result: ClusterResult
-    original_flow_system: FlowSystem  # FlowSystem - avoid circular import
     backend_name: str = 'unknown'
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create reference structure for serialization."""
+        ref = {'__class__': self.__class__.__name__}
+        arrays = {}
+
+        # Store nested ClusterResult
+        result_ref, result_arrays = self.result._create_reference_structure()
+        ref['result'] = result_ref
+        arrays.update(result_arrays)
+
+        # Store scalar values
+        ref['backend_name'] = self.backend_name
+
+        return ref, arrays
 
     def __repr__(self) -> str:
         cs = self.result.cluster_structure
@@ -1024,6 +1118,22 @@ class Clustering:
         n_timesteps = self.n_clusters * self.timesteps_per_period
         return np.arange(0, n_timesteps, self.timesteps_per_period)
 
+    @property
+    def original_timesteps(self) -> pd.DatetimeIndex:
+        """Original timesteps before clustering.
+
+        Derived from the 'original_time' coordinate of timestep_mapping.
+
+        Raises:
+            KeyError: If 'original_time' coordinate is missing from timestep_mapping.
+        """
+        if 'original_time' not in self.result.timestep_mapping.coords:
+            raise KeyError(
+                "timestep_mapping is missing 'original_time' coordinate. "
+                'This may indicate corrupted or incompatible clustering results.'
+            )
+        return pd.DatetimeIndex(self.result.timestep_mapping.coords['original_time'].values)
+
 
 def create_cluster_structure_from_mapping(
     timestep_mapping: xr.DataArray,
@@ -1073,3 +1183,15 @@ def create_cluster_structure_from_mapping(
         n_clusters=n_clusters,
         timesteps_per_cluster=timesteps_per_cluster,
     )
+
+
+def _register_clustering_classes():
+    """Register clustering classes for IO.
+
+    Called from flow_system.py after all imports are complete to avoid circular imports.
+    """
+    from ..structure import CLASS_REGISTRY
+
+    CLASS_REGISTRY['ClusterStructure'] = ClusterStructure
+    CLASS_REGISTRY['ClusterResult'] = ClusterResult
+    CLASS_REGISTRY['Clustering'] = Clustering
