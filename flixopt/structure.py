@@ -90,13 +90,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     Args:
         flow_system: The flow_system that is used to create the model.
-        normalize_weights: Whether to automatically normalize the weights to sum up to 1 when solving.
     """
 
-    def __init__(self, flow_system: FlowSystem, normalize_weights: bool):
+    def __init__(self, flow_system: FlowSystem):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.normalize_weights = normalize_weights
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
@@ -238,8 +236,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return self.flow_system.indexes
 
     @property
-    def weights(self) -> dict[str, xr.DataArray | float]:
-        """Weights for active dimensions (1.0 if not set)."""
+    def weights(self) -> dict[str, xr.DataArray]:
+        """Weights for active dimensions (unit weights if not set).
+
+        Scenario weights are always normalized (handled by FlowSystem).
+        """
         return self.flow_system.weights
 
     @property
@@ -266,33 +267,22 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     @property
     def scenario_weights(self) -> xr.DataArray:
         """
-        Scenario weights of model. With optional normalization.
+        Scenario weights of model (always normalized, via FlowSystem).
+
+        Returns unit weights if no scenarios defined or no explicit weights set.
         """
         if self.flow_system.scenarios is None:
             return xr.DataArray(1)
 
         if self.flow_system.scenario_weights is None:
-            scenario_weights = xr.DataArray(
-                np.ones(self.flow_system.scenarios.size, dtype=float),
-                coords={'scenario': self.flow_system.scenarios},
-                dims=['scenario'],
-                name='scenario_weights',
-            )
-        else:
-            scenario_weights = self.flow_system.scenario_weights
+            return self.flow_system._unit_weight('scenario')
 
-        if not self.normalize_weights:
-            return scenario_weights
-
-        norm = scenario_weights.sum('scenario')
-        if np.isclose(norm, 0.0).any():
-            raise ValueError('FlowSystemModel.scenario_weights: weights sum to 0; cannot normalize.')
-        return scenario_weights / norm
+        return self.flow_system.scenario_weights
 
     @property
     def objective_weights(self) -> xr.DataArray:
         """
-        Objective weights of model. With optional normalization of scenario weights.
+        Objective weights of model (period_weights × scenario_weights).
         """
         period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
         scenario_weights = self.scenario_weights

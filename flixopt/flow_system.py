@@ -1330,22 +1330,29 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self._flow_carriers
 
-    def create_model(self, normalize_weights: bool = True) -> FlowSystemModel:
+    def create_model(self, normalize_weights: bool | None = None) -> FlowSystemModel:
         """
         Create a linopy model from the FlowSystem.
 
         Args:
-            normalize_weights: Whether to automatically normalize the weights (periods and scenarios) to sum up to 1 when solving.
+            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
         """
+        if normalize_weights is not None:
+            warnings.warn(
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                'Scenario weights are now always normalized when set on FlowSystem.\n',
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
             )
         # System integrity was already validated in connect_and_transform()
-        self.model = FlowSystemModel(self, normalize_weights)
+        self.model = FlowSystemModel(self)
         return self.model
 
-    def build_model(self, normalize_weights: bool = True) -> FlowSystem:
+    def build_model(self, normalize_weights: bool | None = None) -> FlowSystem:
         """
         Build the optimization model for this FlowSystem.
 
@@ -1359,7 +1366,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         before solving.
 
         Args:
-            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
             Self, for method chaining.
@@ -1369,8 +1376,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> print(flow_system.model.variables)  # Inspect variables before solving
             >>> flow_system.solve(solver)
         """
+        if normalize_weights is not None:
+            warnings.warn(
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                'Scenario weights are now always normalized when set on FlowSystem.\n',
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.connect_and_transform()
-        self.create_model(normalize_weights)
+        self.create_model()
 
         self.model.do_modeling()
 
@@ -1977,7 +1991,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Combined temporal weight (timestep_duration × cluster_weight).
 
         Use for converting rates to totals before summing.
+        Note: cluster_weight is used even without a clusters dimension.
         """
+        # Use cluster_weight directly if set, otherwise check weights dict, fallback to 1.0
         cluster_weight = self.weights.get('cluster', self.cluster_weight if self.cluster_weight is not None else 1.0)
         return self.weights['time'] * cluster_weight
 
@@ -2040,14 +2056,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @scenario_weights.setter
     def scenario_weights(self, value: Numeric_S | None) -> None:
         """
-        Set scenario weights.
+        Set scenario weights (always normalized to sum to 1).
 
         Args:
-            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension)
-                or None to clear weights.
+            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension
+                and normalized to sum to 1), or None to clear weights.
 
         Raises:
             ValueError: If value is not None and no scenarios are defined in the FlowSystem.
+            ValueError: If weights sum to zero (cannot normalize).
         """
         if value is None:
             self._scenario_weights = None
@@ -2059,27 +2076,45 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 'Either define scenarios in FlowSystem(scenarios=...) or set scenario_weights to None.'
             )
 
-        self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+        weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+
+        # Normalize to sum to 1
+        norm = weights.sum('scenario')
+        if np.isclose(norm, 0.0).any():
+            raise ValueError('scenario_weights sum to 0; cannot normalize.')
+        self._scenario_weights = weights / norm
+
+    def _unit_weight(self, dim: str) -> xr.DataArray:
+        """Create a unit weight DataArray (all 1.0) for a dimension."""
+        index = self.indexes[dim]
+        return xr.DataArray(
+            np.ones(len(index), dtype=float),
+            coords={dim: index},
+            dims=[dim],
+            name=f'{dim}_weight',
+        )
 
     @property
-    def weights(self) -> dict[str, xr.DataArray | float]:
-        """Weights for active dimensions (1.0 if not explicitly set).
+    def weights(self) -> dict[str, xr.DataArray]:
+        """Weights for active dimensions (unit weights if not explicitly set).
 
         Returns:
-            Dict mapping dimension names to weight arrays.
+            Dict mapping dimension names to weight DataArrays.
             Keys match :attr:`dims` and :attr:`indexes`.
 
         Example:
             >>> fs.weights['time']  # timestep durations
-            >>> fs.weights['cluster']  # cluster weights or 1.0
+            >>> fs.weights['cluster']  # cluster weights (unit if not set)
         """
-        result: dict[str, xr.DataArray | float] = {'time': self.timestep_duration}
+        result: dict[str, xr.DataArray] = {'time': self.timestep_duration}
         if self.clusters is not None:
-            result['cluster'] = self.cluster_weight if self.cluster_weight is not None else 1.0
+            result['cluster'] = self.cluster_weight if self.cluster_weight is not None else self._unit_weight('cluster')
         if self.periods is not None:
-            result['period'] = self.period_weights if self.period_weights is not None else 1.0
+            result['period'] = self.period_weights if self.period_weights is not None else self._unit_weight('period')
         if self.scenarios is not None:
-            result['scenario'] = self.scenario_weights if self.scenario_weights is not None else 1.0
+            result['scenario'] = (
+                self.scenario_weights if self.scenario_weights is not None else self._unit_weight('scenario')
+            )
         return result
 
     def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
@@ -2099,8 +2134,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> total_energy = fs.sum_temporal(flow_rate)  # MW → MWh total
             >>> active_hours = fs.sum_temporal(status)  # count → hours
         """
-        temporal_weight = self.weights['time'] * self.weights.get('cluster', 1.0)
-        return (data * temporal_weight).sum(self.temporal_dims)
+        return (data * self.temporal_weight).sum(self.temporal_dims)
 
     @property
     def is_clustered(self) -> bool:
