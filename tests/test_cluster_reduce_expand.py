@@ -466,8 +466,8 @@ class TestStorageClusterModes:
         assert 'cluster_boundary' in soc_boundary.dims
 
         # First and last SOC_boundary values should be equal (cyclic constraint)
-        first_soc = float(soc_boundary.isel(cluster_boundary=0).values)
-        last_soc = float(soc_boundary.isel(cluster_boundary=-1).values)
+        first_soc = soc_boundary.isel(cluster_boundary=0).item()
+        last_soc = soc_boundary.isel(cluster_boundary=-1).item()
         assert_allclose(first_soc, last_soc, rtol=1e-6)
 
 
@@ -544,15 +544,15 @@ class TestInterclusterStorageLinking:
         # Manual verification for first few timesteps of first period
         p = 0  # First period
         cluster = int(cluster_order[p])
-        soc_b = float(soc_boundary.isel(cluster_boundary=p).values)
+        soc_b = soc_boundary.isel(cluster_boundary=p).item()
 
         for t in [0, 5, 12, 23]:
             global_t = p * timesteps_per_cluster + t
-            delta_e = float(cs_clustered.isel(cluster=cluster, time=t).values)
+            delta_e = cs_clustered.isel(cluster=cluster, time=t).item()
             decay = (1 - loss_rate) ** t
             expected = soc_b * decay + delta_e
             expected_clipped = max(0.0, expected)
-            actual = float(cs_expanded.isel(time=global_t).values)
+            actual = cs_expanded.isel(time=global_t).item()
 
             assert_allclose(
                 actual,
