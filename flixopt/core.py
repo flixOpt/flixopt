@@ -15,7 +15,7 @@ from .types import NumericOrBool
 
 logger = logging.getLogger('flixopt')
 
-FlowSystemDimensions = Literal['time', 'period', 'scenario']
+FlowSystemDimensions = Literal['time', 'cluster', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
 

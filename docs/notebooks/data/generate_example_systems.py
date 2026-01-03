@@ -11,11 +11,13 @@ This script creates FlowSystems of varying complexity:
 Run this script to regenerate the example data files.
 """
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+# Handle imports in different contexts (direct run, package import, mkdocs-jupyter)
 try:
     from .generate_realistic_profiles import (
         ElectricityLoadGenerator,
@@ -25,6 +27,13 @@ try:
         load_weather,
     )
 except ImportError:
+    # Add data directory to path for mkdocs-jupyter context
+    try:
+        _data_dir = Path(__file__).parent
+    except NameError:
+        _data_dir = Path('docs/notebooks/data')
+    if str(_data_dir) not in sys.path:
+        sys.path.insert(0, str(_data_dir))
     from generate_realistic_profiles import (
         ElectricityLoadGenerator,
         GasPriceGenerator,
