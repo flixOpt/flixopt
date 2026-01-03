@@ -8,6 +8,7 @@ transformations on FlowSystem like clustering, selection, and resampling.
 from __future__ import annotations
 
 import logging
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -705,7 +706,10 @@ class TransformAccessor:
                     addPeakMax=time_series_for_high_peaks or [],
                     addPeakMin=time_series_for_low_peaks or [],
                 )
-                tsam_agg.createTypicalPeriods()
+                # Suppress tsam warning about minimal value constraints (informational, not actionable)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+                    tsam_agg.createTypicalPeriods()
 
                 tsam_results[key] = tsam_agg
                 cluster_orders[key] = tsam_agg.clusterOrder
