@@ -234,6 +234,10 @@ plugins:
       allow_errors: false
       include_source: true
       include_requirejs: true
+      ignore:
+        - "notebooks/data/*.py"  # Data generation scripts, not notebooks
+      execute_ignore:
+        - "notebooks/data/*.py"
 
   - plotly
 

@@ -197,7 +197,7 @@ class ClusterStructure:
             name='cluster_weight',
         )
 
-    def plot(self, show: bool | None = None):
+    def plot(self, show: bool | None = None) -> PlotResult:
         """Plot cluster assignment visualization.
 
         Shows which cluster each original period belongs to, and the
