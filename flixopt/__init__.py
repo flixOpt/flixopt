@@ -13,6 +13,9 @@ except (PackageNotFoundError, TypeError):
 
 # Import commonly used classes and functions
 from . import clustering, linear_converters, plotting, results, solvers
+
+# Register xr.Dataset.fxplot accessor (import triggers registration via decorator)
+from . import dataset_plot_accessor as _  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .components import (
     LinearConverter,

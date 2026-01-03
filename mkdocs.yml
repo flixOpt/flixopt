@@ -73,6 +73,7 @@ nav:
       - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
+      - Custom Data Plotting: notebooks/fxplot_accessor_demo.ipynb
 
   - API Reference: api-reference/
 
@@ -233,6 +234,10 @@ plugins:
       allow_errors: false
       include_source: true
       include_requirejs: true
+      ignore:
+        - "notebooks/data/*.py"  # Data generation scripts, not notebooks
+      execute_ignore:
+        - "notebooks/data/*.py"
 
   - plotly
 

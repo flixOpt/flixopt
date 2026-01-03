@@ -124,54 +124,6 @@ def _reshape_time_for_heatmap(
     return result.transpose('timestep', 'timeframe', *other_dims)
 
 
-def _heatmap_figure(
-    data: xr.DataArray,
-    colors: str | list[str] | None = None,
-    title: str = '',
-    facet_col: str | None = None,
-    animation_frame: str | None = None,
-    facet_col_wrap: int | None = None,
-    **imshow_kwargs: Any,
-) -> go.Figure:
-    """Create heatmap figure using px.imshow.
-
-    Args:
-        data: DataArray with 2-4 dimensions. First two are heatmap axes.
-        colors: Colorscale name (str) or list of colors. Dicts are not supported
-            for heatmaps as color_continuous_scale requires a colorscale specification.
-        title: Plot title.
-        facet_col: Dimension for subplot columns.
-        animation_frame: Dimension for animation slider.
-        facet_col_wrap: Max columns before wrapping.
-        **imshow_kwargs: Additional args for px.imshow.
-
-    Returns:
-        Plotly Figure.
-    """
-    if data.size == 0:
-        return go.Figure()
-
-    colors = colors or CONFIG.Plotting.default_sequential_colorscale
-    facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
-
-    imshow_args: dict[str, Any] = {
-        'img': data,
-        'color_continuous_scale': colors,
-        'title': title,
-        **imshow_kwargs,
-    }
-
-    if facet_col and facet_col in data.dims:
-        imshow_args['facet_col'] = facet_col
-        if facet_col_wrap < data.sizes[facet_col]:
-            imshow_args['facet_col_wrap'] = facet_col_wrap
-
-    if animation_frame and animation_frame in data.dims:
-        imshow_args['animation_frame'] = animation_frame
-
-    return px.imshow(**imshow_args)
-
-
 # --- Helper functions ---
 
 
@@ -237,8 +189,8 @@ def _resolve_auto_facets(
     """Resolve 'auto' facet/animation dimensions based on available data dimensions.
 
     When 'auto' is specified, extra dimensions are assigned to slots based on:
-    - CONFIG.Plotting.extra_dim_priority: Order of dimensions (default: cluster → period → scenario)
-    - CONFIG.Plotting.dim_slot_priority: Order of slots (default: facet_col → facet_row → animation_frame)
+    - CONFIG.Plotting.extra_dim_priority: Order of dimensions to assign.
+    - CONFIG.Plotting.dim_slot_priority: Order of slots to fill.
 
     Args:
         ds: Dataset to check for available dimensions.
@@ -306,69 +258,6 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
     # Only use coordinates that are actually present as columns after reset_index
     coord_cols = [c for c in ds.coords.keys() if c in df.columns]
     return df.melt(id_vars=coord_cols, var_name=var_name, value_name=value_name)
-
-
-def _create_stacked_bar(
-    ds: xr.Dataset,
-    colors: ColorType,
-    title: str,
-    facet_col: str | None,
-    facet_row: str | None,
-    animation_frame: str | None = None,
-    **plotly_kwargs: Any,
-) -> go.Figure:
-    """Create a stacked bar chart from xarray Dataset."""
-    df = _dataset_to_long_df(ds)
-    if df.empty:
-        return go.Figure()
-    x_col = 'time' if 'time' in df.columns else df.columns[0]
-    variables = df['variable'].unique().tolist()
-    color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
-    fig = px.bar(
-        df,
-        x=x_col,
-        y='value',
-        color='variable',
-        facet_col=facet_col,
-        facet_row=facet_row,
-        animation_frame=animation_frame,
-        color_discrete_map=color_map,
-        title=title,
-        **plotly_kwargs,
-    )
-    fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
-    fig.update_traces(marker_line_width=0)
-    return fig
-
-
-def _create_line(
-    ds: xr.Dataset,
-    colors: ColorType,
-    title: str,
-    facet_col: str | None,
-    facet_row: str | None,
-    animation_frame: str | None = None,
-    **plotly_kwargs: Any,
-) -> go.Figure:
-    """Create a line chart from xarray Dataset."""
-    df = _dataset_to_long_df(ds)
-    if df.empty:
-        return go.Figure()
-    x_col = 'time' if 'time' in df.columns else df.columns[0]
-    variables = df['variable'].unique().tolist()
-    color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
-    return px.line(
-        df,
-        x=x_col,
-        y='value',
-        color='variable',
-        facet_col=facet_col,
-        facet_row=facet_row,
-        animation_frame=animation_frame,
-        color_discrete_map=color_map,
-        title=title,
-        **plotly_kwargs,
-    )
 
 
 # --- Statistics Accessor (data only) ---
@@ -1507,8 +1396,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = _create_stacked_bar(
-            ds,
+        fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
             facet_col=actual_facet_col,
@@ -1632,8 +1520,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = _create_stacked_bar(
-            ds,
+        fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             facet_col=actual_facet_col,
@@ -1766,8 +1653,7 @@ class StatisticsPlotAccessor:
         if has_multiple_vars:
             da = da.rename('')
 
-        fig = _heatmap_figure(
-            da,
+        fig = da.fxplot.heatmap(
             colors=colors,
             facet_col=actual_facet,
             animation_frame=actual_animation,
@@ -1861,8 +1747,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = _create_line(
-            ds,
+        fig = ds.fxplot.line(
             colors=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             facet_col=actual_facet_col,
@@ -2038,8 +1923,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = _create_line(
-            result_ds,
+        fig = result_ds.fxplot.line(
             colors=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             facet_col=actual_facet_col,
@@ -2258,8 +2142,7 @@ class StatisticsPlotAccessor:
             ds, facet_col, facet_row, animation_frame
         )
 
-        fig = _create_line(
-            ds,
+        fig = ds.fxplot.line(
             colors=colors,
             title='Storage Charge States',
             facet_col=actual_facet_col,
