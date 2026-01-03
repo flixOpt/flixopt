@@ -40,7 +40,6 @@ if TYPE_CHECKING:
 
     from .clustering import Clustering
     from .solvers import _Solver
-    from .structure import Weights
     from .types import Effect_TPS, Numeric_S, Numeric_TPS, NumericOrBool
 
 from .carrier import Carrier, CarrierContainer
@@ -1117,6 +1116,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connect_network()
         self._register_missing_carriers()
         self._assign_element_colors()
+
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
@@ -1919,8 +1919,74 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._storages_cache
 
     @property
+    def dims(self) -> list[str]:
+        """Active dimension names.
+
+        Returns:
+            List of active dimension names in order.
+
+        Example:
+            >>> fs.dims
+            ['time']  # simple case
+            >>> fs_clustered.dims
+            ['cluster', 'time', 'period', 'scenario']  # full case
+        """
+        result = []
+        if self.clusters is not None:
+            result.append('cluster')
+        result.append('time')
+        if self.periods is not None:
+            result.append('period')
+        if self.scenarios is not None:
+            result.append('scenario')
+        return result
+
+    @property
+    def indexes(self) -> dict[str, pd.Index]:
+        """Indexes for active dimensions.
+
+        Returns:
+            Dict mapping dimension names to pandas Index objects.
+
+        Example:
+            >>> fs.indexes['time']
+            DatetimeIndex(['2024-01-01', ...], dtype='datetime64[ns]', name='time')
+        """
+        result: dict[str, pd.Index] = {}
+        if self.clusters is not None:
+            result['cluster'] = self.clusters
+        result['time'] = self.timesteps
+        if self.periods is not None:
+            result['period'] = self.periods
+        if self.scenarios is not None:
+            result['scenario'] = self.scenarios
+        return result
+
+    @property
+    def temporal_dims(self) -> list[str]:
+        """Temporal dimensions for summing over time.
+
+        Returns ['time', 'cluster'] for clustered systems, ['time'] otherwise.
+        """
+        if self.clusters is not None:
+            return ['time', 'cluster']
+        return ['time']
+
+    @property
+    def temporal_weight(self) -> xr.DataArray:
+        """Combined temporal weight (timestep_duration × cluster_weight).
+
+        Use for converting rates to totals before summing.
+        """
+        cluster_weight = self.weights.get('cluster', self.cluster_weight if self.cluster_weight is not None else 1.0)
+        return self.weights['time'] * cluster_weight
+
+    @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
         """Active coordinates for variable creation.
+
+        .. deprecated::
+            Use :attr:`indexes` instead.
 
         Returns a dict of dimension names to coordinate arrays. When clustered,
         includes 'cluster' dimension before 'time'.
@@ -1928,17 +1994,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             Dict mapping dimension names to coordinate arrays.
         """
-        active_coords: dict[str, pd.Index] = {}
-
-        if self.clusters is not None:
-            active_coords['cluster'] = self.clusters
-        active_coords['time'] = self.timesteps
-
-        if self.periods is not None:
-            active_coords['period'] = self.periods
-        if self.scenarios is not None:
-            active_coords['scenario'] = self.scenarios
-        return active_coords
+        return self.indexes
 
     @property
     def _use_true_cluster_dims(self) -> bool:
@@ -2006,19 +2062,45 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._scenario_weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
 
     @property
-    def weights(self) -> Weights:
-        """Unified weighting system for time series aggregation.
+    def weights(self) -> dict[str, xr.DataArray | float]:
+        """Weights for active dimensions (1.0 if not explicitly set).
 
-        Provides access to all weight types: timestep, cluster, temporal, period, scenario.
+        Returns:
+            Dict mapping dimension names to weight arrays.
+            Keys match :attr:`dims` and :attr:`indexes`.
 
         Example:
-            >>> weights = flow_system.weights
-            >>> flow_hours = flow_rate * weights.timestep
-            >>> total = weights.sum_temporal(flow_hours)
+            >>> fs.weights['time']  # timestep durations
+            >>> fs.weights['cluster']  # cluster weights or 1.0
         """
-        from .structure import Weights
+        result: dict[str, xr.DataArray | float] = {'time': self.timestep_duration}
+        if self.clusters is not None:
+            result['cluster'] = self.cluster_weight if self.cluster_weight is not None else 1.0
+        if self.periods is not None:
+            result['period'] = self.period_weights if self.period_weights is not None else 1.0
+        if self.scenarios is not None:
+            result['scenario'] = self.scenario_weights if self.scenario_weights is not None else 1.0
+        return result
 
-        return Weights(self)
+    def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over temporal dimensions with full temporal weighting.
+
+        Applies both timestep_duration and cluster_weight, then sums over temporal dimensions.
+        Use this to convert rates to totals (e.g., flow_rate → total_energy).
+
+        Args:
+            data: Data with time dimension (and optionally cluster).
+                  Typically a rate (e.g., flow_rate in MW, status as 0/1).
+
+        Returns:
+            Data summed over temporal dims with full temporal weighting applied.
+
+        Example:
+            >>> total_energy = fs.sum_temporal(flow_rate)  # MW → MWh total
+            >>> active_hours = fs.sum_temporal(status)  # count → hours
+        """
+        temporal_weight = self.weights['time'] * self.weights.get('cluster', 1.0)
+        return (data * temporal_weight).sum(self.temporal_dims)
 
     @property
     def is_clustered(self) -> bool:

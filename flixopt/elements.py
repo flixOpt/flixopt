@@ -680,7 +680,7 @@ class FlowModel(ElementModel):
         ModelingPrimitives.expression_tracking_variable(
             model=self,
             name=f'{self.label_full}|total_flow_hours',
-            tracked_expression=self._model.weights.sum_temporal(self.flow_rate),
+            tracked_expression=self._model.sum_temporal(self.flow_rate),
             bounds=(
                 self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
                 self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
@@ -838,7 +838,7 @@ class FlowModel(ElementModel):
         size = self.investment.size if self.with_investment else self.element.size
 
         # Total hours in the period (sum of temporal weights)
-        total_hours = self._model.weights.temporal.sum(self._model.weights.temporal_dims)
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
 
         # Maximum load factor constraint
         if self.element.load_factor_max is not None:

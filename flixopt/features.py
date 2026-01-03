@@ -197,10 +197,10 @@ class StatusModel(Submodel):
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
         # 3. Total duration tracking
-        total_hours = self._model.weights.temporal.sum(self._model.weights.temporal_dims)
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=self._model.weights.sum_temporal(self.status),
+            tracked_expression=self._model.sum_temporal(self.status),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
                 self.parameters.active_hours_max
@@ -627,8 +627,8 @@ class ShareAllocationModel(Submodel):
 
             # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
             # Sum over all temporal dimensions (time, and cluster if present)
-            weighted_per_timestep = self.total_per_timestep * self._model.weights.cluster
-            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.weights.temporal_dims)
+            weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
+            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.temporal_dims)
 
     def add_share(
         self,

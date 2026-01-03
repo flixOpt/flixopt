@@ -5,86 +5,99 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt import FlowSystem, Weights
+from flixopt import FlowSystem
 
 
 class TestWeights:
-    """Tests for Weights class."""
+    """Tests for FlowSystem.weights dict property."""
 
-    def test_creation_via_flow_system(self):
-        """Test Weights creation via FlowSystem.weights property."""
+    def test_weights_is_dict(self):
+        """Test weights returns a dict."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
         weights = fs.weights
 
-        assert isinstance(weights, Weights)
-        assert 'time' in weights.time.dims
+        assert isinstance(weights, dict)
+        assert 'time' in weights
 
-    def test_time_property(self):
-        """Test Weights.time returns timestep_duration."""
+    def test_time_weight(self):
+        """Test weights['time'] returns timestep_duration."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
         weights = fs.weights
 
         # For hourly data, timestep_duration is 1.0
-        assert float(weights.time.mean()) == 1.0
+        assert float(weights['time'].mean()) == 1.0
 
-    def test_cluster_property_non_clustered(self):
-        """Test Weights.cluster returns 1.0 for non-clustered systems."""
+    def test_cluster_not_in_weights_when_non_clustered(self):
+        """Test weights doesn't have 'cluster' key for non-clustered systems."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
         weights = fs.weights
 
-        assert weights.cluster == 1.0
+        # Non-clustered: 'cluster' not in weights
+        assert 'cluster' not in weights
 
     def test_temporal_dims_non_clustered(self):
         """Test temporal_dims is ['time'] for non-clustered systems."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
-        weights = fs.weights
 
-        assert weights.temporal_dims == ['time']
+        assert fs.temporal_dims == ['time']
 
-    def test_temporal_property(self):
-        """Test Weights.temporal returns time * cluster."""
+    def test_temporal_weight(self):
+        """Test temporal_weight returns time * cluster."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
-        weights = fs.weights
 
-        expected = weights.time * weights.cluster
-        xr.testing.assert_equal(weights.temporal, expected)
+        expected = fs.weights['time'] * fs.weights.get('cluster', 1.0)
+        xr.testing.assert_equal(fs.temporal_weight, expected)
 
     def test_sum_temporal(self):
         """Test sum_temporal applies full temporal weighting (time * cluster) and sums."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=3, freq='h'))
-        weights = fs.weights
 
         # Input is a rate (e.g., flow_rate in MW)
         data = xr.DataArray([10.0, 20.0, 30.0], dims=['time'], coords={'time': fs.timesteps})
 
-        result = weights.sum_temporal(data)
+        result = fs.sum_temporal(data)
 
         # For hourly non-clustered: temporal = time * cluster = 1.0 * 1.0 = 1.0
         # result = sum(data * temporal) = sum(data) = 60
         assert float(result.values) == 60.0
 
 
-class TestFlowSystemWeightsProperty:
-    """Tests for FlowSystem.weights property."""
+class TestFlowSystemDimsIndexesWeights:
+    """Tests for FlowSystem.dims, .indexes, .weights properties."""
 
-    def test_weights_property_exists(self):
-        """Test that FlowSystem has weights property."""
+    def test_dims_property(self):
+        """Test that FlowSystem.dims returns active dimension names."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
 
-        weights = fs.weights
-        assert isinstance(weights, Weights)
+        dims = fs.dims
+        assert dims == ['time']
 
-    def test_weights_temporal_calculation(self):
-        """Test that weights.temporal = timestep_duration * cluster_weight."""
+    def test_indexes_property(self):
+        """Test that FlowSystem.indexes returns active indexes."""
         fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
 
-        weights = fs.weights
+        indexes = fs.indexes
+        assert isinstance(indexes, dict)
+        assert 'time' in indexes
+        assert len(indexes['time']) == 24
+
+    def test_weights_keys_match_dims(self):
+        """Test that weights.keys() is subset of dims (only 'time' for simple case)."""
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
+
+        # For non-clustered, weights only has 'time'
+        assert set(fs.weights.keys()) == {'time'}
+
+    def test_temporal_weight_calculation(self):
+        """Test that temporal_weight = timestep_duration * cluster_weight."""
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=24, freq='h'))
+
         expected = fs.timestep_duration * 1.0  # cluster is 1.0 for non-clustered
 
-        np.testing.assert_array_almost_equal(weights.temporal.values, expected.values)
+        np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
     def test_weights_with_cluster_weight(self):
-        """Test weights property includes cluster_weight."""
+        """Test weights property includes cluster_weight when provided."""
         # Create FlowSystem with custom cluster_weight
         timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
         cluster_weight = xr.DataArray(
@@ -97,13 +110,16 @@ class TestFlowSystemWeightsProperty:
 
         weights = fs.weights
 
-        # cluster property should return the cluster_weight
-        xr.testing.assert_equal(weights.cluster, cluster_weight)
+        # cluster weight should be in weights (FlowSystem has cluster_weight set)
+        # But note: 'cluster' only appears in weights if clusters dimension exists
+        # Since we didn't set clusters, 'cluster' won't be in weights
+        # The cluster_weight is applied via temporal_weight
+        assert 'cluster' not in weights  # No cluster dimension
 
-        # temporal = timestep_duration * cluster_weight
+        # temporal_weight = timestep_duration * cluster_weight
         # timestep_duration is 1h for all
         expected = 1.0 * cluster_weight
-        np.testing.assert_array_almost_equal(weights.temporal.values, expected.values)
+        np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
 
 class TestClusterMethod:
