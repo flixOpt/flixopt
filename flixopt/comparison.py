@@ -328,7 +328,7 @@ class ComparisonStatisticsPlot:
         """Call plot method on each system and combine data. Returns (combined_data, title)."""
         datasets = []
         title = ''
-        kwargs['show'] = False
+        kwargs = {**kwargs, 'show': False}  # Don't mutate original
 
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
