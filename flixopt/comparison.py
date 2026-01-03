@@ -95,7 +95,8 @@ class Comparison:
         self._statistics: ComparisonStatistics | None = None
 
     # Core dimensions that must match across FlowSystems
-    _CORE_DIMS = {'time', 'cluster', 'period', 'scenario'}
+    # Note: 'cluster' and 'cluster_boundary' are auxiliary dimensions from clustering
+    _CORE_DIMS = {'time', 'period', 'scenario'}
 
     def _validate_matching_dimensions(self) -> None:
         """Validate that all FlowSystems have matching core dimensions.
