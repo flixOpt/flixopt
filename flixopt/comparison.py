@@ -316,116 +316,253 @@ class ComparisonStatistics:
 class ComparisonStatisticsPlot:
     """Plot accessor for comparison statistics.
 
-    Dynamically wraps StatisticsPlotAccessor methods, combining data from all
-    FlowSystems with a 'case' dimension for faceting.
+    Wraps StatisticsPlotAccessor methods, combining data from all FlowSystems
+    with a 'case' dimension for faceting.
     """
 
     def __init__(self, statistics: ComparisonStatistics) -> None:
         self._stats = statistics
         self._comp = statistics._comp
 
-    def __getattr__(self, name: str):
-        """Dynamically delegate any plot method to underlying systems."""
-        if name.startswith('_'):
-            raise AttributeError(name)
-        # Check if method exists on underlying accessor
-        if not hasattr(self._comp._systems[0].statistics.plot, name):
-            raise AttributeError(name)
-        return lambda *args, **kwargs: self._wrap_plot_method(name, *args, **kwargs)
-
-    def _wrap_plot_method(self, method_name: str, *args, show: bool | None = None, **kwargs) -> PlotResult:
-        """Call plot method on each system and combine results."""
-        import plotly.graph_objects as go
-
+    def _combine_data(self, method_name: str, *args, **kwargs) -> tuple[xr.Dataset, str]:
+        """Call plot method on each system and combine data. Returns (combined_data, title)."""
         datasets = []
-        last_result = None
+        title = ''
+        kwargs['show'] = False
 
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
-                method = getattr(fs.statistics.plot, method_name)
-                result = method(*args, show=False, **kwargs)
+                result = getattr(fs.statistics.plot, method_name)(*args, **kwargs)
                 datasets.append(result.data.expand_dims(case=[case_name]))
-                last_result = result
+                title = result.figure.layout.title.text or title
             except (KeyError, ValueError):
-                # Element might not exist in this system
                 continue
 
         if not datasets:
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+            return xr.Dataset(), ''
 
-        combined = xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan')), title
 
-        # Recreate figure with combined data
+    def _resolve_facets(self, ds: xr.Dataset, facet_col='auto', facet_row='auto', animation_frame='auto'):
+        """Resolve auto facets."""
         from .statistics_accessor import _resolve_auto_facets
 
-        facet_col = kwargs.pop('facet_col', 'auto')
-        facet_row = kwargs.pop('facet_row', 'auto')
-        animation_frame = kwargs.pop('animation_frame', 'auto')
-        colors = kwargs.get('colors')
+        return _resolve_auto_facets(ds, facet_col, facet_row, animation_frame)
 
-        actual_col, actual_row, actual_anim = _resolve_auto_facets(combined, facet_col, facet_row, animation_frame)
-
-        # Determine plot type from last successful result's figure
-        fig = self._recreate_figure(combined, last_result, colors, actual_col, actual_row, actual_anim, kwargs)
+    def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
+        """Handle show and return PlotResult."""
+        import plotly.graph_objects as go
 
         if show is None:
             show = CONFIG.Plotting.default_show
-        if show:
+        if show and fig:
             fig.show()
+        return PlotResult(data=ds, figure=fig or go.Figure())
 
-        return PlotResult(data=combined, figure=fig)
-
-    def _recreate_figure(
-        self, ds: xr.Dataset, last_result: PlotResult | None, colors, facet_col, facet_row, anim, kwargs
-    ):
-        """Recreate figure with combined data, inferring plot type from original."""
-        import plotly.graph_objects as go
-
+    def balance(
+        self,
+        node: str,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot node balance comparison. See StatisticsPlotAccessor.balance."""
+        ds, title = self._combine_data('balance', node, **kwargs)
         if not ds.data_vars:
-            return go.Figure()
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.stacked_bar(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        return self._finalize(ds, fig, show)
 
-        # Infer plot type from original figure traces
-        if last_result and last_result.figure.data:
-            trace_type = type(last_result.figure.data[0]).__name__
-        else:
-            trace_type = 'Bar'
+    def carrier_balance(
+        self,
+        carrier: str,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot carrier balance comparison. See StatisticsPlotAccessor.carrier_balance."""
+        ds, title = self._combine_data('carrier_balance', carrier, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.stacked_bar(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        return self._finalize(ds, fig, show)
 
-        title = last_result.figure.layout.title.text if last_result else ''
+    def flows(
+        self,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot flows comparison. See StatisticsPlotAccessor.flows."""
+        ds, title = self._combine_data('flows', **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.line(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        return self._finalize(ds, fig, show)
 
-        if trace_type in ('Bar',) and 'Scatter' not in str(last_result.figure.data):
-            # Check if it's a stacked bar (has barmode='relative')
-            barmode = getattr(last_result.figure.layout, 'barmode', None) if last_result else None
-            if barmode == 'relative':
-                return ds.fxplot.stacked_bar(
-                    colors=colors, title=title, facet_col=facet_col, facet_row=facet_row, animation_frame=anim
-                )
-            else:
-                # Regular bar - use px.bar via long-form data
-                from .color_processing import process_colors
-                from .statistics_accessor import _dataset_to_long_df
+    def storage(
+        self,
+        storage: str,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot storage operation comparison. See StatisticsPlotAccessor.storage."""
+        ds, title = self._combine_data('storage', storage, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.stacked_bar(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        return self._finalize(ds, fig, show)
 
-                df = _dataset_to_long_df(ds)
-                if df.empty:
-                    return go.Figure()
-                import plotly.express as px
+    def charge_states(
+        self,
+        storages=None,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot charge states comparison. See StatisticsPlotAccessor.charge_states."""
+        ds, title = self._combine_data('charge_states', storages, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.line(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        fig.update_yaxes(title_text='Charge State')
+        return self._finalize(ds, fig, show)
 
-                color_map = process_colors(colors, df['variable'].unique().tolist())
-                return px.bar(
-                    df,
-                    x='variable',
-                    y='value',
-                    color='variable',
-                    facet_col=facet_col,
-                    facet_row=facet_row,
-                    animation_frame=anim,
-                    color_discrete_map=color_map,
-                    title=title,
-                )
-        elif trace_type == 'Heatmap':
-            da = ds[next(iter(ds.data_vars))]
-            return da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=anim)
-        else:
-            # Default to line plot
-            return ds.fxplot.line(
-                colors=colors, title=title, facet_col=facet_col, facet_row=facet_row, animation_frame=anim
-            )
+    def duration_curve(
+        self,
+        variables,
+        *,
+        normalize: bool = False,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot duration curves comparison. See StatisticsPlotAccessor.duration_curve."""
+        ds, title = self._combine_data('duration_curve', variables, normalize=normalize, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        fig = ds.fxplot.line(colors=colors, title=title, facet_col=col, facet_row=row, animation_frame=anim)
+        fig.update_xaxes(title_text='Duration [%]' if normalize else 'Timesteps')
+        return self._finalize(ds, fig, show)
+
+    def sizes(
+        self,
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot investment sizes comparison. See StatisticsPlotAccessor.sizes."""
+        import plotly.express as px
+
+        from .color_processing import process_colors
+        from .statistics_accessor import _dataset_to_long_df
+
+        ds, title = self._combine_data('sizes', **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+        df = _dataset_to_long_df(ds)
+        color_map = process_colors(colors, df['variable'].unique().tolist()) if not df.empty else None
+        fig = px.bar(
+            df,
+            x='variable',
+            y='value',
+            color='variable',
+            title=title,
+            facet_col=col,
+            facet_row=row,
+            animation_frame=anim,
+            color_discrete_map=color_map,
+        )
+        return self._finalize(ds, fig, show)
+
+    def effects(
+        self,
+        aspect='total',
+        *,
+        colors=None,
+        facet_col='auto',
+        facet_row='auto',
+        animation_frame='auto',
+        show: bool | None = None,
+        **kwargs,
+    ) -> PlotResult:
+        """Plot effects comparison. See StatisticsPlotAccessor.effects."""
+        import plotly.express as px
+
+        from .color_processing import process_colors
+
+        ds, title = self._combine_data('effects', aspect, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, row, anim = self._resolve_facets(ds, facet_col, facet_row, animation_frame)
+
+        # Get the data array and convert to dataframe
+        da = ds[aspect] if aspect in ds else ds[next(iter(ds.data_vars))]
+        df = da.to_dataframe(name='value').reset_index()
+
+        by = kwargs.get('by')
+        x_col = by if by else 'effect'
+        color_col = x_col if x_col in df.columns else None
+        color_map = process_colors(colors, df[color_col].unique().tolist()) if color_col else None
+
+        fig = px.bar(
+            df,
+            x=x_col,
+            y='value',
+            color=color_col,
+            title=title,
+            facet_col=col,
+            facet_row=row,
+            animation_frame=anim,
+            color_discrete_map=color_map,
+        )
+        fig.update_layout(bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
+        return self._finalize(ds, fig, show)
+
+    def heatmap(
+        self, variables, *, colors=None, facet_col='auto', animation_frame='auto', show: bool | None = None, **kwargs
+    ) -> PlotResult:
+        """Plot heatmap comparison. See StatisticsPlotAccessor.heatmap."""
+        ds, _ = self._combine_data('heatmap', variables, **kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+        col, _, anim = self._resolve_facets(ds, facet_col, None, animation_frame)
+        da = ds[next(iter(ds.data_vars))]
+        fig = da.fxplot.heatmap(colors=colors, facet_col=col, animation_frame=anim)
+        return self._finalize(ds, fig, show)
