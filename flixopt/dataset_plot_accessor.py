@@ -473,7 +473,6 @@ class DatasetPlotAccessor:
             'img': da,
             'color_continuous_scale': colors,
             'title': title or variable,
-            **imshow_kwargs,
         }
 
         if actual_facet_col and actual_facet_col in da.dims:
@@ -484,14 +483,13 @@ class DatasetPlotAccessor:
         if actual_anim and actual_anim in da.dims:
             imshow_args['animation_frame'] = actual_anim
 
-        return px.imshow(**imshow_args)
+        return px.imshow(**{**imshow_args, **imshow_kwargs})
 
     def scatter(
         self,
         x: str,
         y: str,
         *,
-        colors: ColorType | None = None,
         title: str = '',
         xlabel: str = '',
         ylabel: str = '',
@@ -506,7 +504,6 @@ class DatasetPlotAccessor:
         Args:
             x: Variable name for x-axis.
             y: Variable name for y-axis.
-            colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             xlabel: X-axis label.
             ylabel: Y-axis label.
@@ -679,8 +676,9 @@ class DatasetStatsAccessor:
         sorted_ds = self._ds.copy()
         for var in sorted_ds.data_vars:
             da = sorted_ds[var]
-            # Sort along time axis (descending)
-            sorted_values = np.sort(da.values, axis=da.dims.index('time'))[::-1]
+            time_axis = da.dims.index('time')
+            # Sort along time axis (descending) - use flip for correct axis
+            sorted_values = np.flip(np.sort(da.values, axis=time_axis), axis=time_axis)
             sorted_ds[var] = (da.dims, sorted_values)
 
         # Replace time coordinate with duration
@@ -880,7 +878,6 @@ class DataArrayPlotAccessor:
             'img': da,
             'color_continuous_scale': colors,
             'title': title or (da.name if da.name else ''),
-            **imshow_kwargs,
         }
 
         if actual_facet_col and actual_facet_col in da.dims:
@@ -891,4 +888,4 @@ class DataArrayPlotAccessor:
         if actual_anim and actual_anim in da.dims:
             imshow_args['animation_frame'] = actual_anim
 
-        return px.imshow(**imshow_args)
+        return px.imshow(**{**imshow_args, **imshow_kwargs})
