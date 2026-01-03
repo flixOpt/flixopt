@@ -182,11 +182,15 @@ The following items are deprecated and will be removed in **v7.0.0**:
 - `Results` class → Use `flow_system.solution` and `flow_system.statistics`
 - `SegmentedResults` class → Use segment FlowSystems directly
 
-**FlowSystem methods** (use `transform` accessor instead):
+**FlowSystem methods** (use `transform` or `topology` accessor instead):
 
 - `flow_system.sel()` → Use `flow_system.transform.sel()`
 - `flow_system.isel()` → Use `flow_system.transform.isel()`
 - `flow_system.resample()` → Use `flow_system.transform.resample()`
+- `flow_system.plot_network()` → Use `flow_system.topology.plot()`
+- `flow_system.start_network_app()` → Use `flow_system.topology.start_app()`
+- `flow_system.stop_network_app()` → Use `flow_system.topology.stop_app()`
+- `flow_system.network_infos()` → Use `flow_system.topology.infos()`
 
 **Parameters:**
 
