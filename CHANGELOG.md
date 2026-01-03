@@ -51,9 +51,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [5.1.0] - Upcoming
+## [6.0.0] - Upcoming
 
-**Summary**: Major feature release introducing time-series clustering for faster optimization and the new `fxplot` accessor for universal xarray plotting. Includes configurable storage behavior across typical periods and improved weights API.
+**Summary**: Major release introducing time-series clustering with storage inter-cluster linking, the new `fxplot` accessor for universal xarray plotting, and removal of deprecated v5.0 classes. Includes configurable storage behavior across typical periods and improved weights API.
+
+!!! warning "Breaking Changes"
+    This release removes `ClusteredOptimization` and `ClusteringParameters` which were deprecated in v5.0.0. Use `flow_system.transform.cluster()` instead. See [Migration](#migration-from-clusteredoptimization) below.
 
 ### ✨ Added
 
@@ -182,6 +185,42 @@ dataset.fxstats.to_duration_curve()
 | `topology.network_infos()` | `topology.infos()` |
 
 Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualization is available via `topology.plot_legacy()`.
+
+### 🔥 Removed
+
+**Clustering classes removed** (deprecated in v5.0.0):
+
+- `ClusteredOptimization` class - Use `flow_system.transform.cluster()` then `optimize()`
+- `ClusteringParameters` class - Parameters are now passed directly to `transform.cluster()`
+- `flixopt/clustering.py` module - Restructured to `flixopt/clustering/` package with new classes
+
+#### Migration from ClusteredOptimization
+
+=== "v5.x (Old - No longer works)"
+    ```python
+    from flixopt import ClusteredOptimization, ClusteringParameters
+
+    params = ClusteringParameters(hours_per_period=24, nr_of_periods=8)
+    calc = ClusteredOptimization('model', flow_system, params)
+    calc.do_modeling_and_solve(solver)
+    results = calc.results
+    ```
+
+=== "v6.0.0 (New)"
+    ```python
+    # Cluster using transform accessor
+    fs_clustered = flow_system.transform.cluster(
+        n_clusters=8,           # was: nr_of_periods
+        cluster_duration='1D',  # was: hours_per_period=24
+    )
+    fs_clustered.optimize(solver)
+
+    # Results on the clustered FlowSystem
+    costs = fs_clustered.solution['costs'].item()
+
+    # Expand back to full resolution if needed
+    fs_expanded = fs_clustered.transform.expand_solution()
+    ```
 
 ### 🐛 Fixed
 
