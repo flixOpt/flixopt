@@ -167,7 +167,7 @@ def test_expand_solution_enables_statistics_accessor(solver_fixture, timesteps_8
     # These should work without errors
     flow_rates = fs_expanded.statistics.flow_rates
     assert 'Boiler(Q_th)' in flow_rates
-    assert len(flow_rates['Boiler(Q_th)'].coords['time']) == 192
+    assert len(flow_rates['Boiler(Q_th)'].coords['time']) == 193  # 192 + 1 extra timestep
 
     flow_hours = fs_expanded.statistics.flow_hours
     assert 'Boiler(Q_th)' in flow_hours
@@ -321,7 +321,7 @@ def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, sce
     flow_var = 'Boiler(Q_th)|flow_rate'
     assert flow_var in fs_expanded.solution
     assert 'scenario' in fs_expanded.solution[flow_var].dims
-    assert len(fs_expanded.solution[flow_var].coords['time']) == 192
+    assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
 
 
 def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_8_days, scenarios_2):
@@ -693,7 +693,7 @@ class TestMultiPeriodClustering:
         # Solution should have period dimension
         flow_var = 'Boiler(Q_th)|flow_rate'
         assert 'period' in fs_expanded.solution[flow_var].dims
-        assert len(fs_expanded.solution[flow_var].coords['time']) == 192
+        assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
 
     def test_cluster_with_periods_and_scenarios(self, solver_fixture, timesteps_8_days, periods_2, scenarios_2):
         """Clustering should work with both periods and scenarios."""
@@ -719,7 +719,7 @@ class TestMultiPeriodClustering:
         fs_expanded = fs_clustered.transform.expand_solution()
         assert 'period' in fs_expanded.solution[flow_var].dims
         assert 'scenario' in fs_expanded.solution[flow_var].dims
-        assert len(fs_expanded.solution[flow_var].coords['time']) == 192
+        assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
 
 
 # ==================== Peak Selection Tests ====================

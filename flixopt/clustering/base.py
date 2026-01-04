@@ -582,6 +582,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        color: str | None = 'auto',
+        line_dash: str | None = 'representation',
         facet_col: str | None = 'auto',
         facet_row: str | None = 'auto',
         show: bool | None = None,
@@ -597,6 +599,10 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
+                Use 'representation' to color by Original/Clustered instead of line_dash.
+            line_dash: Dimension for line dash styles. Defaults to 'representation'.
+                Set to None to disable line dash differentiation.
             facet_col: Dimension for subplot columns. 'auto' uses CONFIG priority.
                 Use 'variable' to create separate columns per variable.
             facet_row: Dimension for subplot rows. 'auto' uses CONFIG priority.
@@ -664,13 +670,20 @@ class ClusteringPlotAccessor:
         else:
             title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
 
-        # Use fxplot for smart defaults with line_dash for representation
+        # Use fxplot for smart defaults
+        line_kwargs = {}
+        if line_dash is not None:
+            line_kwargs['line_dash'] = line_dash
+            if line_dash == 'representation':
+                line_kwargs['line_dash_map'] = {'Original': 'dot', 'Clustered': 'solid'}
+
         fig = ds.fxplot.line(
             colors=colors,
+            color=color,
             title=title,
             facet_col=facet_col,
             facet_row=facet_row,
-            line_dash='representation',
+            **line_kwargs,
             **plotly_kwargs,
         )
         fig.update_yaxes(matches=None)
@@ -846,6 +859,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        color: str | None = 'auto',
+        facet_col: str | None = 'cluster',
         facet_cols: int | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
@@ -860,6 +875,10 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
+                Use 'cluster' to color by cluster instead of faceting.
+            facet_col: Dimension for subplot columns. Defaults to 'cluster'.
+                Use 'variable' to facet by variable instead.
             facet_cols: Max columns before wrapping facets.
                 Defaults to CONFIG.Plotting.default_facet_cols.
             show: Whether to display the figure.
@@ -912,8 +931,9 @@ class ClusteringPlotAccessor:
         # Use fxplot for smart defaults
         fig = ds.fxplot.line(
             colors=colors,
+            color=color,
             title=title,
-            facet_col='cluster',
+            facet_col=facet_col,
             facet_cols=facet_cols,
             **plotly_kwargs,
         )
