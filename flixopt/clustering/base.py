@@ -197,20 +197,20 @@ class ClusterStructure:
             name='cluster_weight',
         )
 
-    def plot(self, show: bool | None = None) -> PlotResult:
+    def plot(self, colors: str | list[str] | None = None, show: bool | None = None) -> PlotResult:
         """Plot cluster assignment visualization.
 
         Shows which cluster each original period belongs to, and the
         number of occurrences per cluster.
 
         Args:
+            colors: Colorscale name (str) or list of colors.
+                Defaults to CONFIG.Plotting.default_sequential_colorscale.
             show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
 
         Returns:
             PlotResult containing the figure and underlying data.
         """
-        import plotly.express as px
-
         from ..config import CONFIG
         from ..plot_result import PlotResult
 
@@ -218,27 +218,24 @@ class ClusterStructure:
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
 
-        # Create DataFrame for plotting
-        import pandas as pd
-
         cluster_order = self.get_cluster_order_for_slice()
-        df = pd.DataFrame(
-            {
-                'Original Period': range(1, len(cluster_order) + 1),
-                'Cluster': cluster_order,
-            }
+
+        # Build DataArray for fxplot heatmap
+        cluster_da = xr.DataArray(
+            cluster_order.reshape(1, -1),
+            dims=['y', 'original_cluster'],
+            coords={'y': ['Cluster'], 'original_cluster': range(1, len(cluster_order) + 1)},
+            name='cluster_assignment',
         )
 
-        # Bar chart showing cluster assignment
-        fig = px.bar(
-            df,
-            x='Original Period',
-            y=[1] * len(df),
-            color='Cluster',
-            color_continuous_scale='Viridis',
+        # Use fxplot.heatmap for smart defaults
+        colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
+        fig = cluster_da.fxplot.heatmap(
+            colors=colorscale,
             title=f'Cluster Assignment ({self.n_original_clusters} periods → {n_clusters} clusters)',
         )
-        fig.update_layout(yaxis_visible=False, coloraxis_colorbar_title='Cluster')
+        fig.update_yaxes(showticklabels=False)
+        fig.update_coloraxes(colorbar_title='Cluster')
 
         # Build data for PlotResult
         data = xr.Dataset(
@@ -585,8 +582,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | None = 'period',
-        facet_row: str | None = 'scenario',
+        facet_col: str | None = 'auto',
+        facet_row: str | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -600,8 +597,10 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col: Dimension for subplot columns (default: 'period').
-            facet_row: Dimension for subplot rows (default: 'scenario').
+            facet_col: Dimension for subplot columns. 'auto' uses CONFIG priority.
+                Use 'variable' to create separate columns per variable.
+            facet_row: Dimension for subplot rows. 'auto' uses CONFIG priority.
+                Use 'variable' to create separate rows per variable.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
             **plotly_kwargs: Additional arguments passed to plotly.
@@ -610,9 +609,7 @@ class ClusteringPlotAccessor:
             PlotResult containing the comparison figure and underlying data.
         """
         import pandas as pd
-        import plotly.express as px
 
-        from ..color_processing import process_colors
         from ..config import CONFIG
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
@@ -626,7 +623,7 @@ class ClusteringPlotAccessor:
 
         resolved_variables = self._resolve_variables(variables)
 
-        # Build Dataset with 'representation' dimension for Original/Clustered
+        # Build Dataset with variables as data_vars
         data_vars = {}
         for var in resolved_variables:
             original = result.original_data[var]
@@ -650,54 +647,34 @@ class ClusteringPlotAccessor:
                 {
                     var: xr.DataArray(
                         [sorted_vars[(var, r)] for r in ['Original', 'Clustered']],
-                        dims=['representation', 'rank'],
-                        coords={'representation': ['Original', 'Clustered'], 'rank': range(n)},
+                        dims=['representation', 'duration'],
+                        coords={'representation': ['Original', 'Clustered'], 'duration': range(n)},
                     )
                     for var in resolved_variables
                 }
             )
 
-        # Resolve facets (only for timeseries)
-        actual_facet_col = facet_col if kind == 'timeseries' and facet_col in ds.dims else None
-        actual_facet_row = facet_row if kind == 'timeseries' and facet_row in ds.dims else None
-
-        # Convert to long-form DataFrame
-        df = ds.to_dataframe().reset_index()
-        coord_cols = [c for c in ds.coords.keys() if c in df.columns]
-        df = df.melt(id_vars=coord_cols, var_name='variable', value_name='value')
-
-        variable_labels = df['variable'].unique().tolist()
-        color_map = process_colors(colors, variable_labels, CONFIG.Plotting.default_qualitative_colorscale)
-
-        # Set x-axis and title based on kind
-        x_col = 'time' if kind == 'timeseries' else 'rank'
+        # Set title based on kind
         if kind == 'timeseries':
             title = (
                 'Original vs Clustered'
                 if len(resolved_variables) > 1
                 else f'Original vs Clustered: {resolved_variables[0]}'
             )
-            labels = {}
         else:
             title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
-            labels = {'rank': 'Hours (sorted)', 'value': 'Value'}
 
-        fig = px.line(
-            df,
-            x=x_col,
-            y='value',
-            color='variable',
-            line_dash='representation',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
+        # Use fxplot for smart defaults with line_dash for representation
+        fig = ds.fxplot.line(
+            colors=colors,
             title=title,
-            labels=labels,
-            color_discrete_map=color_map,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            line_dash='representation',
             **plotly_kwargs,
         )
-        if actual_facet_row or actual_facet_col:
-            fig.update_yaxes(matches=None)
-            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
+        fig.update_yaxes(matches=None)
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
         plot_result = PlotResult(data=ds, figure=fig)
 
@@ -743,8 +720,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: str | list[str] | None = None,
-        facet_col: str | None = 'period',
-        animation_frame: str | None = 'scenario',
+        facet_col: str | None = 'auto',
+        animation_frame: str | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -762,8 +739,8 @@ class ClusteringPlotAccessor:
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps.
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
-            facet_col: Dimension to facet on columns (default: 'period').
-            animation_frame: Dimension for animation slider (default: 'scenario').
+            facet_col: Dimension to facet on columns. 'auto' uses CONFIG priority.
+            animation_frame: Dimension for animation slider. 'auto' uses CONFIG priority.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
             **plotly_kwargs: Additional arguments passed to plotly.
@@ -773,7 +750,6 @@ class ClusteringPlotAccessor:
             The data has 'cluster' variable with time dimension, matching original timesteps.
         """
         import pandas as pd
-        import plotly.express as px
 
         from ..config import CONFIG
         from ..plot_result import PlotResult
@@ -833,34 +809,24 @@ class ClusteringPlotAccessor:
         else:
             cluster_da = cluster_slices[(None, None)]
 
-        # Resolve facet_col and animation_frame - only use if dimension exists
-        actual_facet_col = facet_col if facet_col and facet_col in cluster_da.dims else None
-        actual_animation = animation_frame if animation_frame and animation_frame in cluster_da.dims else None
-
         # Add dummy y dimension for heatmap visualization (single row)
         heatmap_da = cluster_da.expand_dims('y', axis=-1)
         heatmap_da = heatmap_da.assign_coords(y=['Cluster'])
+        heatmap_da.name = 'cluster_assignment'
 
-        colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
-
-        # Use px.imshow with xr.DataArray
-        fig = px.imshow(
-            heatmap_da,
-            color_continuous_scale=colorscale,
-            facet_col=actual_facet_col,
-            animation_frame=actual_animation,
+        # Use fxplot.heatmap for smart defaults
+        fig = heatmap_da.fxplot.heatmap(
+            colors=colors,
             title='Cluster Assignments',
-            labels={'time': 'Time', 'color': 'Cluster'},
+            facet_col=facet_col,
+            animation_frame=animation_frame,
             aspect='auto',
             **plotly_kwargs,
         )
 
-        # Clean up facet labels
-        if actual_facet_col:
-            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
-
-        # Hide y-axis since it's just a single row
+        # Clean up: hide y-axis since it's just a single row
         fig.update_yaxes(showticklabels=False)
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
         # Data is exactly what we plotted (without dummy y dimension)
         cluster_da.name = 'cluster'
@@ -880,21 +846,21 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col_wrap: int | None = None,
+        facet_cols: int | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot each cluster's typical period profile.
 
-        Shows each cluster as a separate faceted subplot. Useful for
-        understanding what each cluster represents.
+        Shows each cluster as a separate faceted subplot with all variables
+        colored differently. Useful for understanding what each cluster represents.
 
         Args:
             variables: Variable(s) to plot. Can be a string, list of strings,
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            facet_col_wrap: Max columns before wrapping facets.
+            facet_cols: Max columns before wrapping facets.
                 Defaults to CONFIG.Plotting.default_facet_cols.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
@@ -903,10 +869,6 @@ class ClusteringPlotAccessor:
         Returns:
             PlotResult containing the figure and underlying data.
         """
-        import pandas as pd
-        import plotly.express as px
-
-        from ..color_processing import process_colors
         from ..config import CONFIG
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
@@ -929,45 +891,36 @@ class ClusteringPlotAccessor:
         n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
         timesteps_per_cluster = cs.timesteps_per_cluster
 
-        # Build long-form DataFrame with cluster labels including occurrence counts
-        rows = []
+        # Build Dataset with cluster dimension, using labels with occurrence counts
+        cluster_labels = [
+            f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
+        ]
+
         data_vars = {}
         for var in resolved_variables:
             data = aggregated_data[var].values
             data_by_cluster = data.reshape(n_clusters, timesteps_per_cluster)
             data_vars[var] = xr.DataArray(
                 data_by_cluster,
-                dims=['cluster', 'timestep'],
-                coords={'cluster': range(n_clusters), 'timestep': range(timesteps_per_cluster)},
+                dims=['cluster', 'time'],
+                coords={'cluster': cluster_labels, 'time': range(timesteps_per_cluster)},
             )
-            for c in range(n_clusters):
-                occurrence = int(cs.cluster_occurrences.sel(cluster=c).values)
-                label = f'Cluster {c} (×{occurrence})'
-                for t in range(timesteps_per_cluster):
-                    rows.append({'cluster': label, 'timestep': t, 'value': data_by_cluster[c, t], 'variable': var})
-        df = pd.DataFrame(rows)
 
-        cluster_labels = df['cluster'].unique().tolist()
-        color_map = process_colors(colors, cluster_labels, CONFIG.Plotting.default_qualitative_colorscale)
-        facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+        ds = xr.Dataset(data_vars)
         title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
 
-        fig = px.line(
-            df,
-            x='timestep',
-            y='value',
-            facet_col='cluster',
-            facet_row='variable' if len(resolved_variables) > 1 else None,
-            facet_col_wrap=facet_col_wrap if len(resolved_variables) == 1 else None,
+        # Use fxplot for smart defaults
+        fig = ds.fxplot.line(
+            colors=colors,
             title=title,
-            color_discrete_map=color_map,
+            facet_col='cluster',
+            facet_cols=facet_cols,
             **plotly_kwargs,
         )
-        fig.update_layout(showlegend=False)
-        if len(resolved_variables) > 1:
-            fig.update_yaxes(matches=None)
-            fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
+        fig.update_yaxes(matches=None)
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
+        # Include occurrences in result data
         data_vars['occurrences'] = cs.cluster_occurrences
         result_data = xr.Dataset(data_vars)
         plot_result = PlotResult(data=result_data, figure=fig)

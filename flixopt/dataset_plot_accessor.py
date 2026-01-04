@@ -57,8 +57,8 @@ def _resolve_auto_facets(
     # Get available extra dimensions with size > 1, excluding specified dims
     exclude = exclude_dims or set()
     available = {d for d in ds.dims if ds.sizes[d] > 1 and d not in exclude}
-    # 'variable' is available when there are multiple data_vars
-    if len(ds.data_vars) > 1:
+    # 'variable' is available when there are multiple data_vars (and not excluded)
+    if len(ds.data_vars) > 1 and 'variable' not in exclude:
         available.add('variable')
     extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
     used: set[str] = set()
