@@ -214,8 +214,9 @@ class TestClusterAdvancedOptions:
         fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
 
         assert fs_clustered.clustering.metrics is not None
-        assert isinstance(fs_clustered.clustering.metrics, pd.DataFrame)
-        assert len(fs_clustered.clustering.metrics) > 0
+        assert isinstance(fs_clustered.clustering.metrics, xr.Dataset)
+        assert 'time_series' in fs_clustered.clustering.metrics.dims
+        assert len(fs_clustered.clustering.metrics.data_vars) > 0
 
     def test_representation_method_parameter(self, basic_flow_system):
         """Test that representation_method parameter works."""
@@ -236,6 +237,35 @@ class TestClusterAdvancedOptions:
         # sameMean is a valid tsam parameter
         fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', sameMean=True)
         assert len(fs_clustered.clusters) == 2
+
+    def test_metrics_with_periods(self):
+        """Test that metrics have period dimension for multi-period FlowSystems."""
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168  # 7 days
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=pd.Index([2025, 2030], name='period'),
+        )
+
+        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+        )
+        source = Source('grid', outputs=[grid_flow])
+        sink = Sink('demand', inputs=[demand_flow])
+        fs.add_elements(source, sink, bus)
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Metrics should have period dimension
+        assert fs_clustered.clustering.metrics is not None
+        assert 'period' in fs_clustered.clustering.metrics.dims
+        assert len(fs_clustered.clustering.metrics.period) == 2
 
 
 class TestClusteringModuleImports:

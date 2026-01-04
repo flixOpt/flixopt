@@ -116,12 +116,12 @@ After clustering, access quality metrics to evaluate the aggregation accuracy:
 ```python
 fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
 
-# Access clustering metrics
+# Access clustering metrics (xr.Dataset)
 metrics = fs_clustered.clustering.metrics
-print(metrics)
+print(metrics)  # Shows RMSE, MAE, etc. per time series
 
-# Metrics include RMSE, MAE per time series
-# Use these to assess if more clusters are needed
+# Access specific metric
+rmse = metrics['RMSE']  # xr.DataArray with dims [time_series, period?, scenario?]
 ```
 
 ## Storage Modes

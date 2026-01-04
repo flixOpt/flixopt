@@ -38,15 +38,15 @@ class ClusterStructure:
     which is needed for proper storage state-of-charge tracking across
     typical periods when using cluster().
 
-    Note: "original_period" here refers to the original time chunks before
-    clustering (e.g., 365 original days), NOT the model's "period" dimension
-    (years/months). Each original time chunk gets assigned to a cluster.
+    Note: The "original_cluster" dimension indexes the original cluster-sized
+    time segments (e.g., 0..364 for 365 days), NOT the model's "period" dimension
+    (years). Each original segment gets assigned to a representative cluster.
 
     Attributes:
-        cluster_order: Maps each original time chunk index to its cluster ID.
-            dims: [original_period] for simple case, or
-            [original_period, period, scenario] for multi-period/scenario systems.
-            Values are cluster indices (0 to n_clusters-1).
+        cluster_order: Maps original cluster index → representative cluster ID.
+            dims: [original_cluster] for simple case, or
+            [original_cluster, period, scenario] for multi-period/scenario systems.
+            Values are cluster IDs (0 to n_clusters-1).
         cluster_occurrences: Count of how many original time chunks each cluster represents.
             dims: [cluster] for simple case, or [cluster, period, scenario] for multi-dim.
         n_clusters: Number of distinct clusters (typical periods).
@@ -60,7 +60,7 @@ class ClusterStructure:
         - timesteps_per_cluster: 24 (for hourly data)
 
         For multi-scenario (e.g., 2 scenarios):
-        - cluster_order: shape (365, 2) with dims [original_period, scenario]
+        - cluster_order: shape (365, 2) with dims [original_cluster, scenario]
         - cluster_occurrences: shape (8, 2) with dims [cluster, scenario]
     """
 
@@ -73,7 +73,7 @@ class ClusterStructure:
         """Validate and ensure proper DataArray formatting."""
         # Ensure cluster_order is a DataArray with proper dims
         if not isinstance(self.cluster_order, xr.DataArray):
-            self.cluster_order = xr.DataArray(self.cluster_order, dims=['original_period'], name='cluster_order')
+            self.cluster_order = xr.DataArray(self.cluster_order, dims=['original_cluster'], name='cluster_order')
         elif self.cluster_order.name is None:
             self.cluster_order = self.cluster_order.rename('cluster_order')
 
@@ -92,7 +92,7 @@ class ClusterStructure:
         occ = [int(self.cluster_occurrences.sel(cluster=c).values) for c in range(n_clusters)]
         return (
             f'ClusterStructure(\n'
-            f'  {self.n_original_periods} original periods → {n_clusters} clusters\n'
+            f'  {self.n_original_clusters} original periods → {n_clusters} clusters\n'
             f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
             f'  occurrences={occ}\n'
             f')'
@@ -124,9 +124,9 @@ class ClusterStructure:
         return ref, arrays
 
     @property
-    def n_original_periods(self) -> int:
+    def n_original_clusters(self) -> int:
         """Number of original periods (before clustering)."""
-        return len(self.cluster_order.coords['original_period'])
+        return len(self.cluster_order.coords['original_cluster'])
 
     @property
     def has_multi_dims(self) -> bool:
@@ -236,7 +236,7 @@ class ClusterStructure:
             y=[1] * len(df),
             color='Cluster',
             color_continuous_scale='Viridis',
-            title=f'Cluster Assignment ({self.n_original_periods} periods → {n_clusters} clusters)',
+            title=f'Cluster Assignment ({self.n_original_clusters} periods → {n_clusters} clusters)',
         )
         fig.update_layout(yaxis_visible=False, coloraxis_colorbar_title='Cluster')
 
@@ -532,30 +532,30 @@ class ClusterResult:
         # (each weight is how many original periods that cluster represents)
         # Sum should be checked per period/scenario slice, not across all dimensions
         if self.cluster_structure is not None:
-            n_original_periods = self.cluster_structure.n_original_periods
+            n_original_clusters = self.cluster_structure.n_original_clusters
             # Sum over cluster dimension only (keep period/scenario if present)
             weight_sum_per_slice = self.representative_weights.sum(dim='cluster')
             # Check each slice
             if weight_sum_per_slice.size == 1:
                 # Simple case: no period/scenario
                 weight_sum = float(weight_sum_per_slice.values)
-                if abs(weight_sum - n_original_periods) > 1e-6:
+                if abs(weight_sum - n_original_clusters) > 1e-6:
                     import warnings
 
                     warnings.warn(
                         f'representative_weights sum ({weight_sum}) does not match '
-                        f'n_original_periods ({n_original_periods})',
+                        f'n_original_clusters ({n_original_clusters})',
                         stacklevel=2,
                     )
             else:
                 # Multi-dimensional: check each slice
                 for val in weight_sum_per_slice.values.flat:
-                    if abs(float(val) - n_original_periods) > 1e-6:
+                    if abs(float(val) - n_original_clusters) > 1e-6:
                         import warnings
 
                         warnings.warn(
                             f'representative_weights sum per slice ({float(val)}) does not match '
-                            f'n_original_periods ({n_original_periods})',
+                            f'n_original_clusters ({n_original_clusters})',
                             stacklevel=2,
                         )
                         break  # Only warn once
@@ -993,7 +993,9 @@ class Clustering:
     Attributes:
         result: The ClusterResult from the aggregation backend.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
-        metrics: Clustering quality metrics (RMSE, MAE, etc.) per time series.
+        metrics: Clustering quality metrics (RMSE, MAE, etc.) as xr.Dataset.
+            Each metric (e.g., 'RMSE', 'MAE') is a DataArray with dims
+            ``[time_series, period?, scenario?]``.
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
@@ -1005,7 +1007,7 @@ class Clustering:
 
     result: ClusterResult
     backend_name: str = 'unknown'
-    metrics: pd.DataFrame | None = None
+    metrics: xr.Dataset | None = None
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create reference structure for serialization."""
@@ -1028,7 +1030,7 @@ class Clustering:
             n_clusters = (
                 int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
             )
-            structure_info = f'{cs.n_original_periods} periods → {n_clusters} clusters'
+            structure_info = f'{cs.n_original_clusters} periods → {n_clusters} clusters'
         else:
             structure_info = 'no structure'
         return f'Clustering(\n  backend={self.backend_name!r}\n  {structure_info}\n)'
@@ -1073,11 +1075,11 @@ class Clustering:
         return int(n) if isinstance(n, (int, np.integer)) else int(n.values)
 
     @property
-    def n_original_periods(self) -> int:
+    def n_original_clusters(self) -> int:
         """Number of original periods (before clustering)."""
         if self.result.cluster_structure is None:
             raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.n_original_periods
+        return self.result.cluster_structure.n_original_clusters
 
     @property
     def timesteps_per_period(self) -> int:
@@ -1154,17 +1156,17 @@ def create_cluster_structure_from_mapping(
         ClusterStructure derived from the mapping.
     """
     n_original = len(timestep_mapping)
-    n_original_periods = n_original // timesteps_per_cluster
+    n_original_clusters = n_original // timesteps_per_cluster
 
     # Determine cluster order from the mapping
     # Each original period maps to the cluster of its first timestep
     cluster_order = []
-    for p in range(n_original_periods):
+    for p in range(n_original_clusters):
         start_idx = p * timesteps_per_cluster
         cluster_idx = int(timestep_mapping.isel(original_time=start_idx).values) // timesteps_per_cluster
         cluster_order.append(cluster_idx)
 
-    cluster_order_da = xr.DataArray(cluster_order, dims=['original_period'], name='cluster_order')
+    cluster_order_da = xr.DataArray(cluster_order, dims=['original_cluster'], name='cluster_order')
 
     # Count occurrences of each cluster
     unique_clusters = np.unique(cluster_order)

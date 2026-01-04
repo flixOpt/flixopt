@@ -449,9 +449,9 @@ class TestStorageClusterModes:
         soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         assert 'cluster_boundary' in soc_boundary.dims
 
-        # Number of boundaries = n_original_periods + 1
-        n_original_periods = fs_clustered.clustering.result.cluster_structure.n_original_periods
-        assert soc_boundary.sizes['cluster_boundary'] == n_original_periods + 1
+        # Number of boundaries = n_original_clusters + 1
+        n_original_clusters = fs_clustered.clustering.result.cluster_structure.n_original_clusters
+        assert soc_boundary.sizes['cluster_boundary'] == n_original_clusters + 1
 
     def test_storage_cluster_mode_intercluster_cyclic(self, solver_fixture, timesteps_8_days):
         """Storage with cluster_mode='intercluster_cyclic' - linked with yearly cycling."""
