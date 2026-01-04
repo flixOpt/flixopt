@@ -1271,6 +1271,8 @@ class TransformAccessor:
                     # Multi-dimensional: select last cluster for each period/scenario slice
                     last_clusters = cluster_order.isel(original_cluster=last_original_cluster_idx)
                     extra_val = da.isel(cluster=last_clusters, time=-1)
+                    # Drop 'cluster' coord created by advanced indexing (non-dim coord from isel)
+                    extra_val = extra_val.drop_vars('cluster', errors='ignore')
                 extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
                 expanded = xr.concat([expanded, extra_val], dim='time')
 
