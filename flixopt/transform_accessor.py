@@ -707,14 +707,45 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
+        # Validate tsam_kwargs doesn't override explicit parameters
+        reserved_tsam_keys = {
+            'noTypicalPeriods',
+            'hoursPerPeriod',
+            'resolution',
+            'clusterMethod',
+            'extremePeriodMethod',
+            'representationMethod',
+            'rescaleClusterPeriods',
+            'predefClusterOrder',
+            'weightDict',
+            'addPeakMax',
+            'addPeakMin',
+            'seed',  # Controlled by random_state parameter
+        }
+        conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
+        if conflicts:
+            raise ValueError(
+                f'Cannot override explicit parameters via tsam_kwargs: {conflicts}. '
+                f'Use the corresponding cluster() parameters instead.'
+            )
+
+        # Validate predef_cluster_order dimensions if it's a DataArray
+        if isinstance(predef_cluster_order, xr.DataArray):
+            expected_dims = {'original_cluster'}
+            if has_periods:
+                expected_dims.add('period')
+            if has_scenarios:
+                expected_dims.add('scenario')
+            if set(predef_cluster_order.dims) != expected_dims:
+                raise ValueError(
+                    f'predef_cluster_order dimensions {set(predef_cluster_order.dims)} '
+                    f'do not match expected {expected_dims} for this FlowSystem.'
+                )
+
         # Cluster each (period, scenario) combination using tsam directly
         tsam_results: dict[tuple, tsam.TimeSeriesAggregation] = {}
         cluster_orders: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
-
-        # Set random seed for reproducibility
-        if random_state is not None:
-            np.random.seed(random_state)
 
         # Collect metrics per (period, scenario) slice
         clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
@@ -744,21 +775,24 @@ class TransformAccessor:
                 clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
                 # tsam expects 'None' as a string, not Python None
                 tsam_extreme_method = 'None' if extreme_period_method is None else extreme_period_method
-                tsam_agg = tsam.TimeSeriesAggregation(
-                    df,
-                    noTypicalPeriods=n_clusters,
-                    hoursPerPeriod=hours_per_cluster,
-                    resolution=dt,
-                    clusterMethod=cluster_method,
-                    extremePeriodMethod=tsam_extreme_method,
-                    representationMethod=representation_method,
-                    rescaleClusterPeriods=rescale_cluster_periods,
-                    predefClusterOrder=predef_order_slice,
-                    weightDict={name: w for name, w in clustering_weights.items() if name in df.columns},
-                    addPeakMax=time_series_for_high_peaks or [],
-                    addPeakMin=time_series_for_low_peaks or [],
-                    **tsam_kwargs,
-                )
+                # Build tsam kwargs, including random_state if provided
+                tsam_init_kwargs: dict[str, Any] = {
+                    'noTypicalPeriods': n_clusters,
+                    'hoursPerPeriod': hours_per_cluster,
+                    'resolution': dt,
+                    'clusterMethod': cluster_method,
+                    'extremePeriodMethod': tsam_extreme_method,
+                    'representationMethod': representation_method,
+                    'rescaleClusterPeriods': rescale_cluster_periods,
+                    'predefClusterOrder': predef_order_slice,
+                    'weightDict': {name: w for name, w in clustering_weights.items() if name in df.columns},
+                    'addPeakMax': time_series_for_high_peaks or [],
+                    'addPeakMin': time_series_for_low_peaks or [],
+                }
+                # Pass random_state to tsam instead of setting global np.random.seed()
+                if random_state is not None:
+                    tsam_init_kwargs['seed'] = random_state
+                tsam_agg = tsam.TimeSeriesAggregation(df, **tsam_init_kwargs, **tsam_kwargs)
                 # Suppress tsam warning about minimal value constraints (informational, not actionable)
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
@@ -767,16 +801,26 @@ class TransformAccessor:
                 tsam_results[key] = tsam_agg
                 cluster_orders[key] = tsam_agg.clusterOrder
                 cluster_occurrences_all[key] = tsam_agg.clusterPeriodNoOccur
-                clustering_metrics_all[key] = tsam_agg.accuracyIndicators()
+                # Compute accuracy metrics with error handling
+                try:
+                    clustering_metrics_all[key] = tsam_agg.accuracyIndicators()
+                except Exception as e:
+                    logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
+                    clustering_metrics_all[key] = pd.DataFrame()
 
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
         first_tsam = tsam_results[first_key]
 
         # Convert metrics to xr.Dataset with period/scenario dims if multi-dimensional
-        if len(clustering_metrics_all) == 1:
+        # Filter out empty DataFrames (from failed accuracyIndicators calls)
+        non_empty_metrics = {k: v for k, v in clustering_metrics_all.items() if not v.empty}
+        if not non_empty_metrics:
+            # All metrics failed - create empty Dataset
+            clustering_metrics = xr.Dataset()
+        elif len(non_empty_metrics) == 1 or len(clustering_metrics_all) == 1:
             # Simple case: convert single DataFrame to Dataset
-            metrics_df = clustering_metrics_all[first_key]
+            metrics_df = non_empty_metrics.get(first_key) or next(iter(non_empty_metrics.values()))
             clustering_metrics = xr.Dataset(
                 {
                     col: xr.DataArray(
@@ -787,8 +831,8 @@ class TransformAccessor:
             )
         else:
             # Multi-dim case: combine metrics into Dataset with period/scenario dims
-            # First, get the metric columns from any DataFrame
-            sample_df = next(iter(clustering_metrics_all.values()))
+            # First, get the metric columns from any non-empty DataFrame
+            sample_df = next(iter(non_empty_metrics.values()))
             metric_names = list(sample_df.columns)
             time_series_names = list(sample_df.index)
 
@@ -798,7 +842,11 @@ class TransformAccessor:
                 # Shape: (time_series, period?, scenario?)
                 slices = {}
                 for (p, s), df in clustering_metrics_all.items():
-                    slices[(p, s)] = xr.DataArray(df[metric].values, dims=['time_series'])
+                    if df.empty:
+                        # Use NaN for failed metrics
+                        slices[(p, s)] = xr.DataArray(np.full(len(time_series_names), np.nan), dims=['time_series'])
+                    else:
+                        slices[(p, s)] = xr.DataArray(df[metric].values, dims=['time_series'])
 
                 da = self._combine_slices_to_dataarray_generic(slices, ['time_series'], periods, scenarios, metric)
                 da = da.assign_coords(time_series=time_series_names)
@@ -1254,7 +1302,11 @@ class TransformAccessor:
 
         # Expand function using ClusterResult.expand_data() - handles multi-dimensional cases
         # For charge_state with cluster dim, also includes the extra timestep
-        last_original_cluster_idx = (n_original_timesteps - 1) // timesteps_per_cluster
+        # Clamp to valid bounds to handle partial clusters at the end
+        last_original_cluster_idx = min(
+            (n_original_timesteps - 1) // timesteps_per_cluster,
+            n_original_clusters - 1,
+        )
 
         def expand_da(da: xr.DataArray, var_name: str = '') -> xr.DataArray:
             if 'time' not in da.dims:
