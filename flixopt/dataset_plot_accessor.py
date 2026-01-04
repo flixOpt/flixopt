@@ -560,13 +560,12 @@ class DatasetPlotAccessor:
         title: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a pie chart from aggregated dataset values.
 
-        Extra dimensions are auto-assigned to facet_col, facet_row, and animation_frame.
+        Extra dimensions are auto-assigned to facet_col and facet_row.
         For scalar values, a single pie is shown.
 
         Args:
@@ -574,7 +573,6 @@ class DatasetPlotAccessor:
             title: Plot title.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets. 'auto' uses CONFIG priority.
-            animation_frame: Dimension for animation slider. 'auto' uses CONFIG priority.
             facet_cols: Number of columns in facet grid wrap.
             **px_kwargs: Additional arguments passed to plotly.express.pie.
 
@@ -609,9 +607,8 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame
-        )
+        # Note: px.pie doesn't support animation_frame
+        actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, facet_col, facet_row, None)
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -630,8 +627,6 @@ class DatasetPlotAccessor:
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
         if actual_facet_row:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
-            fig_kwargs['animation_frame'] = actual_anim
 
         return px.pie(**fig_kwargs)
 
