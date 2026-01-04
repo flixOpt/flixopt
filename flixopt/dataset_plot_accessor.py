@@ -590,13 +590,15 @@ class DatasetPlotAccessor:
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), y: ylabel}
 
-        if actual_facet_col:
+        # Only use facets if the column actually exists in the dataframe
+        # (scatter uses wide format, so 'variable' column doesn't exist)
+        if actual_facet_col and actual_facet_col in df.columns:
             fig_kwargs['facet_col'] = actual_facet_col
             if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
+        if actual_facet_row and actual_facet_row in df.columns:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
+        if actual_anim and actual_anim in df.columns:
             fig_kwargs['animation_frame'] = actual_anim
 
         return px.scatter(**fig_kwargs)
