@@ -60,8 +60,8 @@ jobs:
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
-          # Hash notebooks + flixopt source code
-          HASH=$(find docs/notebooks -name '*.ipynb' -exec cat {} \; | cat - <(find flixopt -name '*.py' -exec cat {} \;) | sha256sum | cut -d' ' -f1)
+          # Hash notebooks + flixopt source code (sorted for stable cache keys)
+          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
       - name: Cache executed notebooks
@@ -121,7 +121,8 @@ jobs:
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
-          HASH=$(find docs/notebooks -name '*.ipynb' -exec cat {} \; | cat - <(find flixopt -name '*.py' -exec cat {} \;) | sha256sum | cut -d' ' -f1)
+          # Hash notebooks + flixopt source code (sorted for stable cache keys)
+          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
       - name: Cache executed notebooks
