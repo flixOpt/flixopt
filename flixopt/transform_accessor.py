@@ -582,6 +582,17 @@ class TransformAccessor:
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
+        cluster_method: Literal['k_means', 'k_medoids', 'hierarchical', 'k_maxoids', 'averaging'] = 'k_means',
+        representation_method: Literal[
+            'meanRepresentation', 'medoidRepresentation', 'distributionAndMinMaxRepresentation'
+        ] = 'meanRepresentation',
+        extreme_period_method: Literal[
+            'None', 'append', 'new_cluster_center', 'replace_cluster_center'
+        ] = 'new_cluster_center',
+        rescale_cluster_periods: bool = True,
+        random_state: int | None = None,
+        predef_cluster_order: np.ndarray | list[int] | None = None,
+        **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
         Create a FlowSystem with reduced timesteps using typical clusters.
@@ -607,6 +618,24 @@ class TransformAccessor:
             time_series_for_high_peaks: Time series labels for explicitly selecting high-value
                 clusters. **Recommended** for demand time series to capture peak demand days.
             time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
+            cluster_method: Clustering algorithm to use. Options:
+                ``'k_means'`` (default), ``'k_medoids'``, ``'hierarchical'``,
+                ``'k_maxoids'``, ``'averaging'``.
+            representation_method: How cluster representatives are computed. Options:
+                ``'meanRepresentation'`` (default), ``'medoidRepresentation'``,
+                ``'distributionAndMinMaxRepresentation'``.
+            extreme_period_method: How extreme periods (peaks) are integrated. Options:
+                ``'new_cluster_center'`` (default), ``'None'``, ``'append'``,
+                ``'replace_cluster_center'``.
+            rescale_cluster_periods: If True (default), rescale cluster periods so their
+                weighted mean matches the original time series mean.
+            random_state: Random seed for reproducible clustering results. If None,
+                results may vary between runs.
+            predef_cluster_order: Predefined cluster assignments for manual clustering.
+                Array of cluster indices (0 to n_clusters-1) for each original period.
+                If provided, clustering is skipped and these assignments are used directly.
+            **tsam_kwargs: Additional keyword arguments passed to
+                ``tsam.TimeSeriesAggregation``. See tsam documentation for all options.
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -680,7 +709,10 @@ class TransformAccessor:
         tsam_results: dict[tuple, tsam.TimeSeriesAggregation] = {}
         cluster_orders: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
-        use_extreme_periods = bool(time_series_for_high_peaks or time_series_for_low_peaks)
+
+        # Set random seed for reproducibility
+        if random_state is not None:
+            np.random.seed(random_state)
 
         for period_label in periods:
             for scenario_label in scenarios:
@@ -700,11 +732,15 @@ class TransformAccessor:
                     noTypicalPeriods=n_clusters,
                     hoursPerPeriod=hours_per_cluster,
                     resolution=dt,
-                    clusterMethod='k_means',
-                    extremePeriodMethod='new_cluster_center' if use_extreme_periods else 'None',
+                    clusterMethod=cluster_method,
+                    extremePeriodMethod=extreme_period_method,
+                    representationMethod=representation_method,
+                    rescaleClusterPeriods=rescale_cluster_periods,
+                    predefClusterOrder=predef_cluster_order,
                     weightDict={name: w for name, w in clustering_weights.items() if name in df.columns},
                     addPeakMax=time_series_for_high_peaks or [],
                     addPeakMin=time_series_for_low_peaks or [],
+                    **tsam_kwargs,
                 )
                 # Suppress tsam warning about minimal value constraints (informational, not actionable)
                 with warnings.catch_warnings():
@@ -715,9 +751,10 @@ class TransformAccessor:
                 cluster_orders[key] = tsam_agg.clusterOrder
                 cluster_occurrences_all[key] = tsam_agg.clusterPeriodNoOccur
 
-        # Use first result for structure
+        # Use first result for structure and metrics
         first_key = (periods[0], scenarios[0])
         first_tsam = tsam_results[first_key]
+        clustering_metrics = first_tsam.accuracyIndicators()
         n_reduced_timesteps = len(first_tsam.typicalPeriods)
         actual_n_clusters = len(first_tsam.clusterPeriodNoOccur)
 
@@ -932,6 +969,7 @@ class TransformAccessor:
         reduced_fs.clustering = Clustering(
             result=aggregation_result,
             backend_name='tsam',
+            metrics=clustering_metrics,
         )
 
         return reduced_fs

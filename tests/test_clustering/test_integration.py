@@ -170,6 +170,74 @@ class TestClusterMethod:
         assert len(fs_clustered.timesteps) * len(fs_clustered.clusters) == 48
 
 
+class TestClusterAdvancedOptions:
+    """Tests for advanced clustering options."""
+
+    @pytest.fixture
+    def basic_flow_system(self):
+        """Create a basic FlowSystem for testing."""
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168  # 7 days
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+
+        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+        )
+        source = Source('grid', outputs=[grid_flow])
+        sink = Sink('demand', inputs=[demand_flow])
+        fs.add_elements(source, sink, bus)
+        return fs
+
+    def test_cluster_method_parameter(self, basic_flow_system):
+        """Test that cluster_method parameter works."""
+        fs_clustered = basic_flow_system.transform.cluster(
+            n_clusters=2, cluster_duration='1D', cluster_method='hierarchical'
+        )
+        assert len(fs_clustered.clusters) == 2
+
+    def test_random_state_reproducibility(self, basic_flow_system):
+        """Test that random_state produces reproducible results."""
+        fs1 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', random_state=42)
+        fs2 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', random_state=42)
+
+        # Same random state should produce identical cluster orders
+        xr.testing.assert_equal(fs1.clustering.cluster_order, fs2.clustering.cluster_order)
+
+    def test_metrics_available(self, basic_flow_system):
+        """Test that clustering metrics are available after clustering."""
+        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        assert fs_clustered.clustering.metrics is not None
+        assert isinstance(fs_clustered.clustering.metrics, pd.DataFrame)
+        assert len(fs_clustered.clustering.metrics) > 0
+
+    def test_representation_method_parameter(self, basic_flow_system):
+        """Test that representation_method parameter works."""
+        fs_clustered = basic_flow_system.transform.cluster(
+            n_clusters=2, cluster_duration='1D', representation_method='medoidRepresentation'
+        )
+        assert len(fs_clustered.clusters) == 2
+
+    def test_rescale_cluster_periods_parameter(self, basic_flow_system):
+        """Test that rescale_cluster_periods parameter works."""
+        fs_clustered = basic_flow_system.transform.cluster(
+            n_clusters=2, cluster_duration='1D', rescale_cluster_periods=False
+        )
+        assert len(fs_clustered.clusters) == 2
+
+    def test_tsam_kwargs_passthrough(self, basic_flow_system):
+        """Test that additional kwargs are passed to tsam."""
+        # sameMean is a valid tsam parameter
+        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', sameMean=True)
+        assert len(fs_clustered.clusters) == 2
+
+
 class TestClusteringModuleImports:
     """Tests for flixopt.clustering module imports."""
 

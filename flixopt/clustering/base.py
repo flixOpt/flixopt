@@ -993,6 +993,7 @@ class Clustering:
     Attributes:
         result: The ClusterResult from the aggregation backend.
         backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
+        metrics: Clustering quality metrics (RMSE, MAE, etc.) per time series.
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
@@ -1004,6 +1005,7 @@ class Clustering:
 
     result: ClusterResult
     backend_name: str = 'unknown'
+    metrics: pd.DataFrame | None = None
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create reference structure for serialization."""

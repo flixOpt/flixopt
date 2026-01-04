@@ -52,6 +52,10 @@ flow_rates = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 | `cluster_duration` | Duration of each cluster | `'1D'`, `'24h'`, or `24` (hours) |
 | `time_series_for_high_peaks` | Time series where peak clusters must be captured | `['HeatDemand(Q)|fixed_relative_profile']` |
 | `time_series_for_low_peaks` | Time series where minimum clusters must be captured | `['SolarGen(P)|fixed_relative_profile']` |
+| `cluster_method` | Clustering algorithm | `'k_means'`, `'hierarchical'`, `'k_medoids'` |
+| `representation_method` | How clusters are represented | `'meanRepresentation'`, `'medoidRepresentation'` |
+| `random_state` | Random seed for reproducibility | `42` |
+| `rescale_cluster_periods` | Rescale clusters to match original means | `True` (default) |
 
 ### Peak Selection
 
@@ -67,6 +71,58 @@ fs_clustered = flow_system.transform.cluster(
 ```
 
 Without peak selection, the clustering algorithm might average out extreme days, leading to undersized equipment.
+
+### Advanced Clustering Options
+
+Fine-tune the clustering algorithm with advanced parameters:
+
+```python
+fs_clustered = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    cluster_method='hierarchical',  # Alternative to k_means
+    representation_method='medoidRepresentation',  # Use actual periods, not averages
+    rescale_cluster_periods=True,  # Match original time series means
+    random_state=42,  # Reproducible results
+)
+```
+
+**Available clustering algorithms** (`cluster_method`):
+
+| Method | Description |
+|--------|-------------|
+| `'k_means'` | Fast, good for most cases (default) |
+| `'hierarchical'` | Produces consistent hierarchical groupings |
+| `'k_medoids'` | Uses actual periods as representatives |
+| `'k_maxoids'` | Maximizes representativeness |
+| `'averaging'` | Simple averaging of similar periods |
+
+For advanced tsam parameters not exposed directly, use `**kwargs`:
+
+```python
+# Pass any tsam.TimeSeriesAggregation parameter
+fs_clustered = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    sameMean=True,  # Normalize all time series to same mean
+    sortValues=True,  # Cluster by duration curves instead of shape
+)
+```
+
+### Clustering Quality Metrics
+
+After clustering, access quality metrics to evaluate the aggregation accuracy:
+
+```python
+fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+
+# Access clustering metrics
+metrics = fs_clustered.clustering.metrics
+print(metrics)
+
+# Metrics include RMSE, MAE per time series
+# Use these to assess if more clusters are needed
+```
 
 ## Storage Modes
 
