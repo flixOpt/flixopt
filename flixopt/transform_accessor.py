@@ -588,7 +588,6 @@ class TransformAccessor:
         ] = 'medoidRepresentation',
         extreme_period_method: Literal['append', 'new_cluster_center', 'replace_cluster_center'] | None = None,
         rescale_cluster_periods: bool = True,
-        random_state: int | None = None,
         predef_cluster_order: xr.DataArray | np.ndarray | list[int] | None = None,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
@@ -627,9 +626,6 @@ class TransformAccessor:
                 ``'new_cluster_center'``, ``'replace_cluster_center'``.
             rescale_cluster_periods: If True (default), rescale cluster periods so their
                 weighted mean matches the original time series mean.
-            random_state: Random seed for reproducible clustering results. Only relevant
-                for non-deterministic methods like ``'k_means'``. The default
-                ``'hierarchical'`` method is deterministic.
             predef_cluster_order: Predefined cluster assignments for manual clustering.
                 Array of cluster indices (0 to n_clusters-1) for each original period.
                 If provided, clustering is skipped and these assignments are used directly.
@@ -720,7 +716,6 @@ class TransformAccessor:
             'weightDict',
             'addPeakMax',
             'addPeakMin',
-            'seed',  # Controlled by random_state parameter
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -775,24 +770,21 @@ class TransformAccessor:
                 clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
                 # tsam expects 'None' as a string, not Python None
                 tsam_extreme_method = 'None' if extreme_period_method is None else extreme_period_method
-                # Build tsam kwargs, including random_state if provided
-                tsam_init_kwargs: dict[str, Any] = {
-                    'noTypicalPeriods': n_clusters,
-                    'hoursPerPeriod': hours_per_cluster,
-                    'resolution': dt,
-                    'clusterMethod': cluster_method,
-                    'extremePeriodMethod': tsam_extreme_method,
-                    'representationMethod': representation_method,
-                    'rescaleClusterPeriods': rescale_cluster_periods,
-                    'predefClusterOrder': predef_order_slice,
-                    'weightDict': {name: w for name, w in clustering_weights.items() if name in df.columns},
-                    'addPeakMax': time_series_for_high_peaks or [],
-                    'addPeakMin': time_series_for_low_peaks or [],
-                }
-                # Pass random_state to tsam instead of setting global np.random.seed()
-                if random_state is not None:
-                    tsam_init_kwargs['seed'] = random_state
-                tsam_agg = tsam.TimeSeriesAggregation(df, **tsam_init_kwargs, **tsam_kwargs)
+                tsam_agg = tsam.TimeSeriesAggregation(
+                    df,
+                    noTypicalPeriods=n_clusters,
+                    hoursPerPeriod=hours_per_cluster,
+                    resolution=dt,
+                    clusterMethod=cluster_method,
+                    extremePeriodMethod=tsam_extreme_method,
+                    representationMethod=representation_method,
+                    rescaleClusterPeriods=rescale_cluster_periods,
+                    predefClusterOrder=predef_order_slice,
+                    weightDict={name: w for name, w in clustering_weights.items() if name in df.columns},
+                    addPeakMax=time_series_for_high_peaks or [],
+                    addPeakMin=time_series_for_low_peaks or [],
+                    **tsam_kwargs,
+                )
                 # Suppress tsam warning about minimal value constraints (informational, not actionable)
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
@@ -820,7 +812,9 @@ class TransformAccessor:
             clustering_metrics = xr.Dataset()
         elif len(non_empty_metrics) == 1 or len(clustering_metrics_all) == 1:
             # Simple case: convert single DataFrame to Dataset
-            metrics_df = non_empty_metrics.get(first_key) or next(iter(non_empty_metrics.values()))
+            metrics_df = non_empty_metrics.get(first_key)
+            if metrics_df is None:
+                metrics_df = next(iter(non_empty_metrics.values()))
             clustering_metrics = xr.Dataset(
                 {
                     col: xr.DataArray(

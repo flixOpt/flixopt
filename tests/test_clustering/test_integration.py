@@ -201,12 +201,12 @@ class TestClusterAdvancedOptions:
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_random_state_reproducibility(self, basic_flow_system):
-        """Test that random_state produces reproducible results."""
-        fs1 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', random_state=42)
-        fs2 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', random_state=42)
+    def test_hierarchical_is_deterministic(self, basic_flow_system):
+        """Test that hierarchical clustering (default) produces deterministic results."""
+        fs1 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs2 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Same random state should produce identical cluster orders
+        # Hierarchical clustering should produce identical cluster orders
         xr.testing.assert_equal(fs1.clustering.cluster_order, fs2.clustering.cluster_order)
 
     def test_metrics_available(self, basic_flow_system):
