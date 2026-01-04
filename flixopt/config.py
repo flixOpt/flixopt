@@ -164,9 +164,9 @@ _DEFAULTS = MappingProxyType(
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
                 'default_line_shape': 'hv',
-                'extra_dim_priority': ('cluster', 'period', 'scenario'),
-                'dim_slot_priority': ('facet_col', 'facet_row', 'animation_frame'),
-                'x_dim_priority': ('time', 'duration', 'duration_pct', 'period', 'scenario', 'cluster'),
+                'extra_dim_priority': ('variable', 'cluster', 'period', 'scenario'),
+                'dim_slot_priority': ('color', 'facet_col', 'facet_row', 'animation_frame'),
+                'x_dim_priority': ('time', 'duration', 'duration_pct', 'variable', 'period', 'scenario', 'cluster'),
             }
         ),
         'solving': MappingProxyType(

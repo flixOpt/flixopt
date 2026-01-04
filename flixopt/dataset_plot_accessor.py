@@ -13,14 +13,25 @@ from .color_processing import ColorType, process_colors
 from .config import CONFIG
 
 
-def _get_x_dim(dims: list[str], x: str | Literal['auto'] | None = 'auto') -> str:
-    """Select x-axis dim from priority list, or 'variable' for scalar data."""
+def _get_x_dim(dims: list[str], n_data_vars: int = 1, x: str | Literal['auto'] | None = 'auto') -> str:
+    """Select x-axis dim from priority list, or 'variable' for scalar data.
+
+    Args:
+        dims: List of available dimensions.
+        n_data_vars: Number of data variables (for 'variable' availability).
+        x: Explicit x-axis choice or 'auto'.
+    """
     if x and x != 'auto':
         return x
 
+    # 'variable' is available when there are multiple data_vars
+    available = set(dims)
+    if n_data_vars > 1:
+        available.add('variable')
+
     # Check priority list first
     for dim in CONFIG.Plotting.x_dim_priority:
-        if dim in dims:
+        if dim in available:
             return dim
 
     # Fallback to first available dimension, or 'variable' for scalar data
@@ -29,35 +40,47 @@ def _get_x_dim(dims: list[str], x: str | Literal['auto'] | None = 'auto') -> str
 
 def _resolve_auto_facets(
     ds: xr.Dataset,
+    color: str | Literal['auto'] | None,
     facet_col: str | Literal['auto'] | None,
     facet_row: str | Literal['auto'] | None,
     animation_frame: str | Literal['auto'] | None = None,
     exclude_dims: set[str] | None = None,
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None]:
     """Assign 'auto' facet slots from available dims using CONFIG priority lists.
 
-    Special handling for 'variable': exists in melted DataFrame (from data_var names),
-    not as a dimension, so it's always valid as an explicit facet request.
+    'variable' is treated like a dimension - available when len(data_vars) > 1.
+    It exists in the melted DataFrame from data_var names, not in ds.dims.
+
+    Returns:
+        Tuple of (color, facet_col, facet_row, animation_frame).
     """
     # Get available extra dimensions with size > 1, excluding specified dims
     exclude = exclude_dims or set()
     available = {d for d in ds.dims if ds.sizes[d] > 1 and d not in exclude}
+    # 'variable' is available when there are multiple data_vars
+    if len(ds.data_vars) > 1:
+        available.add('variable')
     extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
     used: set[str] = set()
 
     # Map slot names to their input values
     slots = {
+        'color': color,
         'facet_col': facet_col,
         'facet_row': facet_row,
         'animation_frame': animation_frame,
     }
-    results: dict[str, str | None] = {'facet_col': None, 'facet_row': None, 'animation_frame': None}
+    results: dict[str, str | None] = {
+        'color': None,
+        'facet_col': None,
+        'facet_row': None,
+        'animation_frame': None,
+    }
 
     # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
-    # 'variable' is special - exists in melted df from data_var names, not in ds.dims
     for slot_name, value in slots.items():
         if value is not None and value != 'auto':
-            if value == 'variable' or (value in available and value not in used):
+            if value in available and value not in used:
                 used.add(value)
                 results[slot_name] = value
 
@@ -70,7 +93,7 @@ def _resolve_auto_facets(
                 used.add(next_dim)
                 results[slot_name] = next_dim
 
-    return results['facet_col'], results['facet_row'], results['animation_frame']
+    return results['color'], results['facet_col'], results['facet_row'], results['animation_frame']
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
@@ -125,6 +148,7 @@ class DatasetPlotAccessor:
         self,
         *,
         x: str | Literal['auto'] | None = 'auto',
+        color: str | Literal['auto'] | None = 'auto',
         colors: ColorType | None = None,
         title: str = '',
         xlabel: str = '',
@@ -139,6 +163,8 @@ class DatasetPlotAccessor:
 
         Args:
             x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
+                if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             xlabel: X-axis label.
@@ -154,17 +180,20 @@ class DatasetPlotAccessor:
         """
         # Determine x-axis first, then resolve facets from remaining dims
         dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, x)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
+        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
         )
 
         df = _dataset_to_long_df(self._ds)
         if df.empty:
             return go.Figure()
 
-        variables = df['variable'].unique().tolist()
-        color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+        # Get color labels from the resolved color column
+        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_map = process_colors(
+            colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -174,9 +203,8 @@ class DatasetPlotAccessor:
             'title': title,
             'barmode': 'group',
         }
-        # Only color by variable if it's not already on x-axis (and user didn't override)
-        if x_col != 'variable' and 'color' not in px_kwargs:
-            fig_kwargs['color'] = 'variable'
+        if actual_color and 'color' not in px_kwargs:
+            fig_kwargs['color'] = actual_color
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {x_col: xlabel}
@@ -198,6 +226,7 @@ class DatasetPlotAccessor:
         self,
         *,
         x: str | Literal['auto'] | None = 'auto',
+        color: str | Literal['auto'] | None = 'auto',
         colors: ColorType | None = None,
         title: str = '',
         xlabel: str = '',
@@ -215,6 +244,8 @@ class DatasetPlotAccessor:
 
         Args:
             x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
+                if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             xlabel: X-axis label.
@@ -230,17 +261,20 @@ class DatasetPlotAccessor:
         """
         # Determine x-axis first, then resolve facets from remaining dims
         dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, x)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
+        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
         )
 
         df = _dataset_to_long_df(self._ds)
         if df.empty:
             return go.Figure()
 
-        variables = df['variable'].unique().tolist()
-        color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+        # Get color labels from the resolved color column
+        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_map = process_colors(
+            colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -249,9 +283,8 @@ class DatasetPlotAccessor:
             'y': 'value',
             'title': title,
         }
-        # Only color by variable if it's not already on x-axis (and user didn't override)
-        if x_col != 'variable' and 'color' not in px_kwargs:
-            fig_kwargs['color'] = 'variable'
+        if actual_color and 'color' not in px_kwargs:
+            fig_kwargs['color'] = actual_color
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {x_col: xlabel}
@@ -276,6 +309,7 @@ class DatasetPlotAccessor:
         self,
         *,
         x: str | Literal['auto'] | None = 'auto',
+        color: str | Literal['auto'] | None = 'auto',
         colors: ColorType | None = None,
         title: str = '',
         xlabel: str = '',
@@ -293,6 +327,8 @@ class DatasetPlotAccessor:
 
         Args:
             x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
+                if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             xlabel: X-axis label.
@@ -310,17 +346,20 @@ class DatasetPlotAccessor:
         """
         # Determine x-axis first, then resolve facets from remaining dims
         dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, x)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
+        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
         )
 
         df = _dataset_to_long_df(self._ds)
         if df.empty:
             return go.Figure()
 
-        variables = df['variable'].unique().tolist()
-        color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+        # Get color labels from the resolved color column
+        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_map = process_colors(
+            colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -330,14 +369,8 @@ class DatasetPlotAccessor:
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
         }
-        # Only color by variable if it's not used for faceting or x-axis (and user didn't override)
-        if (
-            x_col != 'variable'
-            and actual_facet_col != 'variable'
-            and actual_facet_row != 'variable'
-            and 'color' not in px_kwargs
-        ):
-            fig_kwargs['color'] = 'variable'
+        if actual_color and 'color' not in px_kwargs:
+            fig_kwargs['color'] = actual_color
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {x_col: xlabel}
@@ -359,6 +392,7 @@ class DatasetPlotAccessor:
         self,
         *,
         x: str | Literal['auto'] | None = 'auto',
+        color: str | Literal['auto'] | None = 'auto',
         colors: ColorType | None = None,
         title: str = '',
         xlabel: str = '',
@@ -374,6 +408,8 @@ class DatasetPlotAccessor:
 
         Args:
             x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
+                if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             xlabel: X-axis label.
@@ -390,17 +426,20 @@ class DatasetPlotAccessor:
         """
         # Determine x-axis first, then resolve facets from remaining dims
         dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, x)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
+        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
         )
 
         df = _dataset_to_long_df(self._ds)
         if df.empty:
             return go.Figure()
 
-        variables = df['variable'].unique().tolist()
-        color_map = process_colors(colors, variables, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale)
+        # Get color labels from the resolved color column
+        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_map = process_colors(
+            colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
+        )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -410,9 +449,8 @@ class DatasetPlotAccessor:
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
         }
-        # Only color by variable if it's not already on x-axis (and user didn't override)
-        if x_col != 'variable' and 'color' not in px_kwargs:
-            fig_kwargs['color'] = 'variable'
+        if actual_color and 'color' not in px_kwargs:
+            fig_kwargs['color'] = actual_color
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
             fig_kwargs['labels'] = {x_col: xlabel}
@@ -477,7 +515,7 @@ class DatasetPlotAccessor:
         colors = colors or CONFIG.Plotting.default_sequential_colorscale
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
-        actual_facet_col, _, actual_anim = _resolve_auto_facets(self._ds, facet_col, None, animation_frame)
+        _, actual_facet_col, _, actual_anim = _resolve_auto_facets(self._ds, None, facet_col, None, animation_frame)
 
         imshow_args: dict[str, Any] = {
             'img': da,
@@ -535,8 +573,8 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame
+        _, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, None, facet_col, facet_row, animation_frame
         )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
@@ -619,8 +657,8 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, facet_col, facet_row, animation_frame
+        _, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
+            self._ds, None, facet_col, facet_row, animation_frame
         )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
@@ -882,7 +920,9 @@ class DataArrayPlotAccessor:
 
         # Use Dataset for facet resolution
         ds_for_resolution = da.to_dataset(name='_temp')
-        actual_facet_col, _, actual_anim = _resolve_auto_facets(ds_for_resolution, facet_col, None, animation_frame)
+        _, actual_facet_col, _, actual_anim = _resolve_auto_facets(
+            ds_for_resolution, None, facet_col, None, animation_frame
+        )
 
         imshow_args: dict[str, Any] = {
             'img': da,
