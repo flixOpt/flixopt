@@ -73,6 +73,8 @@ jobs:
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
+        env:
+          PYTHONPATH: docs/notebooks
         run: |
           # Execute all notebooks in parallel (4 at a time)
           find docs/notebooks -name '*.ipynb' -print0 | \
@@ -134,6 +136,8 @@ jobs:
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
+        env:
+          PYTHONPATH: docs/notebooks
         run: |
           find docs/notebooks -name '*.ipynb' -print0 | \
             xargs -0 -P 4 -I {} jupyter execute --inplace {}
