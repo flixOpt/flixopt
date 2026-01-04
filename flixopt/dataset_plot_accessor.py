@@ -682,7 +682,8 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        _, actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, None, facet_col, facet_row, None)
+        # Note: px.pie doesn't support animation_frame
+        actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, facet_col, facet_row, None)
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {

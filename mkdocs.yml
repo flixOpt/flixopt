@@ -235,7 +235,7 @@ plugins:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
 
   - mkdocs-jupyter:
-      execute: true  # Execute notebooks during build
+      execute: !ENV [MKDOCS_JUPYTER_EXECUTE, true]  # CI pre-executes in parallel
       allow_errors: false
       include_source: true
       include_requirejs: true
