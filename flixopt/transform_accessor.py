@@ -1249,18 +1249,38 @@ class TransformAccessor:
         scenarios = list(self._fs.scenarios) if has_scenarios else [None]
         n_original_timesteps = len(original_timesteps)
         n_reduced_timesteps = n_clusters * timesteps_per_cluster
+        n_original_clusters = cluster_structure.n_original_clusters
 
         # Expand function using ClusterResult.expand_data() - handles multi-dimensional cases
-        def expand_da(da: xr.DataArray) -> xr.DataArray:
+        # For charge_state with cluster dim, also includes the extra timestep
+        last_original_cluster_idx = (n_original_timesteps - 1) // timesteps_per_cluster
+
+        def expand_da(da: xr.DataArray, var_name: str = '') -> xr.DataArray:
             if 'time' not in da.dims:
                 return da.copy()
-            return info.result.expand_data(da, original_time=original_timesteps)
+            expanded = info.result.expand_data(da, original_time=original_timesteps)
+
+            # For charge_state with cluster dim, append the extra timestep value
+            if var_name.endswith('|charge_state') and 'cluster' in da.dims:
+                # Get extra timestep from last cluster using vectorized selection
+                cluster_order = cluster_structure.cluster_order  # (n_original_clusters,) or with period/scenario
+                if cluster_order.ndim == 1:
+                    last_cluster = int(cluster_order[last_original_cluster_idx])
+                    extra_val = da.isel(cluster=last_cluster, time=-1)
+                else:
+                    # Multi-dimensional: select last cluster for each period/scenario slice
+                    last_clusters = cluster_order.isel(original_cluster=last_original_cluster_idx)
+                    extra_val = da.isel(cluster=last_clusters, time=-1)
+                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
+                expanded = xr.concat([expanded, extra_val], dim='time')
+
+            return expanded
 
         # 1. Expand FlowSystem data (with cluster_weight set to 1.0 for all timesteps)
         reduced_ds = self._fs.to_dataset(include_solution=False)
         # Filter out cluster-related variables and copy attrs without clustering info
         data_vars = {
-            name: expand_da(da)
+            name: expand_da(da, name)
             for name, da in reduced_ds.data_vars.items()
             if name != 'cluster_weight' and not name.startswith('clustering|')
         }
@@ -1288,17 +1308,22 @@ class TransformAccessor:
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
         # 2. Expand solution
+        # charge_state variables get their extra timestep via expand_da; others get NaN via reindex
         reduced_solution = self._fs.solution
         expanded_fs._solution = xr.Dataset(
-            {name: expand_da(da) for name, da in reduced_solution.data_vars.items()},
+            {name: expand_da(da, name) for name, da in reduced_solution.data_vars.items()},
             attrs=reduced_solution.attrs,
         )
+        # Reindex to timesteps_extra for consistency with non-expanded FlowSystems
+        # (variables without extra timestep data will have NaN at the final timestep)
+        expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
 
         # 3. Combine charge_state with SOC_boundary for InterclusterStorageModel storages
         # For intercluster storages, charge_state is relative (ΔE) and can be negative.
         # Per Blanke et al. (2022) Eq. 9, actual SOC at time t in period d is:
         #   SOC(t) = SOC_boundary[d] * (1 - loss)^t_within_period + charge_state(t)
         # where t_within_period is hours from period start (accounts for self-discharge decay).
+        n_original_timesteps_extra = len(original_timesteps_extra)
         soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1309,24 +1334,31 @@ class TransformAccessor:
             soc_boundary = reduced_solution[soc_boundary_name]
             expanded_charge_state = expanded_fs._solution[charge_state_name]
 
-            # Map each original timestep to its original period index
-            original_cluster_indices = np.arange(n_original_timesteps) // timesteps_per_cluster
+            # Map each original timestep (including extra) to its original period index
+            # The extra timestep belongs to the last period
+            original_cluster_indices = np.minimum(
+                np.arange(n_original_timesteps_extra) // timesteps_per_cluster,
+                n_original_clusters - 1,
+            )
 
             # Select SOC_boundary for each timestep (boundary[d] for period d)
             # SOC_boundary has dim 'cluster_boundary', we select indices 0..n_original_clusters-1
             soc_boundary_per_timestep = soc_boundary.isel(
                 cluster_boundary=xr.DataArray(original_cluster_indices, dims=['time'])
             )
-            soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps)
+            soc_boundary_per_timestep = soc_boundary_per_timestep.assign_coords(time=original_timesteps_extra)
 
             # Apply self-discharge decay to SOC_boundary based on time within period
             # Get the storage's relative_loss_per_hour from the clustered flow system
             storage = self._fs.storages.get(storage_name)
             if storage is not None:
                 # Time within period for each timestep (0, 1, 2, ..., timesteps_per_cluster-1, 0, 1, ...)
-                time_within_period = np.arange(n_original_timesteps) % timesteps_per_cluster
+                # The extra timestep is at index timesteps_per_cluster (one past the last within-cluster index)
+                time_within_period = np.arange(n_original_timesteps_extra) % timesteps_per_cluster
+                # The extra timestep gets the correct decay (timesteps_per_cluster)
+                time_within_period[-1] = timesteps_per_cluster
                 time_within_period_da = xr.DataArray(
-                    time_within_period, dims=['time'], coords={'time': original_timesteps}
+                    time_within_period, dims=['time'], coords={'time': original_timesteps_extra}
                 )
                 # Decay factor: (1 - loss)^t, using mean loss over time
                 # Keep as DataArray to respect per-period/scenario values
@@ -1342,7 +1374,6 @@ class TransformAccessor:
             expanded_fs._solution[charge_state_name] = combined_charge_state.assign_attrs(expanded_charge_state.attrs)
 
         n_combinations = len(periods) * len(scenarios)
-        n_original_clusters = cluster_structure.n_original_clusters
         logger.info(
             f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
             f'({n_clusters} clusters'
