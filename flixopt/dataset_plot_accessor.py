@@ -34,7 +34,11 @@ def _resolve_auto_facets(
     animation_frame: str | Literal['auto'] | None = None,
     exclude_dims: set[str] | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    """Assign 'auto' facet slots from available dims using CONFIG priority lists."""
+    """Assign 'auto' facet slots from available dims using CONFIG priority lists.
+
+    Special handling for 'variable': exists in melted DataFrame (from data_var names),
+    not as a dimension, so it's always valid as an explicit facet request.
+    """
     # Get available extra dimensions with size > 1, excluding specified dims
     exclude = exclude_dims or set()
     available = {d for d in ds.dims if ds.sizes[d] > 1 and d not in exclude}
@@ -50,9 +54,10 @@ def _resolve_auto_facets(
     results: dict[str, str | None] = {'facet_col': None, 'facet_row': None, 'animation_frame': None}
 
     # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
+    # 'variable' is special - exists in melted df from data_var names, not in ds.dims
     for slot_name, value in slots.items():
         if value is not None and value != 'auto':
-            if value in available and value not in used:
+            if value == 'variable' or (value in available and value not in used):
                 used.add(value)
                 results[slot_name] = value
 
@@ -325,8 +330,13 @@ class DatasetPlotAccessor:
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
         }
-        # Only color by variable if it's not already on x-axis (and user didn't override)
-        if x_col != 'variable' and 'color' not in px_kwargs:
+        # Only color by variable if it's not used for faceting or x-axis (and user didn't override)
+        if (
+            x_col != 'variable'
+            and actual_facet_col != 'variable'
+            and actual_facet_row != 'variable'
+            and 'color' not in px_kwargs
+        ):
             fig_kwargs['color'] = 'variable'
             fig_kwargs['color_discrete_map'] = color_map
         if xlabel:
