@@ -582,13 +582,11 @@ class TransformAccessor:
         weights: dict[str, float] | None = None,
         time_series_for_high_peaks: list[str] | None = None,
         time_series_for_low_peaks: list[str] | None = None,
-        cluster_method: Literal['k_means', 'k_medoids', 'hierarchical', 'k_maxoids', 'averaging'] = 'k_means',
+        cluster_method: Literal['k_means', 'k_medoids', 'hierarchical', 'k_maxoids', 'averaging'] = 'hierarchical',
         representation_method: Literal[
             'meanRepresentation', 'medoidRepresentation', 'distributionAndMinMaxRepresentation'
-        ] = 'meanRepresentation',
-        extreme_period_method: Literal[
-            'None', 'append', 'new_cluster_center', 'replace_cluster_center'
-        ] = 'new_cluster_center',
+        ] = 'medoidRepresentation',
+        extreme_period_method: Literal['append', 'new_cluster_center', 'replace_cluster_center'] | None = None,
         rescale_cluster_periods: bool = True,
         random_state: int | None = None,
         predef_cluster_order: xr.DataArray | np.ndarray | list[int] | None = None,
@@ -602,7 +600,7 @@ class TransformAccessor:
         through time series aggregation using the tsam package.
 
         The method:
-        1. Performs time series clustering using tsam (k-means)
+        1. Performs time series clustering using tsam (hierarchical by default)
         2. Extracts only the typical clusters (not all original timesteps)
         3. Applies timestep weighting for accurate cost representation
         4. Handles storage states between clusters based on each Storage's ``cluster_mode``
@@ -619,18 +617,19 @@ class TransformAccessor:
                 clusters. **Recommended** for demand time series to capture peak demand days.
             time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
             cluster_method: Clustering algorithm to use. Options:
-                ``'k_means'`` (default), ``'k_medoids'``, ``'hierarchical'``,
+                ``'hierarchical'`` (default), ``'k_means'``, ``'k_medoids'``,
                 ``'k_maxoids'``, ``'averaging'``.
             representation_method: How cluster representatives are computed. Options:
-                ``'meanRepresentation'`` (default), ``'medoidRepresentation'``,
+                ``'medoidRepresentation'`` (default), ``'meanRepresentation'``,
                 ``'distributionAndMinMaxRepresentation'``.
             extreme_period_method: How extreme periods (peaks) are integrated. Options:
-                ``'new_cluster_center'`` (default), ``'None'``, ``'append'``,
-                ``'replace_cluster_center'``.
+                ``None`` (default, no special handling), ``'append'``,
+                ``'new_cluster_center'``, ``'replace_cluster_center'``.
             rescale_cluster_periods: If True (default), rescale cluster periods so their
                 weighted mean matches the original time series mean.
-            random_state: Random seed for reproducible clustering results. If None,
-                results may vary between runs.
+            random_state: Random seed for reproducible clustering results. Only relevant
+                for non-deterministic methods like ``'k_means'``. The default
+                ``'hierarchical'`` method is deterministic.
             predef_cluster_order: Predefined cluster assignments for manual clustering.
                 Array of cluster indices (0 to n_clusters-1) for each original period.
                 If provided, clustering is skipped and these assignments are used directly.
@@ -743,13 +742,15 @@ class TransformAccessor:
 
                 # Use tsam directly
                 clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
+                # tsam expects 'None' as a string, not Python None
+                tsam_extreme_method = 'None' if extreme_period_method is None else extreme_period_method
                 tsam_agg = tsam.TimeSeriesAggregation(
                     df,
                     noTypicalPeriods=n_clusters,
                     hoursPerPeriod=hours_per_cluster,
                     resolution=dt,
                     clusterMethod=cluster_method,
-                    extremePeriodMethod=extreme_period_method,
+                    extremePeriodMethod=tsam_extreme_method,
                     representationMethod=representation_method,
                     rescaleClusterPeriods=rescale_cluster_periods,
                     predefClusterOrder=predef_order_slice,
