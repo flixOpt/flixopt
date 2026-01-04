@@ -1271,8 +1271,8 @@ class TransformAccessor:
                     # Multi-dimensional: select last cluster for each period/scenario slice
                     last_clusters = cluster_order.isel(original_cluster=last_original_cluster_idx)
                     extra_val = da.isel(cluster=last_clusters, time=-1)
-                    # Drop 'cluster' coord created by advanced indexing (non-dim coord from isel)
-                    extra_val = extra_val.drop_vars('cluster', errors='ignore')
+                # Drop 'cluster'/'time' coords created by isel (kept as non-dim coords)
+                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
                 extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
                 expanded = xr.concat([expanded, extra_val], dim='time')
 
@@ -1363,10 +1363,15 @@ class TransformAccessor:
                     time_within_period, dims=['time'], coords={'time': original_timesteps_extra}
                 )
                 # Decay factor: (1 - loss)^t, using mean loss over time
-                # Keep as DataArray to respect per-period/scenario values
                 loss_value = storage.relative_loss_per_hour.mean('time')
                 if (loss_value > 0).any():
                     decay_da = (1 - loss_value) ** time_within_period_da
+                    if 'cluster' in decay_da.dims:
+                        # Map each timestep to its cluster's decay value
+                        cluster_per_timestep = cluster_structure.cluster_order.values[original_cluster_indices]
+                        decay_da = decay_da.isel(cluster=xr.DataArray(cluster_per_timestep, dims=['time'])).drop_vars(
+                            'cluster', errors='ignore'
+                        )
                     soc_boundary_per_timestep = soc_boundary_per_timestep * decay_da
 
             # Combine: actual_SOC = SOC_boundary * decay + charge_state
@@ -1374,6 +1379,14 @@ class TransformAccessor:
             # (small negative values may occur due to constraint approximations in the model)
             combined_charge_state = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
             expanded_fs._solution[charge_state_name] = combined_charge_state.assign_attrs(expanded_charge_state.attrs)
+
+        # Remove SOC_boundary variables - they're cluster-specific and now incorporated into charge_state
+        for soc_boundary_name in soc_boundary_vars:
+            if soc_boundary_name in expanded_fs._solution:
+                del expanded_fs._solution[soc_boundary_name]
+        # Also drop the cluster_boundary coordinate (orphaned after removing SOC_boundary)
+        if 'cluster_boundary' in expanded_fs._solution.coords:
+            expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
 
         n_combinations = len(periods) * len(scenarios)
         logger.info(
