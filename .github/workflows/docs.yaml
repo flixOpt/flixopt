@@ -57,30 +57,7 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
-      - name: Get notebook cache key
-        id: notebook-cache-key
-        run: |
-          # Hash notebooks + flixopt source code (sorted for stable cache keys)
-          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-
-      - name: Cache executed notebooks
-        uses: actions/cache@v4
-        id: notebook-cache
-        with:
-          path: docs/notebooks/*.ipynb
-          key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
-
-      - name: Execute notebooks in parallel
-        if: steps.notebook-cache.outputs.cache-hit != 'true'
-        run: |
-          # Execute all notebooks in parallel (4 at a time)
-          find docs/notebooks -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} jupyter execute --inplace {}
-
       - name: Build docs
-        env:
-          MKDOCS_JUPYTER_EXECUTE: "false"
         run: mkdocs build --strict
 
       - uses: actions/upload-artifact@v4
@@ -118,34 +95,12 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
-      - name: Get notebook cache key
-        id: notebook-cache-key
-        run: |
-          # Hash notebooks + flixopt source code (sorted for stable cache keys)
-          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-
-      - name: Cache executed notebooks
-        uses: actions/cache@v4
-        id: notebook-cache
-        with:
-          path: docs/notebooks/*.ipynb
-          key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
-
-      - name: Execute notebooks in parallel
-        if: steps.notebook-cache.outputs.cache-hit != 'true'
-        run: |
-          find docs/notebooks -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} jupyter execute --inplace {}
-
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Deploy docs
-        env:
-          MKDOCS_JUPYTER_EXECUTE: "false"
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
