@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 import pandas as pd
@@ -11,6 +12,8 @@ import xarray as xr
 
 from .color_processing import ColorType, process_colors
 from .config import CONFIG
+
+logger = logging.getLogger('flixopt')
 
 
 def _get_x_dim(dims: list[str], n_data_vars: int = 1, x: str | Literal['auto'] | None = 'auto') -> str:
@@ -92,6 +95,25 @@ def _resolve_auto_facets(
             if next_dim:
                 used.add(next_dim)
                 results[slot_name] = next_dim
+
+    # Warn if any dimensions were not assigned to any slot
+    # Only count slots that were available (passed as 'auto' or explicit dim, not None)
+    available_slot_count = sum(1 for v in slots.values() if v is not None)
+    unassigned = available - used
+    if unassigned:
+        if available_slot_count < 4:
+            # Some slots weren't available (e.g., pie doesn't support animation_frame)
+            unavailable_slots = [k for k, v in slots.items() if v is None]
+            logger.warning(
+                f'Dimensions {unassigned} not assigned to any plot dimension. '
+                f'Not available for this plot type: {unavailable_slots}. '
+                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).'
+            )
+        else:
+            logger.warning(
+                f'Dimensions {unassigned} not assigned to color/facet/animation. '
+                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).'
+            )
 
     return results['color'], results['facet_col'], results['facet_row'], results['animation_frame']
 
@@ -610,21 +632,22 @@ class DatasetPlotAccessor:
         title: str = '',
         facet_col: str | Literal['auto'] | None = 'auto',
         facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a pie chart from aggregated dataset values.
 
-        Extra dimensions are auto-assigned to facet_col, facet_row, and animation_frame.
+        Extra dimensions are auto-assigned to facet_col and facet_row.
         For scalar values, a single pie is shown.
+
+        Note:
+            ``px.pie()`` does not support animation_frame, so only facets are available.
 
         Args:
             colors: Color specification (colorscale name, color list, or dict mapping).
             title: Plot title.
             facet_col: Dimension for column facets. 'auto' uses CONFIG priority.
             facet_row: Dimension for row facets. 'auto' uses CONFIG priority.
-            animation_frame: Dimension for animation slider. 'auto' uses CONFIG priority.
             facet_cols: Number of columns in facet grid wrap.
             **px_kwargs: Additional arguments passed to plotly.express.pie.
 
@@ -654,14 +677,12 @@ class DatasetPlotAccessor:
                 **px_kwargs,
             )
 
-        # Multi-dimensional case - faceted/animated pies
+        # Multi-dimensional case - faceted pies (px.pie doesn't support animation_frame)
         df = _dataset_to_long_df(self._ds)
         if df.empty:
             return go.Figure()
 
-        _, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, None, facet_col, facet_row, animation_frame
-        )
+        _, actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, None, facet_col, facet_row, None)
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -680,8 +701,6 @@ class DatasetPlotAccessor:
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
         if actual_facet_row:
             fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim:
-            fig_kwargs['animation_frame'] = actual_anim
 
         return px.pie(**fig_kwargs)
 
