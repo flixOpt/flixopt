@@ -1523,9 +1523,11 @@ class StatisticsPlotAccessor:
         has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
         # Count extra dims (beyond time) - if too many, skip reshape to avoid dimension explosion
+        # Reshape adds 1 dim (time -> timestep + timeframe), so check available slots
         extra_dims = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
-        # Max dims for heatmap: 2 axes + facet_col + animation_frame = 4
-        can_reshape = len(extra_dims) <= 2  # Leave room for facet and animation
+        # Count available slots: 'auto' means available, None/explicit means not available
+        available_slots = (1 if facet_col == 'auto' else 0) + (1 if animation_frame == 'auto' else 0)
+        can_reshape = len(extra_dims) <= available_slots
 
         # Apply time reshape if needed (creates timestep/timeframe dims)
         if is_clustered and (reshape == 'auto' or reshape is None):
