@@ -3,7 +3,6 @@ This module bundles all common functionality of flixopt and sets up the logging
 """
 
 import logging
-import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 try:
@@ -13,9 +12,12 @@ except (PackageNotFoundError, TypeError):
     __version__ = '0.0.0.dev0'
 
 # Import commonly used classes and functions
-from . import linear_converters, plotting, results, solvers
+from . import clustering, linear_converters, plotting, results, solvers
+
+# Register xr.Dataset.fxplot accessor (import triggers registration via decorator)
+from . import dataset_plot_accessor as _  # noqa: F401
 from .carrier import Carrier, CarrierContainer
-from .clustering import ClusteringParameters
+from .comparison import Comparison
 from .components import (
     LinearConverter,
     Sink,
@@ -30,7 +32,7 @@ from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
-from .optimization import ClusteredOptimization, Optimization, SegmentedOptimization
+from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
 
 __all__ = [
@@ -38,6 +40,7 @@ __all__ = [
     'CONFIG',
     'Carrier',
     'CarrierContainer',
+    'Comparison',
     'Flow',
     'Bus',
     'Effect',
@@ -50,7 +53,6 @@ __all__ = [
     'Transmission',
     'FlowSystem',
     'Optimization',
-    'ClusteredOptimization',
     'SegmentedOptimization',
     'InvestParameters',
     'StatusParameters',
@@ -58,47 +60,15 @@ __all__ = [
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
-    'ClusteringParameters',
     'PlotResult',
+    'clustering',
     'plotting',
     'results',
     'linear_converters',
     'solvers',
 ]
 
-# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+# Initialize logger with default configuration (silent: WARNING level, NullHandler).
 logger = logging.getLogger('flixopt')
 logger.setLevel(logging.WARNING)
 logger.addHandler(logging.NullHandler())
-
-# === Runtime warning suppression for third-party libraries ===
-# These warnings are from dependencies and cannot be fixed by end users.
-# They are suppressed at runtime to provide a cleaner user experience.
-# These filters match the test configuration in pyproject.toml for consistency.
-
-# tsam: Time series aggregation library
-# - UserWarning: Informational message about minimal value constraints during clustering.
-warnings.filterwarnings(
-    'ignore',
-    category=UserWarning,
-    message='.*minimal value.*exceeds.*',
-    module='tsam.timeseriesaggregation',  # More specific if possible
-)
-# TODO: Might be able to fix it in flixopt?
-
-# linopy: Linear optimization library
-# - UserWarning: Coordinate mismatch warnings that don't affect functionality and are expected.
-warnings.filterwarnings(
-    'ignore', category=UserWarning, message='Coordinates across variables not equal', module='linopy'
-)
-# - FutureWarning: join parameter default will change in future versions
-warnings.filterwarnings(
-    'ignore',
-    category=FutureWarning,
-    message="In a future version of xarray the default value for join will change from join='outer' to join='exact'",
-    module='linopy',
-)
-
-# numpy: Core numerical library
-# - RuntimeWarning: Binary incompatibility warnings from compiled extensions (safe to ignore). numpy 1->2
-warnings.filterwarnings('ignore', category=RuntimeWarning, message='numpy\\.ndarray size changed')

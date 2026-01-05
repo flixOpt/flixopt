@@ -196,15 +196,14 @@ class StatusModel(Submodel):
             inactive = self.add_variables(binary=True, short_name='inactive', coords=self._model.get_coords())
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
-        # 3. Total duration tracking using existing pattern
+        # 3. Total duration tracking
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=(self.status * self._model.hours_per_step).sum('time'),
+            tracked_expression=self._model.sum_temporal(self.status),
             bounds=(
                 self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
-                self.parameters.active_hours_max
-                if self.parameters.active_hours_max is not None
-                else self._model.hours_per_step.sum('time').max().item(),
+                self.parameters.active_hours_max if self.parameters.active_hours_max is not None else total_hours,
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
@@ -232,7 +231,9 @@ class StatusModel(Submodel):
                     coords=self._model.get_coords(('period', 'scenario')),
                     short_name='startup_count',
                 )
-                self.add_constraints(count == self.startup.sum('time'), short_name='startup_count')
+                # Sum over all temporal dimensions (time, and cluster if present)
+                startup_temporal_dims = [d for d in self.startup.dims if d not in ('period', 'scenario')]
+                self.add_constraints(count == self.startup.sum(startup_temporal_dims), short_name='startup_count')
 
         # 5. Consecutive active duration (uptime) using existing pattern
         if self.parameters.use_uptime_tracking:
@@ -242,7 +243,7 @@ class StatusModel(Submodel):
                 short_name='uptime',
                 minimum_duration=self.parameters.min_uptime,
                 maximum_duration=self.parameters.max_uptime,
-                duration_per_step=self.hours_per_step,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
                 previous_duration=self._get_previous_uptime(),
             )
@@ -255,7 +256,7 @@ class StatusModel(Submodel):
                 short_name='downtime',
                 minimum_duration=self.parameters.min_downtime,
                 maximum_duration=self.parameters.max_downtime,
-                duration_per_step=self.hours_per_step,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
                 previous_duration=self._get_previous_downtime(),
             )
@@ -263,12 +264,12 @@ class StatusModel(Submodel):
         self._add_effects()
 
     def _add_effects(self):
-        """Add operational effects"""
+        """Add operational effects (use timestep_duration only, cluster_weight is applied when summing to total)"""
         if self.parameters.effects_per_active_hour:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.status * factor * self._model.hours_per_step
+                    effect: self.status * factor * self._model.timestep_duration
                     for effect, factor in self.parameters.effects_per_active_hour.items()
                 },
                 target='temporal',
@@ -330,7 +331,7 @@ class StatusModel(Submodel):
 
         Returns 0 if no previous status is provided (assumes previously inactive).
         """
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
             return 0
         else:
@@ -341,7 +342,7 @@ class StatusModel(Submodel):
 
         Returns one timestep duration if no previous status is provided (assumes previously inactive).
         """
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         if self._previous_status is None:
             return hours_per_step
         else:
@@ -612,16 +613,18 @@ class ShareAllocationModel(Submodel):
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
-                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
-                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
+                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.timestep_duration,
+                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
                 coords=self._model.get_coords(self._dims),
                 short_name='per_timestep',
             )
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
-            # Add it to the total
-            self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
+            # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
+            # Sum over all temporal dimensions (time, and cluster if present)
+            weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
+            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.temporal_dims)
 
     def add_share(
         self,
