@@ -127,6 +127,50 @@ def _reshape_time_for_heatmap(
 # --- Helper functions ---
 
 
+def _prepare_for_heatmap(
+    da: xr.DataArray,
+    reshape: tuple[str, str] | Literal['auto'] | None,
+    facet_col: str | Literal['auto'] | None,
+    animation_frame: str | Literal['auto'] | None,
+) -> xr.DataArray:
+    """Prepare DataArray for heatmap: determine axes, reshape if needed, transpose/squeeze."""
+
+    def finalize(da: xr.DataArray, heatmap_dims: list[str]) -> xr.DataArray:
+        """Transpose, squeeze, and clear name if needed."""
+        other = [d for d in da.dims if d not in heatmap_dims]
+        da = da.transpose(*[d for d in heatmap_dims if d in da.dims], *other)
+        for dim in [d for d in da.dims if d not in heatmap_dims and da.sizes[d] == 1]:
+            da = da.squeeze(dim, drop=True)
+        return da.rename('') if da.sizes.get('variable', 1) > 1 else da
+
+    def fallback_dims() -> list[str]:
+        """Default dims: (variable, time) if multi-var, else first 2 dims with size > 1."""
+        if da.sizes.get('variable', 1) > 1:
+            return ['variable', 'time']
+        dims = [d for d in da.dims if da.sizes[d] > 1][:2]
+        return dims if len(dims) >= 2 else list(da.dims)[:2]
+
+    is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
+    has_time = 'time' in da.dims
+
+    # Clustered: use (time, cluster) as natural 2D
+    if is_clustered and reshape in ('auto', None):
+        return finalize(da, ['time', 'cluster'])
+
+    # Explicit reshape: always apply
+    if reshape and reshape != 'auto' and has_time:
+        return finalize(_reshape_time_for_heatmap(da, reshape), ['timestep', 'timeframe'])
+
+    # Auto reshape (non-clustered): apply only if extra dims fit in available slots
+    if reshape == 'auto' and has_time:
+        extra = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
+        slots = (facet_col == 'auto') + (animation_frame == 'auto')
+        if len(extra) <= slots:
+            return finalize(_reshape_time_for_heatmap(da, ('D', 'h')), ['timestep', 'timeframe'])
+
+    return finalize(da, fallback_dims())
+
+
 def _filter_by_pattern(
     names: list[str],
     include: FilterType | None,
@@ -178,73 +222,6 @@ def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Da
 
     matching_vars = [var for var in ds.data_vars if ds[var].attrs.get('carrier', '').lower() in carriers]
     return ds[matching_vars] if matching_vars else xr.Dataset()
-
-
-def _resolve_auto_facets(
-    ds: xr.Dataset,
-    facet_col: str | Literal['auto'] | None,
-    facet_row: str | Literal['auto'] | None,
-    animation_frame: str | Literal['auto'] | None = None,
-) -> tuple[str | None, str | None, str | None]:
-    """Resolve 'auto' facet/animation dimensions based on available data dimensions.
-
-    When 'auto' is specified, extra dimensions are assigned to slots based on:
-    - CONFIG.Plotting.extra_dim_priority: Order of dimensions to assign.
-    - CONFIG.Plotting.dim_slot_priority: Order of slots to fill.
-
-    Args:
-        ds: Dataset to check for available dimensions.
-        facet_col: Dimension name, 'auto', or None.
-        facet_row: Dimension name, 'auto', or None.
-        animation_frame: Dimension name, 'auto', or None.
-
-    Returns:
-        Tuple of (resolved_facet_col, resolved_facet_row, resolved_animation_frame).
-        Each is either a valid dimension name or None.
-    """
-    # Get available extra dimensions with size > 1, sorted by priority
-    available = {d for d in ds.dims if ds.sizes[d] > 1}
-    extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
-    used: set[str] = set()
-
-    # Map slot names to their input values
-    slots = {
-        'facet_col': facet_col,
-        'facet_row': facet_row,
-        'animation_frame': animation_frame,
-    }
-    results: dict[str, str | None] = {'facet_col': None, 'facet_row': None, 'animation_frame': None}
-
-    # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
-    for slot_name, value in slots.items():
-        if value is not None and value != 'auto':
-            if value in available and value not in used:
-                used.add(value)
-                results[slot_name] = value
-
-    # Second pass: resolve 'auto' slots in dim_slot_priority order
-    dim_iter = iter(d for d in extra_dims if d not in used)
-    for slot_name in CONFIG.Plotting.dim_slot_priority:
-        if slots.get(slot_name) == 'auto':
-            next_dim = next(dim_iter, None)
-            if next_dim:
-                used.add(next_dim)
-                results[slot_name] = next_dim
-
-    return results['facet_col'], results['facet_row'], results['animation_frame']
-
-
-def _resolve_facets(
-    ds: xr.Dataset,
-    facet_col: str | Literal['auto'] | None,
-    facet_row: str | Literal['auto'] | None,
-) -> tuple[str | None, str | None]:
-    """Resolve facet dimensions, returning None if not present in data.
-
-    Legacy wrapper for _resolve_auto_facets for backward compatibility.
-    """
-    resolved_col, resolved_row, _ = _resolve_auto_facets(ds, facet_col, facet_row, None)
-    return resolved_col, resolved_row
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
@@ -1382,9 +1359,6 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
 
         # Build color map from Element.color attributes if no colors specified
         if colors is None:
@@ -1399,9 +1373,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1493,9 +1467,6 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
 
         # Use cached component colors for flows
         if colors is None:
@@ -1523,9 +1494,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1544,7 +1515,7 @@ class StatisticsPlotAccessor:
         reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
         colors: str | list[str] | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1576,97 +1547,25 @@ class StatisticsPlotAccessor:
             PlotResult with processed data and figure.
         """
         solution = self._stats._require_solution()
-
         if isinstance(variables, str):
             variables = [variables]
 
-        # Resolve flow labels to variable names
-        resolved_variables = self._resolve_variable_names(variables, solution)
+        # Resolve, select, and stack into single DataArray
+        resolved = self._resolve_variable_names(variables, solution)
+        ds = _apply_selection(solution[resolved], select)
+        da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
-        ds = solution[resolved_variables]
-        ds = _apply_selection(ds, select)
+        # Prepare for heatmap (reshape, transpose, squeeze)
+        da = _prepare_for_heatmap(da, reshape, facet_col, animation_frame)
 
-        # Stack variables into single DataArray
-        variable_names = list(ds.data_vars)
-        dataarrays = [ds[var] for var in variable_names]
-        da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
-
-        # Check if data is clustered (has cluster dimension with size > 1)
-        is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
-
-        # Determine facet and animation from available dims
-        has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
-
-        if has_multiple_vars:
-            actual_facet = 'variable'
-            # Resolve animation using auto logic, excluding 'variable' which is used for facet
-            _, _, actual_animation = _resolve_auto_facets(da.to_dataset(name='value'), None, None, animation_frame)
-            if actual_animation == 'variable':
-                actual_animation = None
-        else:
-            # Resolve facet and animation using auto logic
-            actual_facet, _, actual_animation = _resolve_auto_facets(
-                da.to_dataset(name='value'), facet_col, None, animation_frame
-            )
-
-        # Determine heatmap dimensions based on data structure
-        if is_clustered and (reshape == 'auto' or reshape is None):
-            # Clustered data: use (time, cluster) as natural 2D heatmap axes
-            heatmap_dims = ['time', 'cluster']
-        elif reshape and reshape != 'auto' and 'time' in da.dims:
-            # Non-clustered with explicit reshape: reshape time to (day, hour) etc.
-            # Extra dims will be handled via facet/animation or dropped
-            da = _reshape_time_for_heatmap(da, reshape)
-            heatmap_dims = ['timestep', 'timeframe']
-        elif reshape == 'auto' and 'time' in da.dims and not is_clustered:
-            # Auto mode for non-clustered: use default ('D', 'h') reshape
-            # Extra dims will be handled via facet/animation or dropped
-            da = _reshape_time_for_heatmap(da, ('D', 'h'))
-            heatmap_dims = ['timestep', 'timeframe']
-        elif has_multiple_vars:
-            # Can't reshape but have multiple vars: use variable + time as heatmap axes
-            heatmap_dims = ['variable', 'time']
-            # variable is now a heatmap dim, use period/scenario for facet/animation
-            actual_facet, _, actual_animation = _resolve_auto_facets(
-                da.to_dataset(name='value'), facet_col, None, animation_frame
-            )
-        else:
-            # Fallback: use first two available dimensions
-            available_dims = [d for d in da.dims if da.sizes[d] > 1]
-            if len(available_dims) >= 2:
-                heatmap_dims = available_dims[:2]
-            elif 'time' in da.dims:
-                heatmap_dims = ['time']
-            else:
-                heatmap_dims = list(da.dims)[:1]
-
-        # Keep only dims we need
-        keep_dims = set(heatmap_dims) | {d for d in [actual_facet, actual_animation] if d is not None}
-        for dim in [d for d in da.dims if d not in keep_dims]:
-            da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
-
-        # Transpose to expected order
-        dim_order = heatmap_dims + [d for d in [actual_facet, actual_animation] if d]
-        da = da.transpose(*dim_order)
-
-        # Clear name for multiple variables (colorbar would show first var's name)
-        if has_multiple_vars:
-            da = da.rename('')
-
-        fig = da.fxplot.heatmap(
-            colors=colors,
-            facet_col=actual_facet,
-            animation_frame=actual_animation,
-            **plotly_kwargs,
-        )
+        fig = da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs)
 
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        reshaped_ds = da.to_dataset(name='value') if isinstance(da, xr.DataArray) else da
-        return PlotResult(data=reshaped_ds, figure=fig)
+        return PlotResult(data=da.to_dataset(name='value'), figure=fig)
 
     def flows(
         self,
@@ -1737,9 +1636,6 @@ class StatisticsPlotAccessor:
             ds = ds[[lbl for lbl in matching_labels if lbl in ds]]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1750,9 +1646,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.line(
             colors=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1798,27 +1694,18 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
-
-        df = _dataset_to_long_df(ds)
-        if df.empty:
+        if not ds.data_vars:
             fig = go.Figure()
         else:
-            variables = df['variable'].unique().tolist()
-            color_map = process_colors(colors, variables)
-            fig = px.bar(
-                df,
+            fig = ds.fxplot.bar(
                 x='variable',
-                y='value',
                 color='variable',
-                facet_col=actual_facet_col,
-                facet_row=actual_facet_row,
-                animation_frame=actual_anim,
-                color_discrete_map=color_map,
+                colors=colors,
                 title='Investment Sizes',
-                labels={'variable': 'Flow', 'value': 'Size'},
+                ylabel='Size',
+                facet_col=facet_col,
+                facet_row=facet_row,
+                animation_frame=animation_frame,
                 **plotly_kwargs,
             )
 
@@ -1913,10 +1800,6 @@ class StatisticsPlotAccessor:
         duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
         result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            result_ds, facet_col, facet_row, animation_frame
-        )
-
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1926,9 +1809,9 @@ class StatisticsPlotAccessor:
         fig = result_ds.fxplot.line(
             colors=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -2057,13 +1940,13 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
-        # Resolve facets
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            combined.to_dataset(name='value'), facet_col, facet_row, animation_frame
-        )
-
         # Convert to DataFrame for plotly express
         df = combined.to_dataframe(name='value').reset_index()
+
+        # Resolve facet/animation: 'auto' means None for DataFrames (no dimension priority)
+        resolved_facet_col = None if facet_col == 'auto' else facet_col
+        resolved_facet_row = None if facet_row == 'auto' else facet_row
+        resolved_animation = None if animation_frame == 'auto' else animation_frame
 
         # Build color map
         if color_col and color_col in df.columns:
@@ -2087,9 +1970,9 @@ class StatisticsPlotAccessor:
             y='value',
             color=color_col,
             color_discrete_map=color_map,
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=resolved_facet_col,
+            facet_row=resolved_facet_row,
+            animation_frame=resolved_animation,
             title=title,
             **plotly_kwargs,
         )
@@ -2138,16 +2021,13 @@ class StatisticsPlotAccessor:
             ds = ds[[s for s in storages if s in ds]]
 
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
 
         fig = ds.fxplot.line(
             colors=colors,
             title='Storage Charge States',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
         fig.update_yaxes(title_text='Charge State')
@@ -2231,61 +2111,46 @@ class StatisticsPlotAccessor:
 
         # Apply selection
         ds = _apply_selection(ds, select)
-        actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            ds, facet_col, facet_row, animation_frame
-        )
 
-        # Build color map
+        # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
+        flow_ds = ds[flow_labels]
+        charge_da = ds['charge_state']
+
+        # Build color map for flows
         if colors is None:
             colors = self._get_color_map_for_balance(storage, flow_labels)
-        color_map = process_colors(colors, flow_labels)
-        color_map['charge_state'] = 'black'
 
-        # Convert to long-form DataFrame
-        df = _dataset_to_long_df(ds)
-
-        # Create figure with facets using px.bar for flows
-        flow_df = df[df['variable'] != 'charge_state']
-        charge_df = df[df['variable'] == 'charge_state']
-
-        fig = px.bar(
-            flow_df,
+        # Create stacked bar chart for flows using fxplot
+        fig = flow_ds.fxplot.stacked_bar(
             x='time',
-            y='value',
             color='variable',
-            facet_col=actual_facet_col,
-            facet_row=actual_facet_row,
-            animation_frame=actual_anim,
-            color_discrete_map=color_map,
+            colors=colors,
             title=f'{storage} Operation ({unit})',
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
-        fig.update_layout(bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
 
         # Add charge state as line on secondary y-axis
-        if not charge_df.empty:
-            # Create line figure with same facets to get matching trace structure
-            line_fig = px.line(
-                charge_df,
+        if charge_da.size > 0:
+            # Create line figure with same facets
+            line_fig = charge_da.fxplot.line(
                 x='time',
-                y='value',
-                facet_col=actual_facet_col,
-                facet_row=actual_facet_row,
-                animation_frame=actual_anim,
+                color=None,  # Single line, no color grouping
+                facet_col=facet_col,
+                facet_row=facet_row,
+                animation_frame=animation_frame,
             )
 
             # Get the primary y-axes from the bar figure to create matching secondary axes
-            # px creates axes named: yaxis, yaxis2, yaxis3, etc.
             primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
 
             # For each primary y-axis, create a secondary y-axis
             for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-                # Determine secondary axis name (y -> y2, y2 -> y3 pattern won't work)
-                # Instead use a consistent offset: yaxis -> yaxis10, yaxis2 -> yaxis11, etc.
                 primary_num = primary_key[5:] if primary_key[5:] else '1'
-                secondary_num = int(primary_num) + 100  # Use high offset to avoid conflicts
+                secondary_num = int(primary_num) + 100
                 secondary_key = f'yaxis{secondary_num}'
                 secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
 
@@ -2299,14 +2164,13 @@ class StatisticsPlotAccessor:
 
             # Add line traces with correct axis assignments
             for i, trace in enumerate(line_fig.data):
-                # Map trace index to secondary y-axis
                 primary_num = i + 1 if i > 0 else 1
                 secondary_yaxis = f'y{primary_num + 100}'
 
                 trace.name = 'charge_state'
                 trace.line = dict(color=charge_state_color, width=2)
                 trace.yaxis = secondary_yaxis
-                trace.showlegend = i == 0  # Only show legend for first trace
+                trace.showlegend = i == 0
                 trace.legendgroup = 'charge_state'
                 fig.add_trace(trace)
 

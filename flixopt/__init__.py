@@ -68,7 +68,7 @@ __all__ = [
     'solvers',
 ]
 
-# Initialize logger with default configuration (silent: WARNING level, NullHandler)
+# Initialize logger with default configuration (silent: WARNING level, NullHandler).
 logger = logging.getLogger('flixopt')
 logger.setLevel(logging.WARNING)
 logger.addHandler(logging.NullHandler())

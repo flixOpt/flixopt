@@ -51,9 +51,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [5.1.0] - Upcoming
+## [6.0.0] - Upcoming
 
-**Summary**: Time-series clustering for faster optimization with configurable storage behavior across typical periods. Improved weights API with always-normalized scenario weights.
+**Summary**: Major release introducing time-series clustering with storage inter-cluster linking, the new `fxplot` accessor for universal xarray plotting, and removal of deprecated v5.0 classes. Includes configurable storage behavior across typical periods and improved weights API.
+
+!!! warning "Breaking Changes"
+    This release removes `ClusteredOptimization` and `ClusteringParameters` which were deprecated in v5.0.0. Use `flow_system.transform.cluster()` instead. See [Migration](#migration-from-clusteredoptimization) below.
 
 ### ✨ Added
 
@@ -148,6 +151,44 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
 
+**FXPlot Accessor**: New global xarray accessors for universal plotting with automatic faceting and smart dimension handling. Works on any xarray Dataset, not just flixopt results.
+
+```python
+import flixopt as fx  # Registers accessors automatically
+
+# Plot any xarray Dataset with automatic faceting
+dataset.fxplot.bar(x='component')
+dataset.fxplot.area(x='time')
+dataset.fxplot.heatmap(x='time', y='component')
+dataset.fxplot.line(x='time', facet_col='scenario')
+
+# DataArray support
+data_array.fxplot.line()
+
+# Statistics transformations
+dataset.fxstats.to_duration_curve()
+```
+
+**Available Plot Methods**:
+
+| Method | Description |
+|--------|-------------|
+| `.fxplot.bar()` | Grouped bar charts |
+| `.fxplot.stacked_bar()` | Stacked bar charts |
+| `.fxplot.line()` | Line charts with faceting |
+| `.fxplot.area()` | Stacked area charts |
+| `.fxplot.heatmap()` | Heatmap visualizations |
+| `.fxplot.scatter()` | Scatter plots |
+| `.fxplot.pie()` | Pie charts with faceting |
+| `.fxstats.to_duration_curve()` | Transform to duration curve format |
+
+**Key Features**:
+
+- **Auto-faceting**: Automatically assigns extra dimensions (period, scenario, cluster) to `facet_col`, `facet_row`, or `animation_frame`
+- **Smart x-axis**: Intelligently selects x dimension based on priority (time > duration > period > scenario)
+- **Universal**: Works on any xarray Dataset/DataArray, not limited to flixopt
+- **Configurable**: Customize via `CONFIG.Plotting` (colorscales, facet columns, line shapes)
+
 ### 💥 Breaking Changes
 
 - `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
@@ -159,11 +200,93 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
 
 ### 🗑️ Deprecated
 
+The following items are deprecated and will be removed in **v7.0.0**:
+
+**Classes** (use FlowSystem methods instead):
+
+- `Optimization` class → Use `flow_system.optimize(solver)`
+- `SegmentedOptimization` class → Use `flow_system.optimize.rolling_horizon()`
+- `Results` class → Use `flow_system.solution` and `flow_system.statistics`
+- `SegmentedResults` class → Use segment FlowSystems directly
+
+**FlowSystem methods** (use `transform` or `topology` accessor instead):
+
+- `flow_system.sel()` → Use `flow_system.transform.sel()`
+- `flow_system.isel()` → Use `flow_system.transform.isel()`
+- `flow_system.resample()` → Use `flow_system.transform.resample()`
+- `flow_system.plot_network()` → Use `flow_system.topology.plot()`
+- `flow_system.start_network_app()` → Use `flow_system.topology.start_app()`
+- `flow_system.stop_network_app()` → Use `flow_system.topology.stop_app()`
+- `flow_system.network_infos()` → Use `flow_system.topology.infos()`
+
+**Parameters:**
+
 - `normalize_weights` parameter in `create_model()`, `build_model()`, `optimize()`
+
+**Topology method name simplifications** (old names still work with deprecation warnings, removal in v7.0.0):
+
+| Old (v5.x) | New (v6.0.0) |
+|------------|--------------|
+| `topology.plot_network()` | `topology.plot()` |
+| `topology.start_network_app()` | `topology.start_app()` |
+| `topology.stop_network_app()` | `topology.stop_app()` |
+| `topology.network_infos()` | `topology.infos()` |
+
+Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualization is available via `topology.plot_legacy()`.
+
+### 🔥 Removed
+
+**Clustering classes removed** (deprecated in v5.0.0):
+
+- `ClusteredOptimization` class - Use `flow_system.transform.cluster()` then `optimize()`
+- `ClusteringParameters` class - Parameters are now passed directly to `transform.cluster()`
+- `flixopt/clustering.py` module - Restructured to `flixopt/clustering/` package with new classes
+
+#### Migration from ClusteredOptimization
+
+=== "v5.x (Old - No longer works)"
+    ```python
+    from flixopt import ClusteredOptimization, ClusteringParameters
+
+    params = ClusteringParameters(hours_per_period=24, nr_of_periods=8)
+    calc = ClusteredOptimization('model', flow_system, params)
+    calc.do_modeling_and_solve(solver)
+    results = calc.results
+    ```
+
+=== "v6.0.0 (New)"
+    ```python
+    # Cluster using transform accessor
+    fs_clustered = flow_system.transform.cluster(
+        n_clusters=8,           # was: nr_of_periods
+        cluster_duration='1D',  # was: hours_per_period=24
+    )
+    fs_clustered.optimize(solver)
+
+    # Results on the clustered FlowSystem
+    costs = fs_clustered.solution['costs'].item()
+
+    # Expand back to full resolution if needed
+    fs_expanded = fs_clustered.transform.expand_solution()
+    ```
 
 ### 🐛 Fixed
 
 - `temporal_weight` and `sum_temporal()` now use consistent implementation
+
+### 📝 Docs
+
+**New Documentation Pages:**
+
+- [Time-Series Clustering Guide](https://flixopt.github.io/flixopt/latest/user-guide/optimization/clustering/) - Comprehensive guide to clustering workflows
+
+**New Jupyter Notebooks:**
+
+- **08c-clustering.ipynb** - Introduction to time-series clustering
+- **08c2-clustering-storage-modes.ipynb** - Comparison of all 4 storage cluster modes
+- **08d-clustering-multiperiod.ipynb** - Clustering with periods and scenarios
+- **08e-clustering-internals.ipynb** - Understanding clustering internals
+- **fxplot_accessor_demo.ipynb** - Demo of the new fxplot accessor
 
 ### 👷 Development
 
@@ -174,8 +297,34 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
 - `TestMultiPeriodClustering`: Tests for clustering with periods and scenarios dimensions
 - `TestPeakSelection`: Tests for `time_series_for_high_peaks` and `time_series_for_low_peaks` parameters
 
+**New Test Suites for Other Features**:
+
+- `test_clustering_io.py` - Tests for clustering serialization roundtrip
+- `test_sel_isel_single_selection.py` - Tests for transform selection methods
+
 ---
 
+## [5.0.4] - 2026-01-05
+
+**Summary**: Dependency updates.
+
+### 🐛 Fixed
+
+- Fixed netcdf dependency
+
+### 📦 Dependencies
+
+- Updated `mkdocs-material` to v9.7.1
+- Updated `mkdocstrings-python` to v1.19.0
+- Updated `ruff` to v0.14.10
+- Updated `pymdown-extensions` to v10.19.1
+- Updated `werkzeug` to v3.1.4
+
+### 👷 Development
+
+- Updated `actions/checkout` action to v6
+
+---
 
 ## [5.0.3] - 2025-12-18
 
