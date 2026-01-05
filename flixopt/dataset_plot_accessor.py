@@ -505,17 +505,24 @@ class DatasetPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
         # Heatmap uses imshow - first 2 dims are the x/y axes of the heatmap
-        # Exclude these from slot assignment
-        heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
-        slots = assign_slots(
-            self._ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=None,
-            animation_frame=animation_frame,
-            exclude_dims=heatmap_axes,
-        )
+        # Only call assign_slots if we need to resolve 'auto' values
+        if facet_col == 'auto' or animation_frame == 'auto':
+            heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
+            slots = assign_slots(
+                self._ds,
+                x=None,
+                color=None,
+                facet_col=facet_col,
+                facet_row=None,
+                animation_frame=animation_frame,
+                exclude_dims=heatmap_axes,
+            )
+            resolved_facet = slots['facet_col']
+            resolved_animation = slots['animation_frame']
+        else:
+            # Values already resolved (or None), use directly without re-resolving
+            resolved_facet = facet_col
+            resolved_animation = animation_frame
 
         imshow_args: dict[str, Any] = {
             'img': da,
@@ -523,13 +530,17 @@ class DatasetPlotAccessor:
             'title': title or variable,
         }
 
-        if slots['facet_col'] and slots['facet_col'] in da.dims:
-            imshow_args['facet_col'] = slots['facet_col']
-            if facet_col_wrap < da.sizes[slots['facet_col']]:
+        if resolved_facet and resolved_facet in da.dims:
+            imshow_args['facet_col'] = resolved_facet
+            if facet_col_wrap < da.sizes[resolved_facet]:
                 imshow_args['facet_col_wrap'] = facet_col_wrap
 
-        if slots['animation_frame'] and slots['animation_frame'] in da.dims:
-            imshow_args['animation_frame'] = slots['animation_frame']
+        if resolved_animation and resolved_animation in da.dims:
+            imshow_args['animation_frame'] = resolved_animation
+
+        # Use binary_string=False to handle non-numeric coords (e.g., string labels)
+        if 'binary_string' not in imshow_kwargs:
+            imshow_args['binary_string'] = False
 
         return px.imshow(**{**imshow_args, **imshow_kwargs})
 
@@ -923,18 +934,25 @@ class DataArrayPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
         # Heatmap uses imshow - first 2 dims are the x/y axes of the heatmap
-        # Exclude these from slot assignment
-        heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
-        ds_for_resolution = da.to_dataset(name='_temp')
-        slots = assign_slots(
-            ds_for_resolution,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=None,
-            animation_frame=animation_frame,
-            exclude_dims=heatmap_axes,
-        )
+        # Only call assign_slots if we need to resolve 'auto' values
+        if facet_col == 'auto' or animation_frame == 'auto':
+            heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
+            ds_for_resolution = da.to_dataset(name='_temp')
+            slots = assign_slots(
+                ds_for_resolution,
+                x=None,
+                color=None,
+                facet_col=facet_col,
+                facet_row=None,
+                animation_frame=animation_frame,
+                exclude_dims=heatmap_axes,
+            )
+            resolved_facet = slots['facet_col']
+            resolved_animation = slots['animation_frame']
+        else:
+            # Values already resolved (or None), use directly without re-resolving
+            resolved_facet = facet_col
+            resolved_animation = animation_frame
 
         imshow_args: dict[str, Any] = {
             'img': da,
@@ -942,12 +960,16 @@ class DataArrayPlotAccessor:
             'title': title or (da.name if da.name else ''),
         }
 
-        if slots['facet_col'] and slots['facet_col'] in da.dims:
-            imshow_args['facet_col'] = slots['facet_col']
-            if facet_col_wrap < da.sizes[slots['facet_col']]:
+        if resolved_facet and resolved_facet in da.dims:
+            imshow_args['facet_col'] = resolved_facet
+            if facet_col_wrap < da.sizes[resolved_facet]:
                 imshow_args['facet_col_wrap'] = facet_col_wrap
 
-        if slots['animation_frame'] and slots['animation_frame'] in da.dims:
-            imshow_args['animation_frame'] = slots['animation_frame']
+        if resolved_animation and resolved_animation in da.dims:
+            imshow_args['animation_frame'] = resolved_animation
+
+        # Use binary_string=False to handle non-numeric coords (e.g., string labels)
+        if 'binary_string' not in imshow_kwargs:
+            imshow_args['binary_string'] = False
 
         return px.imshow(**{**imshow_args, **imshow_kwargs})

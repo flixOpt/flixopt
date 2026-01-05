@@ -31,7 +31,6 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
-from .dataset_plot_accessor import assign_slots
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -1472,7 +1471,7 @@ class StatisticsPlotAccessor:
         reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
         colors: str | list[str] | None = None,
         facet_col: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = None,
+        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -1523,6 +1522,11 @@ class StatisticsPlotAccessor:
         is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
         has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
+        # Count extra dims (beyond time) - if too many, skip reshape to avoid dimension explosion
+        extra_dims = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
+        # Max dims for heatmap: 2 axes + facet_col + animation_frame = 4
+        can_reshape = len(extra_dims) <= 2  # Leave room for facet and animation
+
         # Apply time reshape if needed (creates timestep/timeframe dims)
         if is_clustered and (reshape == 'auto' or reshape is None):
             # Clustered data: use (time, cluster) as natural 2D heatmap axes
@@ -1531,8 +1535,8 @@ class StatisticsPlotAccessor:
             # Non-clustered with explicit reshape: reshape time to (day, hour) etc.
             da = _reshape_time_for_heatmap(da, reshape)
             heatmap_dims = ['timestep', 'timeframe']
-        elif reshape == 'auto' and 'time' in da.dims and not is_clustered:
-            # Auto mode for non-clustered: use default ('D', 'h') reshape
+        elif reshape == 'auto' and 'time' in da.dims and not is_clustered and can_reshape:
+            # Auto mode for non-clustered: use default ('D', 'h') reshape only if not too many dims
             da = _reshape_time_for_heatmap(da, ('D', 'h'))
             heatmap_dims = ['timestep', 'timeframe']
         elif has_multiple_vars:
@@ -1543,38 +1547,26 @@ class StatisticsPlotAccessor:
             available_dims = [d for d in da.dims if da.sizes[d] > 1]
             heatmap_dims = available_dims[:2] if len(available_dims) >= 2 else list(da.dims)[:2]
 
-        # Resolve facet/animation using assign_slots, excluding heatmap dims
-        ds_temp = da.to_dataset(name='_temp')
-        slots = assign_slots(
-            ds_temp,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=None,
-            animation_frame=animation_frame,
-            exclude_dims=set(heatmap_dims),
-        )
+        # Transpose so heatmap dims come first (px.imshow uses first 2 dims as y/x axes)
+        other_dims = [d for d in da.dims if d not in heatmap_dims]
+        dim_order = [d for d in heatmap_dims if d in da.dims] + other_dims
+        # Always transpose to ensure correct dim order (even if seemingly equal, xarray dim order matters)
+        da = da.transpose(*dim_order)
 
-        # Keep only dims we need (heatmap axes + facet/animation)
-        keep_dims = set(heatmap_dims) | {d for d in [slots['facet_col'], slots['animation_frame']] if d}
-        for dim in [d for d in da.dims if d not in keep_dims]:
-            da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
-
-        # Transpose to expected order (heatmap dims first)
-        dim_order = [d for d in heatmap_dims if d in da.dims] + [
-            d for d in [slots['facet_col'], slots['animation_frame']] if d and d in da.dims
-        ]
-        if len(dim_order) == len(da.dims):
-            da = da.transpose(*dim_order)
+        # Squeeze single-element dims (except heatmap axes) to avoid 3D shape errors
+        for dim in list(da.dims):
+            if dim not in heatmap_dims and da.sizes[dim] == 1:
+                da = da.squeeze(dim, drop=True)
 
         # Clear name for multiple variables (colorbar would show first var's name)
         if has_multiple_vars:
             da = da.rename('')
 
+        # Let fxplot handle slot assignment for facet/animation
         fig = da.fxplot.heatmap(
             colors=colors,
-            facet_col=slots['facet_col'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
