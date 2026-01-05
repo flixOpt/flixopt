@@ -56,22 +56,18 @@ flow_system.solve(fx.solvers.HighsSolver())
 For large problems, use time series clustering to reduce computational complexity:
 
 ```python
-# Define clustering parameters
-params = fx.ClusteringParameters(
-    hours_per_period=24,     # Hours per typical period
-    nr_of_periods=8,         # Number of typical periods
-    fix_storage_flows=True,
-    aggregate_data_and_fix_non_binary_vars=True,
+# Cluster to 12 typical days
+fs_clustered = flow_system.transform.cluster(
+    n_clusters=12,
+    cluster_duration='1D',
+    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
 )
 
-# Create clustered FlowSystem
-clustered_fs = flow_system.transform.cluster(params)
-
 # Optimize the clustered system
-clustered_fs.optimize(fx.solvers.HighsSolver())
+fs_clustered.optimize(fx.solvers.HighsSolver())
 
-# Access results - same structure as original
-print(clustered_fs.solution)
+# Expand back to full resolution
+fs_expanded = fs_clustered.transform.expand_solution()
 ```
 
 **Best for:**
@@ -85,6 +81,8 @@ print(clustered_fs.solution)
 - Much faster solve times
 - Approximates the full problem
 - Best when patterns repeat (e.g., typical days)
+
+See the **[Clustering Guide](clustering.md)** for details on storage modes, peak selection, and multi-dimensional support.
 
 ## Choosing an Optimization Mode
 
@@ -133,7 +131,7 @@ fs_4h.optimize(fx.solvers.HighsSolver())
 
 ### Clustering
 
-See [Clustered Optimization](#clustered-optimization) above.
+See the **[Clustering Guide](clustering.md)** for comprehensive documentation.
 
 ### Use Cases
 
