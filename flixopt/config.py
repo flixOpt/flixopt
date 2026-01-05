@@ -165,6 +165,7 @@ _DEFAULTS = MappingProxyType(
                 'default_qualitative_colorscale': 'plotly',
                 'default_line_shape': 'hv',
                 'dim_priority': ('time', 'duration', 'duration_pct', 'variable', 'cluster', 'period', 'scenario'),
+                'slot_priority': ('x', 'color', 'facet_col', 'facet_row', 'animation_frame'),
             }
         ),
         'solving': MappingProxyType(
@@ -560,9 +561,10 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
-            dim_priority: Priority order for assigning dimensions to plot slots (x, color, facet, etc.).
-                Dimensions are assigned to slots in order: x → y → color → facet_col → facet_row → animation_frame.
-                'value' represents the y-axis values (from data_var names after melting).
+            dim_priority: Priority order for assigning dimensions to plot slots.
+                Dimensions are assigned to slots based on this order.
+            slot_priority: Order in which slots are filled during auto-assignment.
+                Default: x → color → facet_col → facet_row → animation_frame.
 
         Examples:
             ```python
@@ -573,6 +575,9 @@ class CONFIG:
 
             # Customize dimension priority for auto-assignment
             CONFIG.Plotting.dim_priority = ('time', 'scenario', 'variable', 'period', 'cluster')
+
+            # Change slot fill order (e.g., prioritize facets over color)
+            CONFIG.Plotting.slot_priority = ('x', 'facet_col', 'facet_row', 'color', 'animation_frame')
             ```
         """
 
@@ -584,6 +589,7 @@ class CONFIG:
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
         default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
         dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_priority']
+        slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['slot_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -686,6 +692,7 @@ class CONFIG:
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
                 'default_line_shape': cls.Plotting.default_line_shape,
                 'dim_priority': cls.Plotting.dim_priority,
+                'slot_priority': cls.Plotting.slot_priority,
             },
         }
 

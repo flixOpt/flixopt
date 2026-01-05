@@ -59,7 +59,7 @@ def assign_slots(
     # Add any available dims not in priority list (fallback)
     priority_dims.extend(d for d in available if d not in priority_dims)
 
-    # Slot specification in fill order
+    # Slot specification
     slots = {
         'x': x,
         'color': color,
@@ -67,8 +67,8 @@ def assign_slots(
         'facet_row': facet_row,
         'animation_frame': animation_frame,
     }
-    # Fixed fill order for 'auto' assignment
-    slot_order = ('x', 'color', 'facet_col', 'facet_row', 'animation_frame')
+    # Slot fill order from config
+    slot_order = CONFIG.Plotting.slot_priority
 
     results: dict[str, str | None] = {k: None for k in slot_order}
     used: set[str] = set()
@@ -79,7 +79,7 @@ def assign_slots(
             used.add(value)
             results[slot_name] = value
 
-    # Second pass: resolve 'auto' slots in fixed fill order
+    # Second pass: resolve 'auto' slots in config-defined fill order
     dim_iter = iter(d for d in priority_dims if d not in used)
     for slot_name in slot_order:
         if slots[slot_name] == 'auto':
