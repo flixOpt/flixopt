@@ -31,7 +31,6 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
-from .dataset_plot_accessor import assign_slots
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -179,10 +178,6 @@ def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Da
 
     matching_vars = [var for var in ds.data_vars if ds[var].attrs.get('carrier', '').lower() in carriers]
     return ds[matching_vars] if matching_vars else xr.Dataset()
-
-
-# Default dimensions to exclude from facet auto-assignment (typically x-axis dimensions)
-_FACET_EXCLUDE_DIMS = {'time', 'duration', 'duration_pct'}
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
@@ -1320,15 +1315,6 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         # Build color map from Element.color attributes if no colors specified
         if colors is None:
@@ -1343,9 +1329,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1437,15 +1423,6 @@ class StatisticsPlotAccessor:
                 ds[label] = -ds[label]
 
         ds = _apply_selection(ds, select)
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         # Use cached component colors for flows
         if colors is None:
@@ -1473,9 +1450,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.stacked_bar(
             colors=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1547,18 +1524,18 @@ class StatisticsPlotAccessor:
         # Determine facet and animation from available dims
         has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
-        # Get slot assignments (heatmap only uses facet_col and animation_frame)
-        slots = assign_slots(
-            da.to_dataset(name='value'),
-            x=None,
-            color=None,
-            facet_col='variable' if has_multiple_vars else facet_col,
-            facet_row=None,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
-        resolved_facet = slots['facet_col']
-        resolved_anim = slots['animation_frame']
+        # For heatmap, facet defaults to 'variable' if multiple vars
+        # Resolve 'auto' to None for heatmap (no auto-faceting by time etc.)
+        if facet_col == 'auto':
+            resolved_facet = 'variable' if has_multiple_vars else None
+        else:
+            resolved_facet = facet_col
+
+        # Resolve animation_frame - 'auto' means None for heatmap (no auto-animation)
+        if animation_frame == 'auto':
+            resolved_anim = None
+        else:
+            resolved_anim = animation_frame
 
         # Don't use 'variable' for animation if it's used for facet
         if resolved_anim == 'variable' and has_multiple_vars:
@@ -1579,18 +1556,8 @@ class StatisticsPlotAccessor:
         elif has_multiple_vars:
             # Can't reshape but have multiple vars: use variable + time as heatmap axes
             heatmap_dims = ['variable', 'time']
-            # variable is now a heatmap dim, reassign facet
-            slots = assign_slots(
-                da.to_dataset(name='value'),
-                x=None,
-                color=None,
-                facet_col=facet_col,
-                facet_row=None,
-                animation_frame=animation_frame,
-                exclude_dims=_FACET_EXCLUDE_DIMS | {'variable'},
-            )
-            resolved_facet = slots['facet_col']
-            resolved_anim = slots['animation_frame']
+            # variable is now a heatmap dim, use user's facet choice
+            resolved_facet = facet_col
         else:
             # Fallback: use first two available dimensions
             available_dims = [d for d in da.dims if da.sizes[d] > 1]
@@ -1698,15 +1665,6 @@ class StatisticsPlotAccessor:
             ds = ds[[lbl for lbl in matching_labels if lbl in ds]]
 
         ds = _apply_selection(ds, select)
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1717,9 +1675,9 @@ class StatisticsPlotAccessor:
         fig = ds.fxplot.line(
             colors=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -1765,16 +1723,6 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
-
         df = _dataset_to_long_df(ds)
         if df.empty:
             fig = go.Figure()
@@ -1786,9 +1734,9 @@ class StatisticsPlotAccessor:
                 x='variable',
                 y='value',
                 color='variable',
-                facet_col=slots['facet_col'],
-                facet_row=slots['facet_row'],
-                animation_frame=slots['animation_frame'],
+                facet_col=facet_col,
+                facet_row=facet_row,
+                animation_frame=animation_frame,
                 color_discrete_map=color_map,
                 title='Investment Sizes',
                 labels={'variable': 'Flow', 'value': 'Size'},
@@ -1886,16 +1834,6 @@ class StatisticsPlotAccessor:
         duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
         result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
-        slots = assign_slots(
-            result_ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
-
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1905,9 +1843,9 @@ class StatisticsPlotAccessor:
         fig = result_ds.fxplot.line(
             colors=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
 
@@ -2037,15 +1975,6 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
         # Resolve facets
-        slots = assign_slots(
-            combined.to_dataset(name='value'),
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         # Convert to DataFrame for plotly express
         df = combined.to_dataframe(name='value').reset_index()
@@ -2072,9 +2001,9 @@ class StatisticsPlotAccessor:
             y='value',
             color=color_col,
             color_discrete_map=color_map,
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             title=title,
             **plotly_kwargs,
         )
@@ -2123,22 +2052,13 @@ class StatisticsPlotAccessor:
             ds = ds[[s for s in storages if s in ds]]
 
         ds = _apply_selection(ds, select)
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         fig = ds.fxplot.line(
             colors=colors,
             title='Storage Charge States',
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             **plotly_kwargs,
         )
         fig.update_yaxes(title_text='Charge State')
@@ -2222,15 +2142,6 @@ class StatisticsPlotAccessor:
 
         # Apply selection
         ds = _apply_selection(ds, select)
-        slots = assign_slots(
-            ds,
-            x=None,
-            color=None,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            exclude_dims=_FACET_EXCLUDE_DIMS,
-        )
 
         # Build color map
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
@@ -2251,9 +2162,9 @@ class StatisticsPlotAccessor:
             x='time',
             y='value',
             color='variable',
-            facet_col=slots['facet_col'],
-            facet_row=slots['facet_row'],
-            animation_frame=slots['animation_frame'],
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
             color_discrete_map=color_map,
             title=f'{storage} Operation ({unit})',
             **plotly_kwargs,
@@ -2268,9 +2179,9 @@ class StatisticsPlotAccessor:
                 charge_df,
                 x='time',
                 y='value',
-                facet_col=slots['facet_col'],
-                facet_row=slots['facet_row'],
-                animation_frame=slots['animation_frame'],
+                facet_col=facet_col,
+                facet_row=facet_row,
+                animation_frame=animation_frame,
             )
 
             # Get the primary y-axes from the bar figure to create matching secondary axes

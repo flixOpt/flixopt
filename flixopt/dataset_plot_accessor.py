@@ -201,6 +201,7 @@ class DatasetPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a grouped bar chart from the dataset.
@@ -217,13 +218,20 @@ class DatasetPlotAccessor:
             facet_row: Dimension for row facets. 'auto' uses CONFIG priority.
             animation_frame: Dimension for animation slider.
             facet_cols: Number of columns in facet grid wrap.
+            exclude_dims: Dimensions to exclude from auto-assignment.
             **px_kwargs: Additional arguments passed to plotly.express.bar.
 
         Returns:
             Plotly Figure.
         """
         slots = assign_slots(
-            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
+            self._ds,
+            x=x,
+            color=color,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            exclude_dims=exclude_dims,
         )
         df = _dataset_to_long_df(self._ds)
         if df.empty:
@@ -258,6 +266,7 @@ class DatasetPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked bar chart from the dataset.
@@ -283,7 +292,13 @@ class DatasetPlotAccessor:
             Plotly Figure.
         """
         slots = assign_slots(
-            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
+            self._ds,
+            x=x,
+            color=color,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            exclude_dims=exclude_dims,
         )
         df = _dataset_to_long_df(self._ds)
         if df.empty:
@@ -321,6 +336,7 @@ class DatasetPlotAccessor:
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         line_shape: str | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a line chart from the dataset.
@@ -347,7 +363,13 @@ class DatasetPlotAccessor:
             Plotly Figure.
         """
         slots = assign_slots(
-            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
+            self._ds,
+            x=x,
+            color=color,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            exclude_dims=exclude_dims,
         )
         df = _dataset_to_long_df(self._ds)
         if df.empty:
@@ -383,6 +405,7 @@ class DatasetPlotAccessor:
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         line_shape: str | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked area chart from the dataset.
@@ -406,7 +429,13 @@ class DatasetPlotAccessor:
             Plotly Figure.
         """
         slots = assign_slots(
-            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
+            self._ds,
+            x=x,
+            color=color,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            exclude_dims=exclude_dims,
         )
         df = _dataset_to_long_df(self._ds)
         if df.empty:
@@ -777,6 +806,7 @@ class DataArrayPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked bar chart. See DatasetPlotAccessor.stacked_bar for details."""
