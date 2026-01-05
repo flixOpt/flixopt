@@ -164,9 +164,7 @@ _DEFAULTS = MappingProxyType(
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
                 'default_line_shape': 'hv',
-                'extra_dim_priority': ('variable', 'cluster', 'period', 'scenario'),
-                'dim_slot_priority': ('color', 'facet_col', 'facet_row', 'animation_frame'),
-                'x_dim_priority': ('time', 'duration', 'duration_pct', 'variable', 'period', 'scenario', 'cluster'),
+                'dim_priority': ('time', 'duration', 'duration_pct', 'variable', 'cluster', 'period', 'scenario'),
             }
         ),
         'solving': MappingProxyType(
@@ -562,9 +560,9 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
-            extra_dim_priority: Order of extra dimensions when auto-assigning to slots.
-            dim_slot_priority: Order of slots to fill with extra dimensions.
-            x_dim_priority: Order of dimensions to prefer for x-axis when 'auto'.
+            dim_priority: Priority order for assigning dimensions to plot slots (x, color, facet, etc.).
+                Dimensions are assigned to slots in order: x → y → color → facet_col → facet_row → animation_frame.
+                'value' represents the y-axis values (from data_var names after melting).
 
         Examples:
             ```python
@@ -573,9 +571,8 @@ class CONFIG:
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
 
-            # Customize dimension handling for faceting
-            CONFIG.Plotting.extra_dim_priority = ('scenario', 'period', 'cluster')
-            CONFIG.Plotting.dim_slot_priority = ('facet_row', 'facet_col', 'animation_frame')
+            # Customize dimension priority for auto-assignment
+            CONFIG.Plotting.dim_priority = ('time', 'scenario', 'variable', 'period', 'cluster')
             ```
         """
 
@@ -586,9 +583,7 @@ class CONFIG:
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
         default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
-        extra_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['extra_dim_priority']
-        dim_slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_slot_priority']
-        x_dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['x_dim_priority']
+        dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -690,9 +685,7 @@ class CONFIG:
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
                 'default_line_shape': cls.Plotting.default_line_shape,
-                'extra_dim_priority': cls.Plotting.extra_dim_priority,
-                'dim_slot_priority': cls.Plotting.dim_slot_priority,
-                'x_dim_priority': cls.Plotting.x_dim_priority,
+                'dim_priority': cls.Plotting.dim_priority,
             },
         }
 

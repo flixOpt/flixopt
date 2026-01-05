@@ -14,94 +14,86 @@ from .color_processing import ColorType, process_colors
 from .config import CONFIG
 
 
-def _get_x_dim(dims: list[str], n_data_vars: int = 1, x: str | Literal['auto'] | None = 'auto') -> str:
-    """Select x-axis dim from priority list, or 'variable' for scalar data.
+def assign_slots(
+    ds: xr.Dataset,
+    *,
+    x: str | Literal['auto'] | None = 'auto',
+    color: str | Literal['auto'] | None = 'auto',
+    facet_col: str | Literal['auto'] | None = 'auto',
+    facet_row: str | Literal['auto'] | None = 'auto',
+    animation_frame: str | Literal['auto'] | None = 'auto',
+) -> dict[str, str | None]:
+    """Assign dimensions to plot slots using CONFIG.Plotting.dim_priority.
+
+    Slot fill order: x → color → facet_col → facet_row → animation_frame.
+    Dimensions are assigned in priority order from CONFIG.Plotting.dim_priority.
+
+    Slot values:
+        - 'auto': auto-assign from available dims using priority
+        - None: skip this slot (not available for this plot type)
+        - str: use this specific dimension
+
+    'variable' is treated as a dimension when len(data_vars) > 1. It represents
+    the data_var names column in the melted DataFrame.
 
     Args:
-        dims: List of available dimensions.
-        n_data_vars: Number of data variables (for 'variable' availability).
-        x: Explicit x-axis choice or 'auto'.
-    """
-    if x and x != 'auto':
-        return x
-
-    # 'variable' is available when there are multiple data_vars
-    available = set(dims)
-    if n_data_vars > 1:
-        available.add('variable')
-
-    # Check priority list first
-    for dim in CONFIG.Plotting.x_dim_priority:
-        if dim in available:
-            return dim
-
-    # Fallback to first available dimension, or 'variable' for scalar data
-    return dims[0] if dims else 'variable'
-
-
-def _resolve_auto_facets(
-    ds: xr.Dataset,
-    color: str | Literal['auto'] | None,
-    facet_col: str | Literal['auto'] | None,
-    facet_row: str | Literal['auto'] | None,
-    animation_frame: str | Literal['auto'] | None = None,
-    exclude_dims: set[str] | None = None,
-) -> tuple[str | None, str | None, str | None, str | None]:
-    """Assign 'auto' facet slots from available dims using CONFIG priority lists.
-
-    'variable' is treated like a dimension - available when len(data_vars) > 1.
-    It exists in the melted DataFrame from data_var names, not in ds.dims.
+        ds: Dataset to analyze for available dimensions.
+        x: X-axis dimension. 'auto' assigns first available from priority.
+        color: Color grouping dimension.
+        facet_col: Column faceting dimension.
+        facet_row: Row faceting dimension.
+        animation_frame: Animation slider dimension.
 
     Returns:
-        Tuple of (color, facet_col, facet_row, animation_frame).
+        Dict with keys 'x', 'color', 'facet_col', 'facet_row', 'animation_frame'
+        and values being assigned dimension names (or None if slot skipped/unfilled).
     """
-    # Get available extra dimensions with size > 1, excluding specified dims
-    exclude = exclude_dims or set()
-    available = {d for d in ds.dims if ds.sizes[d] > 1 and d not in exclude}
-    # 'variable' is available when there are multiple data_vars (and not excluded)
-    if len(ds.data_vars) > 1 and 'variable' not in exclude:
+    # Get available dimensions with size > 1
+    available = {d for d in ds.dims if ds.sizes[d] > 1}
+    # 'variable' is available when there are multiple data_vars
+    if len(ds.data_vars) > 1:
         available.add('variable')
-    extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
-    used: set[str] = set()
 
-    # Map slot names to their input values
+    # Get priority-ordered list of available dims
+    priority_dims = [d for d in CONFIG.Plotting.dim_priority if d in available]
+    # Add any available dims not in priority list (fallback)
+    priority_dims.extend(d for d in available if d not in priority_dims)
+
+    # Slot specification in fill order
     slots = {
+        'x': x,
         'color': color,
         'facet_col': facet_col,
         'facet_row': facet_row,
         'animation_frame': animation_frame,
     }
-    results: dict[str, str | None] = {
-        'color': None,
-        'facet_col': None,
-        'facet_row': None,
-        'animation_frame': None,
-    }
+    # Fixed fill order for 'auto' assignment
+    slot_order = ('x', 'color', 'facet_col', 'facet_row', 'animation_frame')
+
+    results: dict[str, str | None] = {k: None for k in slot_order}
+    used: set[str] = set()
 
     # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
     for slot_name, value in slots.items():
         if value is not None and value != 'auto':
-            if value in available and value not in used:
-                used.add(value)
-                results[slot_name] = value
+            used.add(value)
+            results[slot_name] = value
 
-    # Second pass: resolve 'auto' slots in dim_slot_priority order
-    dim_iter = iter(d for d in extra_dims if d not in used)
-    for slot_name in CONFIG.Plotting.dim_slot_priority:
-        if slots.get(slot_name) == 'auto':
+    # Second pass: resolve 'auto' slots in fixed fill order
+    dim_iter = iter(d for d in priority_dims if d not in used)
+    for slot_name in slot_order:
+        if slots[slot_name] == 'auto':
             next_dim = next(dim_iter, None)
             if next_dim:
                 used.add(next_dim)
                 results[slot_name] = next_dim
 
     # Warn if any dimensions were not assigned to any slot
-    # Only count slots that were available (passed as 'auto' or explicit dim, not None)
-    available_slot_count = sum(1 for v in slots.values() if v is not None)
     unassigned = available - used
     if unassigned:
-        if available_slot_count < 4:
-            # Some slots weren't available (e.g., pie doesn't support animation_frame)
-            unavailable_slots = [k for k, v in slots.items() if v is None]
+        available_slots = [k for k, v in slots.items() if v is not None]
+        unavailable_slots = [k for k, v in slots.items() if v is None]
+        if unavailable_slots:
             warnings.warn(
                 f'Dimensions {unassigned} not assigned to any plot dimension. '
                 f'Not available for this plot type: {unavailable_slots}. '
@@ -110,12 +102,12 @@ def _resolve_auto_facets(
             )
         else:
             warnings.warn(
-                f'Dimensions {unassigned} not assigned to color/facet/animation. '
+                f'Dimensions {unassigned} not assigned to any plot dimension ({available_slots}). '
                 f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).',
                 stacklevel=3,
             )
 
-    return results['color'], results['facet_col'], results['facet_row'], results['animation_frame']
+    return results
 
 
 def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str = 'variable') -> pd.DataFrame:
@@ -184,7 +176,7 @@ class DatasetPlotAccessor:
         """Create a grouped bar chart from the dataset.
 
         Args:
-            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.dim_priority.
             color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
                 if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
@@ -200,11 +192,8 @@ class DatasetPlotAccessor:
         Returns:
             Plotly Figure.
         """
-        # Determine x-axis first, then resolve facets from remaining dims
-        dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
-        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        slots = assign_slots(
+            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
         )
 
         df = _dataset_to_long_df(self._ds)
@@ -212,7 +201,7 @@ class DatasetPlotAccessor:
             return go.Figure()
 
         # Get color labels from the resolved color column
-        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_labels = df[slots['color']].unique().tolist() if slots['color'] and slots['color'] in df.columns else []
         color_map = process_colors(
             colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
@@ -220,27 +209,27 @@ class DatasetPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
             'data_frame': df,
-            'x': x_col,
+            'x': slots['x'],
             'y': 'value',
             'title': title,
             'barmode': 'group',
         }
-        if actual_color and 'color' not in px_kwargs:
-            fig_kwargs['color'] = actual_color
+        if slots['color'] and 'color' not in px_kwargs:
+            fig_kwargs['color'] = slots['color']
             fig_kwargs['color_discrete_map'] = color_map
-        if xlabel:
-            fig_kwargs['labels'] = {x_col: xlabel}
+        if xlabel and slots['x']:
+            fig_kwargs['labels'] = {slots['x']: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col and 'facet_col' not in px_kwargs:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col'] and 'facet_col' not in px_kwargs:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row and 'facet_row' not in px_kwargs:
-            fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim and 'animation_frame' not in px_kwargs:
-            fig_kwargs['animation_frame'] = actual_anim
+        if slots['facet_row'] and 'facet_row' not in px_kwargs:
+            fig_kwargs['facet_row'] = slots['facet_row']
+        if slots['animation_frame'] and 'animation_frame' not in px_kwargs:
+            fig_kwargs['animation_frame'] = slots['animation_frame']
 
         return px.bar(**{**fig_kwargs, **px_kwargs})
 
@@ -265,7 +254,7 @@ class DatasetPlotAccessor:
         values are stacked separately.
 
         Args:
-            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.dim_priority.
             color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
                 if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
@@ -281,11 +270,8 @@ class DatasetPlotAccessor:
         Returns:
             Plotly Figure.
         """
-        # Determine x-axis first, then resolve facets from remaining dims
-        dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
-        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        slots = assign_slots(
+            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
         )
 
         df = _dataset_to_long_df(self._ds)
@@ -293,7 +279,7 @@ class DatasetPlotAccessor:
             return go.Figure()
 
         # Get color labels from the resolved color column
-        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_labels = df[slots['color']].unique().tolist() if slots['color'] and slots['color'] in df.columns else []
         color_map = process_colors(
             colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
@@ -301,26 +287,26 @@ class DatasetPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
             'data_frame': df,
-            'x': x_col,
+            'x': slots['x'],
             'y': 'value',
             'title': title,
         }
-        if actual_color and 'color' not in px_kwargs:
-            fig_kwargs['color'] = actual_color
+        if slots['color'] and 'color' not in px_kwargs:
+            fig_kwargs['color'] = slots['color']
             fig_kwargs['color_discrete_map'] = color_map
-        if xlabel:
-            fig_kwargs['labels'] = {x_col: xlabel}
+        if xlabel and slots['x']:
+            fig_kwargs['labels'] = {slots['x']: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col and 'facet_col' not in px_kwargs:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col'] and 'facet_col' not in px_kwargs:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row and 'facet_row' not in px_kwargs:
-            fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim and 'animation_frame' not in px_kwargs:
-            fig_kwargs['animation_frame'] = actual_anim
+        if slots['facet_row'] and 'facet_row' not in px_kwargs:
+            fig_kwargs['facet_row'] = slots['facet_row']
+        if slots['animation_frame'] and 'animation_frame' not in px_kwargs:
+            fig_kwargs['animation_frame'] = slots['animation_frame']
 
         fig = px.bar(**{**fig_kwargs, **px_kwargs})
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
@@ -348,7 +334,7 @@ class DatasetPlotAccessor:
         Each variable in the dataset becomes a separate line.
 
         Args:
-            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.dim_priority.
             color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
                 if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
@@ -366,11 +352,8 @@ class DatasetPlotAccessor:
         Returns:
             Plotly Figure.
         """
-        # Determine x-axis first, then resolve facets from remaining dims
-        dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
-        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        slots = assign_slots(
+            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
         )
 
         df = _dataset_to_long_df(self._ds)
@@ -378,7 +361,7 @@ class DatasetPlotAccessor:
             return go.Figure()
 
         # Get color labels from the resolved color column
-        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_labels = df[slots['color']].unique().tolist() if slots['color'] and slots['color'] in df.columns else []
         color_map = process_colors(
             colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
@@ -386,27 +369,27 @@ class DatasetPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
             'data_frame': df,
-            'x': x_col,
+            'x': slots['x'],
             'y': 'value',
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
         }
-        if actual_color and 'color' not in px_kwargs:
-            fig_kwargs['color'] = actual_color
+        if slots['color'] and 'color' not in px_kwargs:
+            fig_kwargs['color'] = slots['color']
             fig_kwargs['color_discrete_map'] = color_map
-        if xlabel:
-            fig_kwargs['labels'] = {x_col: xlabel}
+        if xlabel and slots['x']:
+            fig_kwargs['labels'] = {slots['x']: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col and 'facet_col' not in px_kwargs:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col'] and 'facet_col' not in px_kwargs:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row and 'facet_row' not in px_kwargs:
-            fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim and 'animation_frame' not in px_kwargs:
-            fig_kwargs['animation_frame'] = actual_anim
+        if slots['facet_row'] and 'facet_row' not in px_kwargs:
+            fig_kwargs['facet_row'] = slots['facet_row']
+        if slots['animation_frame'] and 'animation_frame' not in px_kwargs:
+            fig_kwargs['animation_frame'] = slots['animation_frame']
 
         return px.line(**{**fig_kwargs, **px_kwargs})
 
@@ -429,7 +412,7 @@ class DatasetPlotAccessor:
         """Create a stacked area chart from the dataset.
 
         Args:
-            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.x_dim_priority.
+            x: Dimension for x-axis. 'auto' uses CONFIG.Plotting.dim_priority.
             color: Dimension for color grouping. 'auto' uses 'variable' (data_var names)
                 if available, otherwise uses CONFIG priority.
             colors: Color specification (colorscale name, color list, or dict mapping).
@@ -446,11 +429,8 @@ class DatasetPlotAccessor:
         Returns:
             Plotly Figure.
         """
-        # Determine x-axis first, then resolve facets from remaining dims
-        dims = list(self._ds.dims)
-        x_col = _get_x_dim(dims, len(self._ds.data_vars), x)
-        actual_color, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, color, facet_col, facet_row, animation_frame, exclude_dims={x_col}
+        slots = assign_slots(
+            self._ds, x=x, color=color, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
         )
 
         df = _dataset_to_long_df(self._ds)
@@ -458,7 +438,7 @@ class DatasetPlotAccessor:
             return go.Figure()
 
         # Get color labels from the resolved color column
-        color_labels = df[actual_color].unique().tolist() if actual_color and actual_color in df.columns else []
+        color_labels = df[slots['color']].unique().tolist() if slots['color'] and slots['color'] in df.columns else []
         color_map = process_colors(
             colors, color_labels, default_colorscale=CONFIG.Plotting.default_qualitative_colorscale
         )
@@ -466,27 +446,27 @@ class DatasetPlotAccessor:
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
             'data_frame': df,
-            'x': x_col,
+            'x': slots['x'],
             'y': 'value',
             'title': title,
             'line_shape': line_shape or CONFIG.Plotting.default_line_shape,
         }
-        if actual_color and 'color' not in px_kwargs:
-            fig_kwargs['color'] = actual_color
+        if slots['color'] and 'color' not in px_kwargs:
+            fig_kwargs['color'] = slots['color']
             fig_kwargs['color_discrete_map'] = color_map
-        if xlabel:
-            fig_kwargs['labels'] = {x_col: xlabel}
+        if xlabel and slots['x']:
+            fig_kwargs['labels'] = {slots['x']: xlabel}
         if ylabel:
             fig_kwargs['labels'] = {**fig_kwargs.get('labels', {}), 'value': ylabel}
 
-        if actual_facet_col and 'facet_col' not in px_kwargs:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col'] and 'facet_col' not in px_kwargs:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row and 'facet_row' not in px_kwargs:
-            fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim and 'animation_frame' not in px_kwargs:
-            fig_kwargs['animation_frame'] = actual_anim
+        if slots['facet_row'] and 'facet_row' not in px_kwargs:
+            fig_kwargs['facet_row'] = slots['facet_row']
+        if slots['animation_frame'] and 'animation_frame' not in px_kwargs:
+            fig_kwargs['animation_frame'] = slots['animation_frame']
 
         return px.area(**{**fig_kwargs, **px_kwargs})
 
@@ -537,7 +517,10 @@ class DatasetPlotAccessor:
         colors = colors or CONFIG.Plotting.default_sequential_colorscale
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
-        _, actual_facet_col, _, actual_anim = _resolve_auto_facets(self._ds, None, facet_col, None, animation_frame)
+        # Heatmap uses imshow - x/y come from array axes, color is continuous
+        slots = assign_slots(
+            self._ds, x=None, color=None, facet_col=facet_col, facet_row=None, animation_frame=animation_frame
+        )
 
         imshow_args: dict[str, Any] = {
             'img': da,
@@ -545,13 +528,13 @@ class DatasetPlotAccessor:
             'title': title or variable,
         }
 
-        if actual_facet_col and actual_facet_col in da.dims:
-            imshow_args['facet_col'] = actual_facet_col
-            if facet_col_wrap < da.sizes[actual_facet_col]:
+        if slots['facet_col'] and slots['facet_col'] in da.dims:
+            imshow_args['facet_col'] = slots['facet_col']
+            if facet_col_wrap < da.sizes[slots['facet_col']]:
                 imshow_args['facet_col_wrap'] = facet_col_wrap
 
-        if actual_anim and actual_anim in da.dims:
-            imshow_args['animation_frame'] = actual_anim
+        if slots['animation_frame'] and slots['animation_frame'] in da.dims:
+            imshow_args['animation_frame'] = slots['animation_frame']
 
         return px.imshow(**{**imshow_args, **imshow_kwargs})
 
@@ -595,8 +578,9 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        _, actual_facet_col, actual_facet_row, actual_anim = _resolve_auto_facets(
-            self._ds, None, facet_col, facet_row, animation_frame
+        # Scatter uses explicit x/y variable names, not dimensions
+        slots = assign_slots(
+            self._ds, x=None, color=None, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
         )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
@@ -614,14 +598,14 @@ class DatasetPlotAccessor:
 
         # Only use facets if the column actually exists in the dataframe
         # (scatter uses wide format, so 'variable' column doesn't exist)
-        if actual_facet_col and actual_facet_col in df.columns:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col'] and slots['facet_col'] in df.columns:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row and actual_facet_row in df.columns:
-            fig_kwargs['facet_row'] = actual_facet_row
-        if actual_anim and actual_anim in df.columns:
-            fig_kwargs['animation_frame'] = actual_anim
+        if slots['facet_row'] and slots['facet_row'] in df.columns:
+            fig_kwargs['facet_row'] = slots['facet_row']
+        if slots['animation_frame'] and slots['animation_frame'] in df.columns:
+            fig_kwargs['animation_frame'] = slots['animation_frame']
 
         return px.scatter(**fig_kwargs)
 
@@ -682,8 +666,10 @@ class DatasetPlotAccessor:
         if df.empty:
             return go.Figure()
 
-        # Note: px.pie doesn't support animation_frame
-        actual_facet_col, actual_facet_row, _ = _resolve_auto_facets(self._ds, facet_col, facet_row, None)
+        # Pie uses 'variable' for names and 'value' for values, no x/color/animation_frame
+        slots = assign_slots(
+            self._ds, x=None, color=None, facet_col=facet_col, facet_row=facet_row, animation_frame=None
+        )
 
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
         fig_kwargs: dict[str, Any] = {
@@ -696,12 +682,12 @@ class DatasetPlotAccessor:
             **px_kwargs,
         }
 
-        if actual_facet_col:
-            fig_kwargs['facet_col'] = actual_facet_col
-            if facet_col_wrap < self._ds.sizes.get(actual_facet_col, facet_col_wrap + 1):
+        if slots['facet_col']:
+            fig_kwargs['facet_col'] = slots['facet_col']
+            if facet_col_wrap < self._ds.sizes.get(slots['facet_col'], facet_col_wrap + 1):
                 fig_kwargs['facet_col_wrap'] = facet_col_wrap
-        if actual_facet_row:
-            fig_kwargs['facet_row'] = actual_facet_row
+        if slots['facet_row']:
+            fig_kwargs['facet_row'] = slots['facet_row']
 
         return px.pie(**fig_kwargs)
 
@@ -940,10 +926,10 @@ class DataArrayPlotAccessor:
         colors = colors or CONFIG.Plotting.default_sequential_colorscale
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
-        # Use Dataset for facet resolution
+        # Heatmap uses imshow - x/y come from array axes, color is continuous
         ds_for_resolution = da.to_dataset(name='_temp')
-        _, actual_facet_col, _, actual_anim = _resolve_auto_facets(
-            ds_for_resolution, None, facet_col, None, animation_frame
+        slots = assign_slots(
+            ds_for_resolution, x=None, color=None, facet_col=facet_col, facet_row=None, animation_frame=animation_frame
         )
 
         imshow_args: dict[str, Any] = {
@@ -952,12 +938,12 @@ class DataArrayPlotAccessor:
             'title': title or (da.name if da.name else ''),
         }
 
-        if actual_facet_col and actual_facet_col in da.dims:
-            imshow_args['facet_col'] = actual_facet_col
-            if facet_col_wrap < da.sizes[actual_facet_col]:
+        if slots['facet_col'] and slots['facet_col'] in da.dims:
+            imshow_args['facet_col'] = slots['facet_col']
+            if facet_col_wrap < da.sizes[slots['facet_col']]:
                 imshow_args['facet_col_wrap'] = facet_col_wrap
 
-        if actual_anim and actual_anim in da.dims:
-            imshow_args['animation_frame'] = actual_anim
+        if slots['animation_frame'] and slots['animation_frame'] in da.dims:
+            imshow_args['animation_frame'] = slots['animation_frame']
 
         return px.imshow(**{**imshow_args, **imshow_kwargs})

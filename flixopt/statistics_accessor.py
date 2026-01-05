@@ -31,6 +31,7 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
+from .dataset_plot_accessor import assign_slots
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -188,9 +189,7 @@ def _resolve_auto_facets(
 ) -> tuple[str | None, str | None, str | None]:
     """Resolve 'auto' facet/animation dimensions based on available data dimensions.
 
-    When 'auto' is specified, extra dimensions are assigned to slots based on:
-    - CONFIG.Plotting.extra_dim_priority: Order of dimensions to assign.
-    - CONFIG.Plotting.dim_slot_priority: Order of slots to fill.
+    Uses assign_slots with x=None and color=None to only resolve facet/animation slots.
 
     Args:
         ds: Dataset to check for available dimensions.
@@ -202,36 +201,10 @@ def _resolve_auto_facets(
         Tuple of (resolved_facet_col, resolved_facet_row, resolved_animation_frame).
         Each is either a valid dimension name or None.
     """
-    # Get available extra dimensions with size > 1, sorted by priority
-    available = {d for d in ds.dims if ds.sizes[d] > 1}
-    extra_dims = [d for d in CONFIG.Plotting.extra_dim_priority if d in available]
-    used: set[str] = set()
-
-    # Map slot names to their input values
-    slots = {
-        'facet_col': facet_col,
-        'facet_row': facet_row,
-        'animation_frame': animation_frame,
-    }
-    results: dict[str, str | None] = {'facet_col': None, 'facet_row': None, 'animation_frame': None}
-
-    # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
-    for slot_name, value in slots.items():
-        if value is not None and value != 'auto':
-            if value in available and value not in used:
-                used.add(value)
-                results[slot_name] = value
-
-    # Second pass: resolve 'auto' slots in dim_slot_priority order
-    dim_iter = iter(d for d in extra_dims if d not in used)
-    for slot_name in CONFIG.Plotting.dim_slot_priority:
-        if slots.get(slot_name) == 'auto':
-            next_dim = next(dim_iter, None)
-            if next_dim:
-                used.add(next_dim)
-                results[slot_name] = next_dim
-
-    return results['facet_col'], results['facet_row'], results['animation_frame']
+    slots = assign_slots(
+        ds, x=None, color=None, facet_col=facet_col, facet_row=facet_row, animation_frame=animation_frame
+    )
+    return slots['facet_col'], slots['facet_row'], slots['animation_frame']
 
 
 def _resolve_facets(
