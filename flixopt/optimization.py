@@ -530,7 +530,9 @@ class SegmentedOptimization:
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
-            calc = Optimization(f'{self.name}-{segment_name}', self.flow_system.sel(time=timesteps_of_segment))
+            calc = Optimization(
+                f'{self.name}-{segment_name}', self.flow_system.transform.sel(time=timesteps_of_segment)
+            )
             calc.flow_system._connect_network()  # Connect to have Correct names of Flows!
 
             self.sub_optimizations.append(calc)
