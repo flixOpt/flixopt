@@ -130,8 +130,8 @@ class TestEffectModel:
         assert_var_equal(
             model.variables['Effect1(temporal)|per_timestep'],
             model.add_variables(
-                lower=4.0 * model.hours_per_step,
-                upper=4.1 * model.hours_per_step,
+                lower=4.0 * model.timestep_duration,
+                upper=4.1 * model.timestep_duration,
                 coords=model.get_coords(['time', 'period', 'scenario']),
             ),
         )

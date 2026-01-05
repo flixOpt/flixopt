@@ -762,6 +762,11 @@ class TestV4APIConversion:
         new_objective = float(fs.solution['objective'].item())
         new_effect_total = float(fs.solution[objective_effect_label].sum().item())
 
+        # Skip comparison for scenarios test case - scenario weights are now always normalized,
+        # which changes the objective value when loading old results with non-normalized weights
+        if result_name == '04_scenarios':
+            pytest.skip('Scenario weights are now always normalized - old results have different weights')
+
         # Verify objective matches (within tolerance)
         assert new_objective == pytest.approx(old_objective, rel=1e-5, abs=1), (
             f'Objective mismatch for {result_name}: new={new_objective}, old={old_objective}'

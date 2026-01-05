@@ -73,8 +73,8 @@ class TestStorageModel:
             model.constraints['TestStorage|charge_state'],
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1))
-            + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.hours_per_step
-            - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.hours_per_step,
+            + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.timestep_duration
+            - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.timestep_duration,
         )
         # Check initial charge state constraint
         assert_conequal(
@@ -146,7 +146,7 @@ class TestStorageModel:
 
         charge_state = model.variables['TestStorage|charge_state']
         rel_loss = 0.05
-        hours_per_step = model.hours_per_step
+        timestep_duration = model.timestep_duration
         charge_rate = model.variables['TestStorage(Q_th_in)|flow_rate']
         discharge_rate = model.variables['TestStorage(Q_th_out)|flow_rate']
         eff_charge = 0.9
@@ -155,9 +155,9 @@ class TestStorageModel:
         assert_conequal(
             model.constraints['TestStorage|charge_state'],
             charge_state.isel(time=slice(1, None))
-            == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss) ** hours_per_step
-            + charge_rate * eff_charge * hours_per_step
-            - discharge_rate / eff_discharge * hours_per_step,
+            == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss) ** timestep_duration
+            + charge_rate * eff_charge * timestep_duration
+            - discharge_rate / eff_discharge * timestep_duration,
         )
 
         # Check initial charge state constraint
@@ -242,8 +242,8 @@ class TestStorageModel:
             model.constraints['TestStorage|charge_state'],
             charge_state.isel(time=slice(1, None))
             == charge_state.isel(time=slice(None, -1))
-            + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.hours_per_step
-            - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.hours_per_step,
+            + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.timestep_duration
+            - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.timestep_duration,
         )
         # Check initial charge state constraint
         assert_conequal(
