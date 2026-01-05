@@ -127,6 +127,55 @@ def _reshape_time_for_heatmap(
 # --- Helper functions ---
 
 
+def _prepare_for_heatmap(
+    da: xr.DataArray,
+    reshape: tuple[str, str] | Literal['auto'] | None,
+    facet_col: str | Literal['auto'] | None,
+    animation_frame: str | Literal['auto'] | None,
+) -> xr.DataArray:
+    """Prepare DataArray for heatmap: determine axes, reshape if needed, transpose/squeeze."""
+    is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
+    has_time = 'time' in da.dims
+    has_multi_vars = da.sizes.get('variable', 1) > 1
+
+    # Determine heatmap axes and apply reshape if needed
+    if is_clustered and reshape in ('auto', None):
+        heatmap_dims = ['time', 'cluster']
+    elif reshape and reshape != 'auto' and has_time:
+        da = _reshape_time_for_heatmap(da, reshape)
+        heatmap_dims = ['timestep', 'timeframe']
+    elif reshape == 'auto' and has_time and not is_clustered:
+        # Check if we have room for extra dims after reshaping (adds 1 dim: time -> timestep + timeframe)
+        extra_dims = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
+        available_slots = (facet_col == 'auto') + (animation_frame == 'auto')
+        if len(extra_dims) <= available_slots:
+            da = _reshape_time_for_heatmap(da, ('D', 'h'))
+            heatmap_dims = ['timestep', 'timeframe']
+        elif has_multi_vars:
+            heatmap_dims = ['variable', 'time']
+        else:
+            heatmap_dims = [d for d in da.dims if da.sizes[d] > 1][:2] or list(da.dims)[:2]
+    elif has_multi_vars:
+        heatmap_dims = ['variable', 'time']
+    else:
+        heatmap_dims = [d for d in da.dims if da.sizes[d] > 1][:2] or list(da.dims)[:2]
+
+    # Transpose: heatmap dims first, then others
+    other_dims = [d for d in da.dims if d not in heatmap_dims]
+    da = da.transpose(*[d for d in heatmap_dims if d in da.dims], *other_dims)
+
+    # Squeeze single-element dims (except heatmap axes)
+    for dim in list(da.dims):
+        if dim not in heatmap_dims and da.sizes[dim] == 1:
+            da = da.squeeze(dim, drop=True)
+
+    # Clear name for multiple variables (colorbar would show first var's name)
+    if has_multi_vars:
+        da = da.rename('')
+
+    return da
+
+
 def _filter_by_pattern(
     names: list[str],
     include: FilterType | None,
@@ -1503,82 +1552,25 @@ class StatisticsPlotAccessor:
             PlotResult with processed data and figure.
         """
         solution = self._stats._require_solution()
-
         if isinstance(variables, str):
             variables = [variables]
 
-        # Resolve flow labels to variable names
-        resolved_variables = self._resolve_variable_names(variables, solution)
+        # Resolve, select, and stack into single DataArray
+        resolved = self._resolve_variable_names(variables, solution)
+        ds = _apply_selection(solution[resolved], select)
+        da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
-        ds = solution[resolved_variables]
-        ds = _apply_selection(ds, select)
+        # Prepare for heatmap (reshape, transpose, squeeze)
+        da = _prepare_for_heatmap(da, reshape, facet_col, animation_frame)
 
-        # Stack variables into single DataArray
-        variable_names = list(ds.data_vars)
-        dataarrays = [ds[var] for var in variable_names]
-        da = xr.concat(dataarrays, dim=pd.Index(variable_names, name='variable'))
-
-        # Check if data is clustered (has cluster dimension with size > 1)
-        is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
-        has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
-
-        # Count extra dims (beyond time) - if too many, skip reshape to avoid dimension explosion
-        # Reshape adds 1 dim (time -> timestep + timeframe), so check available slots
-        extra_dims = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
-        # Count available slots: 'auto' means available, None/explicit means not available
-        available_slots = (1 if facet_col == 'auto' else 0) + (1 if animation_frame == 'auto' else 0)
-        can_reshape = len(extra_dims) <= available_slots
-
-        # Apply time reshape if needed (creates timestep/timeframe dims)
-        if is_clustered and (reshape == 'auto' or reshape is None):
-            # Clustered data: use (time, cluster) as natural 2D heatmap axes
-            heatmap_dims = ['time', 'cluster']
-        elif reshape and reshape != 'auto' and 'time' in da.dims:
-            # Non-clustered with explicit reshape: reshape time to (day, hour) etc.
-            da = _reshape_time_for_heatmap(da, reshape)
-            heatmap_dims = ['timestep', 'timeframe']
-        elif reshape == 'auto' and 'time' in da.dims and not is_clustered and can_reshape:
-            # Auto mode for non-clustered: use default ('D', 'h') reshape only if not too many dims
-            da = _reshape_time_for_heatmap(da, ('D', 'h'))
-            heatmap_dims = ['timestep', 'timeframe']
-        elif has_multiple_vars:
-            # Can't reshape but have multiple vars: use variable + time as heatmap axes
-            heatmap_dims = ['variable', 'time']
-        else:
-            # Fallback: use first two available dimensions
-            available_dims = [d for d in da.dims if da.sizes[d] > 1]
-            heatmap_dims = available_dims[:2] if len(available_dims) >= 2 else list(da.dims)[:2]
-
-        # Transpose so heatmap dims come first (px.imshow uses first 2 dims as y/x axes)
-        other_dims = [d for d in da.dims if d not in heatmap_dims]
-        dim_order = [d for d in heatmap_dims if d in da.dims] + other_dims
-        # Always transpose to ensure correct dim order (even if seemingly equal, xarray dim order matters)
-        da = da.transpose(*dim_order)
-
-        # Squeeze single-element dims (except heatmap axes) to avoid 3D shape errors
-        for dim in list(da.dims):
-            if dim not in heatmap_dims and da.sizes[dim] == 1:
-                da = da.squeeze(dim, drop=True)
-
-        # Clear name for multiple variables (colorbar would show first var's name)
-        if has_multiple_vars:
-            da = da.rename('')
-
-        # Let fxplot handle slot assignment for facet/animation
-        fig = da.fxplot.heatmap(
-            colors=colors,
-            facet_col=facet_col,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
+        fig = da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs)
 
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        reshaped_ds = da.to_dataset(name='value') if isinstance(da, xr.DataArray) else da
-        return PlotResult(data=reshaped_ds, figure=fig)
+        return PlotResult(data=da.to_dataset(name='value'), figure=fig)
 
     def flows(
         self,
