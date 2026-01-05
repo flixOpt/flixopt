@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+import warnings
 from typing import Any, Literal
 
 import pandas as pd
@@ -12,8 +12,6 @@ import xarray as xr
 
 from .color_processing import ColorType, process_colors
 from .config import CONFIG
-
-logger = logging.getLogger('flixopt')
 
 
 def _get_x_dim(dims: list[str], n_data_vars: int = 1, x: str | Literal['auto'] | None = 'auto') -> str:
@@ -104,15 +102,17 @@ def _resolve_auto_facets(
         if available_slot_count < 4:
             # Some slots weren't available (e.g., pie doesn't support animation_frame)
             unavailable_slots = [k for k, v in slots.items() if v is None]
-            logger.warning(
+            warnings.warn(
                 f'Dimensions {unassigned} not assigned to any plot dimension. '
                 f'Not available for this plot type: {unavailable_slots}. '
-                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).'
+                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).',
+                stacklevel=3,
             )
         else:
-            logger.warning(
+            warnings.warn(
                 f'Dimensions {unassigned} not assigned to color/facet/animation. '
-                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).'
+                f'Reduce dimensions before plotting (e.g., .sel(), .isel(), .mean()).',
+                stacklevel=3,
             )
 
     return results['color'], results['facet_col'], results['facet_row'], results['animation_frame']
