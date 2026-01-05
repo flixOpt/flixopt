@@ -110,6 +110,10 @@ docs = [
     "mkdocs-git-revision-date-localized-plugin==1.5.0",
     "mkdocs-minify-plugin==0.8.0",
     "notebook>=7.5.0",
+    # Realistic profile generation for examples
+    "demandlib >= 0.2.2, < 0.3",
+    "pvlib >= 0.10.0, < 0.14",
+    "holidays >= 0.40, < 1",
 ]
 
 [project.urls]
@@ -205,17 +209,11 @@ filterwarnings = [
     "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
     "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
 
-    # === Treat flixopt warnings as errors (strict mode for our code) ===
+    # === Treat most flixopt warnings as errors (strict mode for our code) ===
     # This ensures we catch deprecations, future changes, and user warnings in our own code
     "error::DeprecationWarning:flixopt",
     "error::FutureWarning:flixopt",
     "error::UserWarning:flixopt",
-
-    # === Third-party warnings (mirrored from __init__.py) ===
-    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
-    "ignore:Coordinates across variables not equal:UserWarning:linopy",
-    "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
-    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
 

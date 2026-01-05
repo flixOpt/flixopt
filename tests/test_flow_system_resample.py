@@ -128,7 +128,7 @@ def test_time_metadata_updated(simple_fs):
     """Test time metadata correctly updated."""
     fs_r = simple_fs.resample('3h', method='mean')
     assert len(fs_r.timesteps) == 8
-    assert_allclose(fs_r.hours_per_timestep.values, 3.0)
+    assert_allclose(fs_r.timestep_duration.values, 3.0)
     assert fs_r.hours_of_last_timestep == 3.0
 
 

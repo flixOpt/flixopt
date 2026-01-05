@@ -277,6 +277,156 @@ flow_system.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
 flow_system.to_netcdf('results/optimized_system.nc')
 ```
 
+## Comparing Multiple Systems
+
+Use the [`Comparison`][flixopt.comparison.Comparison] class to analyze and visualize multiple FlowSystems side-by-side. This is useful for:
+
+- Comparing different design alternatives (with/without CHP, different storage sizes)
+- Analyzing optimization method trade-offs (full vs. two-stage, different aggregation levels)
+- Sensitivity analysis (different scenarios, parameter variations)
+
+### Basic Usage
+
+```python
+import flixopt as fx
+
+# Optimize two system variants
+fs_baseline = create_system()
+fs_baseline.name = 'Baseline'
+fs_baseline.optimize(solver)
+
+fs_with_storage = create_system_with_storage()
+fs_with_storage.name = 'With Storage'
+fs_with_storage.optimize(solver)
+
+# Create comparison
+comp = fx.Comparison([fs_baseline, fs_with_storage])
+
+# Side-by-side balance plots (auto-faceted by 'case' dimension)
+comp.statistics.plot.balance('Heat')
+
+# Access combined data with 'case' dimension
+comp.statistics.flow_rates  # xr.Dataset with dims: (time, case)
+comp.solution  # Combined solution dataset
+```
+
+### Requirements
+
+All FlowSystems must have **matching core dimensions** (`time`, `period`, `scenario`). Auxiliary dimensions like `cluster_boundary` are ignored. If core dimensions differ, use `.transform.sel()` to align them first:
+
+```python
+# Systems with different scenarios
+fs_both = flow_system  # Has 'Mild Winter' and 'Harsh Winter' scenarios
+fs_mild = flow_system.transform.sel(scenario='Mild Winter')  # Single scenario
+
+# Cannot compare directly - scenario dimension mismatch!
+# fx.Comparison([fs_both, fs_mild])  # Raises ValueError
+
+# Instead, select matching dimensions
+fs_both_mild = fs_both.transform.sel(scenario='Mild Winter')
+comp = fx.Comparison([fs_both_mild, fs_mild])  # Works!
+
+# Auxiliary dimensions are OK (e.g., expanded clustered solutions)
+fs_expanded = fs_clustered.transform.expand_solution()  # Has cluster_boundary dim
+comp = fx.Comparison([fs_full, fs_expanded])  # Works! cluster_boundary is ignored
+```
+
+### Available Properties
+
+The `Comparison.statistics` accessor mirrors all `StatisticsAccessor` properties, returning combined datasets with an added `'case'` dimension:
+
+| Property | Description |
+|----------|-------------|
+| `flow_rates` | All flow rate variables |
+| `flow_hours` | Flow hours (energy) |
+| `sizes` | Component sizes |
+| `storage_sizes` | Storage capacities |
+| `charge_states` | Storage charge states |
+| `temporal_effects` | Effects per timestep |
+| `periodic_effects` | Investment effects |
+| `total_effects` | Combined effects |
+
+### Available Plot Methods
+
+All standard plot methods work on the comparison, with the `'case'` dimension automatically used for faceting:
+
+```python
+comp = fx.Comparison([fs_baseline, fs_modified])
+
+# Balance plots - faceted by case
+comp.statistics.plot.balance('Heat')
+comp.statistics.plot.balance('Electricity', mode='area')
+
+# Flow plots
+comp.statistics.plot.flows(component='CHP')
+
+# Effect breakdowns
+comp.statistics.plot.effects()
+
+# Heatmaps
+comp.statistics.plot.heatmap('Boiler(Q_th)')
+
+# Duration curves
+comp.statistics.plot.duration_curve('CHP(Q_th)')
+
+# Storage plots
+comp.statistics.plot.storage('Battery')
+```
+
+### Computing Differences
+
+Use the `diff()` method to compute differences relative to a reference case:
+
+```python
+# Differences relative to first case (default)
+differences = comp.diff()
+
+# Differences relative to specific case
+differences = comp.diff(reference='Baseline')
+differences = comp.diff(reference=0)  # By index
+
+# Analyze differences
+print(differences['costs'])  # Cost difference per case
+```
+
+### Naming Systems
+
+System names come from `FlowSystem.name` by default. Override with the `names` parameter:
+
+```python
+# Using FlowSystem.name (default)
+fs1.name = 'Scenario A'
+fs2.name = 'Scenario B'
+comp = fx.Comparison([fs1, fs2])
+
+# Or override explicitly
+comp = fx.Comparison([fs1, fs2], names=['Base Case', 'Alternative'])
+```
+
+### Example: Comparing Optimization Methods
+
+```python
+# Full optimization
+fs_full = flow_system.copy()
+fs_full.name = 'Full Optimization'
+fs_full.optimize(solver)
+
+# Two-stage optimization
+fs_sizing = flow_system.transform.resample('4h')
+fs_sizing.optimize(solver)
+fs_dispatch = flow_system.transform.fix_sizes(fs_sizing.statistics.sizes)
+fs_dispatch.name = 'Two-Stage'
+fs_dispatch.optimize(solver)
+
+# Compare results
+comp = fx.Comparison([fs_full, fs_dispatch])
+comp.statistics.plot.balance('Heat')
+
+# Check cost difference
+diff = comp.diff()
+print(f"Cost difference: {diff['costs'].sel(case='Two-Stage').item():.0f} €")
+```
+
 ## Next Steps
 
 - [Plotting Results](../results-plotting.md) - Detailed plotting documentation
