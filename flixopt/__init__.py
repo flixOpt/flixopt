@@ -17,6 +17,7 @@ from . import clustering, linear_converters, plotting, results, solvers
 # Register xr.Dataset.fxplot accessor (import triggers registration via decorator)
 from . import dataset_plot_accessor as _  # noqa: F401
 from .carrier import Carrier, CarrierContainer
+from .comparison import Comparison
 from .components import (
     LinearConverter,
     Sink,
@@ -39,6 +40,7 @@ __all__ = [
     'CONFIG',
     'Carrier',
     'CarrierContainer',
+    'Comparison',
     'Flow',
     'Bus',
     'Effect',
