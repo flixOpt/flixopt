@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -73,11 +73,10 @@ jobs:
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
-        env:
-          PYTHONPATH: docs/notebooks
         run: |
           # Execute all notebooks in parallel (4 at a time)
-          find docs/notebooks -name '*.ipynb' -print0 | \
+          # Run from notebooks directory so relative imports work
+          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
             xargs -0 -P 4 -I {} jupyter execute --inplace {}
 
       - name: Build docs
@@ -99,7 +98,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -136,10 +135,8 @@ jobs:
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
-        env:
-          PYTHONPATH: docs/notebooks
         run: |
-          find docs/notebooks -name '*.ipynb' -print0 | \
+          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
             xargs -0 -P 4 -I {} jupyter execute --inplace {}
 
       - name: Configure Git
