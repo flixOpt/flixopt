@@ -31,6 +31,7 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
+from .dataset_plot_accessor import assign_slots
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -1520,28 +1521,9 @@ class StatisticsPlotAccessor:
 
         # Check if data is clustered (has cluster dimension with size > 1)
         is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
-
-        # Determine facet and animation from available dims
         has_multiple_vars = 'variable' in da.dims and da.sizes['variable'] > 1
 
-        # For heatmap, facet defaults to 'variable' if multiple vars
-        # Resolve 'auto' to None for heatmap (no auto-faceting by time etc.)
-        if facet_col == 'auto':
-            resolved_facet = 'variable' if has_multiple_vars else None
-        else:
-            resolved_facet = facet_col
-
-        # Resolve animation_frame - 'auto' means None for heatmap (no auto-animation)
-        if animation_frame == 'auto':
-            resolved_anim = None
-        else:
-            resolved_anim = animation_frame
-
-        # Don't use 'variable' for animation if it's used for facet
-        if resolved_anim == 'variable' and has_multiple_vars:
-            resolved_anim = None
-
-        # Determine heatmap dimensions based on data structure
+        # Apply time reshape if needed (creates timestep/timeframe dims)
         if is_clustered and (reshape == 'auto' or reshape is None):
             # Clustered data: use (time, cluster) as natural 2D heatmap axes
             heatmap_dims = ['time', 'cluster']
@@ -1556,26 +1538,34 @@ class StatisticsPlotAccessor:
         elif has_multiple_vars:
             # Can't reshape but have multiple vars: use variable + time as heatmap axes
             heatmap_dims = ['variable', 'time']
-            # variable is now a heatmap dim, use user's facet choice
-            resolved_facet = facet_col
         else:
             # Fallback: use first two available dimensions
             available_dims = [d for d in da.dims if da.sizes[d] > 1]
-            if len(available_dims) >= 2:
-                heatmap_dims = available_dims[:2]
-            elif 'time' in da.dims:
-                heatmap_dims = ['time']
-            else:
-                heatmap_dims = list(da.dims)[:1]
+            heatmap_dims = available_dims[:2] if len(available_dims) >= 2 else list(da.dims)[:2]
 
-        # Keep only dims we need
-        keep_dims = set(heatmap_dims) | {d for d in [resolved_facet, resolved_anim] if d is not None}
+        # Resolve facet/animation using assign_slots, excluding heatmap dims
+        ds_temp = da.to_dataset(name='_temp')
+        slots = assign_slots(
+            ds_temp,
+            x=None,
+            color=None,
+            facet_col=facet_col,
+            facet_row=None,
+            animation_frame=animation_frame,
+            exclude_dims=set(heatmap_dims),
+        )
+
+        # Keep only dims we need (heatmap axes + facet/animation)
+        keep_dims = set(heatmap_dims) | {d for d in [slots['facet_col'], slots['animation_frame']] if d}
         for dim in [d for d in da.dims if d not in keep_dims]:
             da = da.isel({dim: 0}, drop=True) if da.sizes[dim] > 1 else da.squeeze(dim, drop=True)
 
-        # Transpose to expected order
-        dim_order = heatmap_dims + [d for d in [resolved_facet, resolved_anim] if d]
-        da = da.transpose(*dim_order)
+        # Transpose to expected order (heatmap dims first)
+        dim_order = [d for d in heatmap_dims if d in da.dims] + [
+            d for d in [slots['facet_col'], slots['animation_frame']] if d and d in da.dims
+        ]
+        if len(dim_order) == len(da.dims):
+            da = da.transpose(*dim_order)
 
         # Clear name for multiple variables (colorbar would show first var's name)
         if has_multiple_vars:
@@ -1583,8 +1573,8 @@ class StatisticsPlotAccessor:
 
         fig = da.fxplot.heatmap(
             colors=colors,
-            facet_col=resolved_facet,
-            animation_frame=resolved_anim,
+            facet_col=slots['facet_col'],
+            animation_frame=slots['animation_frame'],
             **plotly_kwargs,
         )
 
@@ -1723,23 +1713,18 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
-        df = _dataset_to_long_df(ds)
-        if df.empty:
+        if not ds.data_vars:
             fig = go.Figure()
         else:
-            variables = df['variable'].unique().tolist()
-            color_map = process_colors(colors, variables)
-            fig = px.bar(
-                df,
+            fig = ds.fxplot.bar(
                 x='variable',
-                y='value',
                 color='variable',
+                colors=colors,
+                title='Investment Sizes',
+                ylabel='Size',
                 facet_col=facet_col,
                 facet_row=facet_row,
                 animation_frame=animation_frame,
-                color_discrete_map=color_map,
-                title='Investment Sizes',
-                labels={'variable': 'Flow', 'value': 'Size'},
                 **plotly_kwargs,
             )
 
@@ -1974,10 +1959,13 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
-        # Resolve facets
-
         # Convert to DataFrame for plotly express
         df = combined.to_dataframe(name='value').reset_index()
+
+        # Resolve facet/animation: 'auto' means None for DataFrames (no dimension priority)
+        resolved_facet_col = None if facet_col == 'auto' else facet_col
+        resolved_facet_row = None if facet_row == 'auto' else facet_row
+        resolved_animation = None if animation_frame == 'auto' else animation_frame
 
         # Build color map
         if color_col and color_col in df.columns:
@@ -2001,9 +1989,9 @@ class StatisticsPlotAccessor:
             y='value',
             color=color_col,
             color_discrete_map=color_map,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
+            facet_col=resolved_facet_col,
+            facet_row=resolved_facet_row,
+            animation_frame=resolved_animation,
             title=title,
             **plotly_kwargs,
         )
@@ -2143,57 +2131,45 @@ class StatisticsPlotAccessor:
         # Apply selection
         ds = _apply_selection(ds, select)
 
-        # Build color map
+        # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
+        flow_ds = ds[flow_labels]
+        charge_da = ds['charge_state']
+
+        # Build color map for flows
         if colors is None:
             colors = self._get_color_map_for_balance(storage, flow_labels)
-        color_map = process_colors(colors, flow_labels)
-        color_map['charge_state'] = 'black'
 
-        # Convert to long-form DataFrame
-        df = _dataset_to_long_df(ds)
-
-        # Create figure with facets using px.bar for flows
-        flow_df = df[df['variable'] != 'charge_state']
-        charge_df = df[df['variable'] == 'charge_state']
-
-        fig = px.bar(
-            flow_df,
+        # Create stacked bar chart for flows using fxplot
+        fig = flow_ds.fxplot.stacked_bar(
             x='time',
-            y='value',
             color='variable',
+            colors=colors,
+            title=f'{storage} Operation ({unit})',
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
-            color_discrete_map=color_map,
-            title=f'{storage} Operation ({unit})',
             **plotly_kwargs,
         )
-        fig.update_layout(bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
 
         # Add charge state as line on secondary y-axis
-        if not charge_df.empty:
-            # Create line figure with same facets to get matching trace structure
-            line_fig = px.line(
-                charge_df,
+        if charge_da.size > 0:
+            # Create line figure with same facets
+            line_fig = charge_da.fxplot.line(
                 x='time',
-                y='value',
+                color=None,  # Single line, no color grouping
                 facet_col=facet_col,
                 facet_row=facet_row,
                 animation_frame=animation_frame,
             )
 
             # Get the primary y-axes from the bar figure to create matching secondary axes
-            # px creates axes named: yaxis, yaxis2, yaxis3, etc.
             primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
 
             # For each primary y-axis, create a secondary y-axis
             for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-                # Determine secondary axis name (y -> y2, y2 -> y3 pattern won't work)
-                # Instead use a consistent offset: yaxis -> yaxis10, yaxis2 -> yaxis11, etc.
                 primary_num = primary_key[5:] if primary_key[5:] else '1'
-                secondary_num = int(primary_num) + 100  # Use high offset to avoid conflicts
+                secondary_num = int(primary_num) + 100
                 secondary_key = f'yaxis{secondary_num}'
                 secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
 
@@ -2207,14 +2183,13 @@ class StatisticsPlotAccessor:
 
             # Add line traces with correct axis assignments
             for i, trace in enumerate(line_fig.data):
-                # Map trace index to secondary y-axis
                 primary_num = i + 1 if i > 0 else 1
                 secondary_yaxis = f'y{primary_num + 100}'
 
                 trace.name = 'charge_state'
                 trace.line = dict(color=charge_state_color, width=2)
                 trace.yaxis = secondary_yaxis
-                trace.showlegend = i == 0  # Only show legend for first trace
+                trace.showlegend = i == 0
                 trace.legendgroup = 'charge_state'
                 fig.add_trace(trace)
 

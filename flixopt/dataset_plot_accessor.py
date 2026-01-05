@@ -504,9 +504,17 @@ class DatasetPlotAccessor:
         colors = colors or CONFIG.Plotting.default_sequential_colorscale
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
-        # Heatmap uses imshow - x/y come from array axes, color is continuous
+        # Heatmap uses imshow - first 2 dims are the x/y axes of the heatmap
+        # Exclude these from slot assignment
+        heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
         slots = assign_slots(
-            self._ds, x=None, color=None, facet_col=facet_col, facet_row=None, animation_frame=animation_frame
+            self._ds,
+            x=None,
+            color=None,
+            facet_col=facet_col,
+            facet_row=None,
+            animation_frame=animation_frame,
+            exclude_dims=heatmap_axes,
         )
 
         imshow_args: dict[str, Any] = {
@@ -914,10 +922,18 @@ class DataArrayPlotAccessor:
         colors = colors or CONFIG.Plotting.default_sequential_colorscale
         facet_col_wrap = facet_cols or CONFIG.Plotting.default_facet_cols
 
-        # Heatmap uses imshow - x/y come from array axes, color is continuous
+        # Heatmap uses imshow - first 2 dims are the x/y axes of the heatmap
+        # Exclude these from slot assignment
+        heatmap_axes = set(list(da.dims)[:2]) if len(da.dims) >= 2 else set()
         ds_for_resolution = da.to_dataset(name='_temp')
         slots = assign_slots(
-            ds_for_resolution, x=None, color=None, facet_col=facet_col, facet_row=None, animation_frame=animation_frame
+            ds_for_resolution,
+            x=None,
+            color=None,
+            facet_col=facet_col,
+            facet_row=None,
+            animation_frame=animation_frame,
+            exclude_dims=heatmap_axes,
         )
 
         imshow_args: dict[str, Any] = {
