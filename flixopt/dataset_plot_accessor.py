@@ -525,7 +525,6 @@ class DatasetPlotAccessor:
             resolved_animation = animation_frame
 
         imshow_args: dict[str, Any] = {
-            'img': da,
             'color_continuous_scale': colors,
             'title': title or variable,
         }
@@ -537,6 +536,18 @@ class DatasetPlotAccessor:
 
         if resolved_animation and resolved_animation in da.dims:
             imshow_args['animation_frame'] = resolved_animation
+
+        # Squeeze singleton dimensions not used for faceting/animation
+        # px.imshow can't handle extra singleton dims in multi-dimensional data
+        dims_to_preserve = set(list(da.dims)[:2])  # First 2 dims are heatmap x/y axes
+        if resolved_facet and resolved_facet in da.dims:
+            dims_to_preserve.add(resolved_facet)
+        if resolved_animation and resolved_animation in da.dims:
+            dims_to_preserve.add(resolved_animation)
+        for dim in list(da.dims):
+            if dim not in dims_to_preserve and da.sizes[dim] == 1:
+                da = da.squeeze(dim)
+        imshow_args['img'] = da
 
         # Use binary_string=False to handle non-numeric coords (e.g., string labels)
         if 'binary_string' not in imshow_kwargs:
@@ -955,7 +966,6 @@ class DataArrayPlotAccessor:
             resolved_animation = animation_frame
 
         imshow_args: dict[str, Any] = {
-            'img': da,
             'color_continuous_scale': colors,
             'title': title or (da.name if da.name else ''),
         }
@@ -967,6 +977,18 @@ class DataArrayPlotAccessor:
 
         if resolved_animation and resolved_animation in da.dims:
             imshow_args['animation_frame'] = resolved_animation
+
+        # Squeeze singleton dimensions not used for faceting/animation
+        # px.imshow can't handle extra singleton dims in multi-dimensional data
+        dims_to_preserve = set(list(da.dims)[:2])  # First 2 dims are heatmap x/y axes
+        if resolved_facet and resolved_facet in da.dims:
+            dims_to_preserve.add(resolved_facet)
+        if resolved_animation and resolved_animation in da.dims:
+            dims_to_preserve.add(resolved_animation)
+        for dim in list(da.dims):
+            if dim not in dims_to_preserve and da.sizes[dim] == 1:
+                da = da.squeeze(dim)
+        imshow_args['img'] = da
 
         # Use binary_string=False to handle non-numeric coords (e.g., string labels)
         if 'binary_string' not in imshow_kwargs:
