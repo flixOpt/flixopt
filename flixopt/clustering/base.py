@@ -827,6 +827,11 @@ class ClusteringPlotAccessor:
         heatmap_da = heatmap_da.assign_coords(y=['Cluster'])
         heatmap_da.name = 'cluster_assignment'
 
+        # Reorder dims so 'time' and 'y' are first (heatmap x/y axes)
+        # Other dims (period, scenario) will be used for faceting/animation
+        target_order = ['time', 'y'] + [d for d in heatmap_da.dims if d not in ('time', 'y')]
+        heatmap_da = heatmap_da.transpose(*target_order)
+
         # Use fxplot.heatmap for smart defaults
         fig = heatmap_da.fxplot.heatmap(
             colors=colors,
