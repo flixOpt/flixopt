@@ -182,29 +182,6 @@ The following items are deprecated and will be removed in **v7.0.0**:
 - `Results` class → Use `flow_system.solution` and `flow_system.statistics`
 - `SegmentedResults` class → Use segment FlowSystems directly
 
-**FlowSystem methods** (use `transform` or `topology` accessor instead):
-
-- `flow_system.sel()` → Use `flow_system.transform.sel()`
-- `flow_system.isel()` → Use `flow_system.transform.isel()`
-- `flow_system.resample()` → Use `flow_system.transform.resample()`
-- `flow_system.plot_network()` → Use `flow_system.topology.plot()`
-- `flow_system.start_network_app()` → Use `flow_system.topology.start_app()`
-- `flow_system.stop_network_app()` → Use `flow_system.topology.stop_app()`
-- `flow_system.network_infos()` → Use `flow_system.topology.infos()`
-
-**Parameters:**
-
-- `normalize_weights` parameter in `create_model()`, `build_model()`, `optimize()`
-
-**Topology method name simplifications** (old names still work with deprecation warnings, removal in v7.0.0):
-
-| Old (v5.x) | New (v6.0.0) |
-|------------|--------------|
-| `topology.plot_network()` | `topology.plot()` |
-| `topology.start_network_app()` | `topology.start_app()` |
-| `topology.stop_network_app()` | `topology.stop_app()` |
-| `topology.network_infos()` | `topology.infos()` |
-
 Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualization is available via `topology.plot_legacy()`.
 
 ### 🔥 Removed
@@ -214,6 +191,20 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 - `ClusteredOptimization` class - Use `flow_system.transform.cluster()` then `optimize()`
 - `ClusteringParameters` class - Parameters are now passed directly to `transform.cluster()`
 - `flixopt/clustering.py` module - Restructured to `flixopt/clustering/` package with new classes
+
+**FlowSystem deprecated methods removed** (use `transform` or `topology` accessor instead):
+
+- `flow_system.sel()` → Use `flow_system.transform.sel()`
+- `flow_system.isel()` → Use `flow_system.transform.isel()`
+- `flow_system.resample()` → Use `flow_system.transform.resample()`
+- `flow_system.plot_network()` → Use `flow_system.topology.plot()`
+- `flow_system.start_network_app()` → Use `flow_system.topology.start_app()`
+- `flow_system.stop_network_app()` → Use `flow_system.topology.stop_app()`
+- `flow_system.network_infos()` → Use `flow_system.topology.infos()`
+
+**Parameters removed:**
+
+- `normalize_weights` parameter removed from `create_model()`, `build_model()`, `optimize()` (weights are always normalized)
 
 #### Migration from ClusteredOptimization
 

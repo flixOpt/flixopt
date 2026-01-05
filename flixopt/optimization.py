@@ -82,7 +82,6 @@ def _initialize_optimization_common(
     name: str,
     flow_system: FlowSystem,
     folder: pathlib.Path | None = None,
-    normalize_weights: bool | None = None,
 ) -> None:
     """
     Shared initialization logic for all optimization types.
@@ -95,7 +94,6 @@ def _initialize_optimization_common(
         name: Name of the optimization
         flow_system: FlowSystem to optimize
         folder: Directory for saving results
-        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
     """
     obj.name = name
 
@@ -105,9 +103,6 @@ def _initialize_optimization_common(
             f'Creating a copy of the FlowSystem for Optimization "{obj.name}".'
         )
         flow_system = flow_system.copy()
-
-    # normalize_weights is deprecated but kept for backwards compatibility
-    obj.normalize_weights = True  # Always True now
 
     flow_system._used_in_optimization = True
 
@@ -138,7 +133,6 @@ class Optimization:
         name: name of optimization
         flow_system: flow_system which should be optimized
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
 
     Examples:
         Basic usage:
@@ -159,14 +153,12 @@ class Optimization:
     results: Results | None
     durations: dict[str, float]
     model: FlowSystemModel | None
-    normalize_weights: bool
 
     def __init__(
         self,
         name: str,
         flow_system: FlowSystem,
         folder: pathlib.Path | None = None,
-        normalize_weights: bool = True,
     ):
         warnings.warn(
             f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
@@ -180,7 +172,6 @@ class Optimization:
             name=name,
             flow_system=flow_system,
             folder=folder,
-            normalize_weights=normalize_weights,
         )
 
     def do_modeling(self) -> Optimization:
@@ -470,7 +461,6 @@ class SegmentedOptimization:
     results: SegmentedResults | None
     durations: dict[str, float]
     model: None  # SegmentedOptimization doesn't use a single model
-    normalize_weights: bool
 
     def __init__(
         self,

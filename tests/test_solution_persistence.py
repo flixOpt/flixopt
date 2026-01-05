@@ -382,13 +382,6 @@ class TestFlowSystemDirectMethods:
         # Model should have variables
         assert len(simple_flow_system.model.variables) > 0
 
-    def test_build_model_with_normalize_weights_false(self, simple_flow_system):
-        """build_model() should respect normalize_weights parameter."""
-        simple_flow_system.build_model(normalize_weights=False)
-
-        # Model should be created
-        assert simple_flow_system.model is not None
-
     def test_solve_without_build_model_raises(self, simple_flow_system, highs_solver):
         """solve() should raise if model not built."""
         with pytest.raises(RuntimeError, match='Model has not been built'):
@@ -436,12 +429,6 @@ class TestFlowSystemDirectMethods:
         assert solution is not None
         assert isinstance(solution, xr.Dataset)
         assert len(solution.data_vars) > 0
-
-    def test_optimize_with_normalize_weights_false(self, simple_flow_system, highs_solver):
-        """optimize() should respect normalize_weights parameter."""
-        simple_flow_system.optimize(highs_solver, normalize_weights=False)
-
-        assert simple_flow_system.solution is not None
 
     def test_model_accessible_after_build(self, simple_flow_system):
         """Model should be inspectable after build_model()."""

@@ -50,7 +50,7 @@ def test_flow_system_file_io(flow_system, highs_solver, request):
     calculation_0 = fx.Optimization(f'IO-{test_id}', flow_system=flow_system)
     calculation_0.do_modeling()
     calculation_0.solve(highs_solver)
-    calculation_0.flow_system.plot_network()
+    calculation_0.flow_system.topology.plot()
 
     calculation_0.results.to_file()
     paths = ResultsPaths(calculation_0.folder, calculation_0.name)
@@ -59,7 +59,7 @@ def test_flow_system_file_io(flow_system, highs_solver, request):
     calculation_1 = fx.Optimization(f'Loaded_IO-{test_id}', flow_system=flow_system_1)
     calculation_1.do_modeling()
     calculation_1.solve(highs_solver)
-    calculation_1.flow_system.plot_network()
+    calculation_1.flow_system.topology.plot()
 
     assert_almost_equal_numeric(
         calculation_0.results.model.objective.value,
