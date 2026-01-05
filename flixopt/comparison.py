@@ -72,7 +72,7 @@ class Comparison:
             raise ValueError('Comparison requires at least 2 FlowSystems')
 
         self._systems = flow_systems
-        self._names = names or [fs.name for fs in flow_systems]
+        self._names = names or [fs.name or f'System {i}' for i, fs in enumerate(flow_systems)]
 
         if len(self._names) != len(self._systems):
             raise ValueError(
