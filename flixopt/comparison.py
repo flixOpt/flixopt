@@ -577,17 +577,14 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        # Get the data array
-        da = ds[aspect] if aspect in ds else ds[next(iter(ds.data_vars))]
-
         by = data_kw.get('by')
-        x_col = by if by else 'effect'
+        # After to_dataset(dim='effect'), effects become variables -> 'variable' column
+        x_col = by if by else 'variable'
+        color_col = 'variable' if len(ds.data_vars) > 1 else x_col
 
-        # Convert to Dataset along 'effect' dimension (each effect becomes a variable)
-        plot_ds = da.to_dataset(dim='effect') if 'effect' in da.dims else da.to_dataset(name=aspect)
-        fig = plot_ds.fxplot.bar(
+        fig = ds.fxplot.bar(
             x=x_col,
-            color=x_col,
+            color=color_col,
             colors=colors,
             title=title,
             facet_col=facet_col,
