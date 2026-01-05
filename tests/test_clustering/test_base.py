@@ -17,7 +17,7 @@ class TestClusterStructure:
 
     def test_basic_creation(self):
         """Test basic ClusterStructure creation."""
-        cluster_order = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_period'])
+        cluster_order = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_cluster'])
         cluster_occurrences = xr.DataArray([3, 2, 1], dims=['cluster'])
 
         structure = ClusterStructure(
@@ -29,7 +29,7 @@ class TestClusterStructure:
 
         assert structure.n_clusters == 3
         assert structure.timesteps_per_cluster == 24
-        assert structure.n_original_periods == 6
+        assert structure.n_original_clusters == 6
 
     def test_creation_from_numpy(self):
         """Test ClusterStructure creation from numpy arrays."""
@@ -42,12 +42,12 @@ class TestClusterStructure:
 
         assert isinstance(structure.cluster_order, xr.DataArray)
         assert isinstance(structure.cluster_occurrences, xr.DataArray)
-        assert structure.n_original_periods == 5
+        assert structure.n_original_clusters == 5
 
     def test_get_cluster_weight_per_timestep(self):
         """Test weight calculation per timestep."""
         structure = ClusterStructure(
-            cluster_order=xr.DataArray([0, 1, 0], dims=['original_period']),
+            cluster_order=xr.DataArray([0, 1, 0], dims=['original_cluster']),
             cluster_occurrences=xr.DataArray([2, 1], dims=['cluster']),
             n_clusters=2,
             timesteps_per_cluster=4,
@@ -136,7 +136,7 @@ class TestCreateClusterStructureFromMapping:
         structure = create_cluster_structure_from_mapping(mapping, timesteps_per_cluster=4)
 
         assert structure.timesteps_per_cluster == 4
-        assert structure.n_original_periods == 3
+        assert structure.n_original_clusters == 3
 
 
 class TestClustering:

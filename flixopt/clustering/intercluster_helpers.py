@@ -132,7 +132,7 @@ def extract_capacity_bounds(
 
 
 def build_boundary_coords(
-    n_original_periods: int,
+    n_original_clusters: int,
     flow_system: FlowSystem,
 ) -> tuple[dict, list[str]]:
     """Build coordinates and dimensions for SOC_boundary variable.
@@ -146,7 +146,7 @@ def build_boundary_coords(
     multi-period or stochastic optimizations.
 
     Args:
-        n_original_periods: Number of original (non-aggregated) time periods.
+        n_original_clusters: Number of original (non-aggregated) time periods.
             For example, if a year is clustered into 8 typical days but originally
             had 365 days, this would be 365.
         flow_system: The FlowSystem containing optional period/scenario dimensions.
@@ -163,7 +163,7 @@ def build_boundary_coords(
         >>> coords['cluster_boundary']
         array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14])
     """
-    n_boundaries = n_original_periods + 1
+    n_boundaries = n_original_clusters + 1
     coords = {'cluster_boundary': np.arange(n_boundaries)}
     dims = ['cluster_boundary']
 
