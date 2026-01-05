@@ -134,46 +134,41 @@ def _prepare_for_heatmap(
     animation_frame: str | Literal['auto'] | None,
 ) -> xr.DataArray:
     """Prepare DataArray for heatmap: determine axes, reshape if needed, transpose/squeeze."""
+
+    def finalize(da: xr.DataArray, heatmap_dims: list[str]) -> xr.DataArray:
+        """Transpose, squeeze, and clear name if needed."""
+        other = [d for d in da.dims if d not in heatmap_dims]
+        da = da.transpose(*[d for d in heatmap_dims if d in da.dims], *other)
+        for dim in [d for d in da.dims if d not in heatmap_dims and da.sizes[d] == 1]:
+            da = da.squeeze(dim, drop=True)
+        return da.rename('') if da.sizes.get('variable', 1) > 1 else da
+
+    def fallback_dims() -> list[str]:
+        """Default dims: (variable, time) if multi-var, else first 2 dims with size > 1."""
+        if da.sizes.get('variable', 1) > 1:
+            return ['variable', 'time']
+        dims = [d for d in da.dims if da.sizes[d] > 1][:2]
+        return dims if len(dims) >= 2 else list(da.dims)[:2]
+
     is_clustered = 'cluster' in da.dims and da.sizes['cluster'] > 1
     has_time = 'time' in da.dims
-    has_multi_vars = da.sizes.get('variable', 1) > 1
 
-    # Determine heatmap axes and apply reshape if needed
+    # Clustered: use (time, cluster) as natural 2D
     if is_clustered and reshape in ('auto', None):
-        heatmap_dims = ['time', 'cluster']
-    elif reshape and reshape != 'auto' and has_time:
-        da = _reshape_time_for_heatmap(da, reshape)
-        heatmap_dims = ['timestep', 'timeframe']
-    elif reshape == 'auto' and has_time and not is_clustered:
-        # Check if we have room for extra dims after reshaping (adds 1 dim: time -> timestep + timeframe)
-        extra_dims = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
-        available_slots = (facet_col == 'auto') + (animation_frame == 'auto')
-        if len(extra_dims) <= available_slots:
-            da = _reshape_time_for_heatmap(da, ('D', 'h'))
-            heatmap_dims = ['timestep', 'timeframe']
-        elif has_multi_vars:
-            heatmap_dims = ['variable', 'time']
-        else:
-            heatmap_dims = [d for d in da.dims if da.sizes[d] > 1][:2] or list(da.dims)[:2]
-    elif has_multi_vars:
-        heatmap_dims = ['variable', 'time']
-    else:
-        heatmap_dims = [d for d in da.dims if da.sizes[d] > 1][:2] or list(da.dims)[:2]
+        return finalize(da, ['time', 'cluster'])
 
-    # Transpose: heatmap dims first, then others
-    other_dims = [d for d in da.dims if d not in heatmap_dims]
-    da = da.transpose(*[d for d in heatmap_dims if d in da.dims], *other_dims)
+    # Explicit reshape: always apply
+    if reshape and reshape != 'auto' and has_time:
+        return finalize(_reshape_time_for_heatmap(da, reshape), ['timestep', 'timeframe'])
 
-    # Squeeze single-element dims (except heatmap axes)
-    for dim in list(da.dims):
-        if dim not in heatmap_dims and da.sizes[dim] == 1:
-            da = da.squeeze(dim, drop=True)
+    # Auto reshape (non-clustered): apply only if extra dims fit in available slots
+    if reshape == 'auto' and has_time:
+        extra = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
+        slots = (facet_col == 'auto') + (animation_frame == 'auto')
+        if len(extra) <= slots:
+            return finalize(_reshape_time_for_heatmap(da, ('D', 'h')), ['timestep', 'timeframe'])
 
-    # Clear name for multiple variables (colorbar would show first var's name)
-    if has_multi_vars:
-        da = da.rename('')
-
-    return da
+    return finalize(da, fallback_dims())
 
 
 def _filter_by_pattern(
