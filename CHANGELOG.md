@@ -149,6 +149,27 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
 
 ---
 
+## [5.0.4] - 2026-01-05
+
+**Summary**: Dependency updates.
+
+### 🐛 Fixed
+
+- Fixed netcdf dependency
+
+### 📦 Dependencies
+
+- Updated `mkdocs-material` to v9.7.1
+- Updated `mkdocstrings-python` to v1.19.0
+- Updated `ruff` to v0.14.10
+- Updated `pymdown-extensions` to v10.19.1
+- Updated `werkzeug` to v3.1.4
+
+### 👷 Development
+
+- Updated `actions/checkout` action to v6
+
+---
 
 ## [5.0.3] - 2025-12-18
 
