@@ -604,6 +604,7 @@ def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
                 'Q_th',
                 bus='Fernwärme',
                 size=100,
+                previous_flow_rate=0,  # Required for initial uptime constraint
                 status_parameters=fx.StatusParameters(max_uptime=2, min_uptime=2),
             ),
         ),

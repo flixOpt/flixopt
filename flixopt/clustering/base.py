@@ -31,6 +31,15 @@ if TYPE_CHECKING:
     from ..statistics_accessor import SelectType
 
 
+def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | None = None) -> xr.DataArray:
+    """Select from DataArray by period/scenario if those dimensions exist."""
+    if 'period' in da.dims and period is not None:
+        da = da.sel(period=period)
+    if 'scenario' in da.dims and scenario is not None:
+        da = da.sel(scenario=scenario)
+    return da
+
+
 @dataclass
 class ClusterStructure:
     """Structure information for inter-cluster storage linking.
@@ -152,12 +161,7 @@ class ClusterStructure:
         Returns:
             1D numpy array of cluster indices for the specified slice.
         """
-        order = self.cluster_order
-        if 'period' in order.dims and period is not None:
-            order = order.sel(period=period)
-        if 'scenario' in order.dims and scenario is not None:
-            order = order.sel(scenario=scenario)
-        return order.values.astype(int)
+        return _select_dims(self.cluster_order, period, scenario).values.astype(int)
 
     def get_cluster_occurrences_for_slice(
         self, period: str | None = None, scenario: str | None = None
@@ -170,13 +174,18 @@ class ClusterStructure:
 
         Returns:
             Dict mapping cluster ID to occurrence count.
+
+        Raises:
+            ValueError: If period/scenario dimensions exist but no selector was provided.
         """
-        occurrences = self.cluster_occurrences
-        if 'period' in occurrences.dims and period is not None:
-            occurrences = occurrences.sel(period=period)
-        if 'scenario' in occurrences.dims and scenario is not None:
-            occurrences = occurrences.sel(scenario=scenario)
-        return {int(c): int(occurrences.sel(cluster=c).values) for c in occurrences.coords['cluster'].values}
+        occ = _select_dims(self.cluster_occurrences, period, scenario)
+        extra_dims = [d for d in occ.dims if d != 'cluster']
+        if extra_dims:
+            raise ValueError(
+                f'cluster_occurrences has dimensions {extra_dims} that were not selected. '
+                f"Provide 'period' and/or 'scenario' arguments to select a specific slice."
+            )
+        return {int(c): int(occ.sel(cluster=c).values) for c in occ.coords['cluster'].values}
 
     def plot(self, colors: str | list[str] | None = None, show: bool | None = None) -> PlotResult:
         """Plot cluster assignment visualization.
@@ -372,12 +381,7 @@ class ClusterResult:
         Returns:
             1D numpy array of representative timestep indices for the specified slice.
         """
-        mapping = self.timestep_mapping
-        if 'period' in mapping.dims and period is not None:
-            mapping = mapping.sel(period=period)
-        if 'scenario' in mapping.dims and scenario is not None:
-            mapping = mapping.sel(scenario=scenario)
-        return mapping.values.astype(int)
+        return _select_dims(self.timestep_mapping, period, scenario).values.astype(int)
 
     def expand_data(self, aggregated: xr.DataArray, original_time: xr.DataArray | None = None) -> xr.DataArray:
         """Expand aggregated data back to original timesteps.
@@ -400,89 +404,61 @@ class ClusterResult:
             >>> expanded = result.expand_data(aggregated_values)
             >>> len(expanded.time) == len(original_timesteps)  # True
         """
-        import pandas as pd
-
         if original_time is None:
             if self.original_data is None:
                 raise ValueError('original_time required when original_data is not available')
             original_time = self.original_data.coords['time']
 
         timestep_mapping = self.timestep_mapping
-        has_periods = 'period' in timestep_mapping.dims
-        has_scenarios = 'scenario' in timestep_mapping.dims
         has_cluster_dim = 'cluster' in aggregated.dims
+        timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster if has_cluster_dim else None
 
-        # Simple case: no period/scenario dimensions
-        if not has_periods and not has_scenarios:
-            mapping = timestep_mapping.values
+        def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
+            """Expand a single slice using the mapping."""
+            # Validate that data has only expected dimensions for indexing
+            expected_dims = {'cluster', 'time'} if has_cluster_dim else {'time'}
+            actual_dims = set(data.dims)
+            unexpected_dims = actual_dims - expected_dims
+            if unexpected_dims:
+                raise ValueError(
+                    f'Data slice has unexpected dimensions {unexpected_dims}. '
+                    f'Expected only {expected_dims}. Make sure period/scenario selections are applied.'
+                )
             if has_cluster_dim:
-                # 2D cluster structure: convert flat indices to (cluster, time_within)
-                # Use cluster_structure's timesteps_per_cluster, not aggregated.sizes['time']
-                # because the solution may include extra timesteps (timesteps_extra)
-                timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
                 cluster_ids = mapping // timesteps_per_cluster
                 time_within = mapping % timesteps_per_cluster
-                expanded_values = aggregated.values[cluster_ids, time_within]
-            else:
-                expanded_values = aggregated.values[mapping]
-            return xr.DataArray(
-                expanded_values,
-                coords={'time': original_time},
-                dims=['time'],
-                attrs=aggregated.attrs,
+                return data.values[cluster_ids, time_within]
+            return data.values[mapping]
+
+        # Simple case: no period/scenario dimensions
+        extra_dims = [d for d in timestep_mapping.dims if d != 'original_time']
+        if not extra_dims:
+            expanded_values = _expand_slice(timestep_mapping.values, aggregated)
+            return xr.DataArray(expanded_values, coords={'time': original_time}, dims=['time'], attrs=aggregated.attrs)
+
+        # Multi-dimensional: expand each slice and recombine
+        dim_coords = {d: list(timestep_mapping.coords[d].values) for d in extra_dims}
+        expanded_slices = {}
+        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
+            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
+            mapping = _select_dims(timestep_mapping, **selector).values
+            data_slice = (
+                _select_dims(aggregated, **selector) if any(d in aggregated.dims for d in selector) else aggregated
+            )
+            expanded_slices[tuple(selector.values())] = xr.DataArray(
+                _expand_slice(mapping, data_slice), coords={'time': original_time}, dims=['time']
             )
 
-        # Multi-dimensional: expand each (period, scenario) slice and recombine
-        periods = list(timestep_mapping.coords['period'].values) if has_periods else [None]
-        scenarios = list(timestep_mapping.coords['scenario'].values) if has_scenarios else [None]
-
-        expanded_slices: dict[tuple, xr.DataArray] = {}
-        for p in periods:
-            for s in scenarios:
-                # Get mapping for this slice
-                mapping_slice = timestep_mapping
-                if p is not None:
-                    mapping_slice = mapping_slice.sel(period=p)
-                if s is not None:
-                    mapping_slice = mapping_slice.sel(scenario=s)
-                mapping = mapping_slice.values
-
-                # Select the data slice
-                selector = {}
-                if p is not None and 'period' in aggregated.dims:
-                    selector['period'] = p
-                if s is not None and 'scenario' in aggregated.dims:
-                    selector['scenario'] = s
-
-                slice_da = aggregated.sel(**selector, drop=True) if selector else aggregated
-
-                if has_cluster_dim:
-                    # 2D cluster structure: convert flat indices to (cluster, time_within)
-                    # Use cluster_structure's timesteps_per_cluster, not slice_da.sizes['time']
-                    # because the solution may include extra timesteps (timesteps_extra)
-                    timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
-                    cluster_ids = mapping // timesteps_per_cluster
-                    time_within = mapping % timesteps_per_cluster
-                    expanded_values = slice_da.values[cluster_ids, time_within]
-                    expanded = xr.DataArray(expanded_values, dims=['time'])
-                else:
-                    expanded = slice_da.isel(time=xr.DataArray(mapping, dims=['time']))
-                expanded_slices[(p, s)] = expanded.assign_coords(time=original_time)
-
-        # Recombine slices using xr.concat
-        if has_periods and has_scenarios:
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [expanded_slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
-        elif has_periods:
-            result = xr.concat([expanded_slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
-        else:
-            result = xr.concat(
-                [expanded_slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario')
-            )
-
+        # Concatenate iteratively along each extra dimension
+        result_arrays = expanded_slices
+        for dim in reversed(extra_dims):
+            dim_vals = dim_coords[dim]
+            grouped = {}
+            for key, arr in result_arrays.items():
+                rest_key = key[:-1] if len(key) > 1 else ()
+                grouped.setdefault(rest_key, []).append(arr)
+            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
+        result = list(result_arrays.values())[0]
         return result.transpose('time', ...).assign_attrs(aggregated.attrs)
 
     def validate(self) -> None:
@@ -748,8 +724,6 @@ class ClusteringPlotAccessor:
             PlotResult containing the heatmap figure and cluster assignment data.
             The data has 'cluster' variable with time dimension, matching original timesteps.
         """
-        import pandas as pd
-
         from ..config import CONFIG
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
@@ -760,63 +734,35 @@ class ClusteringPlotAccessor:
             raise ValueError('No cluster structure available')
 
         cluster_order_da = cs.cluster_order
-        timesteps_per_period = cs.timesteps_per_cluster
+        timesteps_per_cluster = cs.timesteps_per_cluster
         original_time = result.original_data.coords['time'] if result.original_data is not None else None
 
         # Apply selection if provided
         if select:
             cluster_order_da = _apply_selection(cluster_order_da.to_dataset(name='cluster'), select)['cluster']
 
-        # Check for multi-dimensional data
-        has_periods = 'period' in cluster_order_da.dims
-        has_scenarios = 'scenario' in cluster_order_da.dims
+        # Expand cluster_order to per-timestep: repeat each value timesteps_per_cluster times
+        # Uses np.repeat along axis=0 (original_cluster dim)
+        extra_dims = [d for d in cluster_order_da.dims if d != 'original_cluster']
+        expanded_values = np.repeat(cluster_order_da.values, timesteps_per_cluster, axis=0)
 
-        # Get dimension values
-        periods = list(cluster_order_da.coords['period'].values) if has_periods else [None]
-        scenarios = list(cluster_order_da.coords['scenario'].values) if has_scenarios else [None]
-
-        # Build cluster assignment per timestep for each (period, scenario) slice
-        cluster_slices: dict[tuple, xr.DataArray] = {}
-        for p in periods:
-            for s in scenarios:
-                cluster_order = cs.get_cluster_order_for_slice(period=p, scenario=s)
-                # Expand: each cluster repeated timesteps_per_period times
-                cluster_per_timestep = np.repeat(cluster_order, timesteps_per_period)
-                cluster_slices[(p, s)] = xr.DataArray(
-                    cluster_per_timestep,
-                    dims=['time'],
-                    coords={'time': original_time} if original_time is not None else None,
-                )
-
-        # Combine slices into multi-dimensional DataArray
-        if has_periods and has_scenarios:
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [cluster_slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            cluster_da = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
-        elif has_periods:
-            cluster_da = xr.concat(
-                [cluster_slices[(p, None)] for p in periods],
-                dim=pd.Index(periods, name='period'),
+        # Validate length consistency when using original time coordinates
+        if original_time is not None and len(original_time) != expanded_values.shape[0]:
+            raise ValueError(
+                f'Length mismatch: original_time has {len(original_time)} elements but expanded '
+                f'cluster data has {expanded_values.shape[0]} elements '
+                f'(n_clusters={cluster_order_da.sizes.get("original_cluster", len(cluster_order_da))} * '
+                f'timesteps_per_cluster={timesteps_per_cluster})'
             )
-        elif has_scenarios:
-            cluster_da = xr.concat(
-                [cluster_slices[(None, s)] for s in scenarios],
-                dim=pd.Index(scenarios, name='scenario'),
-            )
-        else:
-            cluster_da = cluster_slices[(None, None)]
+
+        coords = {'time': original_time} if original_time is not None else {}
+        coords.update({d: cluster_order_da.coords[d].values for d in extra_dims})
+        cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)
 
         # Add dummy y dimension for heatmap visualization (single row)
-        heatmap_da = cluster_da.expand_dims('y', axis=-1)
-        heatmap_da = heatmap_da.assign_coords(y=['Cluster'])
+        heatmap_da = cluster_da.expand_dims('y', axis=-1).assign_coords(y=['Cluster'])
         heatmap_da.name = 'cluster_assignment'
-
-        # Reorder dims so 'time' and 'y' are first (heatmap x/y axes)
-        # Other dims (period, scenario) will be used for faceting/animation
-        target_order = ['time', 'y'] + [d for d in heatmap_da.dims if d not in ('time', 'y')]
-        heatmap_da = heatmap_da.transpose(*target_order)
+        heatmap_da = heatmap_da.transpose('time', 'y', ...)
 
         # Use fxplot.heatmap for smart defaults
         fig = heatmap_da.fxplot.heatmap(

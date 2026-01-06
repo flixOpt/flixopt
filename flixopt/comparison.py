@@ -97,6 +97,7 @@ class Comparison:
         # Caches
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
+        self._inputs: xr.Dataset | None = None
 
     # Core dimensions that must match across FlowSystems
     # Note: 'cluster' and 'cluster_boundary' are auxiliary dimensions from clustering
@@ -189,6 +190,36 @@ class Comparison:
 
         ref_data = self.solution.isel(case=ref_idx)
         return self.solution - ref_data
+
+    @property
+    def inputs(self) -> xr.Dataset:
+        """Combined input data Dataset with 'case' dimension.
+
+        Concatenates input parameters from all FlowSystems. Each FlowSystem's
+        ``.inputs`` Dataset is combined with a 'case' dimension.
+
+        Returns:
+            xr.Dataset with all input parameters. Variable naming follows
+            the pattern ``{element.label_full}|{parameter_name}``.
+
+        Examples:
+            ```python
+            comp = fx.Comparison([fs1, fs2], names=['Base', 'Modified'])
+            comp.inputs  # All inputs with 'case' dimension
+            comp.inputs['Boiler(Q_th)|relative_minimum']  # Specific parameter
+            ```
+        """
+        if self._inputs is None:
+            self._inputs = xr.concat(
+                [
+                    fs.to_dataset(include_solution=False).expand_dims(case=[name])
+                    for fs, name in zip(self._systems, self._names, strict=True)
+                ],
+                dim='case',
+                join='outer',
+                fill_value=float('nan'),
+            )
+        return self._inputs
 
 
 class ComparisonStatistics:

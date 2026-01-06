@@ -944,6 +944,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         flow_system = cls.from_dataset(flow_system_data)
         flow_system.name = name
 
+        # Set previous_flow_rate=0 for flows of components with status_parameters
+        # In v4 API, previous_flow_rate=None defaulted to previous_status=0 (off)
+        # Now previous_flow_rate=None means relaxed (no constraint at t=0)
+        for comp in flow_system.components.values():
+            if getattr(comp, 'status_parameters', None) is not None:
+                for flow in comp.inputs + comp.outputs:
+                    if flow.previous_flow_rate is None:
+                        flow.previous_flow_rate = 0
+
         # Attach solution (convert attrs from dicts to JSON strings for consistency)
         for key in ['Components', 'Buses', 'Effects', 'Flows']:
             if key in solution.attrs and isinstance(solution.attrs[key], dict):

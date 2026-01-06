@@ -616,7 +616,9 @@ def flow_system_long():
             thermal_efficiency=(eta_th := 0.58),
             electrical_efficiency=(eta_el := 0.22),
             status_parameters=fx.StatusParameters(effects_per_startup=24000),
-            fuel_flow=fx.Flow('Q_fu', bus='Kohle', size=(fuel_size := 288), relative_minimum=87 / fuel_size),
+            fuel_flow=fx.Flow(
+                'Q_fu', bus='Kohle', size=(fuel_size := 288), relative_minimum=87 / fuel_size, previous_flow_rate=0
+            ),
             electrical_flow=fx.Flow('P_el', bus='Strom', size=fuel_size * eta_el),
             thermal_flow=fx.Flow('Q_th', bus='Fernwärme', size=fuel_size * eta_th),
         ),
