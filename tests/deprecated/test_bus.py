@@ -74,8 +74,8 @@ class TestBusModel:
         assert_conequal(
             model.constraints['TestBus->Penalty(temporal)'],
             model.variables['TestBus->Penalty(temporal)']
-            == model.variables['TestBus|virtual_supply'] * 1e5 * model.hours_per_step
-            + model.variables['TestBus|virtual_demand'] * 1e5 * model.hours_per_step,
+            == model.variables['TestBus|virtual_supply'] * 1e5 * model.timestep_duration
+            + model.variables['TestBus|virtual_demand'] * 1e5 * model.timestep_duration,
         )
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
