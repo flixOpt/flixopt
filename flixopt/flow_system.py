@@ -1160,9 +1160,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         colorscale = CONFIG.Plotting.default_qualitative_colorscale
         color_mapping = process_colors(colorscale, elements_without_colors)
 
-        # Assign colors to elements
+        # Assign colors to elements (use backing field to avoid triggering invalidation)
         for label_full, color in color_mapping.items():
-            self.components[label_full].color = color
+            self.components[label_full]._color = color
             logger.debug(f"Auto-assigned color '{color}' to component '{label_full}'")
 
     def add_elements(self, *elements: Element) -> None:
@@ -1823,9 +1823,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
-            for flow in component.inputs + component.outputs:
-                flow.component = component.label_full
-                flow.is_input_in_component = True if flow in component.inputs else False
+            # Use backing fields directly to avoid triggering invalidation
+            for flow in component._inputs + component._outputs:
+                flow._component = component.label_full
+                flow._is_input_in_component = flow in component._inputs
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
@@ -1834,10 +1835,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                         f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
                         f'Please add it first.'
                     )
-                if flow.is_input_in_component and flow not in bus.outputs:
-                    bus.outputs.append(flow)
-                elif not flow.is_input_in_component and flow not in bus.inputs:
-                    bus.inputs.append(flow)
+                # Use backing fields directly to bypass copy-return property pattern
+                if flow.is_input_in_component and flow not in bus._outputs:
+                    bus._outputs.append(flow)
+                elif not flow.is_input_in_component and flow not in bus._inputs:
+                    bus._inputs.append(flow)
 
         # Count flows manually to avoid triggering cache rebuild
         flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
