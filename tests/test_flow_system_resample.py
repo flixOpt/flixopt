@@ -1,4 +1,4 @@
-"""Integration tests for FlowSystem.resample() - verifies correct data resampling and structure preservation."""
+"""Integration tests for flow_system.transform.resample() - verifies correct data resampling and structure preservation."""
 
 import numpy as np
 import pandas as pd
@@ -80,7 +80,7 @@ def complex_fs():
 @pytest.mark.parametrize('freq,method', [('2h', 'mean'), ('4h', 'sum'), ('6h', 'first')])
 def test_basic_resample(simple_fs, freq, method):
     """Test basic resampling preserves structure."""
-    fs_r = simple_fs.resample(freq, method=method)
+    fs_r = simple_fs.transform.resample(freq, method=method)
     assert len(fs_r.components) == len(simple_fs.components)
     assert len(fs_r.buses) == len(simple_fs.buses)
     assert len(fs_r.timesteps) < len(simple_fs.timesteps)
@@ -107,13 +107,13 @@ def test_resample_methods(method, expected):
         )
     )
 
-    fs_r = fs.resample('2h', method=method)
+    fs_r = fs.transform.resample('2h', method=method)
     assert_allclose(fs_r.flows['s(in)'].fixed_relative_profile.values, expected, rtol=1e-10)
 
 
 def test_structure_preserved(simple_fs):
     """Test all structural elements preserved."""
-    fs_r = simple_fs.resample('2h', method='mean')
+    fs_r = simple_fs.transform.resample('2h', method='mean')
     assert set(simple_fs.components.keys()) == set(fs_r.components.keys())
     assert set(simple_fs.buses.keys()) == set(fs_r.buses.keys())
     assert set(simple_fs.effects.keys()) == set(fs_r.effects.keys())
@@ -126,7 +126,7 @@ def test_structure_preserved(simple_fs):
 
 def test_time_metadata_updated(simple_fs):
     """Test time metadata correctly updated."""
-    fs_r = simple_fs.resample('3h', method='mean')
+    fs_r = simple_fs.transform.resample('3h', method='mean')
     assert len(fs_r.timesteps) == 8
     assert_allclose(fs_r.timestep_duration.values, 3.0)
     assert fs_r.hours_of_last_timestep == 3.0
@@ -150,7 +150,7 @@ def test_with_dimensions(simple_fs, dim_name, dim_value):
         fx.Sink(label='d', inputs=[fx.Flow(label='in', bus='h', fixed_relative_profile=np.ones(24), size=1)])
     )
 
-    fs_r = fs.resample('2h', method='mean')
+    fs_r = fs.transform.resample('2h', method='mean')
     assert getattr(fs_r, dim_name) is not None
     pd.testing.assert_index_equal(getattr(fs_r, dim_name), dim_value)
 
@@ -160,7 +160,7 @@ def test_with_dimensions(simple_fs, dim_name, dim_value):
 
 def test_storage_resample(complex_fs):
     """Test storage component resampling."""
-    fs_r = complex_fs.resample('4h', method='mean')
+    fs_r = complex_fs.transform.resample('4h', method='mean')
     assert 'battery' in fs_r.components
     storage = fs_r.components['battery']
     assert storage.charging.label == 'charge'
@@ -169,7 +169,7 @@ def test_storage_resample(complex_fs):
 
 def test_converter_resample(complex_fs):
     """Test converter component resampling."""
-    fs_r = complex_fs.resample('4h', method='mean')
+    fs_r = complex_fs.transform.resample('4h', method='mean')
     assert 'boiler' in fs_r.components
     boiler = fs_r.components['boiler']
     assert hasattr(boiler, 'thermal_efficiency')
@@ -177,7 +177,7 @@ def test_converter_resample(complex_fs):
 
 def test_invest_resample(complex_fs):
     """Test investment parameters preserved."""
-    fs_r = complex_fs.resample('4h', method='mean')
+    fs_r = complex_fs.transform.resample('4h', method='mean')
     pv_flow = fs_r.flows['pv(gen)']
     assert isinstance(pv_flow.size, fx.InvestParameters)
     assert pv_flow.size.maximum_size == 1000
@@ -205,7 +205,7 @@ def test_modeling(with_dim):
         fx.Source(label='s', outputs=[fx.Flow(label='out', bus='h', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
-    fs_r = fs.resample('4h', method='mean')
+    fs_r = fs.transform.resample('4h', method='mean')
     fs_r.build_model()
 
     assert fs_r.model is not None
@@ -226,7 +226,7 @@ def test_model_structure_preserved():
 
     fs.build_model()
 
-    fs_r = fs.resample('4h', method='mean')
+    fs_r = fs.transform.resample('4h', method='mean')
     fs_r.build_model()
 
     # Same number of variable/constraint types
@@ -243,18 +243,20 @@ def test_model_structure_preserved():
 
 def test_dataset_roundtrip(simple_fs):
     """Test dataset serialization."""
-    fs_r = simple_fs.resample('2h', method='mean')
+    fs_r = simple_fs.transform.resample('2h', method='mean')
     assert fx.FlowSystem.from_dataset(fs_r.to_dataset()) == fs_r
 
 
 def test_dataset_chaining(simple_fs):
-    """Test power user pattern."""
+    """Test power user pattern with TransformAccessor class methods."""
+    from flixopt.transform_accessor import TransformAccessor
+
     ds = simple_fs.to_dataset()
-    ds = fx.FlowSystem._dataset_sel(ds, time='2023-01-01')
-    ds = fx.FlowSystem._dataset_resample(ds, freq='2h', method='mean')
+    ds = TransformAccessor._dataset_sel(ds, time='2023-01-01')
+    ds = TransformAccessor._dataset_resample(ds, freq='2h', method='mean')
     fs_result = fx.FlowSystem.from_dataset(ds)
 
-    fs_simple = simple_fs.sel(time='2023-01-01').resample('2h', method='mean')
+    fs_simple = simple_fs.transform.sel(time='2023-01-01').transform.resample('2h', method='mean')
     assert fs_result == fs_simple
 
 
@@ -268,7 +270,7 @@ def test_frequencies(freq, exp_len):
         fx.Sink(label='s', inputs=[fx.Flow(label='in', bus='b', fixed_relative_profile=np.ones(168), size=1)])
     )
 
-    assert len(fs.resample(freq, method='mean').timesteps) == exp_len
+    assert len(fs.transform.resample(freq, method='mean').timesteps) == exp_len
 
 
 def test_irregular_timesteps_error():

@@ -152,32 +152,3 @@ class TestTopologyPlotLegacy:
 
         # Should not raise
         flow_system.topology.plot_legacy(path=False, controls=['nodes', 'layout'], show=False)
-
-
-class TestDeprecatedMethods:
-    """Tests for deprecated FlowSystem methods that delegate to topology."""
-
-    def test_network_infos_deprecation_warning(self, flow_system):
-        """Test that network_infos() raises a DeprecationWarning."""
-        with pytest.warns(DeprecationWarning, match='topology.infos'):
-            flow_system.network_infos()
-
-    def test_plot_network_deprecation_warning(self, flow_system):
-        """Test that plot_network() raises a DeprecationWarning."""
-        with pytest.warns(DeprecationWarning, match='topology.plot'):
-            flow_system.plot_network(path=False, show=False)
-
-    def test_deprecated_methods_return_same_results(self, flow_system):
-        """Test that deprecated methods return the same results as topology accessor."""
-        import warnings
-
-        # Get results from new API
-        new_nodes, new_edges = flow_system.topology.infos()
-
-        # Get results from deprecated API (suppress warning)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            old_nodes, old_edges = flow_system.network_infos()
-
-        assert new_nodes == old_nodes
-        assert new_edges == old_edges
