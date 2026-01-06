@@ -266,10 +266,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def scenario_weights(self) -> xr.DataArray:
-        """
-        Scenario weights of model (always normalized, via FlowSystem).
+        """Scenario weights of model.
 
-        Returns unit weights if no scenarios defined or no explicit weights set.
+        Returns:
+            - Scalar 1 if no scenarios defined
+            - Unit weights (all 1.0) if scenarios exist but no explicit weights set
+            - Normalized explicit weights if set via FlowSystem.scenario_weights
         """
         if self.flow_system.scenarios is None:
             return xr.DataArray(1)

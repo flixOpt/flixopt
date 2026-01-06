@@ -25,7 +25,10 @@ import pandas as pd
 import pvlib
 from demandlib import bdew
 
-warnings.resetwarnings()  # Reset to default behavior due to weird dependency behaviour
+# Reset warnings to default after imports. Some dependencies (demandlib, pvlib)
+# may configure warnings during import. This ensures consistent warning behavior
+# when this module is used in different contexts (scripts, notebooks, tests).
+warnings.resetwarnings()
 
 # Data directory
 DATA_DIR = Path(__file__).parent / 'raw'

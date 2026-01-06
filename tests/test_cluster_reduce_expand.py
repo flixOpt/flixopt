@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from numpy.testing import assert_allclose
 
 import flixopt as fx
@@ -596,8 +597,6 @@ def create_system_with_periods_and_scenarios(
     timesteps: pd.DatetimeIndex, periods: pd.Index, scenarios: pd.Index
 ) -> fx.FlowSystem:
     """Create a FlowSystem with both periods and scenarios."""
-    import xarray as xr
-
     hours = len(timesteps)
 
     # Create demand that varies by scenario AND by day (for clustering)

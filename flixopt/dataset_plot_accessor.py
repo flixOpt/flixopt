@@ -761,6 +761,9 @@ class DatasetStatsAccessor:
         sorted_ds = self._ds.copy()
         for var in sorted_ds.data_vars:
             da = sorted_ds[var]
+            if 'time' not in da.dims:
+                # Skip variables without time dimension (e.g., scalar metadata)
+                continue
             time_axis = da.dims.index('time')
             # Sort along time axis (descending) - use flip for correct axis
             sorted_values = np.flip(np.sort(da.values, axis=time_axis), axis=time_axis)

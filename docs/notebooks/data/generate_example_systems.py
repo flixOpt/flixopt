@@ -55,7 +55,7 @@ except NameError:
 
 # Lazy-loaded shared data with error handling
 _weather: pd.DataFrame | None = None
-_elec_prices: pd.DataFrame | None = None
+_elec_prices: pd.Series | None = None
 
 
 def _get_weather() -> pd.DataFrame:
@@ -71,13 +71,15 @@ def _get_weather() -> pd.DataFrame:
     return _weather
 
 
-def _get_elec_prices() -> pd.DataFrame:
+def _get_elec_prices() -> pd.Series:
     """Get electricity prices, loading lazily on first access."""
     global _elec_prices
     if _elec_prices is None:
         try:
             _elec_prices = load_electricity_prices()
-            _elec_prices.index = _elec_prices.index.tz_localize(None)  # Remove timezone
+            # Remove timezone if present (guard against both tz-aware and tz-naive indices)
+            if _elec_prices.index.tz is not None:
+                _elec_prices.index = _elec_prices.index.tz_localize(None)
         except FileNotFoundError as e:
             raise FileNotFoundError(
                 f'Electricity price data not found. Ensure price data exists in {DATA_DIR}. Original error: {e}'

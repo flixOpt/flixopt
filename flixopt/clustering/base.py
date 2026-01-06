@@ -182,7 +182,8 @@ class ClusterStructure:
         """Plot cluster assignment visualization.
 
         Shows which cluster each original period belongs to, and the
-        number of occurrences per cluster.
+        number of occurrences per cluster. For multi-period/scenario structures,
+        creates a faceted grid plot.
 
         Args:
             colors: Colorscale name (str) or list of colors.
@@ -198,34 +199,42 @@ class ClusterStructure:
         n_clusters = (
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
-
-        cluster_order = self.get_cluster_order_for_slice()
-
-        # Build DataArray for fxplot heatmap
-        cluster_da = xr.DataArray(
-            cluster_order.reshape(1, -1),
-            dims=['y', 'original_cluster'],
-            coords={'y': ['Cluster'], 'original_cluster': range(1, len(cluster_order) + 1)},
-            name='cluster_assignment',
-        )
-
-        # Use fxplot.heatmap for smart defaults
         colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
-        fig = cluster_da.fxplot.heatmap(
-            colors=colorscale,
-            title=f'Cluster Assignment ({self.n_original_clusters} periods → {n_clusters} clusters)',
-        )
-        fig.update_yaxes(showticklabels=False)
-        fig.update_coloraxes(colorbar_title='Cluster')
 
-        # Build data for PlotResult
-        data = xr.Dataset(
-            {
-                'cluster_order': self.cluster_order,
-                'cluster_occurrences': self.cluster_occurrences,
-            }
+        # Build DataArray with 1-based original_cluster coords
+        cluster_da = self.cluster_order.assign_coords(
+            original_cluster=np.arange(1, self.cluster_order.sizes['original_cluster'] + 1)
         )
-        plot_result = PlotResult(data=data, figure=fig)
+
+        has_period = 'period' in cluster_da.dims
+        has_scenario = 'scenario' in cluster_da.dims
+
+        # Transpose for heatmap: first dim = y-axis, second dim = x-axis
+        if has_period:
+            cluster_da = cluster_da.transpose('period', 'original_cluster', ...)
+        elif has_scenario:
+            cluster_da = cluster_da.transpose('scenario', 'original_cluster', ...)
+
+        # Data to return (without dummy dims)
+        ds = xr.Dataset({'cluster_order': cluster_da})
+
+        # For plotting: add dummy y-dim if needed (heatmap requires 2D)
+        if not has_period and not has_scenario:
+            plot_da = cluster_da.expand_dims(y=['']).transpose('y', 'original_cluster')
+            plot_ds = xr.Dataset({'cluster_order': plot_da})
+        else:
+            plot_ds = ds
+
+        fig = plot_ds.fxplot.heatmap(
+            colors=colorscale,
+            title=f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)',
+        )
+
+        fig.update_coloraxes(colorbar_title='Cluster')
+        if not has_period and not has_scenario:
+            fig.update_yaxes(showticklabels=False)
+
+        plot_result = PlotResult(data=ds, figure=fig)
 
         if show is None:
             show = CONFIG.Plotting.default_show
