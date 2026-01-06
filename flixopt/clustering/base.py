@@ -174,8 +174,17 @@ class ClusterStructure:
 
         Returns:
             Dict mapping cluster ID to occurrence count.
+
+        Raises:
+            ValueError: If period/scenario dimensions exist but no selector was provided.
         """
         occ = _select_dims(self.cluster_occurrences, period, scenario)
+        extra_dims = [d for d in occ.dims if d != 'cluster']
+        if extra_dims:
+            raise ValueError(
+                f'cluster_occurrences has dimensions {extra_dims} that were not selected. '
+                f"Provide 'period' and/or 'scenario' arguments to select a specific slice."
+            )
         return {int(c): int(occ.sel(cluster=c).values) for c in occ.coords['cluster'].values}
 
     def plot(self, colors: str | list[str] | None = None, show: bool | None = None) -> PlotResult:
@@ -406,6 +415,15 @@ class ClusterResult:
 
         def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
             """Expand a single slice using the mapping."""
+            # Validate that data has only expected dimensions for indexing
+            expected_dims = {'cluster', 'time'} if has_cluster_dim else {'time'}
+            actual_dims = set(data.dims)
+            unexpected_dims = actual_dims - expected_dims
+            if unexpected_dims:
+                raise ValueError(
+                    f'Data slice has unexpected dimensions {unexpected_dims}. '
+                    f'Expected only {expected_dims}. Make sure period/scenario selections are applied.'
+                )
             if has_cluster_dim:
                 cluster_ids = mapping // timesteps_per_cluster
                 time_within = mapping % timesteps_per_cluster
@@ -727,6 +745,16 @@ class ClusteringPlotAccessor:
         # Uses np.repeat along axis=0 (original_cluster dim)
         extra_dims = [d for d in cluster_order_da.dims if d != 'original_cluster']
         expanded_values = np.repeat(cluster_order_da.values, timesteps_per_cluster, axis=0)
+
+        # Validate length consistency when using original time coordinates
+        if original_time is not None and len(original_time) != expanded_values.shape[0]:
+            raise ValueError(
+                f'Length mismatch: original_time has {len(original_time)} elements but expanded '
+                f'cluster data has {expanded_values.shape[0]} elements '
+                f'(n_clusters={cluster_order_da.sizes.get("original_cluster", len(cluster_order_da))} * '
+                f'timesteps_per_cluster={timesteps_per_cluster})'
+            )
+
         coords = {'time': original_time} if original_time is not None else {}
         coords.update({d: cluster_order_da.coords[d].values for d in extra_dims})
         cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)

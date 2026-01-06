@@ -409,11 +409,18 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         create_linopy_model(flow_system)
 
-        assert_conequal(
-            comp.submodel.constraints['TestComponent|uptime|initial'],
-            comp.submodel.variables['TestComponent|uptime'].isel(time=0)
-            == comp.submodel.variables['TestComponent|status'].isel(time=0) * (previous_on_hours + 1),
+        # Initial constraint only exists when at least one flow has previous_flow_rate set
+        has_previous = any(
+            x is not None for x in [in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate]
         )
+        if has_previous:
+            assert_conequal(
+                comp.submodel.constraints['TestComponent|uptime|initial'],
+                comp.submodel.variables['TestComponent|uptime'].isel(time=0)
+                == comp.submodel.variables['TestComponent|status'].isel(time=0) * (previous_on_hours + 1),
+            )
+        else:
+            assert 'TestComponent|uptime|initial' not in comp.submodel.constraints
 
 
 class TestTransmissionModel:
