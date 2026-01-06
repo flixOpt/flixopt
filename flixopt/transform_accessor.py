@@ -925,8 +925,6 @@ class TransformAccessor:
                 da = self._combine_slices_to_dataarray_2d(
                     slices=typical_das[name],
                     original_da=original_da,
-                    cluster_coords=cluster_coords,
-                    time_coords=time_coords,
                     periods=periods,
                     scenarios=scenarios,
                 )
@@ -1160,8 +1158,6 @@ class TransformAccessor:
     def _combine_slices_to_dataarray_2d(
         slices: dict[tuple, xr.DataArray],
         original_da: xr.DataArray,
-        cluster_coords: np.ndarray,
-        time_coords: np.ndarray,
         periods: list,
         scenarios: list,
     ) -> xr.DataArray:
@@ -1170,8 +1166,6 @@ class TransformAccessor:
         Args:
             slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
             original_da: Original DataArray to get attrs from.
-            cluster_coords: Cluster coordinate values.
-            time_coords: Within-cluster time coordinate values.
             periods: List of period labels ([None] if no periods dimension).
             scenarios: List of scenario labels ([None] if no scenarios dimension).
 

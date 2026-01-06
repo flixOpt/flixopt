@@ -223,8 +223,14 @@ class ComparisonStatistics:
         """Concatenate a statistics property across all cases."""
         datasets = []
         for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
-            ds = getattr(fs.statistics, prop_name)
-            datasets.append(ds.expand_dims(case=[name]))
+            try:
+                ds = getattr(fs.statistics, prop_name)
+                datasets.append(ds.expand_dims(case=[name]))
+            except RuntimeError as e:
+                warnings.warn(f"Skipping case '{name}': {e}", stacklevel=3)
+                continue
+        if not datasets:
+            return xr.Dataset()
         return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
