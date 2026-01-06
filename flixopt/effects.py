@@ -252,7 +252,6 @@ class Effect(Element):
             prefix=None,
             effect_values=self.share_from_temporal,
             suffix=f'(temporal)->{self.prefix}(temporal)',
-            dims=['time', 'period', 'scenario'],
         )
         self.share_from_periodic = self._fit_effect_coords(
             prefix=None,

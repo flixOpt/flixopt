@@ -53,7 +53,7 @@ class OptimizeAccessor:
         """
         self._fs = flow_system
 
-    def __call__(self, solver: _Solver, normalize_weights: bool = True) -> FlowSystem:
+    def __call__(self, solver: _Solver, normalize_weights: bool | None = None) -> FlowSystem:
         """
         Build and solve the optimization model in one step.
 
@@ -64,7 +64,7 @@ class OptimizeAccessor:
 
         Args:
             solver: The solver to use (e.g., HighsSolver, GurobiSolver).
-            normalize_weights: Whether to normalize scenario/period weights to sum to 1.
+            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
             The FlowSystem, for method chaining.
@@ -85,7 +85,18 @@ class OptimizeAccessor:
 
             >>> solution = flow_system.optimize(solver).solution
         """
-        self._fs.build_model(normalize_weights)
+        if normalize_weights is not None:
+            import warnings
+
+            from .config import DEPRECATION_REMOVAL_VERSION
+
+            warnings.warn(
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                'Scenario weights are now always normalized when set on FlowSystem.\n',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        self._fs.build_model()
         self._fs.solve(solver)
         return self._fs
 
