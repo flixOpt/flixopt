@@ -295,6 +295,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 ### 🐛 Fixed
 
 - `temporal_weight` and `sum_temporal()` now use consistent implementation
+- `FlowSystem.from_old_results()` now sets `previous_flow_rate=0` for flows of components with `status_parameters`, fixing startup cost calculation mismatch when re-optimizing migrated v4 results
 
 ### 📝 Docs
 
