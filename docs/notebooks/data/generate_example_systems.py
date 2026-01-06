@@ -1,26 +1,90 @@
-"""Generate example FlowSystem files for the plotting notebook.
+"""Generate example FlowSystem files for notebooks.
 
-This script creates three FlowSystems of varying complexity:
+This script creates FlowSystems of varying complexity:
 1. simple_system - Basic heat system (boiler + storage + sink)
 2. complex_system - Multi-carrier with multiple effects and piecewise efficiency
 3. multiperiod_system - System with periods and scenarios
+4. district_heating_system - Real-world district heating data with investments (1 month)
+5. operational_system - Real-world district heating for operational planning (2 weeks, no investments)
+6. seasonal_storage_system - Solar thermal + seasonal pit storage (full year, 8760h)
 
 Run this script to regenerate the example data files.
 """
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+# Handle imports in different contexts (direct run, package import, mkdocs-jupyter)
+try:
+    from .generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
+except ImportError:
+    # Add data directory to path for mkdocs-jupyter context
+    try:
+        _data_dir = Path(__file__).parent
+    except NameError:
+        _data_dir = Path('docs/notebooks/data')
+    if str(_data_dir) not in sys.path:
+        sys.path.insert(0, str(_data_dir))
+    from generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
 
 import flixopt as fx
 
 # Output directory (same as this script)
 try:
     OUTPUT_DIR = Path(__file__).parent
+    DATA_DIR = Path(__file__).parent  # Zeitreihen2020.csv is in the same directory
 except NameError:
     # Running in notebook context (e.g., mkdocs-jupyter)
     OUTPUT_DIR = Path('docs/notebooks/data')
+    DATA_DIR = Path('docs/notebooks/data')
+
+# Lazy-loaded shared data with error handling
+_weather: pd.DataFrame | None = None
+_elec_prices: pd.Series | None = None
+
+
+def _get_weather() -> pd.DataFrame:
+    """Get weather data, loading lazily on first access."""
+    global _weather
+    if _weather is None:
+        try:
+            _weather = load_weather()
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Weather data file not found. Ensure tmy_dresden.csv exists in {DATA_DIR}/raw. Original error: {e}'
+            ) from e
+    return _weather
+
+
+def _get_elec_prices() -> pd.Series:
+    """Get electricity prices, loading lazily on first access."""
+    global _elec_prices
+    if _elec_prices is None:
+        try:
+            _elec_prices = load_electricity_prices()
+            # Remove timezone if present (guard against both tz-aware and tz-naive indices)
+            if _elec_prices.index.tz is not None:
+                _elec_prices.index = _elec_prices.index.tz_localize(None)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Electricity price data not found. Ensure price data exists in {DATA_DIR}. Original error: {e}'
+            ) from e
+    return _elec_prices
 
 
 def create_simple_system() -> fx.FlowSystem:
@@ -29,27 +93,22 @@ def create_simple_system() -> fx.FlowSystem:
     Components:
     - Gas boiler (150 kW)
     - Thermal storage (500 kWh)
-    - Office heat demand
+    - Office heat demand (BDEW profile)
 
-    One week, hourly resolution.
+    One week (January 2020), hourly resolution.
+    Uses realistic BDEW heat demand and seasonal gas prices.
     """
-    # One week, hourly
-    timesteps = pd.date_range('2024-01-15', periods=168, freq='h')
+    # One week, hourly (January 2020 for realistic data)
+    timesteps = pd.date_range('2020-01-15', periods=168, freq='h')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
-    # Create demand pattern
-    hours = np.arange(168)
-    hour_of_day = hours % 24
-    day_of_week = (hours // 24) % 7
+    # BDEW office heat demand profile (scaled to fit 150 kW boiler)
+    thermal_gen = ThermalLoadGenerator()
+    heat_demand = thermal_gen.generate(timesteps, temp, 'office', annual_demand_kwh=15_000)
 
-    base_demand = np.where((hour_of_day >= 7) & (hour_of_day <= 18), 80, 30)
-    weekend_factor = np.where(day_of_week >= 5, 0.5, 1.0)
-
-    np.random.seed(42)
-    heat_demand = base_demand * weekend_factor + np.random.normal(0, 5, len(hours))
-    heat_demand = np.clip(heat_demand, 20, 100)
-
-    # Time-varying gas price
-    gas_price = np.where((hour_of_day >= 6) & (hour_of_day <= 22), 0.08, 0.05)
+    # Seasonal gas price
+    gas_gen = GasPriceGenerator()
+    gas_price = gas_gen.generate(timesteps) / 1000  # EUR/kWh
 
     fs = fx.FlowSystem(timesteps)
     fs.add_carriers(
@@ -93,30 +152,32 @@ def create_complex_system() -> fx.FlowSystem:
     - Heat pump
     - Gas boiler (backup)
     - Thermal storage
-    - Heat demand
+    - Heat demand (BDEW retail profile)
+    - Electricity demand (BDEW commercial profile)
 
     Effects: costs (objective), CO2
 
-    Three days, hourly resolution.
+    Three days (June 2020), hourly resolution.
+    Uses realistic BDEW profiles and OPSD electricity prices.
     """
-    timesteps = pd.date_range('2024-06-01', periods=72, freq='h')
-    hours = np.arange(72)
-    hour_of_day = hours % 24
+    timesteps = pd.date_range('2020-06-01', periods=72, freq='h')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
-    # Demand profiles
-    np.random.seed(123)
-    heat_demand = 50 + 30 * np.sin(2 * np.pi * hour_of_day / 24 - np.pi / 2) + np.random.normal(0, 5, 72)
-    heat_demand = np.clip(heat_demand, 20, 100)
+    # BDEW demand profiles (scaled to fit component sizes)
+    thermal_gen = ThermalLoadGenerator()
+    heat_demand = thermal_gen.generate(timesteps, temp, 'retail', annual_demand_kwh=2_000)
 
-    electricity_demand = 20 + 15 * np.sin(2 * np.pi * hour_of_day / 24) + np.random.normal(0, 3, 72)
-    electricity_demand = np.clip(electricity_demand, 10, 50)
+    elec_gen = ElectricityLoadGenerator()
+    electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=50_000)
 
-    # Price profiles
-    electricity_price = np.where((hour_of_day >= 8) & (hour_of_day <= 20), 0.25, 0.12)
-    gas_price = 0.06
+    # Real electricity prices (OPSD) and seasonal gas prices
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values / 1000  # EUR/kWh
+    gas_gen = GasPriceGenerator()
+    gas_price = gas_gen.generate(timesteps) / 1000  # EUR/kWh
 
-    # CO2 factors (kg/kWh)
-    electricity_co2 = np.where((hour_of_day >= 8) & (hour_of_day <= 20), 0.4, 0.3)  # Higher during peak
+    # CO2 factors (kg/kWh) - higher during peak hours
+    hour_of_day = timesteps.hour.values
+    electricity_co2 = np.where((hour_of_day >= 8) & (hour_of_day <= 20), 0.4, 0.3)
     gas_co2 = 0.2
 
     fs = fx.FlowSystem(timesteps)
@@ -229,6 +290,366 @@ def create_complex_system() -> fx.FlowSystem:
     return fs
 
 
+def create_district_heating_system() -> fx.FlowSystem:
+    """Create a district heating system with BDEW profiles.
+
+    Uses realistic German data:
+    - One month (January 2020), hourly resolution
+    - BDEW industrial heat profile
+    - BDEW commercial electricity profile
+    - OPSD electricity prices
+    - Seasonal gas prices
+    - CHP, boiler, storage, and grid connections
+    - Investment optimization for sizing
+
+    Used by: 08a-aggregation, 08c-clustering, 08e-clustering-internals notebooks
+    """
+    # One month, hourly
+    timesteps = pd.date_range('2020-01-01', '2020-01-31 23:00:00', freq='h')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
+
+    # BDEW profiles (MW scale for district heating)
+    thermal_gen = ThermalLoadGenerator()
+    heat_demand = thermal_gen.generate(timesteps, temp, 'industrial', annual_demand_kwh=15_000_000) / 1000  # MW
+
+    elec_gen = ElectricityLoadGenerator()
+    electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=5_000_000) / 1000  # MW
+
+    # Prices
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values  # EUR/MWh
+    gas_gen = GasPriceGenerator()
+    gas_price = gas_gen.generate(timesteps)  # EUR/MWh
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_elements(
+        # Buses
+        fx.Bus('Electricity'),
+        fx.Bus('Heat'),
+        fx.Bus('Gas'),
+        fx.Bus('Coal'),
+        # Effects
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+        # CHP unit with investment
+        fx.linear_converters.CHP(
+            'CHP',
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
+            electrical_flow=fx.Flow('P_el', bus='Electricity', size=200),
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=100,
+                    maximum_size=300,
+                    effects_of_investment_per_size={'costs': 10},
+                ),
+                relative_minimum=0.3,
+                status_parameters=fx.StatusParameters(),
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Coal'),
+        ),
+        # Gas Boiler with investment
+        fx.linear_converters.Boiler(
+            'Boiler',
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=0,
+                    maximum_size=150,
+                    effects_of_investment_per_size={'costs': 5},
+                ),
+                relative_minimum=0.1,
+                status_parameters=fx.StatusParameters(),
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+        ),
+        # Thermal Storage with investment
+        fx.Storage(
+            'Storage',
+            capacity_in_flow_hours=fx.InvestParameters(
+                minimum_size=0,
+                maximum_size=1000,
+                effects_of_investment_per_size={'costs': 0.5},
+            ),
+            initial_charge_state=0,
+            eta_charge=1,
+            eta_discharge=1,
+            relative_loss_per_hour=0.001,
+            charging=fx.Flow('Charge', size=137, bus='Heat'),
+            discharging=fx.Flow('Discharge', size=158, bus='Heat'),
+        ),
+        # Fuel sources
+        fx.Source(
+            'GasGrid',
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
+        ),
+        fx.Source(
+            'CoalSupply',
+            outputs=[fx.Flow('Q_Coal', bus='Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
+        ),
+        # Electricity grid
+        fx.Source(
+            'GridBuy',
+            outputs=[
+                fx.Flow(
+                    'P_el',
+                    bus='Electricity',
+                    size=1000,
+                    effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3},
+                )
+            ],
+        ),
+        fx.Sink(
+            'GridSell',
+            inputs=[fx.Flow('P_el', bus='Electricity', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))],
+        ),
+        # Demands
+        fx.Sink('HeatDemand', inputs=[fx.Flow('Q_th', bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
+        fx.Sink(
+            'ElecDemand', inputs=[fx.Flow('P_el', bus='Electricity', size=1, fixed_relative_profile=electricity_demand)]
+        ),
+    )
+    return fs
+
+
+def create_operational_system() -> fx.FlowSystem:
+    """Create an operational district heating system (no investments).
+
+    Uses realistic German data (two weeks, January 2020):
+    - BDEW industrial heat profile
+    - BDEW commercial electricity profile
+    - OPSD electricity prices
+    - Seasonal gas prices
+    - CHP with startup costs
+    - Boiler with startup costs
+    - Storage with fixed capacity
+    - No investment parameters (for rolling horizon optimization)
+
+    Used by: 08b-rolling-horizon notebook
+    """
+    # Two weeks, 15-min resolution (1344 timesteps)
+    timesteps = pd.date_range('2020-01-01', '2020-01-14 23:45:00', freq='15min')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
+
+    # BDEW profiles (MW scale)
+    thermal_gen = ThermalLoadGenerator()
+    heat_demand = thermal_gen.generate(timesteps, temp, 'industrial', annual_demand_kwh=15_000_000) / 1000  # MW
+
+    elec_gen = ElectricityLoadGenerator()
+    electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=5_000_000) / 1000  # MW
+
+    # Prices
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values  # EUR/MWh
+    gas_gen = GasPriceGenerator()
+    gas_price = gas_gen.generate(timesteps)  # EUR/MWh
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_elements(
+        fx.Bus('Electricity'),
+        fx.Bus('Heat'),
+        fx.Bus('Gas'),
+        fx.Bus('Coal'),
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+        # CHP with startup costs
+        fx.linear_converters.CHP(
+            'CHP',
+            thermal_efficiency=0.58,
+            electrical_efficiency=0.22,
+            status_parameters=fx.StatusParameters(effects_per_startup=24000),
+            electrical_flow=fx.Flow('P_el', bus='Electricity', size=200),
+            thermal_flow=fx.Flow('Q_th', bus='Heat', size=200),
+            fuel_flow=fx.Flow('Q_fu', bus='Coal', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
+        ),
+        # Boiler with startup costs
+        fx.linear_converters.Boiler(
+            'Boiler',
+            thermal_efficiency=0.85,
+            thermal_flow=fx.Flow('Q_th', bus='Heat'),
+            fuel_flow=fx.Flow(
+                'Q_fu',
+                bus='Gas',
+                size=95,
+                relative_minimum=12 / 95,
+                previous_flow_rate=20,
+                status_parameters=fx.StatusParameters(effects_per_startup=1000),
+            ),
+        ),
+        # Storage with fixed capacity
+        fx.Storage(
+            'Storage',
+            capacity_in_flow_hours=684,
+            initial_charge_state=137,
+            minimal_final_charge_state=137,
+            maximal_final_charge_state=158,
+            eta_charge=1,
+            eta_discharge=1,
+            relative_loss_per_hour=0.001,
+            prevent_simultaneous_charge_and_discharge=True,
+            charging=fx.Flow('Charge', size=137, bus='Heat'),
+            discharging=fx.Flow('Discharge', size=158, bus='Heat'),
+        ),
+        fx.Source(
+            'GasGrid',
+            outputs=[fx.Flow('Q_Gas', bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
+        ),
+        fx.Source(
+            'CoalSupply',
+            outputs=[fx.Flow('Q_Coal', bus='Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
+        ),
+        fx.Source(
+            'GridBuy',
+            outputs=[
+                fx.Flow(
+                    'P_el',
+                    bus='Electricity',
+                    size=1000,
+                    effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3},
+                )
+            ],
+        ),
+        fx.Sink(
+            'GridSell',
+            inputs=[fx.Flow('P_el', bus='Electricity', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))],
+        ),
+        fx.Sink('HeatDemand', inputs=[fx.Flow('Q_th', bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
+        fx.Sink(
+            'ElecDemand', inputs=[fx.Flow('P_el', bus='Electricity', size=1, fixed_relative_profile=electricity_demand)]
+        ),
+    )
+    return fs
+
+
+def create_seasonal_storage_system() -> fx.FlowSystem:
+    """Create a district heating system with solar thermal and seasonal storage.
+
+    Demonstrates seasonal storage value with:
+    - Full year at hourly resolution (8760 timesteps)
+    - Solar thermal from PVGIS irradiance data
+    - Heat demand from BDEW industrial profile
+    - Large seasonal pit storage (bridges seasons)
+    - Gas boiler backup
+
+    This system clearly shows the value of inter-cluster storage linking:
+    - Summer: excess solar heat stored in pit
+    - Winter: stored heat reduces gas consumption
+
+    Uses realistic PVGIS solar irradiance and BDEW heat profiles.
+    Used by: 08c-clustering, 08c2-clustering-storage-modes notebooks
+    """
+    # Full year, hourly (use non-leap year to match TMY data which has 8760 hours)
+    timesteps = pd.date_range('2019-01-01', periods=8760, freq='h')
+    # Map to 2020 weather data (TMY has 8760 hours, no Feb 29)
+    temp = _get_weather()['temperature_C'].values
+    ghi = _get_weather()['ghi_W_m2'].values
+
+    # --- Solar thermal profile from PVGIS irradiance ---
+    # Normalize GHI to 0-1 range and apply collector efficiency
+    solar_profile = ghi / 1000  # Normalized (1000 W/m² = 1.0)
+    solar_profile = np.clip(solar_profile, 0, 1)
+
+    # --- Heat demand from BDEW industrial profile ---
+    # Scale to MW (district heating scale)
+    # Use 2019 year for demandlib (non-leap year)
+    thermal_gen = ThermalLoadGenerator(year=2019)
+    heat_demand_kw = thermal_gen.generate(timesteps, temp, 'industrial', annual_demand_kwh=20_000_000)
+    heat_demand = heat_demand_kw / 1000  # Convert to MW
+
+    # --- Gas price with seasonal variation ---
+    gas_gen = GasPriceGenerator()
+    gas_price = gas_gen.generate(timesteps)  # EUR/MWh
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_carriers(
+        fx.Carrier('gas', '#3498db', 'MW'),
+        fx.Carrier('heat', '#e74c3c', 'MW'),
+    )
+    fs.add_elements(
+        # Buses
+        fx.Bus('Gas', carrier='gas'),
+        fx.Bus('Heat', carrier='heat'),
+        # Effects
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+        # Solar thermal collector (investment) - profile includes 70% collector efficiency
+        # Costs annualized for single-year analysis
+        fx.Source(
+            'SolarThermal',
+            outputs=[
+                fx.Flow(
+                    'Q_th',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        minimum_size=0,
+                        maximum_size=20,  # MW peak
+                        effects_of_investment_per_size={'costs': 15000},  # €/MW (annualized)
+                    ),
+                    fixed_relative_profile=solar_profile * 0.7,  # 70% collector efficiency
+                )
+            ],
+        ),
+        # Gas boiler (backup)
+        fx.linear_converters.Boiler(
+            'GasBoiler',
+            thermal_efficiency=0.90,
+            thermal_flow=fx.Flow(
+                'Q_th',
+                bus='Heat',
+                size=fx.InvestParameters(
+                    minimum_size=0,
+                    maximum_size=8,  # MW
+                    effects_of_investment_per_size={'costs': 20000},  # €/MW (annualized)
+                ),
+            ),
+            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+        ),
+        # Gas supply (higher price makes solar+storage more attractive)
+        fx.Source(
+            'GasGrid',
+            outputs=[
+                fx.Flow(
+                    'Q_gas',
+                    bus='Gas',
+                    size=20,
+                    effects_per_flow_hour={'costs': gas_price * 1.5, 'CO2': 0.2},  # €/MWh
+                )
+            ],
+        ),
+        # Seasonal pit storage (large capacity for seasonal shifting)
+        fx.Storage(
+            'SeasonalStorage',
+            capacity_in_flow_hours=fx.InvestParameters(
+                minimum_size=0,
+                maximum_size=50000,  # MWh - large for seasonal storage
+                effects_of_investment_per_size={'costs': 20},  # €/MWh (pit storage is cheap)
+            ),
+            initial_charge_state='equals_final',  # Yearly cyclic
+            eta_charge=0.95,
+            eta_discharge=0.95,
+            relative_loss_per_hour=0.0001,  # Very low losses for pit storage
+            charging=fx.Flow(
+                'Charge',
+                bus='Heat',
+                size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
+            ),
+            discharging=fx.Flow(
+                'Discharge',
+                bus='Heat',
+                size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
+            ),
+        ),
+        # Heat demand
+        fx.Sink(
+            'HeatDemand',
+            inputs=[fx.Flow('Q_th', bus='Heat', size=1, fixed_relative_profile=heat_demand)],
+        ),
+    )
+    return fs
+
+
 def create_multiperiod_system() -> fx.FlowSystem:
     """Create a system with multiple periods and scenarios.
 
@@ -236,10 +657,14 @@ def create_multiperiod_system() -> fx.FlowSystem:
     - 3 planning periods (years 2024, 2025, 2026)
     - 2 scenarios (high demand, low demand)
 
-    Each period: 48 hours (2 days representative)
+    Each period: 336 hours (2 weeks) - suitable for clustering demonstrations.
+    Use transform.sisel() to select subsets if needed.
+
+    Uses BDEW residential heat profile as base, scaled for scenarios.
     """
-    timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
-    hour_of_day = np.arange(48) % 24
+    n_hours = 336  # 2 weeks
+    timesteps = pd.date_range('2020-01-01', periods=n_hours, freq='h')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # Period definitions (years)
     periods = pd.Index([2024, 2025, 2026], name='period')
@@ -248,25 +673,27 @@ def create_multiperiod_system() -> fx.FlowSystem:
     scenarios = pd.Index(['high_demand', 'low_demand'], name='scenario')
     scenario_weights = np.array([0.3, 0.7])
 
-    # Base demand pattern (hourly)
-    base_pattern = np.where((hour_of_day >= 7) & (hour_of_day <= 18), 80.0, 35.0)
+    # BDEW residential heat profile as base (scaled to fit 250 kW boiler with scenarios)
+    thermal_gen = ThermalLoadGenerator()
+    base_demand = thermal_gen.generate(timesteps, temp, 'residential', annual_demand_kwh=30_000)
 
     # Scenario-specific scaling
-    np.random.seed(42)
-    high_demand = base_pattern * 1.2 + np.random.normal(0, 5, 48)
-    low_demand = base_pattern * 0.85 + np.random.normal(0, 3, 48)
+    high_demand = base_demand * 1.3
+    low_demand = base_demand * 0.7
 
     # Create DataFrame with scenario columns
     heat_demand = pd.DataFrame(
         {
-            'high_demand': np.clip(high_demand, 20, 120),
-            'low_demand': np.clip(low_demand, 15, 90),
+            'high_demand': high_demand,
+            'low_demand': low_demand,
         },
         index=timesteps,
     )
 
-    # Gas price varies by period (rising costs)
-    gas_prices = np.array([0.06, 0.08, 0.10])  # Per period
+    # Gas price varies by period (rising costs, based on seasonal price)
+    gas_gen = GasPriceGenerator()
+    base_gas = gas_gen.generate(timesteps).mean() / 1000  # Average EUR/kWh
+    gas_prices = np.array([base_gas, base_gas * 1.2, base_gas * 1.5])  # Rising costs per period
 
     fs = fx.FlowSystem(
         timesteps,
@@ -316,27 +743,22 @@ def create_multiperiod_system() -> fx.FlowSystem:
 
 def main():
     """Generate all example systems and save to netCDF."""
-    solver = fx.solvers.HighsSolver(log_to_console=False)
-
     systems = [
         ('simple_system', create_simple_system),
         ('complex_system', create_complex_system),
         ('multiperiod_system', create_multiperiod_system),
+        ('district_heating_system', create_district_heating_system),
+        ('operational_system', create_operational_system),
+        ('seasonal_storage_system', create_seasonal_storage_system),
     ]
 
     for name, create_func in systems:
         print(f'Creating {name}...')
         fs = create_func()
 
-        print('  Optimizing...')
-        fs.optimize(solver)
-
         output_path = OUTPUT_DIR / f'{name}.nc4'
         print(f'  Saving to {output_path}...')
         fs.to_netcdf(output_path, overwrite=True)
-
-        print(f'  Done. Objective: {fs.solution["objective"].item():.2f}')
-        print()
 
     print('All systems generated successfully!')
 

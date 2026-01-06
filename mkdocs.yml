@@ -71,8 +71,14 @@ nav:
       - Scenarios: notebooks/07-scenarios-and-periods.ipynb
       - Aggregation: notebooks/08a-aggregation.ipynb
       - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
+      - Clustering:
+        - Introduction: notebooks/08c-clustering.ipynb
+        - Storage Modes: notebooks/08c2-clustering-storage-modes.ipynb
+        - Multi-Period: notebooks/08d-clustering-multiperiod.ipynb
+        - Internals: notebooks/08e-clustering-internals.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
+      - Custom Data Plotting: notebooks/fxplot_accessor_demo.ipynb
 
   - API Reference: api-reference/
 
@@ -229,10 +235,14 @@ plugins:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
 
   - mkdocs-jupyter:
-      execute: true  # Execute notebooks during build
+      execute: !ENV [MKDOCS_JUPYTER_EXECUTE, true]  # CI pre-executes in parallel
       allow_errors: false
       include_source: true
       include_requirejs: true
+      ignore:
+        - "notebooks/data/*.py"  # Data generation scripts, not notebooks
+      execute_ignore:
+        - "notebooks/data/*.py"
 
   - plotly
 

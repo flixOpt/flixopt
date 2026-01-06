@@ -15,7 +15,7 @@ from .types import NumericOrBool
 
 logger = logging.getLogger('flixopt')
 
-FlowSystemDimensions = Literal['time', 'period', 'scenario']
+FlowSystemDimensions = Literal['time', 'cluster', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
 
@@ -522,7 +522,9 @@ class DataConverter:
                 coord_index = coord_index.rename(dim_name)
 
             # Special validation for time dimensions (common pattern)
-            if dim_name == 'time' and not isinstance(coord_index, pd.DatetimeIndex):
+            # Allow integer indices when 'cluster' dimension is present (clustered mode)
+            has_cluster_dim = 'cluster' in coords
+            if dim_name == 'time' and not isinstance(coord_index, pd.DatetimeIndex) and not has_cluster_dim:
                 raise ConversionError(
                     f'Dimension named "time" should use DatetimeIndex for proper '
                     f'time-series functionality, got {type(coord_index).__name__}'

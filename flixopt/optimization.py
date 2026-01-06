@@ -1,11 +1,12 @@
 """
 This module contains the Optimization functionality for the flixopt framework.
 It is used to optimize a FlowSystemModel for a given FlowSystem through a solver.
-There are three different Optimization types:
+
+There are two Optimization types:
     1. Optimization: Optimizes the FlowSystemModel for the full FlowSystem
-    2. ClusteredOptimization: Optimizes the FlowSystemModel for the full FlowSystem, but clusters the TimeSeriesData.
-        This simplifies the mathematical model and usually speeds up the solving process.
-    3. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
+    2. SegmentedOptimization: Solves a FlowSystemModel for each individual Segment of the FlowSystem.
+
+For time series aggregation (clustering), use FlowSystem.transform.cluster() instead.
 """
 
 from __future__ import annotations
@@ -16,27 +17,22 @@ import pathlib
 import sys
 import timeit
 import warnings
-from collections import Counter
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-import numpy as np
 from tqdm import tqdm
 
 from . import io as fx_io
-from .clustering import Clustering, ClusteringModel, ClusteringParameters
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
-from .core import DataConverter, TimeSeriesData, drop_constant_arrays
 from .effects import PENALTY_EFFECT_LABEL
 from .features import InvestmentModel
-from .flow_system import FlowSystem
 from .results import Results, SegmentedResults
 
 if TYPE_CHECKING:
     import pandas as pd
     import xarray as xr
 
-    from .elements import Component
+    from .flow_system import FlowSystem
     from .solvers import _Solver
     from .structure import FlowSystemModel
 
@@ -86,20 +82,20 @@ def _initialize_optimization_common(
     name: str,
     flow_system: FlowSystem,
     folder: pathlib.Path | None = None,
-    normalize_weights: bool = True,
+    normalize_weights: bool | None = None,
 ) -> None:
     """
     Shared initialization logic for all optimization types.
 
     This helper function encapsulates common initialization code to avoid duplication
-    across Optimization, ClusteredOptimization, and SegmentedOptimization.
+    across Optimization and SegmentedOptimization.
 
     Args:
         obj: The optimization object being initialized
         name: Name of the optimization
         flow_system: FlowSystem to optimize
         folder: Directory for saving results
-        normalize_weights: Whether to normalize scenario weights
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
     """
     obj.name = name
 
@@ -110,7 +106,8 @@ def _initialize_optimization_common(
         )
         flow_system = flow_system.copy()
 
-    obj.normalize_weights = normalize_weights
+    # normalize_weights is deprecated but kept for backwards compatibility
+    obj.normalize_weights = True  # Always True now
 
     flow_system._used_in_optimization = True
 
@@ -134,14 +131,14 @@ class Optimization:
     This is the default optimization approach that considers every time step,
     providing the most accurate but computationally intensive solution.
 
-    For large problems, consider using ClusteredOptimization (time aggregation)
+    For large problems, consider using FlowSystem.transform.cluster() (time aggregation)
     or SegmentedOptimization (temporal decomposition) instead.
 
     Args:
         name: name of optimization
         flow_system: flow_system which should be optimized
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
     Examples:
         Basic usage:
@@ -190,7 +187,7 @@ class Optimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model(self.normalize_weights)
+        self.model = self.flow_system.create_model()
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -357,162 +354,6 @@ class Optimization:
         return True if self.model is not None else False
 
 
-class ClusteredOptimization(Optimization):
-    """
-    ClusteredOptimization reduces computational complexity by clustering time series into typical periods.
-
-    This optimization approach clusters time series data using techniques from the tsam library to identify
-    representative time periods, significantly reducing computation time while maintaining solution accuracy.
-
-    Note:
-        The quality of the solution depends on the choice of aggregation parameters.
-        The optimal parameters depend on the specific problem and the characteristics of the time series data.
-        For more information, refer to the [tsam documentation](https://tsam.readthedocs.io/en/latest/).
-
-    Args:
-        name: Name of the optimization
-        flow_system: FlowSystem to be optimized
-        clustering_parameters: Parameters for clustering. See ClusteringParameters class documentation
-        components_to_clusterize: list of Components to perform aggregation on. If None, all components are aggregated.
-            This equalizes variables in the components according to the typical periods computed in the aggregation
-        folder: Folder where results should be saved. If None, current working directory is used
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving
-
-    Attributes:
-        clustering (Clustering | None): Contains the clustered time series data
-        clustering_model (ClusteringModel | None): Contains Variables and Constraints that equalize clusters of the time series data
-    """
-
-    def __init__(
-        self,
-        name: str,
-        flow_system: FlowSystem,
-        clustering_parameters: ClusteringParameters,
-        components_to_clusterize: list[Component] | None = None,
-        folder: pathlib.Path | None = None,
-        normalize_weights: bool = True,
-    ):
-        warnings.warn(
-            f'ClusteredOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use FlowSystem.transform.cluster(params) followed by FlowSystem.optimize(solver) instead. '
-            'Example: clustered_fs = flow_system.transform.cluster(params); clustered_fs.optimize(solver)',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if flow_system.scenarios is not None:
-            raise ValueError('Clustering is not supported for scenarios yet. Please use Optimization instead.')
-        if flow_system.periods is not None:
-            raise ValueError('Clustering is not supported for periods yet. Please use Optimization instead.')
-        # Skip parent deprecation warning by calling common init directly
-        _initialize_optimization_common(
-            self,
-            name=name,
-            flow_system=flow_system,
-            folder=folder,
-            normalize_weights=normalize_weights,
-        )
-        self.clustering_parameters = clustering_parameters
-        self.components_to_clusterize = components_to_clusterize
-        self.clustering: Clustering | None = None
-        self.clustering_model: ClusteringModel | None = None
-
-    def do_modeling(self) -> ClusteredOptimization:
-        t_start = timeit.default_timer()
-        self.flow_system.connect_and_transform()
-        self._perform_clustering()
-
-        # Model the System
-        self.model = self.flow_system.create_model(self.normalize_weights)
-        self.model.do_modeling()
-        # Add Clustering Submodel after modeling the rest
-        self.clustering_model = ClusteringModel(
-            self.model, self.clustering_parameters, self.flow_system, self.clustering, self.components_to_clusterize
-        )
-        self.clustering_model.do_modeling()
-        self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
-        return self
-
-    def _perform_clustering(self):
-        from .clustering import Clustering
-
-        t_start_agg = timeit.default_timer()
-
-        # Validation
-        dt_min = float(self.flow_system.hours_per_timestep.min().item())
-        dt_max = float(self.flow_system.hours_per_timestep.max().item())
-        if not dt_min == dt_max:
-            raise ValueError(
-                f'Clustering failed due to inconsistent time step sizes:delta_t varies from {dt_min} to {dt_max} hours.'
-            )
-        ratio = self.clustering_parameters.hours_per_period / dt_max
-        if not np.isclose(ratio, round(ratio), atol=1e-9):
-            raise ValueError(
-                f'The selected {self.clustering_parameters.hours_per_period=} does not match the time '
-                f'step size of {dt_max} hours. It must be an integer multiple of {dt_max} hours.'
-            )
-
-        logger.info(f'{"":#^80}')
-        logger.info(f'{" Clustering TimeSeries Data ":#^80}')
-
-        ds = self.flow_system.to_dataset()
-
-        temporaly_changing_ds = drop_constant_arrays(ds, dim='time')
-
-        # Clustering - creation of clustered timeseries:
-        self.clustering = Clustering(
-            original_data=temporaly_changing_ds.to_dataframe(),
-            hours_per_time_step=float(dt_min),
-            hours_per_period=self.clustering_parameters.hours_per_period,
-            nr_of_periods=self.clustering_parameters.nr_of_periods,
-            weights=self.calculate_clustering_weights(temporaly_changing_ds),
-            time_series_for_high_peaks=self.clustering_parameters.labels_for_high_peaks,
-            time_series_for_low_peaks=self.clustering_parameters.labels_for_low_peaks,
-        )
-
-        self.clustering.cluster()
-        result = self.clustering.plot(show=CONFIG.Plotting.default_show)
-        result.to_html(self.folder / 'clustering.html')
-        if self.clustering_parameters.aggregate_data_and_fix_non_binary_vars:
-            ds = self.flow_system.to_dataset()
-            for name, series in self.clustering.aggregated_data.items():
-                da = (
-                    DataConverter.to_dataarray(series, self.flow_system.coords)
-                    .rename(name)
-                    .assign_attrs(ds[name].attrs)
-                )
-                if TimeSeriesData.is_timeseries_data(da):
-                    da = TimeSeriesData.from_dataarray(da)
-
-                ds[name] = da
-
-            self.flow_system = FlowSystem.from_dataset(ds)
-        self.flow_system.connect_and_transform()
-        self.durations['clustering'] = round(timeit.default_timer() - t_start_agg, 2)
-
-    @classmethod
-    def calculate_clustering_weights(cls, ds: xr.Dataset) -> dict[str, float]:
-        """Calculate weights for all datavars in the dataset. Weights are pulled from the attrs of the datavars."""
-        groups = [da.attrs.get('clustering_group') for da in ds.data_vars.values() if 'clustering_group' in da.attrs]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        group_weights = {group: 1 / count for group, count in group_counts.items()}
-
-        weights = {}
-        for name, da in ds.data_vars.items():
-            clustering_group = da.attrs.get('clustering_group')
-            group_weight = group_weights.get(clustering_group)
-            if group_weight is not None:
-                weights[name] = group_weight
-            else:
-                weights[name] = da.attrs.get('clustering_weight', 1)
-
-        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.info('All Clustering weights were set to 1')
-
-        return weights
-
-
 class SegmentedOptimization:
     """Solve large optimization problems by dividing time horizon into (overlapping) segments.
 
@@ -617,7 +458,7 @@ class SegmentedOptimization:
         - Monitor solution quality at segment boundaries for discontinuities
 
     Warning:
-        The evaluation of the solution is a bit more complex than Optimization or ClusteredOptimization
+        The evaluation of the solution is a bit more complex than Optimization
         due to the overlapping individual solutions.
 
     """

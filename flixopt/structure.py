@@ -10,6 +10,7 @@ import json
 import logging
 import pathlib
 import re
+import warnings
 from dataclasses import dataclass
 from difflib import get_close_matches
 from typing import (
@@ -89,13 +90,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     Args:
         flow_system: The flow_system that is used to create the model.
-        normalize_weights: Whether to automatically normalize the weights to sum up to 1 when solving.
     """
 
-    def __init__(self, flow_system: FlowSystem, normalize_weights: bool):
+    def __init__(self, flow_system: FlowSystem):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.normalize_weights = normalize_weights
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
@@ -169,7 +168,15 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     @property
     def solution(self):
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
-        solution = super().solution
+        # Suppress the linopy warning about coordinate mismatch.
+        # This warning is expected when storage charge_state has one more timestep than other variables.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                category=UserWarning,
+                message='Coordinates across variables not equal',
+            )
+            solution = super().solution
         solution['objective'] = self.objective.value
         # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
@@ -204,48 +211,80 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
-        if 'time' in solution.coords and not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
-            solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        if 'time' in solution.coords:
+            if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+                solution = solution.reindex(time=self.flow_system.timesteps_extra)
         return solution
 
     @property
-    def hours_per_step(self):
-        return self.flow_system.hours_per_timestep
+    def timestep_duration(self) -> xr.DataArray:
+        """Duration of each timestep in hours."""
+        return self.flow_system.timestep_duration
 
     @property
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
 
     @property
-    def scenario_weights(self) -> xr.DataArray:
+    def dims(self) -> list[str]:
+        """Active dimension names."""
+        return self.flow_system.dims
+
+    @property
+    def indexes(self) -> dict[str, pd.Index]:
+        """Indexes for active dimensions."""
+        return self.flow_system.indexes
+
+    @property
+    def weights(self) -> dict[str, xr.DataArray]:
+        """Weights for active dimensions (unit weights if not set).
+
+        Scenario weights are always normalized (handled by FlowSystem).
         """
-        Scenario weights of model. With optional normalization.
+        return self.flow_system.weights
+
+    @property
+    def temporal_dims(self) -> list[str]:
+        """Temporal dimensions for summing over time.
+
+        Returns ['time', 'cluster'] for clustered systems, ['time'] otherwise.
+        """
+        return self.flow_system.temporal_dims
+
+    @property
+    def temporal_weight(self) -> xr.DataArray:
+        """Combined temporal weight (timestep_duration × cluster_weight)."""
+        return self.flow_system.temporal_weight
+
+    def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over temporal dimensions with full temporal weighting.
+
+        Example:
+            >>> total_energy = model.sum_temporal(flow_rate)
+        """
+        return self.flow_system.sum_temporal(data)
+
+    @property
+    def scenario_weights(self) -> xr.DataArray:
+        """Scenario weights of model.
+
+        Returns:
+            - Scalar 1 if no scenarios defined
+            - Unit weights (all 1.0) if scenarios exist but no explicit weights set
+            - Normalized explicit weights if set via FlowSystem.scenario_weights
         """
         if self.flow_system.scenarios is None:
             return xr.DataArray(1)
 
         if self.flow_system.scenario_weights is None:
-            scenario_weights = xr.DataArray(
-                np.ones(self.flow_system.scenarios.size, dtype=float),
-                coords={'scenario': self.flow_system.scenarios},
-                dims=['scenario'],
-                name='scenario_weights',
-            )
-        else:
-            scenario_weights = self.flow_system.scenario_weights
+            return self.flow_system._unit_weight('scenario')
 
-        if not self.normalize_weights:
-            return scenario_weights
-
-        norm = scenario_weights.sum('scenario')
-        if np.isclose(norm, 0.0).any():
-            raise ValueError('FlowSystemModel.scenario_weights: weights sum to 0; cannot normalize.')
-        return scenario_weights / norm
+        return self.flow_system.scenario_weights
 
     @property
     def objective_weights(self) -> xr.DataArray:
         """
-        Objective weights of model. With optional normalization of scenario weights.
+        Objective weights of model (period_weights × scenario_weights).
         """
         period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
         scenario_weights = self.scenario_weights
@@ -262,7 +301,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         Args:
             dims: The dimensions to include in the coordinates. If None, includes all dimensions
-            extra_timestep: If True, uses extra timesteps instead of regular timesteps
+            extra_timestep: If True, uses extra timesteps instead of regular timesteps.
+                For clustered FlowSystems, extends time by 1 (for charge_state boundaries).
 
         Returns:
             The coordinates of the model, or None if no coordinates are available
@@ -274,9 +314,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             raise ValueError('extra_timestep=True requires "time" to be included in dims')
 
         if dims is None:
-            coords = dict(self.flow_system.coords)
+            coords = dict(self.flow_system.indexes)
         else:
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
+            # In clustered systems, 'time' is always paired with 'cluster'
+            # So when 'time' is requested, also include 'cluster' if available
+            effective_dims = set(dims)
+            if 'time' in dims and 'cluster' in self.flow_system.indexes:
+                effective_dims.add('cluster')
+            coords = {k: v for k, v in self.flow_system.indexes.items() if k in effective_dims}
 
         if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra
@@ -1703,8 +1748,8 @@ class Submodel(SubmodelsMixin):
         return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
-    def hours_per_step(self):
-        return self._model.hours_per_step
+    def timestep_duration(self):
+        return self._model.timestep_duration
 
     def _do_modeling(self):
         """

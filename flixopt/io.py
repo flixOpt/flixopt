@@ -7,6 +7,7 @@ import os
 import pathlib
 import re
 import sys
+import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -559,13 +560,16 @@ def save_dataset_to_netcdf(
         if hasattr(coord_var, 'attrs') and coord_var.attrs:
             ds[coord_name].attrs = {'attrs': json.dumps(coord_var.attrs)}
 
-    ds.to_netcdf(
-        path,
-        encoding=None
-        if compression == 0
-        else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
-        engine='netcdf4',
-    )
+    # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='numpy.ndarray size changed')
+        ds.to_netcdf(
+            path,
+            encoding=None
+            if compression == 0
+            else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+            engine='netcdf4',
+        )
 
 
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
@@ -578,7 +582,10 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     Returns:
         Dataset: Loaded dataset with restored attrs.
     """
-    ds = xr.load_dataset(str(path), engine='netcdf4')
+    # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=RuntimeWarning, message='numpy.ndarray size changed')
+        ds = xr.load_dataset(str(path), engine='netcdf4')
 
     # Restore Dataset attrs
     if 'attrs' in ds.attrs:
