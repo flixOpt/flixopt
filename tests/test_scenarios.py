@@ -341,12 +341,14 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
-    np.testing.assert_allclose(flow_system.scenario_weights.values, flow_system_full.scenario_weights[0:2])
+    # Scenario weights are always normalized - subset is re-normalized to sum to 1
+    subset_weights = flow_system_full.scenario_weights[0:2]
+    expected_normalized = subset_weights / subset_weights.sum()
+    np.testing.assert_allclose(flow_system.scenario_weights.values, expected_normalized.values)
 
-    # Optimize using new API with normalize_weights=False
+    # Optimize using new API
     flow_system.optimize(
         fx.solvers.GurobiSolver(mip_gap=0.01, time_limit_seconds=60),
-        normalize_weights=False,
     )
 
     # Penalty has same structure as other effects: 'Penalty' is the total, 'Penalty(temporal)' and 'Penalty(periodic)' are components
@@ -769,7 +771,10 @@ def test_weights_selection():
 
     # Verify weights are correctly sliced
     assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))
-    np.testing.assert_allclose(fs_subset.scenario_weights.values, custom_scenario_weights[[0, 2]])
+    # Scenario weights are always normalized - subset is re-normalized to sum to 1
+    subset_weights = np.array([0.3, 0.2])  # Original weights for selected scenarios
+    expected_normalized = subset_weights / subset_weights.sum()
+    np.testing.assert_allclose(fs_subset.scenario_weights.values, expected_normalized)
 
     # Verify weights are 1D with just scenario dimension (no period dimension)
     assert fs_subset.scenario_weights.dims == ('scenario',)

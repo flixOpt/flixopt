@@ -11,17 +11,36 @@ This script creates FlowSystems of varying complexity:
 Run this script to regenerate the example data files.
 """
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from generate_realistic_profiles import (
-    ElectricityLoadGenerator,
-    GasPriceGenerator,
-    ThermalLoadGenerator,
-    load_electricity_prices,
-    load_weather,
-)
+
+# Handle imports in different contexts (direct run, package import, mkdocs-jupyter)
+try:
+    from .generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
+except ImportError:
+    # Add data directory to path for mkdocs-jupyter context
+    try:
+        _data_dir = Path(__file__).parent
+    except NameError:
+        _data_dir = Path('docs/notebooks/data')
+    if str(_data_dir) not in sys.path:
+        sys.path.insert(0, str(_data_dir))
+    from generate_realistic_profiles import (
+        ElectricityLoadGenerator,
+        GasPriceGenerator,
+        ThermalLoadGenerator,
+        load_electricity_prices,
+        load_weather,
+    )
 
 import flixopt as fx
 
@@ -34,10 +53,38 @@ except NameError:
     OUTPUT_DIR = Path('docs/notebooks/data')
     DATA_DIR = Path('docs/notebooks/data')
 
-# Load shared data
-_weather = load_weather()
-_elec_prices = load_electricity_prices()
-_elec_prices.index = _elec_prices.index.tz_localize(None)  # Remove timezone for compatibility
+# Lazy-loaded shared data with error handling
+_weather: pd.DataFrame | None = None
+_elec_prices: pd.Series | None = None
+
+
+def _get_weather() -> pd.DataFrame:
+    """Get weather data, loading lazily on first access."""
+    global _weather
+    if _weather is None:
+        try:
+            _weather = load_weather()
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Weather data file not found. Ensure tmy_dresden.csv exists in {DATA_DIR}/raw. Original error: {e}'
+            ) from e
+    return _weather
+
+
+def _get_elec_prices() -> pd.Series:
+    """Get electricity prices, loading lazily on first access."""
+    global _elec_prices
+    if _elec_prices is None:
+        try:
+            _elec_prices = load_electricity_prices()
+            # Remove timezone if present (guard against both tz-aware and tz-naive indices)
+            if _elec_prices.index.tz is not None:
+                _elec_prices.index = _elec_prices.index.tz_localize(None)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f'Electricity price data not found. Ensure price data exists in {DATA_DIR}. Original error: {e}'
+            ) from e
+    return _elec_prices
 
 
 def create_simple_system() -> fx.FlowSystem:
@@ -53,7 +100,7 @@ def create_simple_system() -> fx.FlowSystem:
     """
     # One week, hourly (January 2020 for realistic data)
     timesteps = pd.date_range('2020-01-15', periods=168, freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # BDEW office heat demand profile (scaled to fit 150 kW boiler)
     thermal_gen = ThermalLoadGenerator()
@@ -114,7 +161,7 @@ def create_complex_system() -> fx.FlowSystem:
     Uses realistic BDEW profiles and OPSD electricity prices.
     """
     timesteps = pd.date_range('2020-06-01', periods=72, freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # BDEW demand profiles (scaled to fit component sizes)
     thermal_gen = ThermalLoadGenerator()
@@ -124,7 +171,7 @@ def create_complex_system() -> fx.FlowSystem:
     electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=50_000)
 
     # Real electricity prices (OPSD) and seasonal gas prices
-    electricity_price = _elec_prices.reindex(timesteps, method='ffill').values / 1000  # EUR/kWh
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values / 1000  # EUR/kWh
     gas_gen = GasPriceGenerator()
     gas_price = gas_gen.generate(timesteps) / 1000  # EUR/kWh
 
@@ -259,7 +306,7 @@ def create_district_heating_system() -> fx.FlowSystem:
     """
     # One month, hourly
     timesteps = pd.date_range('2020-01-01', '2020-01-31 23:00:00', freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # BDEW profiles (MW scale for district heating)
     thermal_gen = ThermalLoadGenerator()
@@ -269,7 +316,7 @@ def create_district_heating_system() -> fx.FlowSystem:
     electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=5_000_000) / 1000  # MW
 
     # Prices
-    electricity_price = _elec_prices.reindex(timesteps, method='ffill').values  # EUR/MWh
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values  # EUR/MWh
     gas_gen = GasPriceGenerator()
     gas_price = gas_gen.generate(timesteps)  # EUR/MWh
 
@@ -383,9 +430,9 @@ def create_operational_system() -> fx.FlowSystem:
 
     Used by: 08b-rolling-horizon notebook
     """
-    # Two weeks, hourly
-    timesteps = pd.date_range('2020-01-01', '2020-01-14 23:00:00', freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
+    # Two weeks, 15-min resolution (1344 timesteps)
+    timesteps = pd.date_range('2020-01-01', '2020-01-14 23:45:00', freq='15min')
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # BDEW profiles (MW scale)
     thermal_gen = ThermalLoadGenerator()
@@ -395,7 +442,7 @@ def create_operational_system() -> fx.FlowSystem:
     electricity_demand = elec_gen.generate(timesteps, 'commercial', annual_demand_kwh=5_000_000) / 1000  # MW
 
     # Prices
-    electricity_price = _elec_prices.reindex(timesteps, method='ffill').values  # EUR/MWh
+    electricity_price = _get_elec_prices().reindex(timesteps, method='ffill').values  # EUR/MWh
     gas_gen = GasPriceGenerator()
     gas_price = gas_gen.generate(timesteps)  # EUR/MWh
 
@@ -496,8 +543,8 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
     # Full year, hourly (use non-leap year to match TMY data which has 8760 hours)
     timesteps = pd.date_range('2019-01-01', periods=8760, freq='h')
     # Map to 2020 weather data (TMY has 8760 hours, no Feb 29)
-    temp = _weather['temperature_C'].values
-    ghi = _weather['ghi_W_m2'].values
+    temp = _get_weather()['temperature_C'].values
+    ghi = _get_weather()['ghi_W_m2'].values
 
     # --- Solar thermal profile from PVGIS irradiance ---
     # Normalize GHI to 0-1 range and apply collector efficiency
@@ -576,7 +623,7 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             'SeasonalStorage',
             capacity_in_flow_hours=fx.InvestParameters(
                 minimum_size=0,
-                maximum_size=5000,  # MWh - large for seasonal storage
+                maximum_size=50000,  # MWh - large for seasonal storage
                 effects_of_investment_per_size={'costs': 20},  # €/MWh (pit storage is cheap)
             ),
             initial_charge_state='equals_final',  # Yearly cyclic
@@ -617,7 +664,7 @@ def create_multiperiod_system() -> fx.FlowSystem:
     """
     n_hours = 336  # 2 weeks
     timesteps = pd.date_range('2020-01-01', periods=n_hours, freq='h')
-    temp = _weather.loc[timesteps, 'temperature_C'].values
+    temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # Period definitions (years)
     periods = pd.Index([2024, 2025, 2026], name='period')

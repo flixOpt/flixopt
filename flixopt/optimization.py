@@ -82,20 +82,20 @@ def _initialize_optimization_common(
     name: str,
     flow_system: FlowSystem,
     folder: pathlib.Path | None = None,
-    normalize_weights: bool = True,
+    normalize_weights: bool | None = None,
 ) -> None:
     """
     Shared initialization logic for all optimization types.
 
     This helper function encapsulates common initialization code to avoid duplication
-    across Optimization, ClusteredOptimization, and SegmentedOptimization.
+    across Optimization and SegmentedOptimization.
 
     Args:
         obj: The optimization object being initialized
         name: Name of the optimization
         flow_system: FlowSystem to optimize
         folder: Directory for saving results
-        normalize_weights: Whether to normalize scenario weights
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
     """
     obj.name = name
 
@@ -106,7 +106,8 @@ def _initialize_optimization_common(
         )
         flow_system = flow_system.copy()
 
-    obj.normalize_weights = normalize_weights
+    # normalize_weights is deprecated but kept for backwards compatibility
+    obj.normalize_weights = True  # Always True now
 
     flow_system._used_in_optimization = True
 
@@ -130,14 +131,14 @@ class Optimization:
     This is the default optimization approach that considers every time step,
     providing the most accurate but computationally intensive solution.
 
-    For large problems, consider using ClusteredOptimization (time aggregation)
+    For large problems, consider using FlowSystem.transform.cluster() (time aggregation)
     or SegmentedOptimization (temporal decomposition) instead.
 
     Args:
         name: name of optimization
         flow_system: flow_system which should be optimized
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
     Examples:
         Basic usage:
@@ -186,7 +187,7 @@ class Optimization:
         t_start = timeit.default_timer()
         self.flow_system.connect_and_transform()
 
-        self.model = self.flow_system.create_model(self.normalize_weights)
+        self.model = self.flow_system.create_model()
         self.model.do_modeling()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
@@ -457,7 +458,7 @@ class SegmentedOptimization:
         - Monitor solution quality at segment boundaries for discontinuities
 
     Warning:
-        The evaluation of the solution is a bit more complex than Optimization or ClusteredOptimization
+        The evaluation of the solution is a bit more complex than Optimization
         due to the overlapping individual solutions.
 
     """

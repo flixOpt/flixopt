@@ -16,6 +16,7 @@ Example:
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import holidays
@@ -23,6 +24,11 @@ import numpy as np
 import pandas as pd
 import pvlib
 from demandlib import bdew
+
+# Reset warnings to default after imports. Some dependencies (demandlib, pvlib)
+# may configure warnings during import. This ensures consistent warning behavior
+# when this module is used in different contexts (scripts, notebooks, tests).
+warnings.resetwarnings()
 
 # Data directory
 DATA_DIR = Path(__file__).parent / 'raw'

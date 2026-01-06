@@ -30,7 +30,7 @@ SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
 # Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '6.0.0'
+DEPRECATION_REMOVAL_VERSION = '7.0.0'
 
 
 class MultilineFormatter(logging.Formatter):
@@ -163,9 +163,9 @@ _DEFAULTS = MappingProxyType(
                 'default_facet_cols': 3,
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
-                'facet_col_priority': ('cluster', 'period', 'scenario'),
-                'facet_row_priority': ('period', 'scenario'),
-                'animation_frame_priority': ('scenario',),
+                'default_line_shape': 'hv',
+                'dim_priority': ('time', 'duration', 'duration_pct', 'variable', 'cluster', 'period', 'scenario'),
+                'slot_priority': ('x', 'color', 'facet_col', 'facet_row', 'animation_frame'),
             }
         ),
         'solving': MappingProxyType(
@@ -561,9 +561,10 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
-            facet_col_priority: Priority order for auto-resolving facet_col dimension.
-            facet_row_priority: Priority order for auto-resolving facet_row dimension.
-            animation_frame_priority: Priority order for auto-resolving animation_frame dimension.
+            dim_priority: Priority order for assigning dimensions to plot slots.
+                Dimensions are assigned to slots based on this order.
+            slot_priority: Order in which slots are filled during auto-assignment.
+                Default: x → color → facet_col → facet_row → animation_frame.
 
         Examples:
             ```python
@@ -572,8 +573,11 @@ class CONFIG:
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
 
-            # Customize auto-faceting priority
-            CONFIG.Plotting.facet_col_priority = ('period', 'cluster', 'scenario')
+            # Customize dimension priority for auto-assignment
+            CONFIG.Plotting.dim_priority = ('time', 'scenario', 'variable', 'period', 'cluster')
+
+            # Change slot fill order (e.g., prioritize facets over color)
+            CONFIG.Plotting.slot_priority = ('x', 'facet_col', 'facet_row', 'color', 'animation_frame')
             ```
         """
 
@@ -583,9 +587,9 @@ class CONFIG:
         default_facet_cols: int = _DEFAULTS['plotting']['default_facet_cols']
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
-        facet_col_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_col_priority']
-        facet_row_priority: tuple[str, ...] = _DEFAULTS['plotting']['facet_row_priority']
-        animation_frame_priority: tuple[str, ...] = _DEFAULTS['plotting']['animation_frame_priority']
+        default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
+        dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_priority']
+        slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['slot_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -686,9 +690,9 @@ class CONFIG:
                 'default_facet_cols': cls.Plotting.default_facet_cols,
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
-                'facet_col_priority': cls.Plotting.facet_col_priority,
-                'facet_row_priority': cls.Plotting.facet_row_priority,
-                'animation_frame_priority': cls.Plotting.animation_frame_priority,
+                'default_line_shape': cls.Plotting.default_line_shape,
+                'dim_priority': cls.Plotting.dim_priority,
+                'slot_priority': cls.Plotting.slot_priority,
             },
         }
 

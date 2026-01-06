@@ -36,7 +36,6 @@ if __name__ == '__main__':
     # Clustering Properties
     n_clusters = 4
     cluster_duration = '6h'
-    include_storage = False
     keep_extreme_periods = True
     imbalance_penalty = 1e5  # or set to None if not needed
 
@@ -176,7 +175,7 @@ if __name__ == '__main__':
     flow_system.topology.plot()
 
     # Optimizations
-    optimizations: list[fx.Optimization | fx.ClusteredOptimization | fx.SegmentedOptimization] = []
+    optimizations: list[fx.Optimization | fx.SegmentedOptimization] = []
 
     if full:
         optimization = fx.Optimization('Full', flow_system.copy())

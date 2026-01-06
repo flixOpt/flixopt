@@ -37,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
-    "netcdf4 >= 1.6.1, < 2",
+    "netcdf4 >= 1.6.1, < 1.7.4",  # 1.7.4 missing wheels, revert to < 2 later
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "colorlog >= 6.8.0, < 7",
@@ -79,7 +79,7 @@ dev = [
     "pytest==8.4.2",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
-    "ruff==0.13.3",
+    "ruff==0.14.10",
     "pre-commit==4.3.0",
     "pyvis==0.3.2",
     "tsam==2.3.9",
@@ -89,14 +89,14 @@ dev = [
     "dash-cytoscape==1.0.2",
     "dash-daq==0.6.0",
     "networkx==3.0.0",
-    "werkzeug==3.0.0",
+    "werkzeug==3.1.4",
 ]
 
 # Documentation building
 docs = [
     "mkdocs==1.6.1",
-    "mkdocs-material==9.6.23",
-    "mkdocstrings-python==1.18.2",
+    "mkdocs-material==9.7.1",
+    "mkdocstrings-python==1.19.0",
     "mkdocs-table-reader-plugin==3.1.0",
     "mkdocs-gen-files==0.5.0",
     "mkdocs-include-markdown-plugin==7.2.0",
@@ -104,7 +104,7 @@ docs = [
     "mkdocs-plotly-plugin==0.1.3",
     "mkdocs-jupyter==0.25.1",
     "markdown-include==0.8.1",
-    "pymdown-extensions==10.16.1",
+    "pymdown-extensions==10.19.1",
     "pygments==2.19.2",
     "mike==2.1.3",
     "mkdocs-git-revision-date-localized-plugin==1.5.0",
@@ -209,17 +209,11 @@ filterwarnings = [
     "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
     "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
 
-    # === Treat flixopt warnings as errors (strict mode for our code) ===
+    # === Treat most flixopt warnings as errors (strict mode for our code) ===
     # This ensures we catch deprecations, future changes, and user warnings in our own code
     "error::DeprecationWarning:flixopt",
     "error::FutureWarning:flixopt",
     "error::UserWarning:flixopt",
-
-    # === Third-party warnings (mirrored from __init__.py) ===
-    "ignore:.*minimal value.*exceeds.*:UserWarning:tsam",
-    "ignore:Coordinates across variables not equal:UserWarning:linopy",
-    "ignore:.*join will change from join='outer' to join='exact'.*:FutureWarning:linopy",
-    "ignore:numpy\\.ndarray size changed:RuntimeWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
 
