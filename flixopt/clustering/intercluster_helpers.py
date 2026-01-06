@@ -32,15 +32,25 @@ See Also
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
 
+from ..interface import InvestParameters
+
 if TYPE_CHECKING:
     from ..flow_system import FlowSystem
-    from ..interface import InvestParameters
+
+logger = logging.getLogger('flixopt')
+
+# Default upper bound for unbounded storage capacity.
+# Used when no explicit capacity or InvestParameters.maximum_size is provided.
+# Set to 1e6 to avoid numerical issues with very large bounds while still
+# being effectively unbounded for most practical applications.
+DEFAULT_UNBOUNDED_CAPACITY = 1e6
 
 
 @dataclass
@@ -105,16 +115,29 @@ def extract_capacity_bounds(
     lb = xr.DataArray(np.zeros(lb_shape), coords=boundary_coords, dims=boundary_dims)
 
     # Determine has_investment and cap_value
-    has_investment = hasattr(capacity_param, 'maximum_size')
+    has_investment = isinstance(capacity_param, InvestParameters)
+    using_default_bound = False
 
-    if hasattr(capacity_param, 'fixed_size') and capacity_param.fixed_size is not None:
-        cap_value = capacity_param.fixed_size
-    elif hasattr(capacity_param, 'maximum_size') and capacity_param.maximum_size is not None:
-        cap_value = capacity_param.maximum_size
+    if isinstance(capacity_param, InvestParameters):
+        if capacity_param.fixed_size is not None:
+            cap_value = capacity_param.fixed_size
+        elif capacity_param.maximum_size is not None:
+            cap_value = capacity_param.maximum_size
+        else:
+            cap_value = DEFAULT_UNBOUNDED_CAPACITY
+            using_default_bound = True
     elif isinstance(capacity_param, (int, float)):
         cap_value = capacity_param
     else:
-        cap_value = 1e9  # Large default for unbounded case
+        cap_value = DEFAULT_UNBOUNDED_CAPACITY
+        using_default_bound = True
+
+    if using_default_bound:
+        logger.warning(
+            f'No explicit capacity bound provided for inter-cluster storage linking. '
+            f'Using default upper bound of {DEFAULT_UNBOUNDED_CAPACITY:.0e}. '
+            f'Consider setting capacity_in_flow_hours or InvestParameters.maximum_size explicitly.'
+        )
 
     # Build upper bound
     if isinstance(cap_value, xr.DataArray) and cap_value.dims:

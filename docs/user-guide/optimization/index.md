@@ -285,7 +285,7 @@ Common solver parameters:
 ### Model Size Reduction
 
 - Use longer timesteps where acceptable
-- Use `ClusteredOptimization` for long horizons
+- Use `flow_system.transform.cluster()` for long horizons
 - Remove unnecessary components
 - Simplify constraint formulations
 

@@ -231,9 +231,12 @@ class StatusModel(Submodel):
                     coords=self._model.get_coords(('period', 'scenario')),
                     short_name='startup_count',
                 )
+                # Apply cluster_weight to count startups correctly in clustered systems.
+                # A startup in a cluster with weight 10 represents 10 actual startups.
                 # Sum over all temporal dimensions (time, and cluster if present)
                 startup_temporal_dims = [d for d in self.startup.dims if d not in ('period', 'scenario')]
-                self.add_constraints(count == self.startup.sum(startup_temporal_dims), short_name='startup_count')
+                weighted_startup = self.startup * self._model.weights.get('cluster', 1.0)
+                self.add_constraints(count == weighted_startup.sum(startup_temporal_dims), short_name='startup_count')
 
         # 5. Consecutive active duration (uptime) using existing pattern
         if self.parameters.use_uptime_tracking:

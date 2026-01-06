@@ -676,14 +676,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure)
 
-        # Include cluster info for clustered FlowSystems (old structure)
-        if self.clusters is not None:
-            ds.attrs['is_clustered'] = True
-            ds.attrs['n_clusters'] = len(self.clusters)
-            ds.attrs['timesteps_per_cluster'] = len(self.timesteps)
-            ds.attrs['timestep_duration'] = float(self.timestep_duration.mean())
-
-        # Serialize Clustering object if present (new structure)
+        # Serialize Clustering object for full reconstruction in from_dataset()
         if self.clustering is not None:
             clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
             # Add clustering arrays with prefix
@@ -814,11 +807,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             clustering_arrays = {}
             for name, arr in ds.data_vars.items():
                 if name.startswith('clustering|'):
-                    # Remove 'clustering|' prefix (11 chars)
+                    # Remove 'clustering|' prefix (11 chars) from both key and DataArray name
+                    # This ensures that if the FlowSystem is serialized again, the arrays
+                    # won't get double-prefixed (clustering|clustering|...)
                     arr_name = name[11:]
-                    clustering_arrays[arr_name] = arr
+                    clustering_arrays[arr_name] = arr.rename(arr_name)
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering
+
+            # Restore cluster_weight from clustering's representative_weights
+            # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
+            if hasattr(clustering, 'result') and hasattr(clustering.result, 'representative_weights'):
+                flow_system.cluster_weight = clustering.result.representative_weights
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1038,7 +1038,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if data is None:
             return None
 
-        coords = self.coords
+        coords = self.indexes
 
         if dims is not None:
             coords = {k: coords[k] for k in dims if k in coords}
@@ -2012,6 +2012,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             Dict mapping dimension names to coordinate arrays.
         """
+        warnings.warn(
+            f'FlowSystem.coords is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'Use FlowSystem.indexes instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.indexes
 
     @property
@@ -2083,6 +2089,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Normalize to sum to 1
         norm = weights.sum('scenario')
         if np.isclose(norm, 0.0).any():
+            # Provide detailed error for multi-dimensional weights
+            if norm.ndim > 0:
+                zero_locations = np.argwhere(np.isclose(norm.values, 0.0))
+                coords_info = ', '.join(
+                    f'{dim}={norm.coords[dim].values[idx]}'
+                    for idx, dim in zip(zero_locations[0], norm.dims, strict=False)
+                )
+                raise ValueError(
+                    f'scenario_weights sum to 0 at {coords_info}; cannot normalize. '
+                    f'Ensure all scenario weight combinations sum to a positive value.'
+                )
             raise ValueError('scenario_weights sum to 0; cannot normalize.')
         self._scenario_weights = weights / norm
 

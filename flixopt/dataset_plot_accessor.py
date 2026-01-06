@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -72,12 +73,25 @@ def assign_slots(
     # Slot fill order from config
     slot_order = CONFIG.Plotting.slot_priority
 
+    # Valid dimensions: all dims in dataset + 'variable' (if any data_vars exist)
+    # Note: 'variable' is only in `available` (for auto-assign) when len(data_vars) > 1,
+    # but it's always valid for explicit assignment since it exists in the long-form df
+    valid_dims = set(ds.dims)
+    if ds.data_vars:
+        valid_dims.add('variable')
+
     results: dict[str, str | None] = {k: None for k in slot_order}
     used: set[str] = set()
 
     # First pass: resolve explicit dimensions (not 'auto' or None) to mark them as used
     for slot_name, value in slots.items():
         if value is not None and value != 'auto':
+            if value not in valid_dims:
+                warnings.warn(
+                    f"{slot_name}='{value}' is not a valid dimension. Available: {sorted(valid_dims)}. Ignoring.",
+                    stacklevel=3,
+                )
+                continue  # Skip invalid explicit values
             used.add(value)
             results[slot_name] = value
 
@@ -740,8 +754,6 @@ class DatasetStatsAccessor:
         Example:
             >>> ds.fxstats.to_duration_curve().fxplot.line(title='Duration Curve')
         """
-        import numpy as np
-
         if 'time' not in self._ds.dims:
             raise ValueError("Duration curve requires a 'time' dimension.")
 
@@ -749,6 +761,9 @@ class DatasetStatsAccessor:
         sorted_ds = self._ds.copy()
         for var in sorted_ds.data_vars:
             da = sorted_ds[var]
+            if 'time' not in da.dims:
+                # Skip variables without time dimension (e.g., scalar metadata)
+                continue
             time_axis = da.dims.index('time')
             # Sort along time axis (descending) - use flip for correct axis
             sorted_values = np.flip(np.sort(da.values, axis=time_axis), axis=time_axis)
@@ -808,6 +823,7 @@ class DataArrayPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a grouped bar chart. See DatasetPlotAccessor.bar for details."""
@@ -821,6 +837,7 @@ class DataArrayPlotAccessor:
             facet_row=facet_row,
             animation_frame=animation_frame,
             facet_cols=facet_cols,
+            exclude_dims=exclude_dims,
             **px_kwargs,
         )
 
@@ -850,6 +867,7 @@ class DataArrayPlotAccessor:
             facet_row=facet_row,
             animation_frame=animation_frame,
             facet_cols=facet_cols,
+            exclude_dims=exclude_dims,
             **px_kwargs,
         )
 
@@ -866,6 +884,7 @@ class DataArrayPlotAccessor:
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         line_shape: str | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a line chart. See DatasetPlotAccessor.line for details."""
@@ -880,6 +899,7 @@ class DataArrayPlotAccessor:
             animation_frame=animation_frame,
             facet_cols=facet_cols,
             line_shape=line_shape,
+            exclude_dims=exclude_dims,
             **px_kwargs,
         )
 
@@ -896,6 +916,7 @@ class DataArrayPlotAccessor:
         animation_frame: str | Literal['auto'] | None = 'auto',
         facet_cols: int | None = None,
         line_shape: str | None = None,
+        exclude_dims: set[str] | None = None,
         **px_kwargs: Any,
     ) -> go.Figure:
         """Create a stacked area chart. See DatasetPlotAccessor.area for details."""
@@ -910,6 +931,7 @@ class DataArrayPlotAccessor:
             animation_frame=animation_frame,
             facet_cols=facet_cols,
             line_shape=line_shape,
+            exclude_dims=exclude_dims,
             **px_kwargs,
         )
 

@@ -50,8 +50,8 @@ flow_rates = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 |-----------|-------------|---------|
 | `n_clusters` | Number of typical periods | `12` (typical days for a year) |
 | `cluster_duration` | Duration of each cluster | `'1D'`, `'24h'`, or `24` (hours) |
-| `time_series_for_high_peaks` | Time series where peak clusters must be captured | `['HeatDemand(Q)|fixed_relative_profile']` |
-| `time_series_for_low_peaks` | Time series where minimum clusters must be captured | `['SolarGen(P)|fixed_relative_profile']` |
+| `time_series_for_high_peaks` | Time series where peak clusters must be captured | `['HeatDemand(Q)\|fixed_relative_profile']` |
+| `time_series_for_low_peaks` | Time series where minimum clusters must be captured | `['SolarGen(P)\|fixed_relative_profile']` |
 | `cluster_method` | Clustering algorithm | `'k_means'`, `'hierarchical'`, `'k_medoids'` |
 | `representation_method` | How clusters are represented | `'meanRepresentation'`, `'medoidRepresentation'` |
 | `random_state` | Random seed for reproducibility | `42` |
@@ -155,7 +155,7 @@ For `'intercluster'` and `'intercluster_cyclic'` modes, the optimizer tracks:
 
 During expansion, these combine with self-discharge decay:
 
-```
+```text
 actual_SOC(t) = SOC_boundary[period] × (1 - loss)^t + ΔE(t)
 ```
 

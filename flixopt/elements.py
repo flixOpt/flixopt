@@ -1219,7 +1219,7 @@ class BusModel(ElementModel):
 
         # Add virtual supply/demand to balance and penalty if needed
         if self.element.allows_imbalance:
-            imbalance_penalty = self.element._imbalance_penalty_per_flow_hour * self._model.timestep_duration
+            imbalance_penalty = self.element.imbalance_penalty_per_flow_hour * self._model.timestep_duration
 
             self.virtual_supply = self.add_variables(
                 lower=0, coords=self._model.get_coords(), short_name='virtual_supply'

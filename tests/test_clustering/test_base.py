@@ -44,23 +44,6 @@ class TestClusterStructure:
         assert isinstance(structure.cluster_occurrences, xr.DataArray)
         assert structure.n_original_clusters == 5
 
-    def test_get_cluster_weight_per_timestep(self):
-        """Test weight calculation per timestep."""
-        structure = ClusterStructure(
-            cluster_order=xr.DataArray([0, 1, 0], dims=['original_cluster']),
-            cluster_occurrences=xr.DataArray([2, 1], dims=['cluster']),
-            n_clusters=2,
-            timesteps_per_cluster=4,
-        )
-
-        weights = structure.get_cluster_weight_per_timestep()
-
-        # Cluster 0 has 4 timesteps, each with weight 2
-        # Cluster 1 has 4 timesteps, each with weight 1
-        assert len(weights) == 8
-        assert float(weights.isel(time=0).values) == 2.0
-        assert float(weights.isel(time=4).values) == 1.0
-
 
 class TestClusterResult:
     """Tests for ClusterResult dataclass."""

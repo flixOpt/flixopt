@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from numpy.testing import assert_allclose
 
 import flixopt as fx
@@ -195,8 +196,8 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     # With 2D cluster structure, sum over both cluster and time dimensions
     reduced_fh = fs_reduced.statistics.flow_hours['Boiler(Q_th)'] * fs_reduced.cluster_weight
     reduced_flow_hours = reduced_fh.sum().item()  # Sum over all dimensions
-    expanded_fh = fs_expanded.statistics.flow_hours['Boiler(Q_th)'] * fs_expanded.cluster_weight
-    expanded_flow_hours = expanded_fh.sum().item()
+    # Expanded FlowSystem has no cluster_weight (implicitly 1.0 for all timesteps)
+    expanded_flow_hours = fs_expanded.statistics.flow_hours['Boiler(Q_th)'].sum().item()
 
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
@@ -596,8 +597,6 @@ def create_system_with_periods_and_scenarios(
     timesteps: pd.DatetimeIndex, periods: pd.Index, scenarios: pd.Index
 ) -> fx.FlowSystem:
     """Create a FlowSystem with both periods and scenarios."""
-    import xarray as xr
-
     hours = len(timesteps)
 
     # Create demand that varies by scenario AND by day (for clustering)

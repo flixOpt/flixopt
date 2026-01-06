@@ -266,10 +266,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def scenario_weights(self) -> xr.DataArray:
-        """
-        Scenario weights of model (always normalized, via FlowSystem).
+        """Scenario weights of model.
 
-        Returns unit weights if no scenarios defined or no explicit weights set.
+        Returns:
+            - Scalar 1 if no scenarios defined
+            - Unit weights (all 1.0) if scenarios exist but no explicit weights set
+            - Normalized explicit weights if set via FlowSystem.scenario_weights
         """
         if self.flow_system.scenarios is None:
             return xr.DataArray(1)
@@ -312,14 +314,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             raise ValueError('extra_timestep=True requires "time" to be included in dims')
 
         if dims is None:
-            coords = dict(self.flow_system.coords)
+            coords = dict(self.flow_system.indexes)
         else:
             # In clustered systems, 'time' is always paired with 'cluster'
             # So when 'time' is requested, also include 'cluster' if available
             effective_dims = set(dims)
-            if 'time' in dims and 'cluster' in self.flow_system.coords:
+            if 'time' in dims and 'cluster' in self.flow_system.indexes:
                 effective_dims.add('cluster')
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in effective_dims}
+            coords = {k: v for k, v in self.flow_system.indexes.items() if k in effective_dims}
 
         if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra

@@ -88,7 +88,7 @@ def _initialize_optimization_common(
     Shared initialization logic for all optimization types.
 
     This helper function encapsulates common initialization code to avoid duplication
-    across Optimization, ClusteredOptimization, and SegmentedOptimization.
+    across Optimization and SegmentedOptimization.
 
     Args:
         obj: The optimization object being initialized
@@ -131,14 +131,14 @@ class Optimization:
     This is the default optimization approach that considers every time step,
     providing the most accurate but computationally intensive solution.
 
-    For large problems, consider using ClusteredOptimization (time aggregation)
+    For large problems, consider using FlowSystem.transform.cluster() (time aggregation)
     or SegmentedOptimization (temporal decomposition) instead.
 
     Args:
         name: name of optimization
         flow_system: flow_system which should be optimized
         folder: folder where results should be saved. If None, then the current working directory is used.
-        normalize_weights: Whether to automatically normalize the weights of scenarios to sum up to 1 when solving.
+        normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
     Examples:
         Basic usage:
@@ -458,7 +458,7 @@ class SegmentedOptimization:
         - Monitor solution quality at segment boundaries for discontinuities
 
     Warning:
-        The evaluation of the solution is a bit more complex than Optimization or ClusteredOptimization
+        The evaluation of the solution is a bit more complex than Optimization
         due to the overlapping individual solutions.
 
     """

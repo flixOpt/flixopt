@@ -60,24 +60,26 @@ jobs:
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
-          # Hash notebooks + flixopt source code (sorted for stable cache keys)
-          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
+          set -eo pipefail
+          # Hash notebooks + flixopt source code using null-delimited find for safety
+          HASH=$({ find docs/notebooks -name '*.ipynb' -print0; find flixopt -name '*.py' -print0; } | sort -z | xargs -0 tar -cf - 2>/dev/null | sha256sum | cut -d' ' -f1)
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
       - name: Cache executed notebooks
         uses: actions/cache@v4
         id: notebook-cache
         with:
-          path: docs/notebooks/*.ipynb
+          path: docs/notebooks/**/*.ipynb
           key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
+          set -eo pipefail
           # Execute all notebooks in parallel (4 at a time)
           # Run from notebooks directory so relative imports work
           cd docs/notebooks && find . -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} jupyter execute --inplace {}
+            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Build docs
         env:
@@ -122,22 +124,24 @@ jobs:
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
-          # Hash notebooks + flixopt source code (sorted for stable cache keys)
-          HASH=$(find docs/notebooks -name '*.ipynb' | sort | xargs cat | cat - <(find flixopt -name '*.py' | sort | xargs cat) | sha256sum | cut -d' ' -f1)
+          set -eo pipefail
+          # Hash notebooks + flixopt source code using null-delimited find for safety
+          HASH=$({ find docs/notebooks -name '*.ipynb' -print0; find flixopt -name '*.py' -print0; } | sort -z | xargs -0 tar -cf - 2>/dev/null | sha256sum | cut -d' ' -f1)
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
       - name: Cache executed notebooks
         uses: actions/cache@v4
         id: notebook-cache
         with:
-          path: docs/notebooks/*.ipynb
+          path: docs/notebooks/**/*.ipynb
           key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
 
       - name: Execute notebooks in parallel
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
+          set -eo pipefail
           cd docs/notebooks && find . -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} jupyter execute --inplace {}
+            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Configure Git
         run: |

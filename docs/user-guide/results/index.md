@@ -331,6 +331,12 @@ fs_expanded = fs_clustered.transform.expand_solution()  # Has cluster_boundary d
 comp = fx.Comparison([fs_full, fs_expanded])  # Works! cluster_boundary is ignored
 ```
 
+!!! note "Component Differences"
+    Systems can have different components. The Comparison aligns data where possible,
+    and variables unique to specific systems will be `NaN` for others. This is useful
+    for comparing scenarios like "with vs. without storage" where one system has
+    Storage components and the other doesn't.
+
 ### Available Properties
 
 The `Comparison.statistics` accessor mirrors all `StatisticsAccessor` properties, returning combined datasets with an added `'case'` dimension:

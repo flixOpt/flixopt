@@ -1919,9 +1919,12 @@ class StatisticsPlotAccessor:
         effect_label = effect or 'Effects'
         title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
 
+        # Allow user override of color via plotly_kwargs
+        color = plotly_kwargs.pop('color', color_col)
+
         fig = ds.fxplot.bar(
             x=x_col,
-            color=color_col,
+            color=color,
             colors=colors,
             title=title,
             facet_col=facet_col,
@@ -2100,7 +2103,12 @@ class StatisticsPlotAccessor:
             # Get the primary y-axes from the bar figure to create matching secondary axes
             primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
 
-            # For each primary y-axis, create a secondary y-axis
+            # For each primary y-axis, create a secondary y-axis.
+            # Secondary axis numbering strategy:
+            # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc. (plotly auto-generates these for facets)
+            # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts with plotly's auto-numbering
+            # - Each secondary axis 'overlays' its corresponding primary axis and anchors to the same x-axis
+            # - This allows charge_state lines to share the subplot with power bars but use independent scales
             for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
                 primary_num = primary_key[5:] if primary_key[5:] else '1'
                 secondary_num = int(primary_num) + 100

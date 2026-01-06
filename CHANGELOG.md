@@ -53,41 +53,23 @@ Until here -->
 
 ## [6.0.0] - Upcoming
 
-**Summary**: Major release introducing time-series clustering with storage inter-cluster linking, the new `fxplot` accessor for universal xarray plotting, and removal of deprecated v5.0 classes. Includes configurable storage behavior across typical periods and improved weights API.
+**Summary**: Major release featuring a complete rewrite of the clustering/aggregation system with tsam integration, new `fxplot` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
 
 !!! warning "Breaking Changes"
     This release removes `ClusteredOptimization` and `ClusteringParameters` which were deprecated in v5.0.0. Use `flow_system.transform.cluster()` instead. See [Migration](#migration-from-clusteredoptimization) below.
 
+### Key Features
+
+- **Clustering/Aggregation Rework** (#549, #552) - Complete rewrite with tsam integration, inter-cluster storage linking, and 4 storage modes
+- **fxplot Plotting Accessor** (#548) - Universal xarray plotting with automatic faceting
+- **Comparison Module** (#550) - Compare multiple FlowSystems side-by-side
+- **Improved Notebooks** (#542, #551) - Better tutorial data and faster CI execution
+
 ### ✨ Added
 
-**FlowSystem Comparison**: New `Comparison` class for comparing multiple FlowSystems side-by-side:
+#### Time-Series Clustering (#549, #552)
 
-```python
-# Compare systems (uses FlowSystem.name by default)
-comp = fx.Comparison([fs_base, fs_modified])
-
-# Or with custom names
-comp = fx.Comparison([fs1, fs2, fs3], names=['baseline', 'low_cost', 'high_eff'])
-
-# Side-by-side plots (auto-facets by 'case' dimension)
-comp.statistics.plot.balance('Heat')
-comp.statistics.flow_rates.fxplot.line()
-
-# Access combined data with 'case' dimension
-comp.solution  # xr.Dataset
-comp.statistics.flow_rates  # xr.Dataset
-
-# Compute differences relative to a reference case
-comp.diff()  # vs first case
-comp.diff('baseline')  # vs named case
-```
-
-- Concatenates solutions and statistics from multiple FlowSystems with a `'case'` dimension
-- Mirrors all `StatisticsAccessor` properties (`flow_rates`, `flow_hours`, `sizes`, `charge_states`, `temporal_effects`, `periodic_effects`, `total_effects`)
-- Mirrors all `StatisticsPlotAccessor` methods (`balance`, `carrier_balance`, `flows`, `sizes`, `duration_curve`, `effects`, `charge_states`, `heatmap`, `storage`)
-- Existing plotting infrastructure automatically handles faceting by `'case'`
-
-**Time-Series Clustering**: Reduce large time series to representative typical periods for faster investment optimization, then expand results back to full resolution.
+Reduce large time series to representative typical periods for faster investment optimization, then expand results back to full resolution.
 
 ```python
 # Stage 1: Cluster and optimize (fast sizing)
@@ -113,10 +95,18 @@ fs_expanded = fs_clustered.transform.expand_solution()
 
 **Clustering Parameters**:
 
-- `n_clusters` (int): Number of representative periods to create
-- `cluster_duration` (str): Duration of each cluster period (e.g., `'1D'`, `'24h'`, or integer hours)
-- `time_series_for_high_peaks` (list[str]): Ensure clusters containing peak values are captured
-- `time_series_for_low_peaks` (list[str]): Ensure clusters containing minimum values are captured
+| Parameter | Description |
+|-----------|-------------|
+| `n_clusters` | Number of representative periods to create |
+| `cluster_duration` | Duration of each cluster (e.g., `'1D'`, `'24h'`, or hours as float) |
+| `time_series_for_high_peaks` | Time series labels whose peaks should be preserved |
+| `time_series_for_low_peaks` | Time series labels whose minima should be preserved |
+| `cluster_method` | Algorithm: `'hierarchical'` (default), `'k_means'`, `'k_medoids'`, `'k_maxoids'`, `'averaging'` |
+| `representation_method` | How to represent clusters: `'medoidRepresentation'` (default), `'meanRepresentation'`, `'distributionAndMinMaxRepresentation'` |
+| `extreme_period_method` | How to handle extreme periods: `'append'`, `'new_cluster_center'`, `'replace_cluster_center'` |
+| `rescale_cluster_periods` | Whether to rescale cluster periods to match original statistics (default: `True`) |
+| `predef_cluster_order` | Predefined cluster assignment for reproducibility |
+| `**tsam_kwargs` | Additional arguments passed to tsam |
 
 **Key Features**:
 
@@ -124,6 +114,7 @@ fs_expanded = fs_clustered.transform.expand_solution()
 - **Self-discharge decay**: Storage losses are correctly applied during solution expansion using the formula: `actual_SOC(t) = SOC_boundary × (1 - loss)^t + ΔE(t)`
 - **Multi-dimensional support**: Works with periods, scenarios, and clusters dimensions simultaneously
 - **Solution expansion**: `transform.expand_solution()` maps clustered results back to original timesteps with proper storage state reconstruction
+- **Clustering IO**: Save and load clustered FlowSystems with full state preservation via `to_netcdf()` / `from_netcdf()`
 
 **Example: Seasonal Storage with Clustering**:
 
@@ -151,7 +142,9 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
 
-**FXPlot Accessor**: New global xarray accessors for universal plotting with automatic faceting and smart dimension handling. Works on any xarray Dataset, not just flixopt results.
+#### FXPlot Accessor (#548)
+
+New global xarray accessors for universal plotting with automatic faceting and smart dimension handling. Works on any xarray Dataset, not just flixopt results.
 
 ```python
 import flixopt as fx  # Registers accessors automatically
@@ -188,6 +181,35 @@ dataset.fxstats.to_duration_curve()
 - **Smart x-axis**: Intelligently selects x dimension based on priority (time > duration > period > scenario)
 - **Universal**: Works on any xarray Dataset/DataArray, not limited to flixopt
 - **Configurable**: Customize via `CONFIG.Plotting` (colorscales, facet columns, line shapes)
+
+#### FlowSystem Comparison (#550)
+
+New `Comparison` class for comparing multiple FlowSystems side-by-side:
+
+```python
+# Compare systems (uses FlowSystem.name by default)
+comp = fx.Comparison([fs_base, fs_modified])
+
+# Or with custom names
+comp = fx.Comparison([fs1, fs2, fs3], names=['baseline', 'low_cost', 'high_eff'])
+
+# Side-by-side plots (auto-facets by 'case' dimension)
+comp.statistics.plot.balance('Heat')
+comp.statistics.flow_rates.fxplot.line()
+
+# Access combined data with 'case' dimension
+comp.solution  # xr.Dataset
+comp.statistics.flow_rates  # xr.Dataset
+
+# Compute differences relative to a reference case
+comp.diff()  # vs first case
+comp.diff('baseline')  # vs named case
+```
+
+- Concatenates solutions and statistics from multiple FlowSystems with a `'case'` dimension
+- Mirrors all `StatisticsAccessor` properties (`flow_rates`, `flow_hours`, `sizes`, `charge_states`, `temporal_effects`, `periodic_effects`, `total_effects`)
+- Mirrors all `StatisticsPlotAccessor` methods (`balance`, `carrier_balance`, `flows`, `sizes`, `duration_curve`, `effects`, `charge_states`, `heatmap`, `storage`)
+- Existing plotting infrastructure automatically handles faceting by `'case'`
 
 ### 💥 Breaking Changes
 
@@ -279,8 +301,9 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 **New Documentation Pages:**
 
 - [Time-Series Clustering Guide](https://flixopt.github.io/flixopt/latest/user-guide/optimization/clustering/) - Comprehensive guide to clustering workflows
+- Cluster architecture design documentation (`docs/design/cluster_architecture.md`)
 
-**New Jupyter Notebooks:**
+**New Jupyter Notebooks** (#542):
 
 - **08c-clustering.ipynb** - Introduction to time-series clustering
 - **08c2-clustering-storage-modes.ipynb** - Comparison of all 4 storage cluster modes
@@ -288,7 +311,16 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 - **08e-clustering-internals.ipynb** - Understanding clustering internals
 - **fxplot_accessor_demo.ipynb** - Demo of the new fxplot accessor
 
+**Improved Tutorials:**
+
+- Added `tutorial_data.py` helper module for cleaner notebook examples
+- Updated all existing notebooks to use new clustering and plotting APIs
+
 ### 👷 Development
+
+**CI Improvements** (#551):
+
+- Speedup notebook execution in documentation builds
 
 **New Test Suites for Clustering**:
 

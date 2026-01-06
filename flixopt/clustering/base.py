@@ -17,6 +17,7 @@ All data structures use xarray for consistent handling of coordinates.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -89,12 +90,20 @@ class ClusterStructure:
         n_clusters = (
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
-        occ = [int(self.cluster_occurrences.sel(cluster=c).values) for c in range(n_clusters)]
+        # Handle multi-dimensional cluster_occurrences (with period/scenario dims)
+        occ_data = self.cluster_occurrences
+        extra_dims = [d for d in occ_data.dims if d != 'cluster']
+        if extra_dims:
+            # Multi-dimensional: show shape info instead of individual values
+            occ_info = f'shape={dict(occ_data.sizes)}'
+        else:
+            # Simple case: list of occurrences per cluster
+            occ_info = [int(occ_data.sel(cluster=c).values) for c in range(n_clusters)]
         return (
             f'ClusterStructure(\n'
             f'  {self.n_original_clusters} original periods → {n_clusters} clusters\n'
             f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
-            f'  occurrences={occ}\n'
+            f'  occurrences={occ_info}\n'
             f')'
         )
 
@@ -169,39 +178,12 @@ class ClusterStructure:
             occurrences = occurrences.sel(scenario=scenario)
         return {int(c): int(occurrences.sel(cluster=c).values) for c in occurrences.coords['cluster'].values}
 
-    def get_cluster_weight_per_timestep(self) -> xr.DataArray:
-        """Get weight for each representative timestep.
-
-        Returns an array where each timestep's weight equals the number of
-        original periods its cluster represents.
-
-        Returns:
-            DataArray with dims [time] or [time, period, scenario].
-        """
-        # Expand cluster_occurrences to timesteps
-        n_clusters = (
-            int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
-        )
-
-        # Get occurrence for each cluster, then repeat for timesteps
-        weights_list = []
-        for c in range(n_clusters):
-            occ = self.cluster_occurrences.sel(cluster=c)
-            weights_list.append(np.repeat(float(occ.values), self.timesteps_per_cluster))
-
-        weights = np.concatenate(weights_list)
-        return xr.DataArray(
-            weights,
-            dims=['time'],
-            coords={'time': np.arange(len(weights))},
-            name='cluster_weight',
-        )
-
     def plot(self, colors: str | list[str] | None = None, show: bool | None = None) -> PlotResult:
         """Plot cluster assignment visualization.
 
         Shows which cluster each original period belongs to, and the
-        number of occurrences per cluster.
+        number of occurrences per cluster. For multi-period/scenario structures,
+        creates a faceted grid plot.
 
         Args:
             colors: Colorscale name (str) or list of colors.
@@ -217,34 +199,42 @@ class ClusterStructure:
         n_clusters = (
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
-
-        cluster_order = self.get_cluster_order_for_slice()
-
-        # Build DataArray for fxplot heatmap
-        cluster_da = xr.DataArray(
-            cluster_order.reshape(1, -1),
-            dims=['y', 'original_cluster'],
-            coords={'y': ['Cluster'], 'original_cluster': range(1, len(cluster_order) + 1)},
-            name='cluster_assignment',
-        )
-
-        # Use fxplot.heatmap for smart defaults
         colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
-        fig = cluster_da.fxplot.heatmap(
-            colors=colorscale,
-            title=f'Cluster Assignment ({self.n_original_clusters} periods → {n_clusters} clusters)',
-        )
-        fig.update_yaxes(showticklabels=False)
-        fig.update_coloraxes(colorbar_title='Cluster')
 
-        # Build data for PlotResult
-        data = xr.Dataset(
-            {
-                'cluster_order': self.cluster_order,
-                'cluster_occurrences': self.cluster_occurrences,
-            }
+        # Build DataArray with 1-based original_cluster coords
+        cluster_da = self.cluster_order.assign_coords(
+            original_cluster=np.arange(1, self.cluster_order.sizes['original_cluster'] + 1)
         )
-        plot_result = PlotResult(data=data, figure=fig)
+
+        has_period = 'period' in cluster_da.dims
+        has_scenario = 'scenario' in cluster_da.dims
+
+        # Transpose for heatmap: first dim = y-axis, second dim = x-axis
+        if has_period:
+            cluster_da = cluster_da.transpose('period', 'original_cluster', ...)
+        elif has_scenario:
+            cluster_da = cluster_da.transpose('scenario', 'original_cluster', ...)
+
+        # Data to return (without dummy dims)
+        ds = xr.Dataset({'cluster_order': cluster_da})
+
+        # For plotting: add dummy y-dim if needed (heatmap requires 2D)
+        if not has_period and not has_scenario:
+            plot_da = cluster_da.expand_dims(y=['']).transpose('y', 'original_cluster')
+            plot_ds = xr.Dataset({'cluster_order': plot_da})
+        else:
+            plot_ds = ds
+
+        fig = plot_ds.fxplot.heatmap(
+            colors=colorscale,
+            title=f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)',
+        )
+
+        fig.update_coloraxes(colorbar_title='Cluster')
+        if not has_period and not has_scenario:
+            fig.update_yaxes(showticklabels=False)
+
+        plot_result = PlotResult(data=ds, figure=fig)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -537,8 +527,6 @@ class ClusterResult:
                 # Simple case: no period/scenario
                 weight_sum = float(weight_sum_per_slice.values)
                 if abs(weight_sum - n_original_clusters) > 1e-6:
-                    import warnings
-
                     warnings.warn(
                         f'representative_weights sum ({weight_sum}) does not match '
                         f'n_original_clusters ({n_original_clusters})',
@@ -548,8 +536,6 @@ class ClusterResult:
                 # Multi-dimensional: check each slice
                 for val in weight_sum_per_slice.values.flat:
                     if abs(float(val) - n_original_clusters) > 1e-6:
-                        import warnings
-
                         warnings.warn(
                             f'representative_weights sum per slice ({float(val)}) does not match '
                             f'n_original_clusters ({n_original_clusters})',
@@ -915,15 +901,47 @@ class ClusteringPlotAccessor:
         n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
         timesteps_per_cluster = cs.timesteps_per_cluster
 
+        # Check dimensions of all variables for consistency
+        has_cluster_dim = None
+        for var in resolved_variables:
+            da = aggregated_data[var]
+            var_has_cluster = 'cluster' in da.dims
+            extra_dims = [d for d in da.dims if d not in ('time', 'cluster')]
+            if extra_dims:
+                raise ValueError(
+                    f'clusters() requires data with only time (or cluster, time) dimensions. '
+                    f'Variable {var!r} has extra dimensions: {extra_dims}. '
+                    f'Use select={{{extra_dims[0]!r}: <value>}} to select a specific {extra_dims[0]}.'
+                )
+            if has_cluster_dim is None:
+                has_cluster_dim = var_has_cluster
+            elif has_cluster_dim != var_has_cluster:
+                raise ValueError(
+                    f'All variables must have consistent dimensions. '
+                    f'Variable {var!r} has {"" if var_has_cluster else "no "}cluster dimension, '
+                    f'but previous variables {"do" if has_cluster_dim else "do not"}.'
+                )
+
         # Build Dataset with cluster dimension, using labels with occurrence counts
-        cluster_labels = [
-            f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
-        ]
+        # Check if cluster_occurrences has extra dims
+        occ_extra_dims = [d for d in cs.cluster_occurrences.dims if d not in ('cluster',)]
+        if occ_extra_dims:
+            # Use simple labels without occurrence counts for multi-dim case
+            cluster_labels = [f'Cluster {c}' for c in range(n_clusters)]
+        else:
+            cluster_labels = [
+                f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
+            ]
 
         data_vars = {}
         for var in resolved_variables:
-            data = aggregated_data[var].values
-            data_by_cluster = data.reshape(n_clusters, timesteps_per_cluster)
+            da = aggregated_data[var]
+            if has_cluster_dim:
+                # Data already has (cluster, time) dims - just update cluster labels
+                data_by_cluster = da.values
+            else:
+                # Data has (time,) dim - reshape to (cluster, time)
+                data_by_cluster = da.values.reshape(n_clusters, timesteps_per_cluster)
             data_vars[var] = xr.DataArray(
                 data_by_cluster,
                 dims=['cluster', 'time'],
@@ -1148,11 +1166,11 @@ def create_cluster_structure_from_mapping(
 
     # Count occurrences of each cluster
     unique_clusters = np.unique(cluster_order)
+    n_clusters = int(unique_clusters.max()) + 1 if len(unique_clusters) > 0 else 0
     occurrences = {}
     for c in unique_clusters:
         occurrences[int(c)] = sum(1 for x in cluster_order if x == c)
 
-    n_clusters = len(unique_clusters)
     cluster_occurrences_da = xr.DataArray(
         [occurrences.get(c, 0) for c in range(n_clusters)],
         dims=['cluster'],

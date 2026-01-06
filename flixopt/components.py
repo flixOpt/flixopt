@@ -1290,8 +1290,8 @@ class StorageModel(ComponentModel):
         """Add constraint ensuring charging and discharging capacities are equal."""
         if self.element.balanced:
             self.add_constraints(
-                self.element.charging.submodel._investment.size * 1
-                == self.element.discharging.submodel._investment.size * 1,
+                self.element.charging.submodel._investment.size - self.element.discharging.submodel._investment.size
+                == 0,
                 short_name='balanced_sizes',
             )
 
@@ -1736,11 +1736,13 @@ class InterclusterStorageModel(StorageModel):
         # Get delta_soc for each original period using cluster_order
         delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
 
-        # Apply self-discharge decay factor (1-loss)^N to soc_before per Eq. 5
+        # Apply self-discharge decay factor (1-loss)^hours to soc_before per Eq. 5
+        # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
         # Use mean over time (linking operates at period level, not timestep)
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = self.element.relative_loss_per_hour.mean('time')
-        decay_n = (1 - rel_loss) ** timesteps_per_cluster
+        hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
+        decay_n = (1 - rel_loss) ** hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
         self.add_constraints(lhs == 0, short_name='link')
@@ -1781,8 +1783,10 @@ class InterclusterStorageModel(StorageModel):
         soc_d = soc_d.assign_coords(original_cluster=np.arange(n_original_clusters))
 
         # Get self-discharge rate for decay calculation
+        # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = self.element.relative_loss_per_hour.mean('time')
+        mean_timestep_duration = self._model.timestep_duration.mean('time')
 
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
 
@@ -1797,8 +1801,10 @@ class InterclusterStorageModel(StorageModel):
                 cs_t = cs_t.rename({'cluster': 'original_cluster'})
             cs_t = cs_t.assign_coords(original_cluster=np.arange(n_original_clusters))
 
-            # Apply decay factor (1-loss)^t to SOC_boundary per Eq. 9
-            decay_t = (1 - rel_loss) ** offset
+            # Apply decay factor (1-loss)^hours to SOC_boundary per Eq. 9
+            # Convert timestep offset to hours
+            hours_offset = offset * mean_timestep_duration
+            decay_t = (1 - rel_loss) ** hours_offset
             combined = soc_d * decay_t + cs_t
 
             self.add_constraints(combined >= 0, short_name=f'soc_lb_{sample_name}')
