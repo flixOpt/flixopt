@@ -57,7 +57,33 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
+      - name: Get notebook cache key
+        id: notebook-cache-key
+        run: |
+          set -eo pipefail
+          # Hash notebooks + flixopt source code using null-delimited find for safety
+          HASH=$({ find docs/notebooks -name '*.ipynb' -print0; find flixopt -name '*.py' -print0; } | sort -z | xargs -0 tar -cf - 2>/dev/null | sha256sum | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache executed notebooks
+        uses: actions/cache@v4
+        id: notebook-cache
+        with:
+          path: docs/notebooks/**/*.ipynb
+          key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
+
+      - name: Execute notebooks in parallel
+        if: steps.notebook-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eo pipefail
+          # Execute all notebooks in parallel (4 at a time)
+          # Run from notebooks directory so relative imports work
+          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
+            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+
       - name: Build docs
+        env:
+          MKDOCS_JUPYTER_EXECUTE: "false"
         run: mkdocs build --strict
 
       - uses: actions/upload-artifact@v4
@@ -95,12 +121,36 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
+      - name: Get notebook cache key
+        id: notebook-cache-key
+        run: |
+          set -eo pipefail
+          # Hash notebooks + flixopt source code using null-delimited find for safety
+          HASH=$({ find docs/notebooks -name '*.ipynb' -print0; find flixopt -name '*.py' -print0; } | sort -z | xargs -0 tar -cf - 2>/dev/null | sha256sum | cut -d' ' -f1)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Cache executed notebooks
+        uses: actions/cache@v4
+        id: notebook-cache
+        with:
+          path: docs/notebooks/**/*.ipynb
+          key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
+
+      - name: Execute notebooks in parallel
+        if: steps.notebook-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eo pipefail
+          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
+            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Deploy docs
+        env:
+          MKDOCS_JUPYTER_EXECUTE: "false"
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
