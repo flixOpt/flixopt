@@ -410,6 +410,50 @@ class ComparisonStatisticsPlot:
             fig.show()
         return PlotResult(data=ds, figure=fig or go.Figure())
 
+    def _add_line_overlay(
+        self,
+        fig,
+        ds: xr.Dataset,
+        variables: list[str] | None = None,
+        secondary_y: bool = False,
+        colors: dict[str, str] | str | None = None,
+        showlegend: bool = True,
+    ) -> None:
+        """Add line traces from dataset variables on top of existing figure.
+
+        Args:
+            fig: Plotly figure to add traces to.
+            ds: Dataset containing variables to plot.
+            variables: Variable names to plot. If None, plots all data_vars.
+            secondary_y: If True, plot on secondary y-axis.
+            colors: Color(s) for lines. Can be dict mapping var names to colors,
+                single color string, or None for default colors.
+            showlegend: Whether to show legend entries for the lines.
+        """
+        if variables is None:
+            variables = list(ds.data_vars)
+        if not variables:
+            return
+
+        plot_ds = ds[variables]
+        line_fig = plot_ds.fxplot.line(color='variable' if len(variables) > 1 else None)
+
+        for trace in line_fig.data:
+            trace.showlegend = showlegend
+            if colors:
+                if isinstance(colors, dict):
+                    trace.line = dict(color=colors.get(trace.name, None), width=2)
+                else:
+                    trace.line = dict(color=colors, width=2)
+            if secondary_y:
+                trace.yaxis = 'y2'
+            fig.add_trace(trace)
+
+        if secondary_y:
+            fig.update_layout(
+                yaxis2=dict(overlaying='y', side='right', showgrid=False),
+            )
+
     def _plot(
         self,
         method_name: str,
@@ -419,16 +463,24 @@ class ComparisonStatisticsPlot:
         **kwargs,
     ) -> PlotResult:
         """Generic plot method that delegates to underlying statistics accessor."""
-        # Extract plot-specific kwargs
+        # Extract plot-specific kwargs (fxplot arguments)
         plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color', 'ylabel'}
         plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
 
-        ds, title = self._combine_data(method_name, *args, **kwargs)
+        # Known data kwargs that should be passed to _combine_data
+        data_keys = {'unit', 'include', 'exclude', 'normalized', 'time', 'effects', 'freq', 'period', 'by'}
+        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
+        # Remaining kwargs are plotly layout kwargs (height, width, etc.)
+        plotly_kwargs = kwargs
+
+        ds, title = self._combine_data(method_name, *args, **data_kwargs)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
         plot_fn = getattr(ds.fxplot, plot_type)
         fig = plot_fn(title=title, **plot_kwargs)
+        if plotly_kwargs:
+            fig.update_layout(**plotly_kwargs)
         return self._finalize(ds, fig, show)
 
     def balance(self, node: str, *, show: bool | None = None, **kwargs) -> PlotResult:
@@ -444,8 +496,48 @@ class ComparisonStatisticsPlot:
         return self._plot('flows', 'line', show=show, **kwargs)
 
     def storage(self, storage: str, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot storage operation comparison. See StatisticsPlotAccessor.storage."""
-        return self._plot('storage', 'stacked_bar', storage, show=show, **kwargs)
+        """Plot storage operation comparison. See StatisticsPlotAccessor.storage.
+
+        Creates stacked bars for charging/discharging flows with charge state
+        as a line overlay on secondary y-axis.
+        """
+        # Extract plot kwargs
+        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame'}
+        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+        charge_state_color = kwargs.pop('charge_state_color', 'black')
+        # Data kwargs for _combine_data
+        data_keys = {'unit', 'select'}
+        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
+        # Remaining are plotly layout kwargs
+        plotly_kwargs = kwargs
+
+        ds, _ = self._combine_data('storage', storage, **data_kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        # Separate flows from charge_state
+        flow_vars = [v for v in ds.data_vars if v != 'charge_state']
+        flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
+
+        # Create stacked bar for flows
+        fig = flow_ds.fxplot.stacked_bar(title=f'{storage} Operation', **plot_kwargs)
+
+        # Add charge state as line overlay on secondary y-axis
+        if 'charge_state' in ds:
+            self._add_line_overlay(
+                fig,
+                ds,
+                variables=['charge_state'],
+                secondary_y=True,
+                colors=charge_state_color,
+                showlegend=True,
+            )
+            fig.update_layout(yaxis2_title='Charge State')
+
+        if plotly_kwargs:
+            fig.update_layout(**plotly_kwargs)
+
+        return self._finalize(ds, fig, show)
 
     def charge_states(
         self, storages: str | list[str] | None = None, *, show: bool | None = None, **kwargs
