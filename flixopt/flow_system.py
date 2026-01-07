@@ -185,6 +185,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
+        timestep_duration: xr.DataArray | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -193,17 +194,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.timesteps_extra,
             self.hours_of_last_timestep,
             self.hours_of_previous_timesteps,
-            timestep_duration,
+            computed_timestep_duration,
         ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
         self.clusters = clusters  # Cluster dimension for clustered FlowSystems
 
-        # For RangeIndex (segmented systems), timestep_duration is None and must be set externally
-        self.timestep_duration = (
-            self.fit_to_model_coords('timestep_duration', timestep_duration) if timestep_duration is not None else None
-        )
+        # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
+        # For RangeIndex (segmented systems), computed_timestep_duration is None
+        if timestep_duration is not None:
+            self.timestep_duration = timestep_duration
+        elif computed_timestep_duration is not None:
+            self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
+        else:
+            self.timestep_duration = None
 
         # Cluster weight for cluster() optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
@@ -783,6 +788,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
+        # Resolve timestep_duration if present as DataArray reference (for segmented systems with variable durations)
+        timestep_duration = None
+        if 'timestep_duration' in reference_structure:
+            ref_value = reference_structure['timestep_duration']
+            # Only resolve if it's a DataArray reference (starts with ":::")
+            # For non-segmented systems, it may be stored as a simple list/scalar
+            if isinstance(ref_value, str) and ref_value.startswith(':::'):
+                timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
+
         # Get timesteps - convert integer index to RangeIndex for segmented systems
         time_index = ds.indexes['time']
         if not isinstance(time_index, pd.DatetimeIndex):
@@ -803,6 +817,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
             name=reference_structure.get('name'),
+            timestep_duration=timestep_duration,
         )
 
         # Restore components

@@ -598,3 +598,45 @@ class TestSegmentationIO:
         # Sum of segment counts per cluster should equal 24 (timesteps per cluster)
         for c in range(2):
             assert int(segment_counts.sel(cluster=c).sum().values) == 24
+
+    def test_segmentation_with_periods_scenarios_roundtrip(self, solver_fixture, tmp_path):
+        """Test segmentation with periods and scenarios survives IO roundtrip."""
+        # Create system with periods and scenarios
+        timesteps = pd.date_range('2023-01-01', periods=8 * 24, freq='h')
+        periods = pd.Index([2020, 2021], name='period')
+        scenarios = pd.Index(['low', 'high'], name='scenario')
+        demand = np.sin(np.linspace(0, 4 * np.pi, 8 * 24)) * 10 + 15
+
+        fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', is_objective=True, is_standard=True),
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        )
+
+        # Cluster with segmentation
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=6)
+        fs_segmented.optimize(solver_fixture)
+
+        # Verify multi-dimensional timestep_duration
+        assert fs_segmented.timestep_duration is not None
+        assert 'period' in fs_segmented.timestep_duration.dims
+        assert 'scenario' in fs_segmented.timestep_duration.dims
+
+        # Save and load
+        path = tmp_path / 'segmented_multi.nc'
+        fs_segmented.to_netcdf(path)
+        fs_loaded = fx.FlowSystem.from_netcdf(path)
+
+        # Verify everything is preserved
+        assert fs_loaded.is_segmented is True
+        assert fs_loaded.timestep_duration is not None
+        assert fs_loaded.timestep_duration.shape == fs_segmented.timestep_duration.shape
+        assert list(fs_loaded.periods) == list(fs_segmented.periods)
+        assert list(fs_loaded.scenarios) == list(fs_segmented.scenarios)
+
+        # Expand should work
+        fs_expanded = fs_loaded.transform.expand_solution()
+        assert len(fs_expanded.timesteps) == 8 * 24
+        assert fs_expanded.solution is not None
