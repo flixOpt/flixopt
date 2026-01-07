@@ -1912,6 +1912,7 @@ class SourceAndSink(Component):
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
     ):
+        self._prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
             inputs=inputs,
@@ -1919,7 +1920,18 @@ class SourceAndSink(Component):
             prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
         )
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+
+    @property
+    def prevent_simultaneous_flow_rates(self) -> bool:
+        """If True, prevents simultaneous input and output flows."""
+        return self._prevent_simultaneous_flow_rates
+
+    @prevent_simultaneous_flow_rates.setter
+    def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._inputs) + list(self._outputs) if value else []
+        self._invalidate()
 
 
 @register_class_for_io
@@ -2021,6 +2033,8 @@ class Source(Component):
     @prevent_simultaneous_flow_rates.setter
     def prevent_simultaneous_flow_rates(self, value: bool) -> None:
         self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._outputs) if value else []
         self._invalidate()
 
 
@@ -2134,4 +2148,6 @@ class Sink(Component):
     @prevent_simultaneous_flow_rates.setter
     def prevent_simultaneous_flow_rates(self, value: bool) -> None:
         self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._inputs) if value else []
         self._invalidate()

@@ -685,7 +685,10 @@ class Flow(Element):
     @property
     def effects_per_flow_hour(self) -> Effect_TPS | Numeric_TPS:
         """Operational costs/impacts per flow-hour."""
-        return dict(self._effects_per_flow_hour)  # Return copy
+        # Return a copy for dict to prevent external mutation; pass through other types
+        if isinstance(self._effects_per_flow_hour, dict):
+            return dict(self._effects_per_flow_hour)
+        return self._effects_per_flow_hour
 
     @effects_per_flow_hour.setter
     def effects_per_flow_hour(self, value: Effect_TPS | Numeric_TPS | None) -> None:

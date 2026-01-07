@@ -1498,6 +1498,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
 
+        Note:
+            Property setters on elements call :meth:`Interface._invalidate`,
+            which checks for a locked FlowSystem before calling this method.
+            Direct calls to this method do NOT check for a locked state.
+
         See Also:
             :meth:`invalidate`: Public method for manual invalidation.
             :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
