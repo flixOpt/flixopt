@@ -562,7 +562,7 @@ class TestSegmentationIO:
         assert fs_loaded.clustering.result.cluster_structure.segment_timestep_counts is not None
 
     def test_segmentation_expand_after_roundtrip(self, simple_system_8_days, solver_fixture, tmp_path):
-        """Test that expand_solution works after netCDF roundtrip for segmented systems."""
+        """Test that expand works after netCDF roundtrip for segmented systems."""
         fs = simple_system_8_days
         fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=6)
         fs_segmented.optimize(solver_fixture)
@@ -573,7 +573,7 @@ class TestSegmentationIO:
         fs_loaded = fx.FlowSystem.from_netcdf(path)
 
         # Expand solution
-        fs_expanded = fs_loaded.transform.expand_solution()
+        fs_expanded = fs_loaded.transform.expand()
 
         # Verify expansion
         assert isinstance(fs_expanded.timesteps, pd.DatetimeIndex)
@@ -638,6 +638,6 @@ class TestSegmentationIO:
         assert list(fs_loaded.scenarios) == list(fs_segmented.scenarios)
 
         # Expand should work
-        fs_expanded = fs_loaded.transform.expand_solution()
+        fs_expanded = fs_loaded.transform.expand()
         assert len(fs_expanded.timesteps) == 8 * 24
         assert fs_expanded.solution is not None

@@ -942,8 +942,8 @@ class TestSegmentation:
         # time dimension = n_segments + 1 (extra timestep)
         assert flow.sizes['time'] == 7  # 6 segments + 1 extra
 
-    def test_segmented_expand_solution_restores_full_timesteps(self, solver_fixture, timesteps_8_days):
-        """Test that expand_solution works for segmented systems."""
+    def test_segmented_expand_restores_full_timesteps(self, solver_fixture, timesteps_8_days):
+        """Test that expand works for segmented systems."""
         fs = create_simple_system(timesteps_8_days)
 
         fs_segmented = fs.transform.cluster(
@@ -954,7 +954,7 @@ class TestSegmentation:
         fs_segmented.optimize(solver_fixture)
 
         # Expand back to full
-        fs_expanded = fs_segmented.transform.expand_solution()
+        fs_expanded = fs_segmented.transform.expand()
 
         # Should have original timesteps (DatetimeIndex)
         assert isinstance(fs_expanded.timesteps, pd.DatetimeIndex)
@@ -979,7 +979,7 @@ class TestSegmentation:
         reduced_flow_hours = reduced_fh.sum().item()
 
         # Expand and get statistics (no cluster_weight needed for expanded FlowSystem)
-        fs_expanded = fs_segmented.transform.expand_solution()
+        fs_expanded = fs_segmented.transform.expand()
         expanded_flow_hours = fs_expanded.statistics.flow_hours['Boiler(Q_th)'].sum().item()
 
         # Flow hours should match
@@ -1007,8 +1007,8 @@ class TestSegmentationWithStorage:
         # Verify solution is valid
         assert fs_segmented.solution is not None
 
-    def test_segmented_storage_expand_solution(self, solver_fixture, timesteps_8_days):
-        """Test that expand_solution works for segmented storage systems."""
+    def test_segmented_storage_expand(self, solver_fixture, timesteps_8_days):
+        """Test that expand works for segmented storage systems."""
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='intercluster_cyclic')
 
         fs_segmented = fs.transform.cluster(
@@ -1019,7 +1019,7 @@ class TestSegmentationWithStorage:
         fs_segmented.optimize(solver_fixture)
 
         # Expand
-        fs_expanded = fs_segmented.transform.expand_solution()
+        fs_expanded = fs_segmented.transform.expand()
 
         # Should have original timesteps
         assert len(fs_expanded.timesteps) == 192

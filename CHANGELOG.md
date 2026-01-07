@@ -71,7 +71,7 @@ fs_segmented = flow_system.transform.cluster(
     n_segments=6,                # Enables segmentation with 6 segments per cluster
 )
 fs_segmented.optimize(solver)
-fs_expanded = fs_segmented.transform.expand_solution()
+fs_expanded = fs_segmented.transform.expand()
 ```
 
 **New Parameters**:
@@ -85,7 +85,7 @@ fs_expanded = fs_segmented.transform.expand_solution()
 
 - **Variable segment durations**: Each segment can have different duration (in hours), automatically determined by tsam based on time series characteristics
 - **Full storage integration**: Works with all storage `cluster_mode` options including `'intercluster_cyclic'`
-- **Solution expansion**: `expand_solution()` correctly maps segmented results back to original timesteps
+- **Solution expansion**: `expand()` correctly maps segmented results back to original timesteps
 - **RangeIndex timesteps**: Segmented FlowSystems use `RangeIndex` instead of `DatetimeIndex` for the time dimension
 - **`is_segmented` property**: Check if a FlowSystem uses segmentation via `flow_system.is_segmented`
 
@@ -109,7 +109,7 @@ fs_segmented = flow_system.transform.cluster(
 fs_segmented.optimize(solver)
 
 # Expand back to full resolution
-fs_expanded = fs_segmented.transform.expand_solution()
+fs_expanded = fs_segmented.transform.expand()
 ```
 
 !!! tip "When to Use Segmentation"
