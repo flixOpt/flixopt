@@ -833,3 +833,208 @@ class TestPeakSelection:
         # This test just verifies the clustering works
         # The peak may or may not be captured depending on clustering algorithm
         assert fs_no_peaks.solution is not None
+
+
+# ==================== Segmentation Tests ====================
+
+
+class TestSegmentation:
+    """Tests for inner-period segmentation within clustering."""
+
+    def test_segmentation_creates_range_index_timesteps(self, timesteps_8_days):
+        """Test that segmentation creates RangeIndex timesteps."""
+        fs = create_simple_system(timesteps_8_days)
+
+        # Cluster with segmentation
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+
+        # Segmented FlowSystem should have RangeIndex timesteps
+        assert isinstance(fs_segmented.timesteps, pd.RangeIndex)
+        assert len(fs_segmented.timesteps) == 6  # n_segments
+        assert len(fs_segmented.clusters) == 2  # n_clusters
+
+    def test_segmented_system_has_correct_structure(self, timesteps_8_days):
+        """Test that segmented FlowSystem has correct ClusterStructure fields."""
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=4,
+        )
+
+        # Check clustering info
+        info = fs_segmented.clustering
+        assert info is not None
+        cluster_structure = info.result.cluster_structure
+        assert cluster_structure is not None
+
+        # Segmentation fields
+        assert cluster_structure.is_segmented is True
+        assert cluster_structure.n_segments == 4
+        assert cluster_structure.segment_timestep_counts is not None
+
+        # segment_timestep_counts should map [cluster, segment] -> original timesteps per segment
+        counts = cluster_structure.segment_timestep_counts
+        assert 'cluster' in counts.dims
+        assert 'segment' in counts.dims  # Note: uses 'segment' dim, not 'time'
+        # Total of counts per cluster should equal timesteps_per_cluster (24)
+        for c in range(2):
+            cluster_sum = int(counts.sel(cluster=c).sum().values)
+            assert cluster_sum == 24, f'Cluster {c} segment counts sum to {cluster_sum}, expected 24'
+
+    def test_segmented_system_has_variable_timestep_duration(self, timesteps_8_days):
+        """Test that segmented FlowSystem has variable timestep_duration."""
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+
+        # timestep_duration should be 2D: [cluster, time]
+        duration = fs_segmented.timestep_duration
+        assert 'cluster' in duration.dims
+        assert 'time' in duration.dims
+
+        # Each cluster's durations should sum to 24 hours
+        for c in range(2):
+            cluster_duration_sum = float(duration.sel(cluster=c).sum().values)
+            assert_allclose(cluster_duration_sum, 24.0, rtol=1e-6)
+
+    def test_segmented_system_is_segmented_property(self, timesteps_8_days):
+        """Test the is_segmented property on FlowSystem."""
+        fs = create_simple_system(timesteps_8_days)
+
+        # Regular clustering
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        assert fs_clustered.is_segmented is False
+
+        # With segmentation
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', segmentation=True, n_segments=6)
+        assert fs_segmented.is_segmented is True
+
+    def test_segmented_system_optimize(self, solver_fixture, timesteps_8_days):
+        """Test that segmented FlowSystem can be optimized."""
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+
+        # Should optimize without errors
+        fs_segmented.optimize(solver_fixture)
+        assert fs_segmented.solution is not None
+
+        # Solution should have correct dimensions
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        assert flow_var in fs_segmented.solution
+        flow = fs_segmented.solution[flow_var]
+        assert 'cluster' in flow.dims
+        assert 'time' in flow.dims
+        # time dimension = n_segments + 1 (extra timestep)
+        assert flow.sizes['time'] == 7  # 6 segments + 1 extra
+
+    def test_segmented_expand_solution_restores_full_timesteps(self, solver_fixture, timesteps_8_days):
+        """Test that expand_solution works for segmented systems."""
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+        fs_segmented.optimize(solver_fixture)
+
+        # Expand back to full
+        fs_expanded = fs_segmented.transform.expand_solution()
+
+        # Should have original timesteps (DatetimeIndex)
+        assert isinstance(fs_expanded.timesteps, pd.DatetimeIndex)
+        assert len(fs_expanded.timesteps) == 192  # Original 8 days * 24h
+        assert fs_expanded.clusters is None  # Expanded FlowSystem has no cluster dimension
+        assert fs_expanded.solution is not None
+
+    def test_segmented_expanded_statistics_match(self, solver_fixture, timesteps_8_days):
+        """Test that expanded statistics match clustered statistics."""
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+        fs_segmented.optimize(solver_fixture)
+
+        # Get weighted statistics from clustered system
+        # Note: statistics.flow_hours doesn't include cluster_weight, so multiply manually
+        reduced_fh = fs_segmented.statistics.flow_hours['Boiler(Q_th)'] * fs_segmented.cluster_weight
+        reduced_flow_hours = reduced_fh.sum().item()
+
+        # Expand and get statistics (no cluster_weight needed for expanded FlowSystem)
+        fs_expanded = fs_segmented.transform.expand_solution()
+        expanded_flow_hours = fs_expanded.statistics.flow_hours['Boiler(Q_th)'].sum().item()
+
+        # Flow hours should match
+        assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
+
+
+class TestSegmentationWithStorage:
+    """Tests for segmentation combined with intercluster storage."""
+
+    def test_segmented_storage_intercluster_cyclic(self, solver_fixture, timesteps_8_days):
+        """Test segmentation with intercluster_cyclic storage mode."""
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='intercluster_cyclic')
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+        fs_segmented.optimize(solver_fixture)
+
+        # Should have charge_state and SOC_boundary in solution
+        assert 'Battery|charge_state' in fs_segmented.solution
+        assert 'Battery|SOC_boundary' in fs_segmented.solution
+
+        # Verify solution is valid
+        assert fs_segmented.solution is not None
+
+    def test_segmented_storage_expand_solution(self, solver_fixture, timesteps_8_days):
+        """Test that expand_solution works for segmented storage systems."""
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='intercluster_cyclic')
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segmentation=True,
+            n_segments=6,
+        )
+        fs_segmented.optimize(solver_fixture)
+
+        # Expand
+        fs_expanded = fs_segmented.transform.expand_solution()
+
+        # Should have original timesteps
+        assert len(fs_expanded.timesteps) == 192
+
+        # Expanded charge_state should be non-negative (absolute SOC)
+        cs = fs_expanded.solution['Battery|charge_state']
+        assert (cs >= -0.01).all(), f'Negative charge_state found: min={float(cs.min())}'
+
+        # SOC_boundary should be removed after expansion
+        assert 'Battery|SOC_boundary' not in fs_expanded.solution

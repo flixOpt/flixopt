@@ -61,6 +61,11 @@ class ClusterStructure:
             dims: [cluster] for simple case, or [cluster, period, scenario] for multi-dim.
         n_clusters: Number of distinct clusters (typical periods).
         timesteps_per_cluster: Number of timesteps in each cluster (e.g., 24 for daily).
+        is_segmented: Whether inner-period segmentation was applied.
+        n_segments: Number of segments per cluster (if segmented).
+        segment_timestep_counts: Maps (cluster, segment) to number of original timesteps.
+            dims: [cluster, segment] for simple case, or [cluster, segment, period, scenario].
+            Values are counts of original timesteps each segment represents.
 
     Example:
         For 365 days clustered into 8 typical days:
@@ -72,12 +77,22 @@ class ClusterStructure:
         For multi-scenario (e.g., 2 scenarios):
         - cluster_order: shape (365, 2) with dims [original_cluster, scenario]
         - cluster_occurrences: shape (8, 2) with dims [cluster, scenario]
+
+        For segmented clustering (8 clusters, 6 segments each):
+        - is_segmented: True
+        - n_segments: 6
+        - segment_timestep_counts: shape (8, 6), values like [[4, 3, 5, 4, 4, 4], ...]
+          indicating how many original timesteps each segment represents
     """
 
     cluster_order: xr.DataArray
     cluster_occurrences: xr.DataArray
     n_clusters: int | xr.DataArray
     timesteps_per_cluster: int
+    # Segmentation fields (optional)
+    is_segmented: bool = False
+    n_segments: int | None = None
+    segment_timestep_counts: xr.DataArray | None = None
 
     def __post_init__(self):
         """Validate and ensure proper DataArray formatting."""
@@ -138,6 +153,16 @@ class ClusterStructure:
             ref['n_clusters'] = int(self.n_clusters)
 
         ref['timesteps_per_cluster'] = self.timesteps_per_cluster
+
+        # Segmentation fields
+        ref['is_segmented'] = self.is_segmented
+        if self.n_segments is not None:
+            ref['n_segments'] = self.n_segments
+        if self.segment_timestep_counts is not None:
+            name = self.segment_timestep_counts.name or 'segment_timestep_counts'
+            segment_counts_da = self.segment_timestep_counts.rename(name)
+            arrays[name] = segment_counts_da
+            ref['segment_timestep_counts'] = f':::{name}'
 
         return ref, arrays
 
@@ -411,7 +436,12 @@ class ClusterResult:
 
         timestep_mapping = self.timestep_mapping
         has_cluster_dim = 'cluster' in aggregated.dims
-        timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster if has_cluster_dim else None
+        cluster_structure = self.cluster_structure
+        timesteps_per_cluster = cluster_structure.timesteps_per_cluster if has_cluster_dim else None
+
+        # For segmented systems, use n_segments instead of timesteps_per_cluster for indexing
+        is_segmented = cluster_structure.is_segmented if cluster_structure else False
+        time_dim_size = cluster_structure.n_segments if is_segmented else timesteps_per_cluster
 
         def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
             """Expand a single slice using the mapping."""
@@ -425,8 +455,8 @@ class ClusterResult:
                     f'Expected only {expected_dims}. Make sure period/scenario selections are applied.'
                 )
             if has_cluster_dim:
-                cluster_ids = mapping // timesteps_per_cluster
-                time_within = mapping % timesteps_per_cluster
+                cluster_ids = mapping // time_dim_size
+                time_within = mapping % time_dim_size
                 return data.values[cluster_ids, time_within]
             return data.values[mapping]
 
