@@ -309,7 +309,7 @@ class TestFullWorkflow:
         fs.optimize(solver)
 
         # Attempting to modify without reset should raise an error
-        with pytest.raises(RuntimeError, match='Call flow_system.reset\\(\\) first'):
+        with pytest.raises(RuntimeError, match='flow_system.reset\\(\\)'):
             source.outputs[0].effects_per_flow_hour = 20
 
     def test_modify_and_reoptimize(self, optimizable_system):

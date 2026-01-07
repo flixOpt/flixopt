@@ -448,9 +448,15 @@ class Interface:
         """
         if self._flow_system is not None:
             if self._flow_system.is_locked:
+                # Build a helpful identifier for the object being modified
+                obj_id = getattr(self, 'label_full', None) or getattr(self, 'label', None) or self.__class__.__name__
                 raise RuntimeError(
-                    f'Cannot modify {self.__class__.__name__} on a FlowSystem with a solution. '
-                    f'Call flow_system.reset() first to clear the solution.'
+                    f"Cannot modify '{obj_id}' after optimization. "
+                    f'The FlowSystem has a solution and is locked.\n'
+                    f'To modify parameters and re-optimize:\n'
+                    f'  1. Call flow_system.reset() to clear the solution\n'
+                    f'  2. Make your modifications\n'
+                    f'  3. Call flow_system.optimize(solver) again'
                 )
             self._flow_system._invalidate_model()
 
