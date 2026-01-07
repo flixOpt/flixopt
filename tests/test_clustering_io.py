@@ -534,3 +534,67 @@ class TestClusteringEdgeCases:
         # Component labels should be preserved
         assert 'demand' in fs_expanded.components
         assert 'source' in fs_expanded.components
+
+
+class TestSegmentationIO:
+    """Tests for segmentation serialization and deserialization."""
+
+    def test_segmentation_netcdf_roundtrip(self, simple_system_8_days, solver_fixture, tmp_path):
+        """Test that segmented FlowSystem can be saved and loaded from netCDF."""
+        fs = simple_system_8_days
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=6)
+        fs_segmented.optimize(solver_fixture)
+
+        # Save to netCDF
+        path = tmp_path / 'segmented.nc'
+        fs_segmented.to_netcdf(path)
+
+        # Load back
+        fs_loaded = fx.FlowSystem.from_netcdf(path)
+
+        # Verify segmentation is preserved
+        assert fs_loaded.is_segmented is True
+        assert isinstance(fs_loaded.timesteps, pd.RangeIndex)
+        assert len(fs_loaded.timesteps) == 6  # n_segments
+        assert fs_loaded.clustering is not None
+        assert fs_loaded.clustering.result.cluster_structure.is_segmented is True
+        assert fs_loaded.clustering.result.cluster_structure.n_segments == 6
+        assert fs_loaded.clustering.result.cluster_structure.segment_timestep_counts is not None
+
+    def test_segmentation_expand_after_roundtrip(self, simple_system_8_days, solver_fixture, tmp_path):
+        """Test that expand_solution works after netCDF roundtrip for segmented systems."""
+        fs = simple_system_8_days
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=6)
+        fs_segmented.optimize(solver_fixture)
+
+        # Save and load
+        path = tmp_path / 'segmented.nc'
+        fs_segmented.to_netcdf(path)
+        fs_loaded = fx.FlowSystem.from_netcdf(path)
+
+        # Expand solution
+        fs_expanded = fs_loaded.transform.expand_solution()
+
+        # Verify expansion
+        assert isinstance(fs_expanded.timesteps, pd.DatetimeIndex)
+        assert len(fs_expanded.timesteps) == 8 * 24  # Original timesteps
+        assert fs_expanded.solution is not None
+
+    def test_segmentation_dataset_roundtrip(self, simple_system_8_days, solver_fixture):
+        """Test that segmented FlowSystem can roundtrip through Dataset."""
+        fs = simple_system_8_days
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=4)
+        fs_segmented.optimize(solver_fixture)
+
+        # To dataset and back
+        ds = fs_segmented.to_dataset(include_solution=True)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # Verify
+        assert fs_restored.is_segmented is True
+        assert fs_restored.clustering.result.cluster_structure.n_segments == 4
+        segment_counts = fs_restored.clustering.result.cluster_structure.segment_timestep_counts
+        assert segment_counts is not None
+        # Sum of segment counts per cluster should equal 24 (timesteps per cluster)
+        for c in range(2):
+            assert int(segment_counts.sel(cluster=c).sum().values) == 24

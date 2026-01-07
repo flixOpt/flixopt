@@ -783,9 +783,15 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
+        # Get timesteps - convert integer index to RangeIndex for segmented systems
+        time_index = ds.indexes['time']
+        if not isinstance(time_index, pd.DatetimeIndex):
+            # Segmented systems use RangeIndex (stored as integer array)
+            time_index = pd.RangeIndex(len(time_index), name='time')
+
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=ds.indexes['time'],
+            timesteps=time_index,
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             clusters=clusters,
