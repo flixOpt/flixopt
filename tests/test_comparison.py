@@ -176,9 +176,11 @@ class TestComparisonCreation:
             fx.Comparison([optimized_base, optimized_with_chp], names=['same', 'same'])
 
     def test_comparison_rejects_unoptimized_system(self, base_flow_system, optimized_with_chp):
-        """Comparison rejects FlowSystems without solutions."""
+        """Comparison rejects FlowSystems without solutions when accessing solution."""
+        comp = fx.Comparison([base_flow_system, optimized_with_chp])
+        # Accessing solution triggers validation
         with pytest.raises(RuntimeError, match='no solution'):
-            fx.Comparison([base_flow_system, optimized_with_chp])
+            _ = comp.solution
 
 
 # ============================================================================

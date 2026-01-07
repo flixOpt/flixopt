@@ -203,6 +203,97 @@ def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = Tru
     return ds
 
 
+def add_line_overlay(
+    fig: go.Figure,
+    da: xr.DataArray,
+    *,
+    x: str | None = None,
+    facet_col: str | Literal['auto'] | None = None,
+    facet_row: str | Literal['auto'] | None = None,
+    animation_frame: str | Literal['auto'] | None = None,
+    color: str | None = None,
+    line_color: str = 'black',
+    name: str | None = None,
+    secondary_y: bool = False,
+    y_title: str | None = None,
+    showlegend: bool = True,
+) -> None:
+    """Add line traces on top of existing figure, optionally on secondary y-axis.
+
+    This function creates line traces from a DataArray and adds them to an existing
+    figure. When using secondary_y=True, it correctly handles faceted figures by
+    creating matching secondary axes for each primary axis.
+
+    Args:
+        fig: Plotly figure to add traces to.
+        da: DataArray to plot as lines.
+        x: Dimension to use for x-axis. If None, auto-detects 'time' or first dim.
+        facet_col: Dimension for column facets (must match primary figure).
+        facet_row: Dimension for row facets (must match primary figure).
+        animation_frame: Dimension for animation slider (must match primary figure).
+        color: Dimension to color by (creates multiple lines).
+        line_color: Color for lines when color is None.
+        name: Legend name for the traces.
+        secondary_y: If True, plot on secondary y-axis.
+        y_title: Title for the y-axis (secondary if secondary_y=True).
+        showlegend: Whether to show legend entries.
+    """
+    if da.size == 0:
+        return
+
+    # Auto-detect x dimension if not specified
+    if x is None:
+        x = 'time' if 'time' in da.dims else da.dims[0]
+
+    # Create line figure with same facets
+    line_fig = da.fxplot.line(
+        x=x,
+        color=color,
+        facet_col=facet_col,
+        facet_row=facet_row,
+        animation_frame=animation_frame,
+    )
+
+    if secondary_y:
+        # Get the primary y-axes from the bar figure to create matching secondary axes
+        primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
+
+        # For each primary y-axis, create a secondary y-axis.
+        # Secondary axis numbering strategy:
+        # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc.
+        # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts
+        # - Each secondary axis 'overlays' its corresponding primary axis
+        for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
+            primary_num = primary_key[5:] if primary_key[5:] else '1'
+            secondary_num = int(primary_num) + 100
+            secondary_key = f'yaxis{secondary_num}'
+            secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
+
+            fig.layout[secondary_key] = dict(
+                overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
+                side='right',
+                showgrid=False,
+                title=y_title if i == len(primary_yaxes) - 1 else None,
+                anchor=secondary_anchor,
+            )
+
+    # Add line traces with correct axis assignments
+    for i, trace in enumerate(line_fig.data):
+        if name is not None:
+            trace.name = name
+        if color is None:
+            trace.line = dict(color=line_color, width=2)
+
+        if secondary_y:
+            primary_num = i + 1 if i > 0 else 1
+            trace.yaxis = f'y{primary_num + 100}'
+
+        trace.showlegend = showlegend and (i == 0)
+        if name is not None:
+            trace.legendgroup = name
+        fig.add_trace(trace)
+
+
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
     """Filter dataset variables by carrier attribute.
 
@@ -2149,50 +2240,17 @@ class StatisticsPlotAccessor:
         )
 
         # Add charge state as line on secondary y-axis
-        if charge_da.size > 0:
-            # Create line figure with same facets
-            line_fig = charge_da.fxplot.line(
-                x='time',
-                color=None,  # Single line, no color grouping
-                facet_col=facet_col,
-                facet_row=facet_row,
-                animation_frame=animation_frame,
-            )
-
-            # Get the primary y-axes from the bar figure to create matching secondary axes
-            primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
-
-            # For each primary y-axis, create a secondary y-axis.
-            # Secondary axis numbering strategy:
-            # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc. (plotly auto-generates these for facets)
-            # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts with plotly's auto-numbering
-            # - Each secondary axis 'overlays' its corresponding primary axis and anchors to the same x-axis
-            # - This allows charge_state lines to share the subplot with power bars but use independent scales
-            for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-                primary_num = primary_key[5:] if primary_key[5:] else '1'
-                secondary_num = int(primary_num) + 100
-                secondary_key = f'yaxis{secondary_num}'
-                secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
-
-                fig.layout[secondary_key] = dict(
-                    overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
-                    side='right',
-                    showgrid=False,
-                    title='Charge State' if i == len(primary_yaxes) - 1 else None,
-                    anchor=secondary_anchor,
-                )
-
-            # Add line traces with correct axis assignments
-            for i, trace in enumerate(line_fig.data):
-                primary_num = i + 1 if i > 0 else 1
-                secondary_yaxis = f'y{primary_num + 100}'
-
-                trace.name = 'charge_state'
-                trace.line = dict(color=charge_state_color, width=2)
-                trace.yaxis = secondary_yaxis
-                trace.showlegend = i == 0
-                trace.legendgroup = 'charge_state'
-                fig.add_trace(trace)
+        add_line_overlay(
+            fig,
+            charge_da,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            line_color=charge_state_color,
+            name='charge_state',
+            secondary_y=True,
+            y_title='Charge State',
+        )
 
         if show is None:
             show = CONFIG.Plotting.default_show
