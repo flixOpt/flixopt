@@ -300,14 +300,29 @@ class TestFullWorkflow:
 
         return fs, source, sink
 
+    def test_modify_without_reset_raises_error(self, optimizable_system):
+        """Test that modifying a solved system without reset() raises an error."""
+        fs, source, sink = optimizable_system
+        solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60)
+
+        # First optimization
+        fs.optimize(solver)
+
+        # Attempting to modify without reset should raise an error
+        with pytest.raises(RuntimeError, match='Call flow_system.reset\\(\\) first'):
+            source.outputs[0].effects_per_flow_hour = 20
+
     def test_modify_and_reoptimize(self, optimizable_system):
-        """Test that we can modify parameters and re-optimize."""
+        """Test that we can modify parameters and re-optimize after reset()."""
         fs, source, sink = optimizable_system
         solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60)
 
         # First optimization
         fs.optimize(solver)
         first_result = fs.solution['costs'].item()
+
+        # Reset before modification (mandatory)
+        fs.reset()
 
         # Modify source cost
         source.outputs[0].effects_per_flow_hour = 20
