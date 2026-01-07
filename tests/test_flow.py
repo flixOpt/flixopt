@@ -652,6 +652,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
+            previous_flow_rate=0,  # Required to get initial constraint
             status_parameters=fx.StatusParameters(
                 min_uptime=2,  # Must run for at least 2 hours when turned on
                 max_uptime=8,  # Can't run more than 8 consecutive hours
@@ -815,6 +816,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
+            previous_flow_rate=0,  # Required to get initial constraint (was OFF for 1h, so previous_downtime=1)
             status_parameters=fx.StatusParameters(
                 min_downtime=4,  # Must stay inactive for at least 4 hours when shut down
                 max_downtime=12,  # Can't be inactive for more than 12 consecutive hours
@@ -982,6 +984,7 @@ class TestFlowOnModel:
             'Wärme',
             bus='Fernwärme',
             size=100,
+            previous_flow_rate=0,  # Required to get initial constraint
             status_parameters=fx.StatusParameters(
                 startup_limit=5,  # Maximum 5 startups
                 effects_per_startup={'costs': 100},  # 100 EUR startup cost

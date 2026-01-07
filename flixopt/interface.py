@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -1443,6 +1443,14 @@ class StatusParameters(Interface):
         force_startup_tracking: When True, creates startup variables even without explicit
             startup_limit constraint. Useful for tracking or reporting startup
             events without enforcing limits.
+        cluster_mode: How inter-timestep constraints are handled at cluster boundaries.
+            Only relevant when using ``transform.cluster()``. Options:
+
+            - ``'relaxed'``: No constraint at cluster boundaries. Startups at the first
+              timestep of each cluster are not forced - the optimizer is free to choose.
+              This prevents clustering from inducing "phantom" startups. (default)
+            - ``'cyclic'``: Each cluster's final status equals its initial status.
+              Ensures consistent behavior within each representative period.
 
     Note:
         **Time Series Boundary Handling**: The final time period constraints for
@@ -1578,6 +1586,7 @@ class StatusParameters(Interface):
         max_downtime: Numeric_TPS | None = None,
         startup_limit: Numeric_PS | None = None,
         force_startup_tracking: bool = False,
+        cluster_mode: Literal['relaxed', 'cyclic'] = 'relaxed',
     ):
         self._effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
         self._effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
@@ -1589,6 +1598,7 @@ class StatusParameters(Interface):
         self._max_downtime = max_downtime
         self._startup_limit = startup_limit
         self._force_startup_tracking: bool = force_startup_tracking
+        self._cluster_mode = cluster_mode
 
     # region Properties
     @property
@@ -1697,6 +1707,16 @@ class StatusParameters(Interface):
     @force_startup_tracking.setter
     def force_startup_tracking(self, value: bool) -> None:
         self._force_startup_tracking = value
+        self._invalidate()
+
+    @property
+    def cluster_mode(self) -> Literal['relaxed', 'cyclic']:
+        """How this on/off is treated during clustering optimization."""
+        return self._cluster_mode
+
+    @cluster_mode.setter
+    def cluster_mode(self, value: Literal['relaxed', 'cyclic']) -> None:
+        self._cluster_mode = value
         self._invalidate()
 
     # endregion

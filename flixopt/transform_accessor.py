@@ -828,22 +828,29 @@ class TransformAccessor:
             # First, get the metric columns from any non-empty DataFrame
             sample_df = next(iter(non_empty_metrics.values()))
             metric_names = list(sample_df.columns)
-            time_series_names = list(sample_df.index)
 
             # Build DataArrays for each metric
             data_vars = {}
             for metric in metric_names:
                 # Shape: (time_series, period?, scenario?)
+                # Each slice needs its own coordinates since different periods/scenarios
+                # may have different time series (after drop_constant_arrays)
                 slices = {}
                 for (p, s), df in clustering_metrics_all.items():
                     if df.empty:
-                        # Use NaN for failed metrics
-                        slices[(p, s)] = xr.DataArray(np.full(len(time_series_names), np.nan), dims=['time_series'])
+                        # Use NaN for failed metrics - use sample_df index as fallback
+                        slices[(p, s)] = xr.DataArray(
+                            np.full(len(sample_df.index), np.nan),
+                            dims=['time_series'],
+                            coords={'time_series': list(sample_df.index)},
+                        )
                     else:
-                        slices[(p, s)] = xr.DataArray(df[metric].values, dims=['time_series'])
+                        # Use this DataFrame's own index as coordinates
+                        slices[(p, s)] = xr.DataArray(
+                            df[metric].values, dims=['time_series'], coords={'time_series': list(df.index)}
+                        )
 
                 da = self._combine_slices_to_dataarray_generic(slices, ['time_series'], periods, scenarios, metric)
-                da = da.assign_coords(time_series=time_series_names)
                 data_vars[metric] = da
 
             clustering_metrics = xr.Dataset(data_vars)
@@ -1137,17 +1144,33 @@ class TransformAccessor:
             return slices[first_key].rename(name)
 
         # Multi-dimensional: use xr.concat to stack along period/scenario dims
+        # Use join='outer' to handle cases where different periods/scenarios have different
+        # coordinate values (e.g., different time_series after drop_constant_arrays)
         if has_periods and has_scenarios:
             # Stack scenarios first, then periods
             period_arrays = []
             for p in periods:
                 scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
+                period_arrays.append(
+                    xr.concat(
+                        scenario_arrays, dim=pd.Index(scenarios, name='scenario'), join='outer', fill_value=np.nan
+                    )
+                )
+            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'), join='outer', fill_value=np.nan)
         elif has_periods:
-            result = xr.concat([slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
+            result = xr.concat(
+                [slices[(p, None)] for p in periods],
+                dim=pd.Index(periods, name='period'),
+                join='outer',
+                fill_value=np.nan,
+            )
         else:
-            result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
+            result = xr.concat(
+                [slices[(None, s)] for s in scenarios],
+                dim=pd.Index(scenarios, name='scenario'),
+                join='outer',
+                fill_value=np.nan,
+            )
 
         # Put base dimension first (standard order)
         result = result.transpose(base_dims[0], ...)
