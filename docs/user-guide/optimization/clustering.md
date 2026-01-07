@@ -37,7 +37,7 @@ fs_clustered = flow_system.transform.cluster(
 fs_clustered.optimize(fx.solvers.HighsSolver())
 
 # Stage 2: Expand back to full resolution
-fs_expanded = fs_clustered.transform.expand_solution()
+fs_expanded = fs_clustered.transform.expand()
 
 # Access full-resolution results
 charge_state = fs_expanded.solution['Storage|charge_state']
@@ -217,7 +217,7 @@ flow_rate = fs_clustered.solution['Boiler(Q_th)|flow_rate']
 After optimization, expand results back to full resolution:
 
 ```python
-fs_expanded = fs_clustered.transform.expand_solution()
+fs_expanded = fs_clustered.transform.expand()
 
 # Full timesteps are restored
 print(f"Original: {len(flow_system.timesteps)} timesteps")

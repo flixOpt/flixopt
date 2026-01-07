@@ -277,7 +277,7 @@ class ClusterResult:
         cluster_structure: Hierarchical clustering structure for storage linking.
             Optional - only needed when using cluster() mode.
         original_data: Reference to original data before aggregation.
-            Optional - useful for expand_solution().
+            Optional - useful for expand().
 
     Example:
         For 8760 hourly timesteps clustered into 192 representative timesteps (8 clusters x 24h):
@@ -364,7 +364,7 @@ class ClusterResult:
         """Get mapping from original timesteps to representative indices.
 
         This is the same as timestep_mapping but ensures proper naming
-        for use in expand_solution().
+        for use in expand().
 
         Returns:
             DataArray mapping original timesteps to representative indices.
@@ -927,7 +927,7 @@ class Clustering:
     """Information about an aggregation stored on a FlowSystem.
 
     This is stored on the FlowSystem after aggregation to enable:
-    - expand_solution() to map back to original timesteps
+    - expand() to map back to original timesteps
     - Statistics to properly weight results
     - Inter-cluster storage linking
     - Serialization/deserialization of aggregated models
