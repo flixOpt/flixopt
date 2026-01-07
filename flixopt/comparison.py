@@ -442,10 +442,12 @@ class ComparisonStatisticsPlot:
 
     def balance(self, node: str, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot node balance comparison. See StatisticsPlotAccessor.balance."""
+        kwargs.setdefault('color', 'variable')
         return self._plot('balance', 'stacked_bar', node, show=show, **kwargs)
 
     def carrier_balance(self, carrier: str, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot carrier balance comparison. See StatisticsPlotAccessor.carrier_balance."""
+        kwargs.setdefault('color', 'variable')
         return self._plot('carrier_balance', 'stacked_bar', carrier, show=show, **kwargs)
 
     def flows(self, *, show: bool | None = None, **kwargs) -> PlotResult:
