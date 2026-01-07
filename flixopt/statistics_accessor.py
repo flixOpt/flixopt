@@ -1311,6 +1311,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot node balance (inputs vs outputs) for a Bus or Component.
@@ -1328,6 +1329,7 @@ class StatisticsPlotAccessor:
             animation_frame: Dimension for animation slider. 'auto' uses first available
                 after facets.
             show: Whether to display the plot.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with .data and .figure.
@@ -1368,6 +1370,10 @@ class StatisticsPlotAccessor:
         if colors is None:
             colors = self._get_color_map_for_balance(node, list(ds.data_vars))
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1403,6 +1409,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot carrier-level balance showing all flows of a carrier type.
@@ -1422,6 +1429,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets. 'auto' uses first available after facet_col.
             animation_frame: Dimension for animation slider.
             show: Whether to display the plot.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with .data and .figure.
@@ -1489,6 +1497,10 @@ class StatisticsPlotAccessor:
                 color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
             colors = color_map
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from carrier or first data variable
         unit_label = ''
         if ds.data_vars:
@@ -1521,6 +1533,7 @@ class StatisticsPlotAccessor:
         facet_col: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot heatmap of time series data.
@@ -1545,6 +1558,7 @@ class StatisticsPlotAccessor:
                 cluster/period/scenario. With multiple variables, 'variable' is used.
             animation_frame: Dimension for animation slider. 'auto' uses first available.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to px.imshow.
 
         Returns:
@@ -1561,6 +1575,10 @@ class StatisticsPlotAccessor:
 
         # Prepare for heatmap (reshape, transpose, squeeze)
         da = _prepare_for_heatmap(da, reshape, facet_col, animation_frame)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=da.to_dataset(name='value'), figure=go.Figure())
 
         fig = da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs)
 
@@ -1584,6 +1602,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot flow rates filtered by start/end nodes or component.
@@ -1599,6 +1618,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with flow data.
@@ -1641,6 +1661,10 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1673,6 +1697,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot investment sizes (capacities) of flows.
@@ -1685,6 +1710,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with size data.
@@ -1697,6 +1723,10 @@ class StatisticsPlotAccessor:
         if max_size is not None and ds.data_vars:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         if not ds.data_vars:
             fig = go.Figure()
@@ -1731,6 +1761,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot load duration curves (sorted time series).
@@ -1747,6 +1778,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with sorted duration curve data.
@@ -1804,6 +1836,10 @@ class StatisticsPlotAccessor:
         duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
         result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=result_ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1841,6 +1877,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot effect (cost, emissions, etc.) breakdown.
@@ -1857,6 +1894,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with effect breakdown data.
@@ -1920,6 +1958,10 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Build title
         effect_label = effect or 'Effects'
         title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
@@ -1957,6 +1999,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot storage charge states over time.
@@ -1969,6 +2012,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with charge state data.
@@ -1982,6 +2026,10 @@ class StatisticsPlotAccessor:
             ds = ds[[s for s in storages if s in ds]]
 
         ds = _apply_selection(ds, select)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         fig = ds.fxplot.line(
             colors=colors,
@@ -2012,6 +2060,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot storage operation: balance and charge state in vertically stacked subplots.
@@ -2030,6 +2079,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with combined balance and charge state data.
@@ -2072,6 +2122,10 @@ class StatisticsPlotAccessor:
 
         # Apply selection
         ds = _apply_selection(ds, select)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']

@@ -392,16 +392,13 @@ class ComparisonStatisticsPlot:
         """Call plot method on each system and combine data. Returns (combined_data, title)."""
         datasets = []
         title = ''
-        kwargs = {**kwargs, 'show': False}  # Don't mutate original
+        # Use data_only=True to skip figure creation for performance
+        kwargs = {**kwargs, 'show': False, 'data_only': True}
 
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
                 result = getattr(fs.statistics.plot, method_name)(*args, **kwargs)
                 datasets.append(result.data.expand_dims(case=[case_name]))
-                # Extract title safely (layout.title may be None or a dict-like object)
-                fig_title = result.figure.layout.title
-                if fig_title is not None:
-                    title = getattr(fig_title, 'text', None) or title
             except (KeyError, ValueError) as e:
                 warnings.warn(
                     f"Skipping case '{case_name}' in {method_name}: {e}",
