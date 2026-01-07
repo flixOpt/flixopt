@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -13,8 +12,6 @@ from .plot_result import PlotResult
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
-
-logger = logging.getLogger('flixopt')
 
 __all__ = ['Comparison']
 
@@ -27,21 +24,21 @@ ColorType = str | list[str] | dict[str, str] | None
 class Comparison:
     """Compare multiple FlowSystems side-by-side.
 
-    Combines solutions and statistics from multiple FlowSystems into unified
-    xarray Datasets with a 'case' dimension. The existing plotting infrastructure
-    automatically handles faceting by the 'case' dimension.
+    Combines solutions, statistics, and inputs from multiple FlowSystems into
+    unified xarray Datasets with a 'case' dimension. The existing plotting
+    infrastructure automatically handles faceting by the 'case' dimension.
 
-    All FlowSystems must have matching dimensions (time, period, scenario, etc.).
-    Use `flow_system.transform.sel()` to align dimensions before comparing.
+    For comparing solutions/statistics, all FlowSystems must be optimized and
+    have matching dimensions. For comparing inputs only, optimization is not
+    required.
 
     Args:
-        flow_systems: List of FlowSystems to compare. All must be optimized
-            and have matching dimensions.
+        flow_systems: List of FlowSystems to compare.
         names: Optional names for each case. If None, uses FlowSystem.name.
 
     Raises:
-        ValueError: If FlowSystems have mismatched dimensions.
-        RuntimeError: If any FlowSystem has no solution.
+        ValueError: If case names are not unique.
+        RuntimeError: If accessing solution/statistics without optimized FlowSystems.
 
     Examples:
         ```python
@@ -86,14 +83,6 @@ class Comparison:
         if len(set(self._names)) != len(self._names):
             raise ValueError(f'Case names must be unique, got: {self._names}')
 
-        # Validate all FlowSystems have solutions
-        for fs in flow_systems:
-            if fs.solution is None:
-                raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
-
-        # Validate matching dimensions across all FlowSystems
-        self._validate_matching_dimensions()
-
         # Caches
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
@@ -103,47 +92,38 @@ class Comparison:
     # Note: 'cluster' and 'cluster_boundary' are auxiliary dimensions from clustering
     _CORE_DIMS = {'time', 'period', 'scenario'}
 
-    def _validate_matching_dimensions(self) -> None:
-        """Validate that all FlowSystems have matching core dimensions.
+    def _warn_mismatched_dimensions(self, datasets: list[xr.Dataset]) -> None:
+        """Warn if datasets have mismatched dimensions or coordinates.
 
-        Only validates core dimensions (time, period, scenario). Auxiliary
-        dimensions like 'cluster_boundary' are ignored as they don't affect
-        the comparison logic.
-
-        Also warns if coordinate values differ significantly, which could cause
-        unexpected NaN values after xarray alignment.
+        xarray handles mismatches gracefully with join='outer', but this may
+        introduce NaN values for non-overlapping coordinates.
         """
-        reference = self._systems[0]
-        ref_core_dims = set(reference.solution.dims) & self._CORE_DIMS
+        ref_ds = datasets[0]
+        ref_core_dims = set(ref_ds.dims) & self._CORE_DIMS
         ref_name = self._names[0]
 
-        for fs, name in zip(self._systems[1:], self._names[1:], strict=True):
-            fs_core_dims = set(fs.solution.dims) & self._CORE_DIMS
-            if fs_core_dims != ref_core_dims:
-                missing = ref_core_dims - fs_core_dims
-                extra = fs_core_dims - ref_core_dims
-                msg_parts = [f"Core dimension mismatch between '{ref_name}' and '{name}'."]
+        for ds, name in zip(datasets[1:], self._names[1:], strict=True):
+            ds_core_dims = set(ds.dims) & self._CORE_DIMS
+            if ds_core_dims != ref_core_dims:
+                missing = ref_core_dims - ds_core_dims
+                extra = ds_core_dims - ref_core_dims
+                msg_parts = [f"Dimension mismatch between '{ref_name}' and '{name}'."]
                 if missing:
-                    msg_parts.append(f"Missing in '{name}': {missing}.")
+                    msg_parts.append(f'Missing: {missing}.')
                 if extra:
-                    msg_parts.append(f"Extra in '{name}': {extra}.")
-                msg_parts.append('Use .transform.sel() to align dimensions before comparing.')
-                raise ValueError(' '.join(msg_parts))
+                    msg_parts.append(f'Extra: {extra}.')
+                msg_parts.append('This may introduce NaN values.')
+                warnings.warn(' '.join(msg_parts), stacklevel=4)
 
-            # Check coordinate alignment and warn about potential issues
-            for dim in ref_core_dims:
-                ref_coords = reference.solution.coords[dim].values
-                fs_coords = fs.solution.coords[dim].values
-                if len(ref_coords) != len(fs_coords):
-                    logger.warning(
-                        f"Coordinate length mismatch for '{dim}' between '{ref_name}' ({len(ref_coords)}) "
-                        f"and '{name}' ({len(fs_coords)}). xarray will align on coordinates, "
-                        f'which may introduce NaN values for non-overlapping coordinates.'
-                    )
-                elif not (ref_coords == fs_coords).all():
-                    logger.warning(
-                        f"Coordinate values differ for '{dim}' between '{ref_name}' and '{name}'. "
-                        f'xarray will align on coordinates, which may introduce NaN values.'
+            # Check coordinate alignment
+            for dim in ref_core_dims & ds_core_dims:
+                ref_coords = ref_ds.coords[dim].values
+                ds_coords = ds.coords[dim].values
+                if len(ref_coords) != len(ds_coords) or not (ref_coords == ds_coords).all():
+                    warnings.warn(
+                        f"Coordinates differ for '{dim}' between '{ref_name}' and '{name}'. "
+                        f'This may introduce NaN values.',
+                        stacklevel=4,
                     )
 
     @property
@@ -151,15 +131,25 @@ class Comparison:
         """Case names for each FlowSystem."""
         return self._names
 
+    def _require_solutions(self) -> None:
+        """Validate all FlowSystems have solutions."""
+        for fs in self._systems:
+            if fs.solution is None:
+                raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
+
     @property
     def solution(self) -> xr.Dataset:
         """Combined solution Dataset with 'case' dimension."""
         if self._solution is None:
-            datasets = []
-            for fs, name in zip(self._systems, self._names, strict=True):
-                ds = fs.solution.expand_dims(case=[name])
-                datasets.append(ds)
-            self._solution = xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+            self._require_solutions()
+            datasets = [fs.solution for fs in self._systems]
+            self._warn_mismatched_dimensions(datasets)
+            self._solution = xr.concat(
+                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
+                dim='case',
+                join='outer',
+                fill_value=float('nan'),
+            )
         return self._solution
 
     @property
@@ -210,11 +200,10 @@ class Comparison:
             ```
         """
         if self._inputs is None:
+            datasets = [fs.to_dataset(include_solution=False) for fs in self._systems]
+            self._warn_mismatched_dimensions(datasets)
             self._inputs = xr.concat(
-                [
-                    fs.to_dataset(include_solution=False).expand_dims(case=[name])
-                    for fs, name in zip(self._systems, self._names, strict=True)
-                ],
+                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
                 dim='case',
                 join='outer',
                 fill_value=float('nan'),
