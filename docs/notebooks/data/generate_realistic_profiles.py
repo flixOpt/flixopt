@@ -227,9 +227,11 @@ class SolarGenerator:
             dhi=weather['dhi_W_m2'],
         )
 
-        # Simple efficiency model: ~15% module efficiency, ~85% system efficiency
-        system_efficiency = 0.15 * 0.85
-        pv_output = poa['poa_global'] * system_efficiency * capacity_kw / 1000
+        # Treat capacity_kw as installed DC capacity (kWp).
+        # Scale POA irradiance (W/m²) to kW using 1000 W/m² reference.
+        # Apply performance ratio (~85%) for typical system losses (inverter, wiring, soiling, etc.)
+        performance_ratio = 0.85
+        pv_output = poa['poa_global'] * capacity_kw / 1000 * performance_ratio
 
         return np.clip(pv_output.fillna(0).values, 0, capacity_kw)
 

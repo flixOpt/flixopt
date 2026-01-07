@@ -107,6 +107,13 @@ def _initialize_optimization_common(
         flow_system = flow_system.copy()
 
     # normalize_weights is deprecated but kept for backwards compatibility
+    if normalize_weights is not None:
+        warnings.warn(
+            f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            'Scenario weights are now always normalized when set on FlowSystem.\n',
+            DeprecationWarning,
+            stacklevel=3,
+        )
     obj.normalize_weights = True  # Always True now
 
     flow_system._used_in_optimization = True
