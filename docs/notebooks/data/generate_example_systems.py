@@ -290,11 +290,10 @@ def create_complex_system() -> fx.FlowSystem:
     return fs
 
 
-def create_district_heating_system() -> fx.FlowSystem:
+def create_district_heating_system(duration: str = 'month') -> fx.FlowSystem:
     """Create a district heating system with BDEW profiles.
 
     Uses realistic German data:
-    - One month (January 2020), hourly resolution
     - BDEW industrial heat profile
     - BDEW commercial electricity profile
     - OPSD electricity prices
@@ -302,10 +301,19 @@ def create_district_heating_system() -> fx.FlowSystem:
     - CHP, boiler, storage, and grid connections
     - Investment optimization for sizing
 
+    Args:
+        duration: Time period - 'month' (744h), 'quarter' (2160h), or 'year' (8760h)
+
     Used by: 08a-aggregation, 08c-clustering, 08e-clustering-internals notebooks
     """
-    # One month, hourly
-    timesteps = pd.date_range('2020-01-01', '2020-01-31 23:00:00', freq='h')
+    end_dates = {
+        'month': '2020-01-31 23:00:00',
+        'quarter': '2020-03-31 23:00:00',
+        'year': '2020-12-31 23:00:00',
+    }
+    if duration not in end_dates:
+        raise ValueError(f"duration must be one of {list(end_dates.keys())}, got '{duration}'")
+    timesteps = pd.date_range('2020-01-01', end_dates[duration], freq='h')
     temp = _get_weather()['temperature_C'].reindex(timesteps, method='ffill').values
 
     # BDEW profiles (MW scale for district heating)

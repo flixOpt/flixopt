@@ -260,5 +260,5 @@ fs_accurate = flow_system.transform.cluster(n_clusters=24, cluster_duration='1D'
 ## See Also
 
 - [Storage Component](../mathematical-notation/elements/Storage.md) - Storage mathematical formulation
-- [Notebooks: Clustering](../../notebooks/08c-clustering.ipynb) - Interactive examples
+- [Notebooks: Clustering](../../notebooks/08c1-clustering.ipynb) - Interactive examples
 - [Notebooks: Storage Modes](../../notebooks/08c2-clustering-storage-modes.ipynb) - Storage mode comparison

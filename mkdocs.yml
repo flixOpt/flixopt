@@ -72,7 +72,7 @@ nav:
       - Aggregation: notebooks/08a-aggregation.ipynb
       - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
       - Clustering:
-        - Introduction: notebooks/08c-clustering.ipynb
+        - Introduction: notebooks/08c1-clustering.ipynb
         - Storage Modes: notebooks/08c2-clustering-storage-modes.ipynb
         - Multi-Period: notebooks/08d-clustering-multiperiod.ipynb
         - Internals: notebooks/08e-clustering-internals.ipynb
