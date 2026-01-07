@@ -879,7 +879,8 @@ class ClusteringPlotAccessor:
         resolved_variables = self._resolve_variables(variables)
 
         n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
-        timesteps_per_cluster = cs.timesteps_per_cluster
+        # For segmented systems, use n_segments for the time dimension size
+        time_dim_size = cs.n_segments if cs.is_segmented else cs.timesteps_per_cluster
 
         # Check dimensions of all variables for consistency
         has_cluster_dim = None
@@ -921,11 +922,11 @@ class ClusteringPlotAccessor:
                 data_by_cluster = da.values
             else:
                 # Data has (time,) dim - reshape to (cluster, time)
-                data_by_cluster = da.values.reshape(n_clusters, timesteps_per_cluster)
+                data_by_cluster = da.values.reshape(n_clusters, time_dim_size)
             data_vars[var] = xr.DataArray(
                 data_by_cluster,
                 dims=['cluster', 'time'],
-                coords={'cluster': cluster_labels, 'time': range(timesteps_per_cluster)},
+                coords={'cluster': cluster_labels, 'time': range(time_dim_size)},
             )
 
         ds = xr.Dataset(data_vars)
