@@ -958,9 +958,10 @@ class TransformAccessor:
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
         for key, tsam_agg in tsam_results.items():
             if segmentation:
-                # For segmented data, extract from segmentedNormalizedTypicalPeriods
-                # This has a MultiIndex: (period, segment_step, segment_duration, original_start_step)
-                segmented_df = tsam_agg.segmentedNormalizedTypicalPeriods
+                # For segmented data, use typicalPeriods (NOT segmentedNormalizedTypicalPeriods!)
+                # typicalPeriods contains un-normalized values with MultiIndex: (period, segment_step, ...)
+                # segmentedNormalizedTypicalPeriods contains MinMax-normalized values (wrong scale)
+                segmented_df = tsam_agg.typicalPeriods
                 for col in segmented_df.columns:
                     # Group by period (cluster) and extract segment values
                     data = np.zeros((actual_n_clusters, n_segments_actual))

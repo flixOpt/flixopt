@@ -605,7 +605,8 @@ class TestSegmentationIO:
         timesteps = pd.date_range('2023-01-01', periods=8 * 24, freq='h')
         periods = pd.Index([2020, 2021], name='period')
         scenarios = pd.Index(['low', 'high'], name='scenario')
-        demand = np.sin(np.linspace(0, 4 * np.pi, 8 * 24)) * 10 + 15
+        # Scale demand profile to 0.5-1.5 range so flow (profile * size) stays within source capacity
+        demand = np.sin(np.linspace(0, 4 * np.pi, 8 * 24)) * 0.5 + 1.0
 
         fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
         fs.add_elements(
