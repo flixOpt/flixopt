@@ -51,6 +51,74 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [6.1.0] - Upcoming
+
+**Summary**: Adds inner-period segmentation support to time-series clustering, enabling further reduction of problem size by grouping adjacent timesteps within each typical period into variable-length segments.
+
+### ✨ Added
+
+#### Inner-Period Segmentation for Clustering
+
+Segmentation divides each typical period (cluster) into variable-length segments, dramatically reducing problem size while preserving key features of the time series.
+
+```python
+# Without segmentation: 8760h → 8 clusters × 24h = 192 timesteps
+# With segmentation: 8760h → 8 clusters × 6 segments = 48 timesteps
+
+fs_segmented = flow_system.transform.cluster(
+    n_clusters=8,
+    cluster_duration='1D',
+    segmentation=True,           # Enable inner-period segmentation
+    n_segments=6,                # Segments per cluster
+)
+fs_segmented.optimize(solver)
+fs_expanded = fs_segmented.transform.expand_solution()
+```
+
+**New Parameters**:
+
+| Parameter | Description |
+|-----------|-------------|
+| `segmentation` | Enable inner-period segmentation (default: `False`) |
+| `n_segments` | Number of segments per cluster (required when `segmentation=True`) |
+| `segment_representation_method` | How to represent segment values: `'meanRepresentation'` (default), `'medoidRepresentation'`, etc. |
+
+**Key Features**:
+
+- **Variable segment durations**: Each segment can have different duration (in hours), automatically determined by tsam based on time series characteristics
+- **Full storage integration**: Works with all storage `cluster_mode` options including `'intercluster_cyclic'`
+- **Solution expansion**: `expand_solution()` correctly maps segmented results back to original timesteps
+- **RangeIndex timesteps**: Segmented FlowSystems use `RangeIndex` instead of `DatetimeIndex` for the time dimension
+- **`is_segmented` property**: Check if a FlowSystem uses segmentation via `flow_system.is_segmented`
+
+**Example with Storage**:
+
+```python
+storage = fx.Storage(
+    'Battery',
+    capacity_in_flow_hours=100,
+    cluster_mode='intercluster_cyclic',
+    ...
+)
+
+# Cluster with segmentation - extreme reduction
+fs_segmented = flow_system.transform.cluster(
+    n_clusters=12,
+    cluster_duration='1D',
+    segmentation=True,
+    n_segments=4,  # 12 clusters × 4 segments = 48 timesteps (vs 12 × 24 = 288)
+)
+fs_segmented.optimize(solver)
+
+# Expand back to full resolution
+fs_expanded = fs_segmented.transform.expand_solution()
+```
+
+!!! tip "When to Use Segmentation"
+    Segmentation is most beneficial for large-scale optimization problems where the additional reduction from 24 timesteps per cluster to ~4-8 segments significantly improves solve time. For problems that already solve quickly, standard clustering without segmentation may be sufficient.
+
+---
+
 ## [6.0.0] - Upcoming
 
 **Summary**: Major release featuring a complete rewrite of the clustering/aggregation system with tsam integration, new `fxplot` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
