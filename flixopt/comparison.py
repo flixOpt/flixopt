@@ -9,6 +9,7 @@ import xarray as xr
 
 from .config import CONFIG
 from .plot_result import PlotResult
+from .statistics_accessor import add_line_overlay
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -410,50 +411,6 @@ class ComparisonStatisticsPlot:
             fig.show()
         return PlotResult(data=ds, figure=fig or go.Figure())
 
-    def _add_line_overlay(
-        self,
-        fig,
-        ds: xr.Dataset,
-        variables: list[str] | None = None,
-        secondary_y: bool = False,
-        colors: dict[str, str] | str | None = None,
-        showlegend: bool = True,
-    ) -> None:
-        """Add line traces from dataset variables on top of existing figure.
-
-        Args:
-            fig: Plotly figure to add traces to.
-            ds: Dataset containing variables to plot.
-            variables: Variable names to plot. If None, plots all data_vars.
-            secondary_y: If True, plot on secondary y-axis.
-            colors: Color(s) for lines. Can be dict mapping var names to colors,
-                single color string, or None for default colors.
-            showlegend: Whether to show legend entries for the lines.
-        """
-        if variables is None:
-            variables = list(ds.data_vars)
-        if not variables:
-            return
-
-        plot_ds = ds[variables]
-        line_fig = plot_ds.fxplot.line(color='variable' if len(variables) > 1 else None)
-
-        for trace in line_fig.data:
-            trace.showlegend = showlegend
-            if colors:
-                if isinstance(colors, dict):
-                    trace.line = dict(color=colors.get(trace.name, None), width=2)
-                else:
-                    trace.line = dict(color=colors, width=2)
-            if secondary_y:
-                trace.yaxis = 'y2'
-            fig.add_trace(trace)
-
-        if secondary_y:
-            fig.update_layout(
-                yaxis2=dict(overlaying='y', side='right', showgrid=False),
-            )
-
     def _plot(
         self,
         method_name: str,
@@ -504,7 +461,7 @@ class ComparisonStatisticsPlot:
         # Extract plot kwargs
         plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame'}
         plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
-        charge_state_color = kwargs.pop('charge_state_color', 'black')
+        kwargs.pop('charge_state_color', None)  # Not used in comparison (lines colored by case)
         # Data kwargs for _combine_data
         data_keys = {'unit', 'select'}
         data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
@@ -524,15 +481,15 @@ class ComparisonStatisticsPlot:
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
-            self._add_line_overlay(
+            add_line_overlay(
                 fig,
-                ds,
-                variables=['charge_state'],
+                ds['charge_state'],
+                color='case',  # One line per case
+                name='charge_state',
                 secondary_y=True,
-                colors=charge_state_color,
-                showlegend=True,
+                y_title='Charge State',
+                **plot_kwargs,
             )
-            fig.update_layout(yaxis2_title='Charge State')
 
         if plotly_kwargs:
             fig.update_layout(**plotly_kwargs)
