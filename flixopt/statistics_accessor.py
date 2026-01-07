@@ -203,6 +203,97 @@ def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = Tru
     return ds
 
 
+def add_line_overlay(
+    fig: go.Figure,
+    da: xr.DataArray,
+    *,
+    x: str | None = None,
+    facet_col: str | Literal['auto'] | None = None,
+    facet_row: str | Literal['auto'] | None = None,
+    animation_frame: str | Literal['auto'] | None = None,
+    color: str | None = None,
+    line_color: str = 'black',
+    name: str | None = None,
+    secondary_y: bool = False,
+    y_title: str | None = None,
+    showlegend: bool = True,
+) -> None:
+    """Add line traces on top of existing figure, optionally on secondary y-axis.
+
+    This function creates line traces from a DataArray and adds them to an existing
+    figure. When using secondary_y=True, it correctly handles faceted figures by
+    creating matching secondary axes for each primary axis.
+
+    Args:
+        fig: Plotly figure to add traces to.
+        da: DataArray to plot as lines.
+        x: Dimension to use for x-axis. If None, auto-detects 'time' or first dim.
+        facet_col: Dimension for column facets (must match primary figure).
+        facet_row: Dimension for row facets (must match primary figure).
+        animation_frame: Dimension for animation slider (must match primary figure).
+        color: Dimension to color by (creates multiple lines).
+        line_color: Color for lines when color is None.
+        name: Legend name for the traces.
+        secondary_y: If True, plot on secondary y-axis.
+        y_title: Title for the y-axis (secondary if secondary_y=True).
+        showlegend: Whether to show legend entries.
+    """
+    if da.size == 0:
+        return
+
+    # Auto-detect x dimension if not specified
+    if x is None:
+        x = 'time' if 'time' in da.dims else da.dims[0]
+
+    # Create line figure with same facets
+    line_fig = da.fxplot.line(
+        x=x,
+        color=color,
+        facet_col=facet_col,
+        facet_row=facet_row,
+        animation_frame=animation_frame,
+    )
+
+    if secondary_y:
+        # Get the primary y-axes from the bar figure to create matching secondary axes
+        primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
+
+        # For each primary y-axis, create a secondary y-axis.
+        # Secondary axis numbering strategy:
+        # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc.
+        # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts
+        # - Each secondary axis 'overlays' its corresponding primary axis
+        for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
+            primary_num = primary_key[5:] if primary_key[5:] else '1'
+            secondary_num = int(primary_num) + 100
+            secondary_key = f'yaxis{secondary_num}'
+            secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
+
+            fig.layout[secondary_key] = dict(
+                overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
+                side='right',
+                showgrid=False,
+                title=y_title if i == len(primary_yaxes) - 1 else None,
+                anchor=secondary_anchor,
+            )
+
+    # Add line traces with correct axis assignments
+    for i, trace in enumerate(line_fig.data):
+        if name is not None:
+            trace.name = name
+        if color is None:
+            trace.line = dict(color=line_color, width=2)
+
+        if secondary_y:
+            primary_num = i + 1 if i > 0 else 1
+            trace.yaxis = f'y{primary_num + 100}'
+
+        trace.showlegend = showlegend and (i == 0)
+        if name is not None:
+            trace.legendgroup = name
+        fig.add_trace(trace)
+
+
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
     """Filter dataset variables by carrier attribute.
 
@@ -1311,6 +1402,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot node balance (inputs vs outputs) for a Bus or Component.
@@ -1328,6 +1420,7 @@ class StatisticsPlotAccessor:
             animation_frame: Dimension for animation slider. 'auto' uses first available
                 after facets.
             show: Whether to display the plot.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with .data and .figure.
@@ -1368,6 +1461,10 @@ class StatisticsPlotAccessor:
         if colors is None:
             colors = self._get_color_map_for_balance(node, list(ds.data_vars))
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1403,6 +1500,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot carrier-level balance showing all flows of a carrier type.
@@ -1422,6 +1520,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets. 'auto' uses first available after facet_col.
             animation_frame: Dimension for animation slider.
             show: Whether to display the plot.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with .data and .figure.
@@ -1489,6 +1588,10 @@ class StatisticsPlotAccessor:
                 color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
             colors = color_map
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from carrier or first data variable
         unit_label = ''
         if ds.data_vars:
@@ -1521,6 +1624,7 @@ class StatisticsPlotAccessor:
         facet_col: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot heatmap of time series data.
@@ -1545,6 +1649,7 @@ class StatisticsPlotAccessor:
                 cluster/period/scenario. With multiple variables, 'variable' is used.
             animation_frame: Dimension for animation slider. 'auto' uses first available.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to px.imshow.
 
         Returns:
@@ -1561,6 +1666,10 @@ class StatisticsPlotAccessor:
 
         # Prepare for heatmap (reshape, transpose, squeeze)
         da = _prepare_for_heatmap(da, reshape, facet_col, animation_frame)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=da.to_dataset(name='value'), figure=go.Figure())
 
         fig = da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs)
 
@@ -1584,6 +1693,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot flow rates filtered by start/end nodes or component.
@@ -1599,6 +1709,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with flow data.
@@ -1641,6 +1752,10 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1673,6 +1788,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot investment sizes (capacities) of flows.
@@ -1685,6 +1801,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with size data.
@@ -1697,6 +1814,10 @@ class StatisticsPlotAccessor:
         if max_size is not None and ds.data_vars:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         if not ds.data_vars:
             fig = go.Figure()
@@ -1731,6 +1852,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot load duration curves (sorted time series).
@@ -1747,6 +1869,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with sorted duration curve data.
@@ -1804,6 +1927,10 @@ class StatisticsPlotAccessor:
         duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
         result_ds = result_ds.assign_coords({duration_name: duration_coord})
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=result_ds, figure=go.Figure())
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1841,6 +1968,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot effect (cost, emissions, etc.) breakdown.
@@ -1857,6 +1985,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with effect breakdown data.
@@ -1920,6 +2049,10 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Build title
         effect_label = effect or 'Effects'
         title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
@@ -1957,6 +2090,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot storage charge states over time.
@@ -1969,6 +2103,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with charge state data.
@@ -1982,6 +2117,10 @@ class StatisticsPlotAccessor:
             ds = ds[[s for s in storages if s in ds]]
 
         ds = _apply_selection(ds, select)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         fig = ds.fxplot.line(
             colors=colors,
@@ -2012,6 +2151,7 @@ class StatisticsPlotAccessor:
         facet_row: str | Literal['auto'] | None = 'auto',
         animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot storage operation: balance and charge state in vertically stacked subplots.
@@ -2030,6 +2170,7 @@ class StatisticsPlotAccessor:
             facet_row: Dimension for row facets.
             animation_frame: Dimension for animation slider.
             show: Whether to display.
+            data_only: If True, skip figure creation and return only data (for performance).
 
         Returns:
             PlotResult with combined balance and charge state data.
@@ -2073,6 +2214,10 @@ class StatisticsPlotAccessor:
         # Apply selection
         ds = _apply_selection(ds, select)
 
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
+
         # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
         flow_ds = ds[flow_labels]
@@ -2095,50 +2240,17 @@ class StatisticsPlotAccessor:
         )
 
         # Add charge state as line on secondary y-axis
-        if charge_da.size > 0:
-            # Create line figure with same facets
-            line_fig = charge_da.fxplot.line(
-                x='time',
-                color=None,  # Single line, no color grouping
-                facet_col=facet_col,
-                facet_row=facet_row,
-                animation_frame=animation_frame,
-            )
-
-            # Get the primary y-axes from the bar figure to create matching secondary axes
-            primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
-
-            # For each primary y-axis, create a secondary y-axis.
-            # Secondary axis numbering strategy:
-            # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc. (plotly auto-generates these for facets)
-            # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts with plotly's auto-numbering
-            # - Each secondary axis 'overlays' its corresponding primary axis and anchors to the same x-axis
-            # - This allows charge_state lines to share the subplot with power bars but use independent scales
-            for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-                primary_num = primary_key[5:] if primary_key[5:] else '1'
-                secondary_num = int(primary_num) + 100
-                secondary_key = f'yaxis{secondary_num}'
-                secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
-
-                fig.layout[secondary_key] = dict(
-                    overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
-                    side='right',
-                    showgrid=False,
-                    title='Charge State' if i == len(primary_yaxes) - 1 else None,
-                    anchor=secondary_anchor,
-                )
-
-            # Add line traces with correct axis assignments
-            for i, trace in enumerate(line_fig.data):
-                primary_num = i + 1 if i > 0 else 1
-                secondary_yaxis = f'y{primary_num + 100}'
-
-                trace.name = 'charge_state'
-                trace.line = dict(color=charge_state_color, width=2)
-                trace.yaxis = secondary_yaxis
-                trace.showlegend = i == 0
-                trace.legendgroup = 'charge_state'
-                fig.add_trace(trace)
+        add_line_overlay(
+            fig,
+            charge_da,
+            facet_col=facet_col,
+            facet_row=facet_row,
+            animation_frame=animation_frame,
+            line_color=charge_state_color,
+            name='charge_state',
+            secondary_y=True,
+            y_title='Charge State',
+        )
 
         if show is None:
             show = CONFIG.Plotting.default_show

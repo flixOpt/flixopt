@@ -131,8 +131,8 @@ class ClusterStructure:
         # Store scalar values
         if isinstance(self.n_clusters, xr.DataArray):
             n_clusters_name = self.n_clusters.name or 'n_clusters'
-            self.n_clusters = self.n_clusters.rename(n_clusters_name)
-            arrays[n_clusters_name] = self.n_clusters
+            n_clusters_da = self.n_clusters.rename(n_clusters_name)
+            arrays[n_clusters_name] = n_clusters_da
             ref['n_clusters'] = f':::{n_clusters_name}'
         else:
             ref['n_clusters'] = int(self.n_clusters)
@@ -277,7 +277,7 @@ class ClusterResult:
         cluster_structure: Hierarchical clustering structure for storage linking.
             Optional - only needed when using cluster() mode.
         original_data: Reference to original data before aggregation.
-            Optional - useful for expand_solution().
+            Optional - useful for expand().
 
     Example:
         For 8760 hourly timesteps clustered into 192 representative timesteps (8 clusters x 24h):
@@ -339,8 +339,8 @@ class ClusterResult:
         # Store scalar values
         if isinstance(self.n_representatives, xr.DataArray):
             n_rep_name = self.n_representatives.name or 'n_representatives'
-            self.n_representatives = self.n_representatives.rename(n_rep_name)
-            arrays[n_rep_name] = self.n_representatives
+            n_rep_da = self.n_representatives.rename(n_rep_name)
+            arrays[n_rep_name] = n_rep_da
             ref['n_representatives'] = f':::{n_rep_name}'
         else:
             ref['n_representatives'] = int(self.n_representatives)
@@ -364,7 +364,7 @@ class ClusterResult:
         """Get mapping from original timesteps to representative indices.
 
         This is the same as timestep_mapping but ensures proper naming
-        for use in expand_solution().
+        for use in expand().
 
         Returns:
             DataArray mapping original timesteps to representative indices.
@@ -927,7 +927,7 @@ class Clustering:
     """Information about an aggregation stored on a FlowSystem.
 
     This is stored on the FlowSystem after aggregation to enable:
-    - expand_solution() to map back to original timesteps
+    - expand() to map back to original timesteps
     - Statistics to properly weight results
     - Inter-cluster storage linking
     - Serialization/deserialization of aggregated models

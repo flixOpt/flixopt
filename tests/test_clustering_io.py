@@ -135,8 +135,8 @@ class TestClusteringRoundtrip:
 class TestClusteringWithSolutionRoundtrip:
     """Test that clustering with solution survives roundtrip."""
 
-    def test_expand_solution_after_roundtrip(self, simple_system_8_days, solver_fixture):
-        """expand_solution should work after loading from dataset."""
+    def test_expand_after_roundtrip(self, simple_system_8_days, solver_fixture):
+        """expand should work after loading from dataset."""
         fs = simple_system_8_days
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
@@ -147,14 +147,14 @@ class TestClusteringWithSolutionRoundtrip:
         ds = fs_clustered.to_dataset(include_solution=True)
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
-        # expand_solution should work
-        fs_expanded = fs_restored.transform.expand_solution()
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
 
         # Check expanded FlowSystem has correct number of timesteps
         assert len(fs_expanded.timesteps) == 8 * 24
 
-    def test_expand_solution_after_netcdf_roundtrip(self, simple_system_8_days, tmp_path, solver_fixture):
-        """expand_solution should work after loading from NetCDF file."""
+    def test_expand_after_netcdf_roundtrip(self, simple_system_8_days, tmp_path, solver_fixture):
+        """expand should work after loading from NetCDF file."""
         fs = simple_system_8_days
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
@@ -168,8 +168,8 @@ class TestClusteringWithSolutionRoundtrip:
         # Load from NetCDF
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # expand_solution should work
-        fs_expanded = fs_restored.transform.expand_solution()
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
 
         # Check expanded FlowSystem has correct number of timesteps
         assert len(fs_expanded.timesteps) == 8 * 24
@@ -284,7 +284,7 @@ class TestExpandedFlowSystemIO:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
 
         # Should be able to convert to dataset
         ds = fs_expanded.to_dataset(include_solution=True)
@@ -301,7 +301,7 @@ class TestExpandedFlowSystemIO:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
 
         # Save to NetCDF
         nc_path = tmp_path / 'expanded.nc'
@@ -322,7 +322,7 @@ class TestExpandedFlowSystemIO:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
 
         # Save to JSON should work
         json_path = tmp_path / 'expanded.json'
@@ -374,8 +374,8 @@ class TestClusteringWithPeriodsIO:
         # Periods should be preserved
         pd.testing.assert_index_equal(fs_restored.periods, pd.Index([2023, 2024], name='period'), check_names=False)
 
-        # expand_solution should work
-        fs_expanded = fs_restored.transform.expand_solution()
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
         assert len(fs_expanded.timesteps) == 4 * 24
 
 
@@ -462,8 +462,8 @@ class TestInterclusterStorageIO:
         # SOC_boundary should be preserved
         assert 'storage|SOC_boundary' in fs_restored.solution
 
-        # expand_solution should work
-        fs_expanded = fs_restored.transform.expand_solution()
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
 
         # After expansion, SOC_boundary is combined into charge_state
         assert 'storage|SOC_boundary' not in fs_expanded.solution
@@ -482,8 +482,8 @@ class TestInterclusterStorageIO:
         # Load from NetCDF
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # expand_solution should produce valid charge_state
-        fs_expanded = fs_restored.transform.expand_solution()
+        # expand should produce valid charge_state
+        fs_expanded = fs_restored.transform.expand()
         charge_state = fs_expanded.solution['storage|charge_state']
 
         # Charge state should be non-negative (after combining with SOC_boundary)
@@ -529,7 +529,7 @@ class TestClusteringEdgeCases:
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
         # Expand
-        fs_expanded = fs_restored.transform.expand_solution()
+        fs_expanded = fs_restored.transform.expand()
 
         # Component labels should be preserved
         assert 'demand' in fs_expanded.components

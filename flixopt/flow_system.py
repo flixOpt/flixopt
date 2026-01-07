@@ -2097,7 +2097,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Normalize to sum to 1
         norm = weights.sum('scenario')
-        if np.isclose(norm, 0.0).any():
+        if np.isclose(norm, 0.0).any().item():
             # Provide detailed error for multi-dimensional weights
             if norm.ndim > 0:
                 zero_locations = np.argwhere(np.isclose(norm.values, 0.0))

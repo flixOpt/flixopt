@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -10,11 +9,10 @@ import xarray as xr
 
 from .config import CONFIG
 from .plot_result import PlotResult
+from .statistics_accessor import add_line_overlay
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
-
-logger = logging.getLogger('flixopt')
 
 __all__ = ['Comparison']
 
@@ -27,21 +25,21 @@ ColorType = str | list[str] | dict[str, str] | None
 class Comparison:
     """Compare multiple FlowSystems side-by-side.
 
-    Combines solutions and statistics from multiple FlowSystems into unified
-    xarray Datasets with a 'case' dimension. The existing plotting infrastructure
-    automatically handles faceting by the 'case' dimension.
+    Combines solutions, statistics, and inputs from multiple FlowSystems into
+    unified xarray Datasets with a 'case' dimension. The existing plotting
+    infrastructure automatically handles faceting by the 'case' dimension.
 
-    All FlowSystems must have matching dimensions (time, period, scenario, etc.).
-    Use `flow_system.transform.sel()` to align dimensions before comparing.
+    For comparing solutions/statistics, all FlowSystems must be optimized and
+    have matching dimensions. For comparing inputs only, optimization is not
+    required.
 
     Args:
-        flow_systems: List of FlowSystems to compare. All must be optimized
-            and have matching dimensions.
+        flow_systems: List of FlowSystems to compare.
         names: Optional names for each case. If None, uses FlowSystem.name.
 
     Raises:
-        ValueError: If FlowSystems have mismatched dimensions.
-        RuntimeError: If any FlowSystem has no solution.
+        ValueError: If case names are not unique.
+        RuntimeError: If accessing solution/statistics without optimized FlowSystems.
 
     Examples:
         ```python
@@ -86,14 +84,6 @@ class Comparison:
         if len(set(self._names)) != len(self._names):
             raise ValueError(f'Case names must be unique, got: {self._names}')
 
-        # Validate all FlowSystems have solutions
-        for fs in flow_systems:
-            if fs.solution is None:
-                raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
-
-        # Validate matching dimensions across all FlowSystems
-        self._validate_matching_dimensions()
-
         # Caches
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
@@ -103,47 +93,38 @@ class Comparison:
     # Note: 'cluster' and 'cluster_boundary' are auxiliary dimensions from clustering
     _CORE_DIMS = {'time', 'period', 'scenario'}
 
-    def _validate_matching_dimensions(self) -> None:
-        """Validate that all FlowSystems have matching core dimensions.
+    def _warn_mismatched_dimensions(self, datasets: list[xr.Dataset]) -> None:
+        """Warn if datasets have mismatched dimensions or coordinates.
 
-        Only validates core dimensions (time, period, scenario). Auxiliary
-        dimensions like 'cluster_boundary' are ignored as they don't affect
-        the comparison logic.
-
-        Also warns if coordinate values differ significantly, which could cause
-        unexpected NaN values after xarray alignment.
+        xarray handles mismatches gracefully with join='outer', but this may
+        introduce NaN values for non-overlapping coordinates.
         """
-        reference = self._systems[0]
-        ref_core_dims = set(reference.solution.dims) & self._CORE_DIMS
+        ref_ds = datasets[0]
+        ref_core_dims = set(ref_ds.dims) & self._CORE_DIMS
         ref_name = self._names[0]
 
-        for fs, name in zip(self._systems[1:], self._names[1:], strict=True):
-            fs_core_dims = set(fs.solution.dims) & self._CORE_DIMS
-            if fs_core_dims != ref_core_dims:
-                missing = ref_core_dims - fs_core_dims
-                extra = fs_core_dims - ref_core_dims
-                msg_parts = [f"Core dimension mismatch between '{ref_name}' and '{name}'."]
+        for ds, name in zip(datasets[1:], self._names[1:], strict=True):
+            ds_core_dims = set(ds.dims) & self._CORE_DIMS
+            if ds_core_dims != ref_core_dims:
+                missing = ref_core_dims - ds_core_dims
+                extra = ds_core_dims - ref_core_dims
+                msg_parts = [f"Dimension mismatch between '{ref_name}' and '{name}'."]
                 if missing:
-                    msg_parts.append(f"Missing in '{name}': {missing}.")
+                    msg_parts.append(f'Missing: {missing}.')
                 if extra:
-                    msg_parts.append(f"Extra in '{name}': {extra}.")
-                msg_parts.append('Use .transform.sel() to align dimensions before comparing.')
-                raise ValueError(' '.join(msg_parts))
+                    msg_parts.append(f'Extra: {extra}.')
+                msg_parts.append('This may introduce NaN values.')
+                warnings.warn(' '.join(msg_parts), stacklevel=4)
 
-            # Check coordinate alignment and warn about potential issues
-            for dim in ref_core_dims:
-                ref_coords = reference.solution.coords[dim].values
-                fs_coords = fs.solution.coords[dim].values
-                if len(ref_coords) != len(fs_coords):
-                    logger.warning(
-                        f"Coordinate length mismatch for '{dim}' between '{ref_name}' ({len(ref_coords)}) "
-                        f"and '{name}' ({len(fs_coords)}). xarray will align on coordinates, "
-                        f'which may introduce NaN values for non-overlapping coordinates.'
-                    )
-                elif not (ref_coords == fs_coords).all():
-                    logger.warning(
-                        f"Coordinate values differ for '{dim}' between '{ref_name}' and '{name}'. "
-                        f'xarray will align on coordinates, which may introduce NaN values.'
+            # Check coordinate alignment
+            for dim in ref_core_dims & ds_core_dims:
+                ref_coords = ref_ds.coords[dim].values
+                ds_coords = ds.coords[dim].values
+                if len(ref_coords) != len(ds_coords) or not (ref_coords == ds_coords).all():
+                    warnings.warn(
+                        f"Coordinates differ for '{dim}' between '{ref_name}' and '{name}'. "
+                        f'This may introduce NaN values.',
+                        stacklevel=4,
                     )
 
     @property
@@ -151,15 +132,25 @@ class Comparison:
         """Case names for each FlowSystem."""
         return self._names
 
+    def _require_solutions(self) -> None:
+        """Validate all FlowSystems have solutions."""
+        for fs in self._systems:
+            if fs.solution is None:
+                raise RuntimeError(f"FlowSystem '{fs.name}' has no solution. Run optimize() first.")
+
     @property
     def solution(self) -> xr.Dataset:
         """Combined solution Dataset with 'case' dimension."""
         if self._solution is None:
-            datasets = []
-            for fs, name in zip(self._systems, self._names, strict=True):
-                ds = fs.solution.expand_dims(case=[name])
-                datasets.append(ds)
-            self._solution = xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+            self._require_solutions()
+            datasets = [fs.solution for fs in self._systems]
+            self._warn_mismatched_dimensions(datasets)
+            self._solution = xr.concat(
+                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
+                dim='case',
+                join='outer',
+                fill_value=float('nan'),
+            )
         return self._solution
 
     @property
@@ -210,11 +201,10 @@ class Comparison:
             ```
         """
         if self._inputs is None:
+            datasets = [fs.to_dataset(include_solution=False) for fs in self._systems]
+            self._warn_mismatched_dimensions(datasets)
             self._inputs = xr.concat(
-                [
-                    fs.to_dataset(include_solution=False).expand_dims(case=[name])
-                    for fs, name in zip(self._systems, self._names, strict=True)
-                ],
+                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
                 dim='case',
                 join='outer',
                 fill_value=float('nan'),
@@ -392,16 +382,13 @@ class ComparisonStatisticsPlot:
         """Call plot method on each system and combine data. Returns (combined_data, title)."""
         datasets = []
         title = ''
-        kwargs = {**kwargs, 'show': False}  # Don't mutate original
+        # Use data_only=True to skip figure creation for performance
+        kwargs = {**kwargs, 'show': False, 'data_only': True}
 
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
                 result = getattr(fs.statistics.plot, method_name)(*args, **kwargs)
                 datasets.append(result.data.expand_dims(case=[case_name]))
-                # Extract title safely (layout.title may be None or a dict-like object)
-                fig_title = result.figure.layout.title
-                if fig_title is not None:
-                    title = getattr(fig_title, 'text', None) or title
             except (KeyError, ValueError) as e:
                 warnings.warn(
                     f"Skipping case '{case_name}' in {method_name}: {e}",
@@ -424,265 +411,138 @@ class ComparisonStatisticsPlot:
             fig.show()
         return PlotResult(data=ds, figure=fig or go.Figure())
 
-    def balance(
+    def _plot(
         self,
-        node: str,
-        *,
-        select: SelectType | None = None,
-        include: FilterType | None = None,
-        exclude: FilterType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        method_name: str,
+        plot_type: str,
+        *args,
         show: bool | None = None,
-        **plotly_kwargs,
+        **kwargs,
     ) -> PlotResult:
+        """Generic plot method that delegates to underlying statistics accessor."""
+        # Extract plot-specific kwargs (fxplot arguments)
+        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color', 'ylabel'}
+        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+
+        # Known data kwargs that should be passed to _combine_data
+        data_keys = {'unit', 'include', 'exclude', 'normalized', 'time', 'effects', 'freq', 'period', 'by'}
+        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
+        # Remaining kwargs are plotly layout kwargs (height, width, etc.)
+        plotly_kwargs = kwargs
+
+        ds, title = self._combine_data(method_name, *args, **data_kwargs)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        plot_fn = getattr(ds.fxplot, plot_type)
+        fig = plot_fn(title=title, **plot_kwargs)
+        if plotly_kwargs:
+            fig.update_layout(**plotly_kwargs)
+        return self._finalize(ds, fig, show)
+
+    def balance(self, node: str, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot node balance comparison. See StatisticsPlotAccessor.balance."""
-        ds, title = self._combine_data('balance', node, select=select, include=include, exclude=exclude, unit=unit)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        return self._finalize(ds, fig, show)
+        return self._plot('balance', 'stacked_bar', node, show=show, **kwargs)
 
-    def carrier_balance(
-        self,
-        carrier: str,
-        *,
-        select: SelectType | None = None,
-        include: FilterType | None = None,
-        exclude: FilterType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
+    def carrier_balance(self, carrier: str, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot carrier balance comparison. See StatisticsPlotAccessor.carrier_balance."""
-        ds, title = self._combine_data(
-            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit
-        )
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        return self._finalize(ds, fig, show)
+        return self._plot('carrier_balance', 'stacked_bar', carrier, show=show, **kwargs)
 
-    def flows(
-        self,
-        *,
-        start: str | list[str] | None = None,
-        end: str | list[str] | None = None,
-        component: str | list[str] | None = None,
-        select: SelectType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
+    def flows(self, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot flows comparison. See StatisticsPlotAccessor.flows."""
-        ds, title = self._combine_data('flows', start=start, end=end, component=component, select=select, unit=unit)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.line(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        return self._finalize(ds, fig, show)
+        return self._plot('flows', 'line', show=show, **kwargs)
 
-    def storage(
-        self,
-        storage: str,
-        *,
-        select: SelectType | None = None,
-        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
-        colors: ColorType | None = None,
-        charge_state_color: str = 'black',
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
-        """Plot storage operation comparison. See StatisticsPlotAccessor.storage."""
-        ds, title = self._combine_data(
-            'storage', storage, select=select, unit=unit, charge_state_color=charge_state_color
-        )
+    def storage(self, storage: str, *, show: bool | None = None, **kwargs) -> PlotResult:
+        """Plot storage operation comparison. See StatisticsPlotAccessor.storage.
+
+        Creates stacked bars for charging/discharging flows with charge state
+        as a line overlay on secondary y-axis.
+        """
+        # Extract plot kwargs
+        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame'}
+        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+        kwargs.pop('charge_state_color', None)  # Not used in comparison (lines colored by case)
+        # Data kwargs for _combine_data
+        data_keys = {'unit', 'select'}
+        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
+        # Remaining are plotly layout kwargs
+        plotly_kwargs = kwargs
+
+        ds, _ = self._combine_data('storage', storage, **data_kwargs)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
+
+        # Separate flows from charge_state
+        flow_vars = [v for v in ds.data_vars if v != 'charge_state']
+        flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
+
+        # Create stacked bar for flows
+        fig = flow_ds.fxplot.stacked_bar(title=f'{storage} Operation', **plot_kwargs)
+
+        # Add charge state as line overlay on secondary y-axis
+        if 'charge_state' in ds:
+            add_line_overlay(
+                fig,
+                ds['charge_state'],
+                color='case',  # One line per case
+                name='charge_state',
+                secondary_y=True,
+                y_title='Charge State',
+                **plot_kwargs,
+            )
+
+        if plotly_kwargs:
+            fig.update_layout(**plotly_kwargs)
+
         return self._finalize(ds, fig, show)
 
     def charge_states(
-        self,
-        storages: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
+        self, storages: str | list[str] | None = None, *, show: bool | None = None, **kwargs
     ) -> PlotResult:
         """Plot charge states comparison. See StatisticsPlotAccessor.charge_states."""
-        ds, title = self._combine_data('charge_states', storages, select=select)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.line(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        fig.update_yaxes(title_text='Charge State')
-        return self._finalize(ds, fig, show)
+        return self._plot('charge_states', 'line', storages, show=show, **kwargs)
 
-    def duration_curve(
-        self,
-        variables: str | list[str],
-        *,
-        select: SelectType | None = None,
-        normalize: bool = False,
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
+    def duration_curve(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot duration curves comparison. See StatisticsPlotAccessor.duration_curve."""
-        ds, title = self._combine_data('duration_curve', variables, select=select, normalize=normalize)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.line(
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        fig.update_xaxes(title_text='Duration [%]' if normalize else 'Timesteps')
-        return self._finalize(ds, fig, show)
+        return self._plot('duration_curve', 'line', variables, show=show, **kwargs)
 
-    def sizes(
-        self,
-        *,
-        max_size: float | None = 1e6,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
+    def sizes(self, *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot investment sizes comparison. See StatisticsPlotAccessor.sizes."""
-        ds, title = self._combine_data('sizes', max_size=max_size, select=select)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
-        fig = ds.fxplot.bar(
-            x='variable',
-            color='variable',
-            colors=colors,
-            title=title,
-            ylabel='Size',
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
-        return self._finalize(ds, fig, show)
+        kwargs.setdefault('x', 'variable')
+        kwargs.setdefault('color', 'variable')
+        kwargs.setdefault('ylabel', 'Size')
+        return self._plot('sizes', 'bar', show=show, **kwargs)
 
     def effects(
         self,
         aspect: Literal['total', 'temporal', 'periodic'] = 'total',
         *,
-        effect: str | None = None,
         by: Literal['component', 'contributor', 'time'] | None = None,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
         show: bool | None = None,
-        **plotly_kwargs,
+        **kwargs,
     ) -> PlotResult:
         """Plot effects comparison. See StatisticsPlotAccessor.effects."""
-        ds, title = self._combine_data('effects', aspect, effect=effect, by=by, select=select)
+        kwargs['by'] = by
+        kwargs.setdefault('x', by if by else 'variable')
+        ds, title = self._combine_data('effects', aspect, **kwargs)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        # After to_dataset(dim='effect'), effects become variables -> 'variable' column
-        x_col = by if by else 'variable'
-
-        fig = ds.fxplot.bar(
-            x=x_col,
-            colors=colors,
-            title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
+        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color'}
+        plot_kwargs = {k: kwargs[k] for k in list(kwargs) if k in plot_keys}
+        fig = ds.fxplot.bar(title=title, **plot_kwargs)
         fig.update_layout(bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
         return self._finalize(ds, fig, show)
 
-    def heatmap(
-        self,
-        variables: str | list[str],
-        *,
-        select: SelectType | None = None,
-        reshape: dict[str, int] | None = None,
-        colors: str | list[str] | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
-        show: bool | None = None,
-        **plotly_kwargs,
-    ) -> PlotResult:
+    def heatmap(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
         """Plot heatmap comparison. See StatisticsPlotAccessor.heatmap."""
-        ds, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape)
+        plot_keys = {'colors', 'facet_col', 'animation_frame'}
+        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+
+        ds, _ = self._combine_data('heatmap', variables, **kwargs)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
         da = ds[next(iter(ds.data_vars))]
-        fig = da.fxplot.heatmap(
-            colors=colors,
-            facet_col=facet_col,
-            animation_frame=animation_frame,
-            **plotly_kwargs,
-        )
+        fig = da.fxplot.heatmap(**plot_kwargs)
         return self._finalize(ds, fig, show)

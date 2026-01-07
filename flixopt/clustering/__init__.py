@@ -21,8 +21,8 @@ Example usage:
     info = fs_clustered.clustering
     print(f'Number of clusters: {info.result.cluster_structure.n_clusters}')
 
-    # Expand solution back to full resolution
-    fs_expanded = fs_clustered.transform.expand_solution()
+    # Expand back to full resolution
+    fs_expanded = fs_clustered.transform.expand()
 """
 
 from .base import (

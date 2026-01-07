@@ -4,6 +4,7 @@ to model the same energy system. The results will be compared to each other.
 """
 
 import pathlib
+import timeit
 
 import pandas as pd
 import xarray as xr
@@ -204,16 +205,18 @@ if __name__ == '__main__':
             time_series_for_high_peaks=time_series_for_high_peaks,
             time_series_for_low_peaks=time_series_for_low_peaks,
         )
+        t_start = timeit.default_timer()
         clustered_fs.optimize(fx.solvers.HighsSolver(0.01 / 100, 60))
+        solve_duration = timeit.default_timer() - t_start
 
         # Wrap in a simple object for compatibility with comparison code
         class ClusteredResult:
-            def __init__(self, name, fs):
+            def __init__(self, name, fs, duration):
                 self.name = name
                 self.flow_system = fs
-                self.durations = {'total': 0}  # Placeholder
+                self.durations = {'total': duration}
 
-        optimization = ClusteredResult('Clustered', clustered_fs)
+        optimization = ClusteredResult('Clustered', clustered_fs, solve_duration)
         optimizations.append(optimization)
 
     # --- Plotting for comparison ---

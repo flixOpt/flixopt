@@ -84,7 +84,7 @@ def extract_capacity_bounds(
     - **Fixed capacity** (numeric): Upper bound is the fixed value.
     - **InvestParameters**: Upper bound is maximum_size (or fixed_size if set).
       The actual bound is enforced via separate constraints linked to investment.size.
-    - **None/Unbounded**: Upper bound is set to a large value (1e9).
+    - **None/Unbounded**: Upper bound is set to a large value (1e6).
 
     The lower bound is always zero (SOC cannot be negative).
 
