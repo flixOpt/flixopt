@@ -849,7 +849,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
 
@@ -865,7 +864,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=4,
         )
 
@@ -896,7 +894,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
 
@@ -919,7 +916,7 @@ class TestSegmentation:
         assert fs_clustered.is_segmented is False
 
         # With segmentation
-        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', segmentation=True, n_segments=6)
+        fs_segmented = fs.transform.cluster(n_clusters=2, cluster_duration='1D', n_segments=6)
         assert fs_segmented.is_segmented is True
 
     def test_segmented_system_optimize(self, solver_fixture, timesteps_8_days):
@@ -929,7 +926,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
 
@@ -953,7 +949,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
         fs_segmented.optimize(solver_fixture)
@@ -974,7 +969,6 @@ class TestSegmentation:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
         fs_segmented.optimize(solver_fixture)
@@ -1002,7 +996,6 @@ class TestSegmentationWithStorage:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
         fs_segmented.optimize(solver_fixture)
@@ -1021,7 +1014,6 @@ class TestSegmentationWithStorage:
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            segmentation=True,
             n_segments=6,
         )
         fs_segmented.optimize(solver_fixture)

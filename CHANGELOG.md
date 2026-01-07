@@ -68,8 +68,7 @@ Segmentation divides each typical period (cluster) into variable-length segments
 fs_segmented = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
-    segmentation=True,           # Enable inner-period segmentation
-    n_segments=6,                # Segments per cluster
+    n_segments=6,                # Enables segmentation with 6 segments per cluster
 )
 fs_segmented.optimize(solver)
 fs_expanded = fs_segmented.transform.expand_solution()
@@ -79,8 +78,7 @@ fs_expanded = fs_segmented.transform.expand_solution()
 
 | Parameter | Description |
 |-----------|-------------|
-| `segmentation` | Enable inner-period segmentation (default: `False`) |
-| `n_segments` | Number of segments per cluster (required when `segmentation=True`) |
+| `n_segments` | Number of segments per cluster. If provided, enables inner-period segmentation. |
 | `segment_representation_method` | How to represent segment values: `'meanRepresentation'` (default), `'medoidRepresentation'`, etc. |
 
 **Key Features**:

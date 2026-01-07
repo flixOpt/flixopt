@@ -589,7 +589,6 @@ class TransformAccessor:
         extreme_period_method: Literal['append', 'new_cluster_center', 'replace_cluster_center'] | None = None,
         rescale_cluster_periods: bool = True,
         predef_cluster_order: xr.DataArray | np.ndarray | list[int] | None = None,
-        segmentation: bool = False,
         n_segments: int | None = None,
         segment_representation_method: Literal[
             'meanRepresentation', 'medoidRepresentation', 'distributionAndMinMaxRepresentation'
@@ -638,14 +637,15 @@ class TransformAccessor:
                 For multi-dimensional FlowSystems, use an xr.DataArray with dims
                 ``[original_cluster, period?, scenario?]`` to specify different assignments
                 per period/scenario combination.
-            segmentation: If True, apply inner-period segmentation after clustering.
-                This further reduces timesteps by grouping adjacent timesteps within
-                each typical period into variable-length segments. Default: False.
-            n_segments: Number of segments per cluster when segmentation is enabled.
-                If None, defaults to timesteps_per_cluster (no reduction within periods).
-                Must be <= timesteps_per_cluster.
+            n_segments: Number of segments per cluster for inner-period segmentation.
+                If provided, adjacent timesteps within each typical period are grouped
+                into variable-length segments, further reducing problem size.
+                E.g., with ``n_clusters=8, cluster_duration='1D', n_segments=6``:
+                8 clusters × 6 segments = 48 timesteps (vs 8 × 24 = 192 without).
+                If None (default), no segmentation is applied.
             segment_representation_method: How segment representatives are computed.
                 Options same as representation_method. If None, uses representation_method.
+                Only used when n_segments is provided.
             **tsam_kwargs: Additional keyword arguments passed to
                 ``tsam.TimeSeriesAggregation``. See tsam documentation for all options.
 
@@ -689,6 +689,9 @@ class TransformAccessor:
         from .clustering import Clustering, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
+
+        # Enable segmentation if n_segments is provided
+        segmentation = n_segments is not None
 
         # Parse cluster_duration to hours
         hours_per_cluster = (
