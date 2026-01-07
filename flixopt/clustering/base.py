@@ -131,8 +131,8 @@ class ClusterStructure:
         # Store scalar values
         if isinstance(self.n_clusters, xr.DataArray):
             n_clusters_name = self.n_clusters.name or 'n_clusters'
-            self.n_clusters = self.n_clusters.rename(n_clusters_name)
-            arrays[n_clusters_name] = self.n_clusters
+            n_clusters_da = self.n_clusters.rename(n_clusters_name)
+            arrays[n_clusters_name] = n_clusters_da
             ref['n_clusters'] = f':::{n_clusters_name}'
         else:
             ref['n_clusters'] = int(self.n_clusters)
@@ -339,8 +339,8 @@ class ClusterResult:
         # Store scalar values
         if isinstance(self.n_representatives, xr.DataArray):
             n_rep_name = self.n_representatives.name or 'n_representatives'
-            self.n_representatives = self.n_representatives.rename(n_rep_name)
-            arrays[n_rep_name] = self.n_representatives
+            n_rep_da = self.n_representatives.rename(n_rep_name)
+            arrays[n_rep_name] = n_rep_da
             ref['n_representatives'] = f':::{n_rep_name}'
         else:
             ref['n_representatives'] = int(self.n_representatives)

@@ -1349,7 +1349,7 @@ class TransformAccessor:
 
         # Decay factor: (1 - loss)^t
         loss_value = storage.relative_loss_per_hour.mean('time')
-        if not (loss_value > 0).any():
+        if not np.any(loss_value.values > 0):
             return soc_boundary_per_timestep
 
         decay_da = (1 - loss_value) ** time_within_period_da
