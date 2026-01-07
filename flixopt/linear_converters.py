@@ -107,9 +107,9 @@ class Boiler(LinearConverter):
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
+        self._invalidate()
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self._conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
-        self._invalidate()
 
 
 @register_class_for_io
@@ -204,9 +204,9 @@ class Power2Heat(LinearConverter):
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
+        self._invalidate()
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self._conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
-        self._invalidate()
 
 
 @register_class_for_io
@@ -300,9 +300,9 @@ class HeatPump(LinearConverter):
 
     @cop.setter
     def cop(self, value):
+        self._invalidate()
         check_bounds(value, 'cop', self.label_full, 1, 20)
         self._conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
-        self._invalidate()
 
 
 @register_class_for_io
@@ -396,9 +396,9 @@ class CoolingTower(LinearConverter):
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
+        self._invalidate()
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
         self._conversion_factors = [{self.electrical_flow.label: -1, self.thermal_flow.label: value}]
-        self._invalidate()
 
 
 @register_class_for_io
@@ -518,10 +518,10 @@ class CHP(LinearConverter):
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
-        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
-        # Use backing field directly to modify in place, then trigger invalidation
-        self._conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
         self._invalidate()
+        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
+        # Use backing field directly to modify in place
+        self._conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
     def electrical_efficiency(self):
@@ -529,10 +529,10 @@ class CHP(LinearConverter):
 
     @electrical_efficiency.setter
     def electrical_efficiency(self, value):
-        check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
-        # Use backing field directly to modify in place, then trigger invalidation
-        self._conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
         self._invalidate()
+        check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
+        # Use backing field directly to modify in place
+        self._conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
 
 
 @register_class_for_io
@@ -639,6 +639,7 @@ class HeatPumpWithSource(LinearConverter):
 
     @cop.setter
     def cop(self, value):
+        self._invalidate()
         check_bounds(value, 'cop', self.label_full, 1, 20)
         if np.any(np.asarray(value) == 1):
             raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
@@ -646,7 +647,6 @@ class HeatPumpWithSource(LinearConverter):
             {self.electrical_flow.label: value, self.thermal_flow.label: 1},
             {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
         ]
-        self._invalidate()
 
 
 def check_bounds(

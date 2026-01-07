@@ -184,8 +184,8 @@ class LinearConverter(Component):
 
     @conversion_factors.setter
     def conversion_factors(self, value: list[dict[str, Numeric_TPS]] | None) -> None:
-        self._conversion_factors = value or []
         self._invalidate()
+        self._conversion_factors = value or []
 
     @property
     def piecewise_conversion(self) -> PiecewiseConversion | None:
@@ -194,8 +194,8 @@ class LinearConverter(Component):
 
     @piecewise_conversion.setter
     def piecewise_conversion(self, value: PiecewiseConversion | None) -> None:
-        self._piecewise_conversion = value
         self._invalidate()
+        self._piecewise_conversion = value
 
     # endregion
 
@@ -478,8 +478,8 @@ class Storage(Component):
 
     @charging.setter
     def charging(self, value: Flow) -> None:
-        self._charging = value
         self._invalidate()
+        self._charging = value
 
     @property
     def discharging(self) -> Flow:
@@ -488,8 +488,8 @@ class Storage(Component):
 
     @discharging.setter
     def discharging(self, value: Flow) -> None:
-        self._discharging = value
         self._invalidate()
+        self._discharging = value
 
     @property
     def capacity_in_flow_hours(self) -> Numeric_PS | InvestParameters | None:
@@ -498,8 +498,8 @@ class Storage(Component):
 
     @capacity_in_flow_hours.setter
     def capacity_in_flow_hours(self, value: Numeric_PS | InvestParameters | None) -> None:
-        self._capacity_in_flow_hours = value
         self._invalidate()
+        self._capacity_in_flow_hours = value
 
     @property
     def relative_minimum_charge_state(self) -> Numeric_TPS:
@@ -508,8 +508,8 @@ class Storage(Component):
 
     @relative_minimum_charge_state.setter
     def relative_minimum_charge_state(self, value: Numeric_TPS) -> None:
-        self._relative_minimum_charge_state = value
         self._invalidate()
+        self._relative_minimum_charge_state = value
 
     @property
     def relative_maximum_charge_state(self) -> Numeric_TPS:
@@ -518,8 +518,8 @@ class Storage(Component):
 
     @relative_maximum_charge_state.setter
     def relative_maximum_charge_state(self, value: Numeric_TPS) -> None:
-        self._relative_maximum_charge_state = value
         self._invalidate()
+        self._relative_maximum_charge_state = value
 
     @property
     def initial_charge_state(self) -> Numeric_PS | Literal['equals_final'] | None:
@@ -528,8 +528,8 @@ class Storage(Component):
 
     @initial_charge_state.setter
     def initial_charge_state(self, value: Numeric_PS | Literal['equals_final'] | None) -> None:
-        self._initial_charge_state = value
         self._invalidate()
+        self._initial_charge_state = value
 
     @property
     def minimal_final_charge_state(self) -> Numeric_PS | None:
@@ -538,8 +538,8 @@ class Storage(Component):
 
     @minimal_final_charge_state.setter
     def minimal_final_charge_state(self, value: Numeric_PS | None) -> None:
-        self._minimal_final_charge_state = value
         self._invalidate()
+        self._minimal_final_charge_state = value
 
     @property
     def maximal_final_charge_state(self) -> Numeric_PS | None:
@@ -548,8 +548,8 @@ class Storage(Component):
 
     @maximal_final_charge_state.setter
     def maximal_final_charge_state(self, value: Numeric_PS | None) -> None:
-        self._maximal_final_charge_state = value
         self._invalidate()
+        self._maximal_final_charge_state = value
 
     @property
     def relative_minimum_final_charge_state(self) -> Numeric_PS | None:
@@ -558,8 +558,8 @@ class Storage(Component):
 
     @relative_minimum_final_charge_state.setter
     def relative_minimum_final_charge_state(self, value: Numeric_PS | None) -> None:
-        self._relative_minimum_final_charge_state = value
         self._invalidate()
+        self._relative_minimum_final_charge_state = value
 
     @property
     def relative_maximum_final_charge_state(self) -> Numeric_PS | None:
@@ -568,8 +568,8 @@ class Storage(Component):
 
     @relative_maximum_final_charge_state.setter
     def relative_maximum_final_charge_state(self, value: Numeric_PS | None) -> None:
-        self._relative_maximum_final_charge_state = value
         self._invalidate()
+        self._relative_maximum_final_charge_state = value
 
     @property
     def eta_charge(self) -> Numeric_TPS:
@@ -578,8 +578,8 @@ class Storage(Component):
 
     @eta_charge.setter
     def eta_charge(self, value: Numeric_TPS) -> None:
-        self._eta_charge = value
         self._invalidate()
+        self._eta_charge = value
 
     @property
     def eta_discharge(self) -> Numeric_TPS:
@@ -588,8 +588,8 @@ class Storage(Component):
 
     @eta_discharge.setter
     def eta_discharge(self, value: Numeric_TPS) -> None:
-        self._eta_discharge = value
         self._invalidate()
+        self._eta_discharge = value
 
     @property
     def relative_loss_per_hour(self) -> Numeric_TPS:
@@ -598,8 +598,8 @@ class Storage(Component):
 
     @relative_loss_per_hour.setter
     def relative_loss_per_hour(self, value: Numeric_TPS) -> None:
-        self._relative_loss_per_hour = value
         self._invalidate()
+        self._relative_loss_per_hour = value
 
     @property
     def prevent_simultaneous_charge_and_discharge(self) -> bool:
@@ -608,8 +608,8 @@ class Storage(Component):
 
     @prevent_simultaneous_charge_and_discharge.setter
     def prevent_simultaneous_charge_and_discharge(self, value: bool) -> None:
-        self._prevent_simultaneous_charge_and_discharge = value
         self._invalidate()
+        self._prevent_simultaneous_charge_and_discharge = value
 
     @property
     def balanced(self) -> bool:
@@ -618,8 +618,8 @@ class Storage(Component):
 
     @balanced.setter
     def balanced(self, value: bool) -> None:
-        self._balanced = value
         self._invalidate()
+        self._balanced = value
 
     @property
     def cluster_mode(self) -> Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic']:
@@ -628,8 +628,8 @@ class Storage(Component):
 
     @cluster_mode.setter
     def cluster_mode(self, value: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic']) -> None:
-        self._cluster_mode = value
         self._invalidate()
+        self._cluster_mode = value
 
     # endregion
 
@@ -955,8 +955,8 @@ class Transmission(Component):
 
     @in1.setter
     def in1(self, value: Flow) -> None:
-        self._in1 = value
         self._invalidate()
+        self._in1 = value
 
     @property
     def out1(self) -> Flow:
@@ -965,8 +965,8 @@ class Transmission(Component):
 
     @out1.setter
     def out1(self, value: Flow) -> None:
-        self._out1 = value
         self._invalidate()
+        self._out1 = value
 
     @property
     def in2(self) -> Flow | None:
@@ -975,8 +975,8 @@ class Transmission(Component):
 
     @in2.setter
     def in2(self, value: Flow | None) -> None:
-        self._in2 = value
         self._invalidate()
+        self._in2 = value
 
     @property
     def out2(self) -> Flow | None:
@@ -985,8 +985,8 @@ class Transmission(Component):
 
     @out2.setter
     def out2(self, value: Flow | None) -> None:
-        self._out2 = value
         self._invalidate()
+        self._out2 = value
 
     @property
     def relative_losses(self) -> Numeric_TPS | None:
@@ -995,8 +995,8 @@ class Transmission(Component):
 
     @relative_losses.setter
     def relative_losses(self, value: Numeric_TPS | None) -> None:
-        self._relative_losses = value
         self._invalidate()
+        self._relative_losses = value
 
     @property
     def absolute_losses(self) -> Numeric_TPS | None:
@@ -1005,8 +1005,8 @@ class Transmission(Component):
 
     @absolute_losses.setter
     def absolute_losses(self, value: Numeric_TPS | None) -> None:
-        self._absolute_losses = value
         self._invalidate()
+        self._absolute_losses = value
 
     @property
     def balanced(self) -> bool:
@@ -1015,8 +1015,8 @@ class Transmission(Component):
 
     @balanced.setter
     def balanced(self, value: bool) -> None:
-        self._balanced = value
         self._invalidate()
+        self._balanced = value
 
     # endregion
 
@@ -1928,10 +1928,10 @@ class SourceAndSink(Component):
 
     @prevent_simultaneous_flow_rates.setter
     def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
         self._prevent_simultaneous_flow_rates = value
         # Update the underlying constraint list on Component base class
         self._prevent_simultaneous_flows = list(self._inputs) + list(self._outputs) if value else []
-        self._invalidate()
 
 
 @register_class_for_io
@@ -2032,10 +2032,10 @@ class Source(Component):
 
     @prevent_simultaneous_flow_rates.setter
     def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
         self._prevent_simultaneous_flow_rates = value
         # Update the underlying constraint list on Component base class
         self._prevent_simultaneous_flows = list(self._outputs) if value else []
-        self._invalidate()
 
 
 @register_class_for_io
@@ -2147,7 +2147,7 @@ class Sink(Component):
 
     @prevent_simultaneous_flow_rates.setter
     def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
         self._prevent_simultaneous_flow_rates = value
         # Update the underlying constraint list on Component base class
         self._prevent_simultaneous_flows = list(self._inputs) if value else []
-        self._invalidate()

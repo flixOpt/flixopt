@@ -114,8 +114,8 @@ class Component(Element):
 
     @inputs.setter
     def inputs(self, value: list[Flow]) -> None:
-        self._inputs = list(value)
         self._invalidate()
+        self._inputs = list(value)
 
     @property
     def outputs(self) -> list[Flow]:
@@ -124,8 +124,8 @@ class Component(Element):
 
     @outputs.setter
     def outputs(self, value: list[Flow]) -> None:
-        self._outputs = list(value)
         self._invalidate()
+        self._outputs = list(value)
 
     @property
     def status_parameters(self) -> StatusParameters | None:
@@ -134,8 +134,8 @@ class Component(Element):
 
     @status_parameters.setter
     def status_parameters(self, value: StatusParameters | None) -> None:
-        self._status_parameters = value
         self._invalidate()
+        self._status_parameters = value
 
     @property
     def prevent_simultaneous_flows(self) -> list[Flow]:
@@ -144,8 +144,8 @@ class Component(Element):
 
     @prevent_simultaneous_flows.setter
     def prevent_simultaneous_flows(self, value: list[Flow]) -> None:
-        self._prevent_simultaneous_flows = list(value) if value else []
         self._invalidate()
+        self._prevent_simultaneous_flows = list(value) if value else []
 
     @property
     def flows(self) -> dict[str, Flow]:
@@ -154,8 +154,8 @@ class Component(Element):
 
     @flows.setter
     def flows(self, value: dict[str, Flow]) -> None:
-        self._flows = dict(value)
         self._invalidate()
+        self._flows = dict(value)
 
     # ==================== End Properties ====================
 
@@ -339,8 +339,8 @@ class Bus(Element):
 
     @carrier.setter
     def carrier(self, value: str | None) -> None:
-        self._carrier = value.lower() if value else None
         self._invalidate()
+        self._carrier = value.lower() if value else None
 
     @property
     def imbalance_penalty_per_flow_hour(self) -> Numeric_TPS | None:
@@ -349,8 +349,8 @@ class Bus(Element):
 
     @imbalance_penalty_per_flow_hour.setter
     def imbalance_penalty_per_flow_hour(self, value: Numeric_TPS | None) -> None:
-        self._imbalance_penalty_per_flow_hour = value
         self._invalidate()
+        self._imbalance_penalty_per_flow_hour = value
 
     @property
     def inputs(self) -> list[Flow]:
@@ -359,8 +359,8 @@ class Bus(Element):
 
     @inputs.setter
     def inputs(self, value: list[Flow]) -> None:
-        self._inputs = list(value)
         self._invalidate()
+        self._inputs = list(value)
 
     @property
     def outputs(self) -> list[Flow]:
@@ -369,8 +369,8 @@ class Bus(Element):
 
     @outputs.setter
     def outputs(self, value: list[Flow]) -> None:
-        self._outputs = list(value)
         self._invalidate()
+        self._outputs = list(value)
 
     # ==================== End Properties ====================
 
@@ -639,8 +639,8 @@ class Flow(Element):
 
     @bus.setter
     def bus(self, value: str) -> None:
-        self._bus = value
         self._invalidate()
+        self._bus = value
 
     @property
     def size(self) -> Numeric_PS | InvestParameters | None:
@@ -649,8 +649,8 @@ class Flow(Element):
 
     @size.setter
     def size(self, value: Numeric_PS | InvestParameters | None) -> None:
-        self._size = value
         self._invalidate()
+        self._size = value
 
     @property
     def relative_minimum(self) -> Numeric_TPS:
@@ -659,8 +659,8 @@ class Flow(Element):
 
     @relative_minimum.setter
     def relative_minimum(self, value: Numeric_TPS) -> None:
-        self._relative_minimum = value
         self._invalidate()
+        self._relative_minimum = value
 
     @property
     def relative_maximum(self) -> Numeric_TPS:
@@ -669,8 +669,8 @@ class Flow(Element):
 
     @relative_maximum.setter
     def relative_maximum(self, value: Numeric_TPS) -> None:
-        self._relative_maximum = value
         self._invalidate()
+        self._relative_maximum = value
 
     @property
     def fixed_relative_profile(self) -> Numeric_TPS | None:
@@ -679,8 +679,8 @@ class Flow(Element):
 
     @fixed_relative_profile.setter
     def fixed_relative_profile(self, value: Numeric_TPS | None) -> None:
-        self._fixed_relative_profile = value
         self._invalidate()
+        self._fixed_relative_profile = value
 
     @property
     def effects_per_flow_hour(self) -> Effect_TPS | Numeric_TPS:
@@ -692,8 +692,8 @@ class Flow(Element):
 
     @effects_per_flow_hour.setter
     def effects_per_flow_hour(self, value: Effect_TPS | Numeric_TPS | None) -> None:
-        self._effects_per_flow_hour = value if value is not None else {}
         self._invalidate()
+        self._effects_per_flow_hour = value if value is not None else {}
 
     @property
     def status_parameters(self) -> StatusParameters | None:
@@ -702,8 +702,8 @@ class Flow(Element):
 
     @status_parameters.setter
     def status_parameters(self, value: StatusParameters | None) -> None:
-        self._status_parameters = value
         self._invalidate()
+        self._status_parameters = value
 
     @property
     def flow_hours_max(self) -> Numeric_PS | None:
@@ -712,8 +712,8 @@ class Flow(Element):
 
     @flow_hours_max.setter
     def flow_hours_max(self, value: Numeric_PS | None) -> None:
-        self._flow_hours_max = value
         self._invalidate()
+        self._flow_hours_max = value
 
     @property
     def flow_hours_min(self) -> Numeric_PS | None:
@@ -722,8 +722,8 @@ class Flow(Element):
 
     @flow_hours_min.setter
     def flow_hours_min(self, value: Numeric_PS | None) -> None:
-        self._flow_hours_min = value
         self._invalidate()
+        self._flow_hours_min = value
 
     @property
     def flow_hours_max_over_periods(self) -> Numeric_S | None:
@@ -732,8 +732,8 @@ class Flow(Element):
 
     @flow_hours_max_over_periods.setter
     def flow_hours_max_over_periods(self, value: Numeric_S | None) -> None:
-        self._flow_hours_max_over_periods = value
         self._invalidate()
+        self._flow_hours_max_over_periods = value
 
     @property
     def flow_hours_min_over_periods(self) -> Numeric_S | None:
@@ -742,8 +742,8 @@ class Flow(Element):
 
     @flow_hours_min_over_periods.setter
     def flow_hours_min_over_periods(self, value: Numeric_S | None) -> None:
-        self._flow_hours_min_over_periods = value
         self._invalidate()
+        self._flow_hours_min_over_periods = value
 
     @property
     def load_factor_min(self) -> Numeric_PS | None:
@@ -752,8 +752,8 @@ class Flow(Element):
 
     @load_factor_min.setter
     def load_factor_min(self, value: Numeric_PS | None) -> None:
-        self._load_factor_min = value
         self._invalidate()
+        self._load_factor_min = value
 
     @property
     def load_factor_max(self) -> Numeric_PS | None:
@@ -762,8 +762,8 @@ class Flow(Element):
 
     @load_factor_max.setter
     def load_factor_max(self, value: Numeric_PS | None) -> None:
-        self._load_factor_max = value
         self._invalidate()
+        self._load_factor_max = value
 
     @property
     def previous_flow_rate(self) -> Scalar | list[Scalar] | None:
@@ -772,8 +772,8 @@ class Flow(Element):
 
     @previous_flow_rate.setter
     def previous_flow_rate(self, value: Scalar | list[Scalar] | None) -> None:
-        self._previous_flow_rate = value
         self._invalidate()
+        self._previous_flow_rate = value
 
     @property
     def component(self) -> str:
@@ -782,8 +782,8 @@ class Flow(Element):
 
     @component.setter
     def component(self, value: str) -> None:
-        self._component = value
         self._invalidate()
+        self._component = value
 
     @property
     def is_input_in_component(self) -> bool | None:
@@ -792,8 +792,8 @@ class Flow(Element):
 
     @is_input_in_component.setter
     def is_input_in_component(self, value: bool | None) -> None:
-        self._is_input_in_component = value
         self._invalidate()
+        self._is_input_in_component = value
 
     # ==================== End Properties ====================
 

@@ -245,8 +245,8 @@ class Effect(Element):
 
     @unit.setter
     def unit(self, value: str) -> None:
-        self._unit = value
         self._invalidate()
+        self._unit = value
 
     @property
     def description(self) -> str:
@@ -254,8 +254,8 @@ class Effect(Element):
 
     @description.setter
     def description(self, value: str) -> None:
-        self._description = value
         self._invalidate()
+        self._description = value
 
     @property
     def is_standard(self) -> bool:
@@ -263,8 +263,8 @@ class Effect(Element):
 
     @is_standard.setter
     def is_standard(self, value: bool) -> None:
-        self._is_standard = value
         self._invalidate()
+        self._is_standard = value
 
     @property
     def is_objective(self) -> bool:
@@ -272,8 +272,8 @@ class Effect(Element):
 
     @is_objective.setter
     def is_objective(self, value: bool) -> None:
-        self._is_objective = value
         self._invalidate()
+        self._is_objective = value
 
     @property
     def period_weights(self) -> Numeric_PS | None:
@@ -281,8 +281,8 @@ class Effect(Element):
 
     @period_weights.setter
     def period_weights(self, value: Numeric_PS | None) -> None:
-        self._period_weights = value
         self._invalidate()
+        self._period_weights = value
 
     @property
     def share_from_temporal(self) -> Effect_TPS | Numeric_TPS:
@@ -290,8 +290,8 @@ class Effect(Element):
 
     @share_from_temporal.setter
     def share_from_temporal(self, value: Effect_TPS | Numeric_TPS | None) -> None:
-        self._share_from_temporal = value if value is not None else {}
         self._invalidate()
+        self._share_from_temporal = value if value is not None else {}
 
     @property
     def share_from_periodic(self) -> Effect_PS | Numeric_PS:
@@ -299,8 +299,8 @@ class Effect(Element):
 
     @share_from_periodic.setter
     def share_from_periodic(self, value: Effect_PS | Numeric_PS | None) -> None:
-        self._share_from_periodic = value if value is not None else {}
         self._invalidate()
+        self._share_from_periodic = value if value is not None else {}
 
     @property
     def minimum_temporal(self) -> Numeric_PS | None:
@@ -308,8 +308,8 @@ class Effect(Element):
 
     @minimum_temporal.setter
     def minimum_temporal(self, value: Numeric_PS | None) -> None:
-        self._minimum_temporal = value
         self._invalidate()
+        self._minimum_temporal = value
 
     @property
     def maximum_temporal(self) -> Numeric_PS | None:
@@ -317,8 +317,8 @@ class Effect(Element):
 
     @maximum_temporal.setter
     def maximum_temporal(self, value: Numeric_PS | None) -> None:
-        self._maximum_temporal = value
         self._invalidate()
+        self._maximum_temporal = value
 
     @property
     def minimum_periodic(self) -> Numeric_PS | None:
@@ -326,8 +326,8 @@ class Effect(Element):
 
     @minimum_periodic.setter
     def minimum_periodic(self, value: Numeric_PS | None) -> None:
-        self._minimum_periodic = value
         self._invalidate()
+        self._minimum_periodic = value
 
     @property
     def maximum_periodic(self) -> Numeric_PS | None:
@@ -335,8 +335,8 @@ class Effect(Element):
 
     @maximum_periodic.setter
     def maximum_periodic(self, value: Numeric_PS | None) -> None:
-        self._maximum_periodic = value
         self._invalidate()
+        self._maximum_periodic = value
 
     @property
     def minimum_per_hour(self) -> Numeric_TPS | None:
@@ -344,8 +344,8 @@ class Effect(Element):
 
     @minimum_per_hour.setter
     def minimum_per_hour(self, value: Numeric_TPS | None) -> None:
-        self._minimum_per_hour = value
         self._invalidate()
+        self._minimum_per_hour = value
 
     @property
     def maximum_per_hour(self) -> Numeric_TPS | None:
@@ -353,8 +353,8 @@ class Effect(Element):
 
     @maximum_per_hour.setter
     def maximum_per_hour(self, value: Numeric_TPS | None) -> None:
-        self._maximum_per_hour = value
         self._invalidate()
+        self._maximum_per_hour = value
 
     @property
     def minimum_total(self) -> Numeric_PS | None:
@@ -362,8 +362,8 @@ class Effect(Element):
 
     @minimum_total.setter
     def minimum_total(self, value: Numeric_PS | None) -> None:
-        self._minimum_total = value
         self._invalidate()
+        self._minimum_total = value
 
     @property
     def maximum_total(self) -> Numeric_PS | None:
@@ -371,8 +371,8 @@ class Effect(Element):
 
     @maximum_total.setter
     def maximum_total(self, value: Numeric_PS | None) -> None:
-        self._maximum_total = value
         self._invalidate()
+        self._maximum_total = value
 
     @property
     def minimum_over_periods(self) -> Numeric_S | None:
@@ -380,8 +380,8 @@ class Effect(Element):
 
     @minimum_over_periods.setter
     def minimum_over_periods(self, value: Numeric_S | None) -> None:
-        self._minimum_over_periods = value
         self._invalidate()
+        self._minimum_over_periods = value
 
     @property
     def maximum_over_periods(self) -> Numeric_S | None:
@@ -389,8 +389,8 @@ class Effect(Element):
 
     @maximum_over_periods.setter
     def maximum_over_periods(self, value: Numeric_S | None) -> None:
-        self._maximum_over_periods = value
         self._invalidate()
+        self._maximum_over_periods = value
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Link this effect to a FlowSystem.

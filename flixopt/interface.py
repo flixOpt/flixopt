@@ -1179,8 +1179,8 @@ class InvestParameters(Interface):
 
     @effects_of_investment.setter
     def effects_of_investment(self, value: Effect_PS | Numeric_PS | None) -> None:
-        self._effects_of_investment = value if value is not None else {}
         self._invalidate()
+        self._effects_of_investment = value if value is not None else {}
 
     @property
     def effects_of_retirement(self) -> Effect_PS:
@@ -1193,8 +1193,8 @@ class InvestParameters(Interface):
 
     @effects_of_retirement.setter
     def effects_of_retirement(self, value: Effect_PS | Numeric_PS | None) -> None:
-        self._effects_of_retirement = value if value is not None else {}
         self._invalidate()
+        self._effects_of_retirement = value if value is not None else {}
 
     @property
     def effects_of_investment_per_size(self) -> Effect_PS:
@@ -1207,8 +1207,8 @@ class InvestParameters(Interface):
 
     @effects_of_investment_per_size.setter
     def effects_of_investment_per_size(self, value: Effect_PS | Numeric_PS | None) -> None:
-        self._effects_of_investment_per_size = value if value is not None else {}
         self._invalidate()
+        self._effects_of_investment_per_size = value if value is not None else {}
 
     @property
     def fixed_size(self) -> Numeric_PS | None:
@@ -1217,8 +1217,8 @@ class InvestParameters(Interface):
 
     @fixed_size.setter
     def fixed_size(self, value: Numeric_PS | None) -> None:
-        self._fixed_size = value
         self._invalidate()
+        self._fixed_size = value
 
     @property
     def mandatory(self) -> bool:
@@ -1227,8 +1227,8 @@ class InvestParameters(Interface):
 
     @mandatory.setter
     def mandatory(self, value: bool) -> None:
-        self._mandatory = value
         self._invalidate()
+        self._mandatory = value
 
     @property
     def piecewise_effects_of_investment(self) -> PiecewiseEffects | None:
@@ -1237,8 +1237,8 @@ class InvestParameters(Interface):
 
     @piecewise_effects_of_investment.setter
     def piecewise_effects_of_investment(self, value: PiecewiseEffects | None) -> None:
-        self._piecewise_effects_of_investment = value
         self._invalidate()
+        self._piecewise_effects_of_investment = value
 
     @property
     def minimum_size(self) -> Numeric_PS:
@@ -1247,8 +1247,8 @@ class InvestParameters(Interface):
 
     @minimum_size.setter
     def minimum_size(self, value: Numeric_PS | None) -> None:
-        self._minimum_size = value if value is not None else CONFIG.Modeling.epsilon
         self._invalidate()
+        self._minimum_size = value if value is not None else CONFIG.Modeling.epsilon
 
     @property
     def maximum_size(self) -> Numeric_PS | None:
@@ -1257,8 +1257,8 @@ class InvestParameters(Interface):
 
     @maximum_size.setter
     def maximum_size(self, value: Numeric_PS | None) -> None:
-        self._maximum_size = value
         self._invalidate()
+        self._maximum_size = value
 
     @property
     def linked_periods(self) -> Numeric_PS | tuple[int, int] | None:
@@ -1267,8 +1267,8 @@ class InvestParameters(Interface):
 
     @linked_periods.setter
     def linked_periods(self, value: Numeric_PS | tuple[int, int] | None) -> None:
-        self._linked_periods = value
         self._invalidate()
+        self._linked_periods = value
 
     # endregion
 
@@ -1612,8 +1612,8 @@ class StatusParameters(Interface):
 
     @effects_per_startup.setter
     def effects_per_startup(self, value: Effect_TPS | Numeric_TPS | None) -> None:
-        self._effects_per_startup = value if value is not None else {}
         self._invalidate()
+        self._effects_per_startup = value if value is not None else {}
 
     @property
     def effects_per_active_hour(self) -> Effect_TPS:
@@ -1626,8 +1626,8 @@ class StatusParameters(Interface):
 
     @effects_per_active_hour.setter
     def effects_per_active_hour(self, value: Effect_TPS | Numeric_TPS | None) -> None:
-        self._effects_per_active_hour = value if value is not None else {}
         self._invalidate()
+        self._effects_per_active_hour = value if value is not None else {}
 
     @property
     def active_hours_min(self) -> Numeric_PS | None:
@@ -1636,8 +1636,8 @@ class StatusParameters(Interface):
 
     @active_hours_min.setter
     def active_hours_min(self, value: Numeric_PS | None) -> None:
-        self._active_hours_min = value
         self._invalidate()
+        self._active_hours_min = value
 
     @property
     def active_hours_max(self) -> Numeric_PS | None:
@@ -1646,8 +1646,8 @@ class StatusParameters(Interface):
 
     @active_hours_max.setter
     def active_hours_max(self, value: Numeric_PS | None) -> None:
-        self._active_hours_max = value
         self._invalidate()
+        self._active_hours_max = value
 
     @property
     def min_uptime(self) -> Numeric_TPS | None:
@@ -1656,8 +1656,8 @@ class StatusParameters(Interface):
 
     @min_uptime.setter
     def min_uptime(self, value: Numeric_TPS | None) -> None:
-        self._min_uptime = value
         self._invalidate()
+        self._min_uptime = value
 
     @property
     def max_uptime(self) -> Numeric_TPS | None:
@@ -1666,8 +1666,8 @@ class StatusParameters(Interface):
 
     @max_uptime.setter
     def max_uptime(self, value: Numeric_TPS | None) -> None:
-        self._max_uptime = value
         self._invalidate()
+        self._max_uptime = value
 
     @property
     def min_downtime(self) -> Numeric_TPS | None:
@@ -1676,8 +1676,8 @@ class StatusParameters(Interface):
 
     @min_downtime.setter
     def min_downtime(self, value: Numeric_TPS | None) -> None:
-        self._min_downtime = value
         self._invalidate()
+        self._min_downtime = value
 
     @property
     def max_downtime(self) -> Numeric_TPS | None:
@@ -1686,8 +1686,8 @@ class StatusParameters(Interface):
 
     @max_downtime.setter
     def max_downtime(self, value: Numeric_TPS | None) -> None:
-        self._max_downtime = value
         self._invalidate()
+        self._max_downtime = value
 
     @property
     def startup_limit(self) -> Numeric_PS | None:
@@ -1696,8 +1696,8 @@ class StatusParameters(Interface):
 
     @startup_limit.setter
     def startup_limit(self, value: Numeric_PS | None) -> None:
-        self._startup_limit = value
         self._invalidate()
+        self._startup_limit = value
 
     @property
     def force_startup_tracking(self) -> bool:
@@ -1706,8 +1706,8 @@ class StatusParameters(Interface):
 
     @force_startup_tracking.setter
     def force_startup_tracking(self, value: bool) -> None:
-        self._force_startup_tracking = value
         self._invalidate()
+        self._force_startup_tracking = value
 
     @property
     def cluster_mode(self) -> Literal['relaxed', 'cyclic']:
@@ -1716,8 +1716,8 @@ class StatusParameters(Interface):
 
     @cluster_mode.setter
     def cluster_mode(self, value: Literal['relaxed', 'cyclic']) -> None:
-        self._cluster_mode = value
         self._invalidate()
+        self._cluster_mode = value
 
     # endregion
 

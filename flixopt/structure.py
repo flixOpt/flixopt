@@ -441,8 +441,17 @@ class Interface:
         Called by property setters to ensure the FlowSystem is re-transformed
         after any parameter modification. This prevents silent bugs where
         modifications don't take effect because the model was already built.
+
+        Raises:
+            RuntimeError: If the FlowSystem has a solution (is locked).
+                Call ``flow_system.reset()`` first to clear the solution.
         """
         if self._flow_system is not None:
+            if self._flow_system.is_locked:
+                raise RuntimeError(
+                    f'Cannot modify {self.__class__.__name__} on a FlowSystem with a solution. '
+                    f'Call flow_system.reset() first to clear the solution.'
+                )
             self._flow_system._invalidate_model()
 
     @property
@@ -1167,8 +1176,8 @@ class Element(Interface):
 
     @meta_data.setter
     def meta_data(self, value: dict) -> None:
-        self._meta_data = value if value is not None else {}
         self._invalidate()
+        self._meta_data = value if value is not None else {}
 
     @property
     def color(self) -> str | None:
@@ -1177,8 +1186,8 @@ class Element(Interface):
 
     @color.setter
     def color(self, value: str | None) -> None:
-        self._color = value
         self._invalidate()
+        self._color = value
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
