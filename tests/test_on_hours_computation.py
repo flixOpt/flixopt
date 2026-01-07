@@ -9,7 +9,7 @@ class TestComputeConsecutiveDuration:
     """Tests for the compute_consecutive_hours_in_state static method."""
 
     @pytest.mark.parametrize(
-        'binary_values, timestep_duration, expected',
+        'binary_values, hours_per_timestep, expected',
         [
             # Case 1: Single timestep DataArrays
             (xr.DataArray([1], dims=['time']), 5, 5),
@@ -26,22 +26,22 @@ class TestComputeConsecutiveDuration:
             (xr.DataArray([0, 1, 1, 1, 0, 0], dims=['time']), 1, 0),  # ends with 0
         ],
     )
-    def test_compute_duration(self, binary_values, timestep_duration, expected):
+    def test_compute_duration(self, binary_values, hours_per_timestep, expected):
         """Test compute_consecutive_hours_in_state with various inputs."""
-        result = ModelingUtilities.compute_consecutive_hours_in_state(binary_values, timestep_duration)
+        result = ModelingUtilities.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
         assert np.isclose(result, expected)
 
     @pytest.mark.parametrize(
-        'binary_values, timestep_duration',
+        'binary_values, hours_per_timestep',
         [
-            # Case: timestep_duration must be scalar
+            # Case: hours_per_timestep must be scalar
             (xr.DataArray([1, 1, 1, 1, 1], dims=['time']), np.array([1, 2])),
         ],
     )
-    def test_compute_duration_raises_error(self, binary_values, timestep_duration):
+    def test_compute_duration_raises_error(self, binary_values, hours_per_timestep):
         """Test error conditions."""
         with pytest.raises(TypeError):
-            ModelingUtilities.compute_consecutive_hours_in_state(binary_values, timestep_duration)
+            ModelingUtilities.compute_consecutive_hours_in_state(binary_values, hours_per_timestep)
 
 
 class TestComputePreviousOnStates:
