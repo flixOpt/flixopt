@@ -1918,10 +1918,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Return a detailed string representation showing all containers."""
         r = fx_io.format_title_with_underline('FlowSystem', '=')
 
-        # Timestep info
-        time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
-        freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
-        r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+        # Timestep info - handle both DatetimeIndex and RangeIndex (segmented)
+        if self.is_segmented:
+            r += f'Timesteps: {len(self.timesteps)} segments (segmented)\n'
+        else:
+            time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+            freq_str = (
+                str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
+            )
+            r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+
+        # Add clusters if present
+        if self.clusters is not None:
+            r += f'Clusters: {len(self.clusters)}\n'
 
         # Add periods if present
         if self.periods is not None:

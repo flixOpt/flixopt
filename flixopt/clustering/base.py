@@ -123,13 +123,17 @@ class ClusterStructure:
         else:
             # Simple case: list of occurrences per cluster
             occ_info = [int(occ_data.sel(cluster=c).values) for c in range(n_clusters)]
-        return (
-            f'ClusterStructure(\n'
-            f'  {self.n_original_clusters} original periods → {n_clusters} clusters\n'
-            f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
-            f'  occurrences={occ_info}\n'
-            f')'
-        )
+
+        lines = [
+            'ClusterStructure(',
+            f'  {self.n_original_clusters} original periods → {n_clusters} clusters',
+            f'  timesteps_per_cluster={self.timesteps_per_cluster}',
+        ]
+        if self.is_segmented:
+            lines.append(f'  segmented={self.n_segments} segments per cluster')
+        lines.append(f'  occurrences={occ_info}')
+        lines.append(')')
+        return '\n'.join(lines)
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create reference structure for serialization."""
@@ -1003,6 +1007,8 @@ class Clustering:
                 int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
             )
             structure_info = f'{cs.n_original_clusters} periods → {n_clusters} clusters'
+            if cs.is_segmented:
+                structure_info += f' × {cs.n_segments} segments'
         else:
             structure_info = 'no structure'
         return f'Clustering(\n  backend={self.backend_name!r}\n  {structure_info}\n)'
