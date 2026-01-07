@@ -67,7 +67,7 @@ fs_clustered = flow_system.transform.cluster(
 fs_clustered.optimize(fx.solvers.HighsSolver())
 
 # Expand back to full resolution
-fs_expanded = fs_clustered.transform.expand_solution()
+fs_expanded = fs_clustered.transform.expand()
 ```
 
 **Best for:**

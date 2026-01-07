@@ -34,7 +34,7 @@ class TransformAccessor:
 
         >>> reduced_fs = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
         >>> reduced_fs.optimize(solver)
-        >>> expanded_fs = reduced_fs.transform.expand_solution()
+        >>> expanded_fs = reduced_fs.transform.expand()
 
         Future MGA:
 
@@ -1393,8 +1393,7 @@ class TransformAccessor:
         """
         if self._fs.clustering is None:
             raise ValueError(
-                'expand_solution() requires a FlowSystem created with cluster(). '
-                'This FlowSystem has no aggregation info.'
+                'expand() requires a FlowSystem created with cluster(). This FlowSystem has no aggregation info.'
             )
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
@@ -1532,8 +1531,8 @@ class TransformAccessor:
 
         return soc_boundary_per_timestep * decay_da
 
-    def expand_solution(self) -> FlowSystem:
-        """Expand a reduced (clustered) FlowSystem back to full original timesteps.
+    def expand(self) -> FlowSystem:
+        """Expand a clustered FlowSystem back to full original timesteps.
 
         After solving a FlowSystem created with ``cluster()``, this method
         disaggregates the FlowSystem by:
@@ -1556,7 +1555,7 @@ class TransformAccessor:
             ValueError: If the FlowSystem has no solution.
 
         Examples:
-            Two-stage optimization with solution expansion:
+            Two-stage optimization with expansion:
 
             >>> # Stage 1: Size with reduced timesteps
             >>> fs_reduced = flow_system.transform.cluster(
@@ -1566,7 +1565,7 @@ class TransformAccessor:
             >>> fs_reduced.optimize(solver)
             >>>
             >>> # Expand to full resolution FlowSystem
-            >>> fs_expanded = fs_reduced.transform.expand_solution()
+            >>> fs_expanded = fs_reduced.transform.expand()
             >>>
             >>> # Use all existing accessors with full timesteps
             >>> fs_expanded.statistics.flow_rates  # Full 8760 timesteps

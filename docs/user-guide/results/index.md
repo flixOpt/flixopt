@@ -327,7 +327,7 @@ fs_both_mild = fs_both.transform.sel(scenario='Mild Winter')
 comp = fx.Comparison([fs_both_mild, fs_mild])  # Works!
 
 # Auxiliary dimensions are OK (e.g., expanded clustered solutions)
-fs_expanded = fs_clustered.transform.expand_solution()  # Has cluster_boundary dim
+fs_expanded = fs_clustered.transform.expand()  # Has cluster_boundary dim
 comp = fx.Comparison([fs_full, fs_expanded])  # Works! cluster_boundary is ignored
 ```
 

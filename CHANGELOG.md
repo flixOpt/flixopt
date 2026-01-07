@@ -147,7 +147,7 @@ fs_clustered = flow_system.transform.cluster(
 fs_clustered.optimize(solver)
 
 # Stage 2: Expand back to full resolution
-fs_expanded = fs_clustered.transform.expand_solution()
+fs_expanded = fs_clustered.transform.expand()
 ```
 
 **Storage Modes for Clustering**: Control how storage behaves across clustered periods via `Storage(cluster_mode=...)`:
@@ -179,7 +179,7 @@ fs_expanded = fs_clustered.transform.expand_solution()
 - **Inter-cluster storage linking**: For `'intercluster'` and `'intercluster_cyclic'` modes, a `SOC_boundary` variable tracks absolute state-of-charge at period boundaries, enabling accurate seasonal storage modeling
 - **Self-discharge decay**: Storage losses are correctly applied during solution expansion using the formula: `actual_SOC(t) = SOC_boundary × (1 - loss)^t + ΔE(t)`
 - **Multi-dimensional support**: Works with periods, scenarios, and clusters dimensions simultaneously
-- **Solution expansion**: `transform.expand_solution()` maps clustered results back to original timesteps with proper storage state reconstruction
+- **Solution expansion**: `transform.expand()` maps clustered results back to original timesteps with proper storage state reconstruction
 - **Clustering IO**: Save and load clustered FlowSystems with full state preservation via `to_netcdf()` / `from_netcdf()`
 
 **Example: Seasonal Storage with Clustering**:
@@ -197,7 +197,7 @@ storage = fx.Storage(
 # Cluster, optimize, and expand
 fs_clustered = flow_system.transform.cluster(n_clusters=12, cluster_duration='1D')
 fs_clustered.optimize(solver)
-fs_expanded = fs_clustered.transform.expand_solution()
+fs_expanded = fs_clustered.transform.expand()
 
 # Full-resolution charge state now available
 charge_state = fs_expanded.solution['SeasonalPit|charge_state']
@@ -355,7 +355,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
     costs = fs_clustered.solution['costs'].item()
 
     # Expand back to full resolution if needed
-    fs_expanded = fs_clustered.transform.expand_solution()
+    fs_expanded = fs_clustered.transform.expand()
     ```
 
 ### 🐛 Fixed

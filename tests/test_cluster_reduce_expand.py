@@ -1,4 +1,4 @@
-"""Tests for cluster() and expand_solution() functionality."""
+"""Tests for cluster() and expand() functionality."""
 
 import numpy as np
 import pandas as pd
@@ -65,8 +65,8 @@ def test_cluster_creates_reduced_timesteps(timesteps_8_days):
     assert fs_reduced.clustering.result.cluster_structure.n_clusters == 2
 
 
-def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_days):
-    """Test that expand_solution restores full timestep count."""
+def test_expand_restores_full_timesteps(solver_fixture, timesteps_8_days):
+    """Test that expand restores full timestep count."""
     fs = create_simple_system(timesteps_8_days)
 
     # Reduce to 2 typical clusters
@@ -83,7 +83,7 @@ def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_day
     assert len(fs_reduced.clusters) == 2
 
     # Expand back to full
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
 
     # Should have original timestep count (flat, no clusters)
     assert len(fs_expanded.timesteps) == 192
@@ -91,8 +91,8 @@ def test_expand_solution_restores_full_timesteps(solver_fixture, timesteps_8_day
     assert fs_expanded.solution is not None
 
 
-def test_expand_solution_preserves_solution_variables(solver_fixture, timesteps_8_days):
-    """Test that expand_solution keeps all solution variables."""
+def test_expand_preserves_solution_variables(solver_fixture, timesteps_8_days):
+    """Test that expand keeps all solution variables."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(
@@ -103,15 +103,15 @@ def test_expand_solution_preserves_solution_variables(solver_fixture, timesteps_
 
     reduced_vars = set(fs_reduced.solution.data_vars)
 
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
     expanded_vars = set(fs_expanded.solution.data_vars)
 
     # Should have all the same variables
     assert reduced_vars == expanded_vars
 
 
-def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days):
-    """Test that expand_solution correctly maps typical cluster values to all segments."""
+def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
+    """Test that expand correctly maps typical cluster values to all segments."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(
@@ -127,7 +127,7 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
 
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
     expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate'].values
 
     # Check that values are correctly mapped
@@ -153,7 +153,7 @@ def test_expand_solution_maps_values_correctly(solver_fixture, timesteps_8_days)
         assert_allclose(actual, expected, rtol=1e-10)
 
 
-def test_expand_solution_enables_statistics_accessor(solver_fixture, timesteps_8_days):
+def test_expand_enables_statistics_accessor(solver_fixture, timesteps_8_days):
     """Test that statistics accessor works on expanded FlowSystem."""
     fs = create_simple_system(timesteps_8_days)
 
@@ -163,7 +163,7 @@ def test_expand_solution_enables_statistics_accessor(solver_fixture, timesteps_8
     )
     fs_reduced.optimize(solver_fixture)
 
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
 
     # These should work without errors
     flow_rates = fs_expanded.statistics.flow_rates
@@ -174,7 +174,7 @@ def test_expand_solution_enables_statistics_accessor(solver_fixture, timesteps_8
     assert 'Boiler(Q_th)' in flow_hours
 
 
-def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_days):
+def test_expand_statistics_match_clustered(solver_fixture, timesteps_8_days):
     """Test that total_effects match between clustered and expanded FlowSystem."""
     fs = create_simple_system(timesteps_8_days)
 
@@ -184,7 +184,7 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     )
     fs_reduced.optimize(solver_fixture)
 
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
 
     # Total effects should match between clustered and expanded
     reduced_total = fs_reduced.statistics.total_effects['costs'].sum('contributor').item()
@@ -202,17 +202,17 @@ def test_expand_solution_statistics_match_clustered(solver_fixture, timesteps_8_
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
 
-def test_expand_solution_withoutclustering_raises(solver_fixture, timesteps_2_days):
-    """Test that expand_solution raises error if not a reduced FlowSystem."""
+def test_expand_withoutclustering_raises(solver_fixture, timesteps_2_days):
+    """Test that expand raises error if not a reduced FlowSystem."""
     fs = create_simple_system(timesteps_2_days)
     fs.optimize(solver_fixture)
 
     with pytest.raises(ValueError, match='cluster'):
-        fs.transform.expand_solution()
+        fs.transform.expand()
 
 
-def test_expand_solution_without_solution_raises(timesteps_8_days):
-    """Test that expand_solution raises error if no solution."""
+def test_expand_without_solution_raises(timesteps_8_days):
+    """Test that expand raises error if no solution."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(
@@ -222,7 +222,7 @@ def test_expand_solution_without_solution_raises(timesteps_8_days):
     # Don't optimize - no solution
 
     with pytest.raises(ValueError, match='no solution'):
-        fs_reduced.transform.expand_solution()
+        fs_reduced.transform.expand()
 
 
 # ==================== Multi-dimensional Tests ====================
@@ -299,7 +299,7 @@ def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
 
 
 def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, scenarios_2):
-    """Test full cluster -> optimize -> expand_solution cycle with scenarios."""
+    """Test full cluster -> optimize -> expand cycle with scenarios."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
     # Reduce
@@ -313,7 +313,7 @@ def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, sce
     assert fs_reduced.solution is not None
 
     # Expand
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
 
     # Should have original timesteps
     assert len(fs_expanded.timesteps) == 192
@@ -325,8 +325,8 @@ def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, sce
     assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
 
 
-def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_8_days, scenarios_2):
-    """Test that expand_solution correctly maps scenarios in multi-scenario systems."""
+def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, scenarios_2):
+    """Test that expand correctly maps scenarios in multi-scenario systems."""
     fs = create_system_with_scenarios(timesteps_8_days, scenarios_2)
 
     fs_reduced = fs.transform.cluster(
@@ -340,7 +340,7 @@ def test_expand_solution_maps_scenarios_independently(solver_fixture, timesteps_
     timesteps_per_cluster = cluster_structure.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
-    fs_expanded = fs_reduced.transform.expand_solution()
+    fs_expanded = fs_reduced.transform.expand()
     expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 
     # Check mapping for each scenario using its own cluster_order
@@ -486,7 +486,7 @@ class TestInterclusterStorageLinking:
         soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         assert 'cluster_boundary' in soc_boundary.dims
 
-    def test_expand_solution_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
+    def test_expand_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
         """Expanded charge_state should be non-negative (combined with SOC_boundary)."""
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='intercluster_cyclic')
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
@@ -496,7 +496,7 @@ class TestInterclusterStorageLinking:
         # which can be negative. After expansion, it becomes absolute SOC.
 
         # After expansion: charge_state should be non-negative (absolute SOC)
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
         cs_after = fs_expanded.solution['Battery|charge_state']
 
         # All values should be >= 0 (with small tolerance for numerical issues)
@@ -514,7 +514,7 @@ class TestInterclusterStorageLinking:
         fs_clustered.optimize(solver_fixture)
 
         # Expand solution
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
         cs_expanded = fs_expanded.solution['Battery|charge_state']
 
         # With self-discharge, SOC should decay over time within each period
@@ -539,7 +539,7 @@ class TestInterclusterStorageLinking:
         cluster_order = cluster_structure.cluster_order.values
         timesteps_per_cluster = cluster_structure.timesteps_per_cluster
 
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
         cs_expanded = fs_expanded.solution['Battery|charge_state']
 
         # Manual verification for first few timesteps of first period
@@ -675,14 +675,14 @@ class TestMultiPeriodClustering:
         assert flow_var in fs_clustered.solution
         assert 'period' in fs_clustered.solution[flow_var].dims
 
-    def test_expand_solution_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
+    def test_expand_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
         """Verify expansion handles period dimension correctly."""
         fs = create_system_with_periods(timesteps_8_days, periods_2)
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
         # Expand
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
 
         # Should have original timesteps and periods
         assert len(fs_expanded.timesteps) == 192
@@ -715,7 +715,7 @@ class TestMultiPeriodClustering:
         assert 'cluster' in fs_clustered.solution[flow_var].dims
 
         # Expand and verify
-        fs_expanded = fs_clustered.transform.expand_solution()
+        fs_expanded = fs_clustered.transform.expand()
         assert 'period' in fs_expanded.solution[flow_var].dims
         assert 'scenario' in fs_expanded.solution[flow_var].dims
         assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
