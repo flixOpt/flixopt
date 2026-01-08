@@ -1891,10 +1891,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return r
 
-    def __eq__(self, other: FlowSystem):
+    def __eq__(self, other: object) -> bool:
         """Check if two FlowSystems are equal by comparing their dataset representations."""
         if not isinstance(other, FlowSystem):
-            raise NotImplementedError('Comparison with other types is not implemented for class FlowSystem')
+            return NotImplemented
 
         ds_me = self.to_dataset()
         ds_other = other.to_dataset()

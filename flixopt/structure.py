@@ -32,7 +32,7 @@ from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from collections.abc import Collection, ItemsView, Iterator
+    from collections.abc import Callable, Collection, ItemsView, Iterator
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
@@ -630,7 +630,7 @@ class Interface:
         old_name: str,
         new_name: str,
         current_value: Any = None,
-        transform: callable = None,
+        transform: Callable[..., Any] | None = None,
         check_conflict: bool = True,
         additional_warning_message: str = '',
     ) -> Any:

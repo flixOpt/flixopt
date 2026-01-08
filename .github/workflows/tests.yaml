@@ -38,10 +38,30 @@ jobs:
           uvx ruff check . --output-format=github
           uvx ruff format --check --diff .
 
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.10"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv pip install --system .[dev]
+
+      - name: Type check with mypy
+        run: mypy flixopt
+
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: lint
+    needs: [lint, typecheck]
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +87,7 @@ jobs:
   test-examples:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    needs: lint
+    needs: [lint, typecheck]
     # Only run on main branch or when called by release workflow (not on PRs)
     if: github.event_name != 'pull_request'
     steps:
@@ -90,7 +110,7 @@ jobs:
 
   security:
     runs-on: ubuntu-24.04
-    needs: lint
+    needs: [lint, typecheck]
     steps:
       - uses: actions/checkout@v6
 
