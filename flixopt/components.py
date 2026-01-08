@@ -1478,7 +1478,13 @@ class InterclusterStorageModel(StorageModel):
         # Use mean over time (linking operates at period level, not timestep)
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = self.element.relative_loss_per_hour.mean('time')
-        hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
+
+        flow_system = self._model.flow_system
+        if flow_system.is_segmented:
+            # For segmented systems, sum all segment durations to get total hours per cluster
+            hours_per_cluster = self._model.timestep_duration.sum('time').mean('cluster')
+        else:
+            hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
         decay_n = (1 - rel_loss) ** hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
@@ -1523,9 +1529,22 @@ class InterclusterStorageModel(StorageModel):
         # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = self.element.relative_loss_per_hour.mean('time')
-        mean_timestep_duration = self._model.timestep_duration.mean('time')
 
-        sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
+        # For segmented systems, the time dimension size is n_segments, not timesteps_per_cluster
+        flow_system = self._model.flow_system
+        actual_time_points = len(flow_system.timesteps)
+
+        if flow_system.is_segmented:
+            # For segmented systems, sample at start, mid, and end segments
+            # Use cumulative segment durations to calculate hours offset
+            sample_offsets = [0, actual_time_points // 2, actual_time_points - 1]
+            timestep_duration = self._model.timestep_duration
+            # Cumulative hours for each segment (sum of segment durations up to that point)
+            cumulative_hours = timestep_duration.cumsum(dim='time')
+        else:
+            # Non-segmented: use standard offsets based on timesteps_per_cluster
+            sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
+            mean_timestep_duration = self._model.timestep_duration.mean('time')
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
             # With 2D structure: select time offset, then reorder by cluster_order
@@ -1539,8 +1558,17 @@ class InterclusterStorageModel(StorageModel):
             cs_t = cs_t.assign_coords(original_cluster=np.arange(n_original_clusters))
 
             # Apply decay factor (1-loss)^hours to SOC_boundary per Eq. 9
-            # Convert timestep offset to hours
-            hours_offset = offset * mean_timestep_duration
+            if flow_system.is_segmented:
+                # For segmented systems, use cumulative hours at this offset
+                # At offset 0, hours = 0 (start of cluster)
+                if offset == 0:
+                    hours_offset = 0
+                else:
+                    # Sum of segment durations up to and including this offset
+                    hours_offset = cumulative_hours.isel(time=offset).mean('cluster')
+            else:
+                # Non-segmented: offset * mean timestep duration
+                hours_offset = offset * mean_timestep_duration
             decay_t = (1 - rel_loss) ** hours_offset
             combined = soc_d * decay_t + cs_t
 
