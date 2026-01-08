@@ -23,6 +23,7 @@ nav:
   - User Guide:
     - Overview: user-guide/index.md
     - Core Concepts: user-guide/core-concepts.md
+    - Glossary: user-guide/glossary.md
     - Building Models:
       - Overview: user-guide/building-models/index.md
       - Choosing Components: user-guide/building-models/choosing-components.md
