@@ -453,7 +453,7 @@ class ClusterResult:
         result_arrays = expanded_slices
         for dim in reversed(extra_dims):
             dim_vals = dim_coords[dim]
-            grouped = {}
+            grouped: dict[tuple[int, ...], list[xr.DataArray]] = {}
             for key, arr in result_arrays.items():
                 rest_key = key[:-1] if len(key) > 1 else ()
                 grouped.setdefault(rest_key, []).append(arr)

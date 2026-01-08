@@ -2201,7 +2201,7 @@ class SegmentedResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self._colors = {}
+        self._colors: dict[str, str] = {}
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -2614,7 +2614,7 @@ def sanitize_dataset(
     if drop_suffix is not None:
         if not isinstance(drop_suffix, str):
             raise ValueError(f'Only pass str values to drop suffixes. Got {drop_suffix}')
-        unique_dict = {}
+        unique_dict: dict[str, str] = {}
         for var in ds.data_vars:
             new_name = var.split(drop_suffix)[0]
 
@@ -2802,7 +2802,7 @@ def _apply_selection_to_data(
     Returns:
         Tuple of (selected_data, selection_string)
     """
-    selection_string = []
+    selection_string: list[str] = []
 
     if select:
         data = data.sel(select, drop=drop)

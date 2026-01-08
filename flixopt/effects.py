@@ -614,7 +614,7 @@ class EffectCollection(ElementContainer[Effect]):
         dict[tuple[str, str], xr.DataArray],
         dict[tuple[str, str], xr.DataArray],
     ]:
-        shares_periodic = {}
+        shares_periodic: dict[str, dict[str, xr.DataArray]] = {}
         for name, effect in self.items():
             if effect.share_from_periodic:
                 for source, data in effect.share_from_periodic.items():
@@ -623,7 +623,7 @@ class EffectCollection(ElementContainer[Effect]):
                     shares_periodic[source][name] = data
         shares_periodic = calculate_all_conversion_paths(shares_periodic)
 
-        shares_temporal = {}
+        shares_temporal: dict[str, dict[str, xr.DataArray]] = {}
         for name, effect in self.items():
             if effect.share_from_temporal:
                 for source, data in effect.share_from_temporal.items():
@@ -839,7 +839,7 @@ def tuples_to_adjacency_list(edges: list[tuple[str, str]]) -> dict[str, list[str
     Returns:
         Dictionary mapping each source node to a list of its target nodes
     """
-    graph = {}
+    graph: dict[str, list[str]] = {}
 
     for source, target in edges:
         if source not in graph:

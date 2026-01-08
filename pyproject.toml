@@ -246,7 +246,6 @@ disable_error_code = [
     "dict-item",      # Dict entry type mismatches
     "attr-defined",   # Hashable vs str attribute issues (xarray stubs)
     "override",       # Return type mismatches with supertype
-    "var-annotated",  # Empty collection type annotations
     "misc",           # Various edge cases
     "type-var",       # Type variable issues with Hashable
     "type-arg",       # Generic type argument issues

@@ -508,7 +508,7 @@ class Interface:
 
         # Process all constructor parameters
         reference_structure = {'__class__': self.__class__.__name__}
-        all_extracted_arrays = {}
+        all_extracted_arrays: dict[str, xr.DataArray] = {}
 
         for name in self._cached_init_params:
             if name == 'self':  # Skip self and timesteps. Timesteps are directly stored in Datasets
@@ -838,7 +838,7 @@ class Interface:
 
                     # Check for deferred init attributes (defined as class attribute on Element subclasses)
                     # These are serialized but set after construction, not passed to child __init__
-                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                    deferred_attr_names: set[str] = getattr(nested_class, '_deferred_init_attrs', set())
                     deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
                     constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
 
@@ -1491,7 +1491,7 @@ class CompositeContainerMixin(Generic[T_element]):
                 return container[key]
 
         # Element not found - provide helpful error
-        all_elements = {}
+        all_elements: dict[str, T_element] = {}
         for container in self._get_container_groups().values():
             all_elements.update(container)
 
@@ -1528,17 +1528,17 @@ class CompositeContainerMixin(Generic[T_element]):
 
     def values(self) -> list[T_element]:
         """Return all element objects across all containers."""
-        vals = []
+        vals: list[T_element] = []
         for container in self._get_container_groups().values():
             vals.extend(container.values())
         return vals
 
     def items(self) -> list[tuple[str, T_element]]:
         """Return (label, element) pairs for all elements."""
-        items = []
+        result: list[tuple[str, T_element]] = []
         for container in self._get_container_groups().values():
-            items.extend(container.items())
-        return items
+            result.extend(container.items())
+        return result
 
     def _format_grouped_containers(self, title: str | None = None) -> str:
         """
