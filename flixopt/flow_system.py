@@ -29,7 +29,7 @@ from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
-from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .structure import CompositeContainerMixin, ContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
@@ -1909,7 +1909,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return True
 
-    def _get_container_groups(self) -> dict[str, ElementContainer]:
+    def _get_container_groups(self) -> dict[str, ContainerMixin[Any]]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
