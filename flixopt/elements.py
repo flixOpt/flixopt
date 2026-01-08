@@ -95,15 +95,69 @@ class Component(Element):
         color: str | None = None,
     ):
         super().__init__(label, meta_data=meta_data, color=color)
-        self.inputs: list[Flow] = inputs or []
-        self.outputs: list[Flow] = outputs or []
-        self.status_parameters = status_parameters
-        self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+        self._inputs: list[Flow] = inputs or []
+        self._outputs: list[Flow] = outputs or []
+        self._status_parameters = status_parameters
+        self._prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
         self._check_unique_flow_labels()
         self._connect_flows()
 
-        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+        self._flows: dict[str, Flow] = {flow.label: flow for flow in self._inputs + self._outputs}
+
+    # ==================== Properties ====================
+
+    @property
+    def inputs(self) -> list[Flow]:
+        """List of input Flows feeding into the component."""
+        return list(self._inputs)  # Return copy
+
+    @inputs.setter
+    def inputs(self, value: list[Flow]) -> None:
+        self._invalidate()
+        self._inputs = list(value)
+
+    @property
+    def outputs(self) -> list[Flow]:
+        """List of output Flows leaving the component."""
+        return list(self._outputs)  # Return copy
+
+    @outputs.setter
+    def outputs(self, value: list[Flow]) -> None:
+        self._invalidate()
+        self._outputs = list(value)
+
+    @property
+    def status_parameters(self) -> StatusParameters | None:
+        """Defines binary operation constraints and costs."""
+        return self._status_parameters
+
+    @status_parameters.setter
+    def status_parameters(self, value: StatusParameters | None) -> None:
+        self._invalidate()
+        self._status_parameters = value
+
+    @property
+    def prevent_simultaneous_flows(self) -> list[Flow]:
+        """List of Flows that cannot be active simultaneously."""
+        return list(self._prevent_simultaneous_flows)  # Return copy
+
+    @prevent_simultaneous_flows.setter
+    def prevent_simultaneous_flows(self, value: list[Flow]) -> None:
+        self._invalidate()
+        self._prevent_simultaneous_flows = list(value) if value else []
+
+    @property
+    def flows(self) -> dict[str, Flow]:
+        """Dict mapping flow labels to Flow objects."""
+        return dict(self._flows)  # Return copy
+
+    @flows.setter
+    def flows(self, value: dict[str, Flow]) -> None:
+        self._invalidate()
+        self._flows = dict(value)
+
+    # ==================== End Properties ====================
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
@@ -116,20 +170,20 @@ class Component(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        for flow in self.inputs + self.outputs:
+        if self._status_parameters is not None:
+            self._status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
+        for flow in self._inputs + self._outputs:
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
-        if self.status_parameters is not None:
-            self.status_parameters.transform_data()
+        if self._status_parameters is not None:
+            self._status_parameters.transform_data()
 
-        for flow in self.inputs + self.outputs:
+        for flow in self._inputs + self._outputs:
             flow.transform_data()
 
     def _check_unique_flow_labels(self):
-        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
+        all_flow_labels = [flow.label for flow in self._inputs + self._outputs]
 
         if len(set(all_flow_labels)) != len(all_flow_labels):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
@@ -140,8 +194,8 @@ class Component(Element):
 
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
-        if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
+        if self._status_parameters is not None:
+            flows_without_size = [flow.label for flow in self._inputs + self._outputs if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
@@ -151,33 +205,33 @@ class Component(Element):
 
     def _connect_flows(self):
         # Inputs
-        for flow in self.inputs:
+        for flow in self._inputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
                     f'Cannot attach to "{self.label_full}".'
                 )
-            flow.component = self.label_full
-            flow.is_input_in_component = True
+            flow._component = self.label_full  # Use backing field to avoid invalidation
+            flow._is_input_in_component = True
         # Outputs
-        for flow in self.outputs:
+        for flow in self._outputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
                     f'Cannot attach to "{self.label_full}".'
                 )
-            flow.component = self.label_full
-            flow.is_input_in_component = False
+            flow._component = self.label_full  # Use backing field to avoid invalidation
+            flow._is_input_in_component = False
 
         # Validate prevent_simultaneous_flows: only allow local flows
-        if self.prevent_simultaneous_flows:
+        if self._prevent_simultaneous_flows:
             # Deduplicate while preserving order
             seen = set()
-            self.prevent_simultaneous_flows = [
-                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
+            self._prevent_simultaneous_flows = [
+                f for f in self._prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
             ]
-            local = set(self.inputs + self.outputs)
-            foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
+            local = set(self._inputs + self._outputs)
+            foreign = [f for f in self._prevent_simultaneous_flows if f not in local]
             if foreign:
                 names = ', '.join(f.label_full for f in foreign)
                 raise ValueError(
@@ -271,10 +325,54 @@ class Bus(Element):
             kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
         )
         self._validate_kwargs(kwargs)
-        self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
-        self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: list[Flow] = []
-        self.outputs: list[Flow] = []
+        self._carrier = carrier.lower() if carrier else None  # Store as lowercase string
+        self._imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
+        self._inputs: list[Flow] = []
+        self._outputs: list[Flow] = []
+
+    # ==================== Properties ====================
+
+    @property
+    def carrier(self) -> str | None:
+        """Name of the energy/material carrier type."""
+        return self._carrier
+
+    @carrier.setter
+    def carrier(self, value: str | None) -> None:
+        self._invalidate()
+        self._carrier = value.lower() if value else None
+
+    @property
+    def imbalance_penalty_per_flow_hour(self) -> Numeric_TPS | None:
+        """Penalty costs for bus balance violations."""
+        return self._imbalance_penalty_per_flow_hour
+
+    @imbalance_penalty_per_flow_hour.setter
+    def imbalance_penalty_per_flow_hour(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._imbalance_penalty_per_flow_hour = value
+
+    @property
+    def inputs(self) -> list[Flow]:
+        """List of input Flows feeding into this bus."""
+        return list(self._inputs)  # Return copy
+
+    @inputs.setter
+    def inputs(self, value: list[Flow]) -> None:
+        self._invalidate()
+        self._inputs = list(value)
+
+    @property
+    def outputs(self) -> list[Flow]:
+        """List of output Flows leaving this bus."""
+        return list(self._outputs)  # Return copy
+
+    @outputs.setter
+    def outputs(self, value: list[Flow]) -> None:
+        self._invalidate()
+        self._outputs = list(value)
+
+    # ==================== End Properties ====================
 
     def create_model(self, model: FlowSystemModel) -> BusModel:
         self._plausibility_checks()
@@ -287,22 +385,23 @@ class Bus(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        for flow in self.inputs + self.outputs:
+        for flow in self._inputs + self._outputs:
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
-        self.imbalance_penalty_per_flow_hour = self._fit_coords(
-            f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
+        # Use backing field directly to avoid triggering invalidation during transformation
+        self._imbalance_penalty_per_flow_hour = self._fit_coords(
+            f'{self.prefix}|imbalance_penalty_per_flow_hour', self._imbalance_penalty_per_flow_hour
         )
 
     def _plausibility_checks(self) -> None:
-        if self.imbalance_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.imbalance_penalty_per_flow_hour, 0))
+        if self._imbalance_penalty_per_flow_hour is not None:
+            zero_penalty = np.all(np.equal(self._imbalance_penalty_per_flow_hour, 0))
             if zero_penalty:
                 logger.warning(
                     f'In Bus {self.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                 )
-        if len(self.inputs) == 0 and len(self.outputs) == 0:
+        if len(self._inputs) == 0 and len(self._outputs) == 0:
             raise ValueError(
                 f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
             )
@@ -488,32 +587,32 @@ class Flow(Element):
         meta_data: dict | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.size = size
-        self.relative_minimum = relative_minimum
-        self.relative_maximum = relative_maximum
-        self.fixed_relative_profile = fixed_relative_profile
+        self._size = size
+        self._relative_minimum = relative_minimum
+        self._relative_maximum = relative_maximum
+        self._fixed_relative_profile = fixed_relative_profile
 
-        self.load_factor_min = load_factor_min
-        self.load_factor_max = load_factor_max
+        self._load_factor_min = load_factor_min
+        self._load_factor_max = load_factor_max
 
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
-        self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
-        self.flow_hours_max = flow_hours_max
-        self.flow_hours_min = flow_hours_min
-        self.flow_hours_max_over_periods = flow_hours_max_over_periods
-        self.flow_hours_min_over_periods = flow_hours_min_over_periods
-        self.status_parameters = status_parameters
+        self._effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
+        self._flow_hours_max = flow_hours_max
+        self._flow_hours_min = flow_hours_min
+        self._flow_hours_max_over_periods = flow_hours_max_over_periods
+        self._flow_hours_min_over_periods = flow_hours_min_over_periods
+        self._status_parameters = status_parameters
 
-        self.previous_flow_rate = previous_flow_rate
+        self._previous_flow_rate = previous_flow_rate
 
-        self.component: str = 'UnknownComponent'
-        self.is_input_in_component: bool | None = None
+        self._component: str = 'UnknownComponent'
+        self._is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
             raise TypeError(
                 f'Bus {bus.label} is passed as a Bus object to Flow {self.label}. '
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
             )
-        self.bus = bus
+        self._bus = bus
 
     def create_model(self, model: FlowSystemModel) -> FlowModel:
         self._plausibility_checks()
@@ -526,43 +625,211 @@ class Flow(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        if isinstance(self.size, InvestParameters):
-            self.size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
+        if self._status_parameters is not None:
+            self._status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
+        if isinstance(self._size, InvestParameters):
+            self._size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
+
+    # ==================== Properties ====================
+
+    @property
+    def bus(self) -> str:
+        """Bus label this flow connects to."""
+        return self._bus
+
+    @bus.setter
+    def bus(self, value: str) -> None:
+        self._invalidate()
+        self._bus = value
+
+    @property
+    def size(self) -> Numeric_PS | InvestParameters | None:
+        """Flow capacity. Scalar, InvestParameters, or None (unbounded)."""
+        return self._size
+
+    @size.setter
+    def size(self, value: Numeric_PS | InvestParameters | None) -> None:
+        self._invalidate()
+        self._size = value
+
+    @property
+    def relative_minimum(self) -> Numeric_TPS:
+        """Minimum flow rate as fraction of size (0-1)."""
+        return self._relative_minimum
+
+    @relative_minimum.setter
+    def relative_minimum(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._relative_minimum = value
+
+    @property
+    def relative_maximum(self) -> Numeric_TPS:
+        """Maximum flow rate as fraction of size."""
+        return self._relative_maximum
+
+    @relative_maximum.setter
+    def relative_maximum(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._relative_maximum = value
+
+    @property
+    def fixed_relative_profile(self) -> Numeric_TPS | None:
+        """Predetermined pattern as fraction of size."""
+        return self._fixed_relative_profile
+
+    @fixed_relative_profile.setter
+    def fixed_relative_profile(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._fixed_relative_profile = value
+
+    @property
+    def effects_per_flow_hour(self) -> Effect_TPS | Numeric_TPS:
+        """Operational costs/impacts per flow-hour."""
+        # Return a copy for dict to prevent external mutation; pass through other types
+        if isinstance(self._effects_per_flow_hour, dict):
+            return dict(self._effects_per_flow_hour)
+        return self._effects_per_flow_hour
+
+    @effects_per_flow_hour.setter
+    def effects_per_flow_hour(self, value: Effect_TPS | Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._effects_per_flow_hour = value if value is not None else {}
+
+    @property
+    def status_parameters(self) -> StatusParameters | None:
+        """Binary operation constraints (StatusParameters)."""
+        return self._status_parameters
+
+    @status_parameters.setter
+    def status_parameters(self, value: StatusParameters | None) -> None:
+        self._invalidate()
+        self._status_parameters = value
+
+    @property
+    def flow_hours_max(self) -> Numeric_PS | None:
+        """Maximum cumulative flow-hours per period."""
+        return self._flow_hours_max
+
+    @flow_hours_max.setter
+    def flow_hours_max(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._flow_hours_max = value
+
+    @property
+    def flow_hours_min(self) -> Numeric_PS | None:
+        """Minimum cumulative flow-hours per period."""
+        return self._flow_hours_min
+
+    @flow_hours_min.setter
+    def flow_hours_min(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._flow_hours_min = value
+
+    @property
+    def flow_hours_max_over_periods(self) -> Numeric_S | None:
+        """Maximum weighted sum of flow-hours across ALL periods."""
+        return self._flow_hours_max_over_periods
+
+    @flow_hours_max_over_periods.setter
+    def flow_hours_max_over_periods(self, value: Numeric_S | None) -> None:
+        self._invalidate()
+        self._flow_hours_max_over_periods = value
+
+    @property
+    def flow_hours_min_over_periods(self) -> Numeric_S | None:
+        """Minimum weighted sum of flow-hours across ALL periods."""
+        return self._flow_hours_min_over_periods
+
+    @flow_hours_min_over_periods.setter
+    def flow_hours_min_over_periods(self, value: Numeric_S | None) -> None:
+        self._invalidate()
+        self._flow_hours_min_over_periods = value
+
+    @property
+    def load_factor_min(self) -> Numeric_PS | None:
+        """Minimum average utilization (0-1)."""
+        return self._load_factor_min
+
+    @load_factor_min.setter
+    def load_factor_min(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._load_factor_min = value
+
+    @property
+    def load_factor_max(self) -> Numeric_PS | None:
+        """Maximum average utilization (0-1)."""
+        return self._load_factor_max
+
+    @load_factor_max.setter
+    def load_factor_max(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._load_factor_max = value
+
+    @property
+    def previous_flow_rate(self) -> Scalar | list[Scalar] | None:
+        """Initial flow state for active/inactive status at model start."""
+        return self._previous_flow_rate
+
+    @previous_flow_rate.setter
+    def previous_flow_rate(self, value: Scalar | list[Scalar] | None) -> None:
+        self._invalidate()
+        self._previous_flow_rate = value
+
+    @property
+    def component(self) -> str:
+        """Label of the component this flow belongs to."""
+        return self._component
+
+    @component.setter
+    def component(self, value: str) -> None:
+        self._invalidate()
+        self._component = value
+
+    @property
+    def is_input_in_component(self) -> bool | None:
+        """Whether this flow is an input (True) or output (False) in its component."""
+        return self._is_input_in_component
+
+    @is_input_in_component.setter
+    def is_input_in_component(self, value: bool | None) -> None:
+        self._invalidate()
+        self._is_input_in_component = value
+
+    # ==================== End Properties ====================
 
     def transform_data(self) -> None:
-        self.relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = self._fit_coords(f'{self.prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = self._fit_coords(
-            f'{self.prefix}|fixed_relative_profile', self.fixed_relative_profile
+        # Use backing fields directly to avoid triggering invalidation during transformation
+        self._relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self._relative_minimum)
+        self._relative_maximum = self._fit_coords(f'{self.prefix}|relative_maximum', self._relative_maximum)
+        self._fixed_relative_profile = self._fit_coords(
+            f'{self.prefix}|fixed_relative_profile', self._fixed_relative_profile
         )
-        self.effects_per_flow_hour = self._fit_effect_coords(self.prefix, self.effects_per_flow_hour, 'per_flow_hour')
-        self.flow_hours_max = self._fit_coords(
-            f'{self.prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
+        self._effects_per_flow_hour = self._fit_effect_coords(self.prefix, self._effects_per_flow_hour, 'per_flow_hour')
+        self._flow_hours_max = self._fit_coords(
+            f'{self.prefix}|flow_hours_max', self._flow_hours_max, dims=['period', 'scenario']
         )
-        self.flow_hours_min = self._fit_coords(
-            f'{self.prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
+        self._flow_hours_min = self._fit_coords(
+            f'{self.prefix}|flow_hours_min', self._flow_hours_min, dims=['period', 'scenario']
         )
-        self.flow_hours_max_over_periods = self._fit_coords(
-            f'{self.prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
+        self._flow_hours_max_over_periods = self._fit_coords(
+            f'{self.prefix}|flow_hours_max_over_periods', self._flow_hours_max_over_periods, dims=['scenario']
         )
-        self.flow_hours_min_over_periods = self._fit_coords(
-            f'{self.prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
+        self._flow_hours_min_over_periods = self._fit_coords(
+            f'{self.prefix}|flow_hours_min_over_periods', self._flow_hours_min_over_periods, dims=['scenario']
         )
-        self.load_factor_max = self._fit_coords(
-            f'{self.prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
+        self._load_factor_max = self._fit_coords(
+            f'{self.prefix}|load_factor_max', self._load_factor_max, dims=['period', 'scenario']
         )
-        self.load_factor_min = self._fit_coords(
-            f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
+        self._load_factor_min = self._fit_coords(
+            f'{self.prefix}|load_factor_min', self._load_factor_min, dims=['period', 'scenario']
         )
 
-        if self.status_parameters is not None:
-            self.status_parameters.transform_data()
-        if isinstance(self.size, InvestParameters):
-            self.size.transform_data()
-        elif self.size is not None:
-            self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
+        if self._status_parameters is not None:
+            self._status_parameters.transform_data()
+        if isinstance(self._size, InvestParameters):
+            self._size.transform_data()
+        elif self._size is not None:
+            self._size = self._fit_coords(f'{self.prefix}|size', self._size, dims=['period', 'scenario'])
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
@@ -945,11 +1212,12 @@ class BusModel(ElementModel):
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+        # Use backing fields to avoid triggering invalidation during modeling
         # inputs == outputs
-        for flow in self.element.inputs + self.element.outputs:
+        for flow in self.element._inputs + self.element._outputs:
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
-        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs])
-        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
+        inputs = sum([flow.submodel.flow_rate for flow in self.element._inputs])
+        outputs = sum([flow.submodel.flow_rate for flow in self.element._outputs])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
         # Add virtual supply/demand to balance and penalty if needed
@@ -978,8 +1246,8 @@ class BusModel(ElementModel):
             )
 
     def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+        inputs = [flow.submodel.flow_rate.name for flow in self.element._inputs]
+        outputs = [flow.submodel.flow_rate.name for flow in self.element._outputs]
         if self.virtual_supply is not None:
             inputs.append(self.virtual_supply.name)
         if self.virtual_demand is not None:
@@ -988,7 +1256,7 @@ class BusModel(ElementModel):
             **super().results_structure(),
             'inputs': inputs,
             'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+            'flows': [flow.label_full for flow in self.element._inputs + self.element._outputs],
         }
 
 
@@ -1003,22 +1271,23 @@ class ComponentModel(ElementModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        all_flows = self.element.inputs + self.element.outputs
+        # Use backing fields to avoid triggering invalidation during modeling
+        all_flows = self.element._inputs + self.element._outputs
 
         # Set status_parameters on flows if needed
-        if self.element.status_parameters:
+        if self.element._status_parameters:
             for flow in all_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
+                if flow._status_parameters is None:
+                    flow._status_parameters = StatusParameters()
+                    flow._status_parameters.link_to_flow_system(
                         self._model.flow_system, f'{flow.label_full}|status_parameters'
                     )
 
-        if self.element.prevent_simultaneous_flows:
-            for flow in self.element.prevent_simultaneous_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
+        if self.element._prevent_simultaneous_flows:
+            for flow in self.element._prevent_simultaneous_flows:
+                if flow._status_parameters is None:
+                    flow._status_parameters = StatusParameters()
+                    flow._status_parameters.link_to_flow_system(
                         self._model.flow_system, f'{flow.label_full}|status_parameters'
                     )
 
@@ -1027,7 +1296,7 @@ class ComponentModel(ElementModel):
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
         # Create component status variable and StatusModel if needed
-        if self.element.status_parameters:
+        if self.element._status_parameters:
             status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
             if len(all_flows) == 1:
                 self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')
@@ -1044,7 +1313,7 @@ class ComponentModel(ElementModel):
                 StatusModel(
                     model=self._model,
                     label_of_element=self.label_of_element,
-                    parameters=self.element.status_parameters,
+                    parameters=self.element._status_parameters,
                     status=status,
                     label_of_model=self.label_of_element,
                     previous_status=self.previous_status,
@@ -1052,29 +1321,31 @@ class ComponentModel(ElementModel):
                 short_name='status',
             )
 
-        if self.element.prevent_simultaneous_flows:
+        if self.element._prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
-                binary_variables=[flow.submodel.status.status for flow in self.element.prevent_simultaneous_flows],
+                binary_variables=[flow.submodel.status.status for flow in self.element._prevent_simultaneous_flows],
                 short_name='prevent_simultaneous_use',
             )
 
     def results_structure(self):
         return {
             **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+            'inputs': [flow.submodel.flow_rate.name for flow in self.element._inputs],
+            'outputs': [flow.submodel.flow_rate.name for flow in self.element._outputs],
+            'flows': [flow.label_full for flow in self.element._inputs + self.element._outputs],
         }
 
     @property
     def previous_status(self) -> xr.DataArray | None:
         """Previous status of the component, derived from its flows"""
-        if self.element.status_parameters is None:
+        if self.element._status_parameters is None:
             raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
 
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.inputs + self.element.outputs]
+        previous_status = [
+            flow.submodel.status._previous_status for flow in self.element._inputs + self.element._outputs
+        ]
         previous_status = [da for da in previous_status if da is not None]
 
         if not previous_status:  # Empty list

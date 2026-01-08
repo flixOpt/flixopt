@@ -1155,17 +1155,122 @@ class InvestParameters(Interface):
         piecewise_effects_of_investment: PiecewiseEffects | None = None,
         linked_periods: Numeric_PS | tuple[int, int] | None = None,
     ):
-        self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
-        self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
-        self.fixed_size = fixed_size
-        self.mandatory = mandatory
-        self.effects_of_investment_per_size = (
+        self._effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
+        self._effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
+        self._fixed_size = fixed_size
+        self._mandatory = mandatory
+        self._effects_of_investment_per_size = (
             effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
         )
-        self.piecewise_effects_of_investment = piecewise_effects_of_investment
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size
-        self.linked_periods = linked_periods
+        self._piecewise_effects_of_investment = piecewise_effects_of_investment
+        self._minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
+        self._maximum_size = maximum_size
+        self._linked_periods = linked_periods
+
+    # region Properties
+    @property
+    def effects_of_investment(self) -> Effect_PS:
+        """Fixed costs if investment is made."""
+        return (
+            dict(self._effects_of_investment)
+            if isinstance(self._effects_of_investment, dict)
+            else self._effects_of_investment
+        )
+
+    @effects_of_investment.setter
+    def effects_of_investment(self, value: Effect_PS | Numeric_PS | None) -> None:
+        self._invalidate()
+        self._effects_of_investment = value if value is not None else {}
+
+    @property
+    def effects_of_retirement(self) -> Effect_PS:
+        """Costs incurred if NOT investing."""
+        return (
+            dict(self._effects_of_retirement)
+            if isinstance(self._effects_of_retirement, dict)
+            else self._effects_of_retirement
+        )
+
+    @effects_of_retirement.setter
+    def effects_of_retirement(self, value: Effect_PS | Numeric_PS | None) -> None:
+        self._invalidate()
+        self._effects_of_retirement = value if value is not None else {}
+
+    @property
+    def effects_of_investment_per_size(self) -> Effect_PS:
+        """Variable costs proportional to size."""
+        return (
+            dict(self._effects_of_investment_per_size)
+            if isinstance(self._effects_of_investment_per_size, dict)
+            else self._effects_of_investment_per_size
+        )
+
+    @effects_of_investment_per_size.setter
+    def effects_of_investment_per_size(self, value: Effect_PS | Numeric_PS | None) -> None:
+        self._invalidate()
+        self._effects_of_investment_per_size = value if value is not None else {}
+
+    @property
+    def fixed_size(self) -> Numeric_PS | None:
+        """Creates binary decision at this exact size."""
+        return self._fixed_size
+
+    @fixed_size.setter
+    def fixed_size(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._fixed_size = value
+
+    @property
+    def mandatory(self) -> bool:
+        """Whether investment is required."""
+        return self._mandatory
+
+    @mandatory.setter
+    def mandatory(self, value: bool) -> None:
+        self._invalidate()
+        self._mandatory = value
+
+    @property
+    def piecewise_effects_of_investment(self) -> PiecewiseEffects | None:
+        """Non-linear costs using PiecewiseEffects."""
+        return self._piecewise_effects_of_investment
+
+    @piecewise_effects_of_investment.setter
+    def piecewise_effects_of_investment(self, value: PiecewiseEffects | None) -> None:
+        self._invalidate()
+        self._piecewise_effects_of_investment = value
+
+    @property
+    def minimum_size(self) -> Numeric_PS:
+        """Lower bound for continuous sizing."""
+        return self._minimum_size
+
+    @minimum_size.setter
+    def minimum_size(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._minimum_size = value if value is not None else CONFIG.Modeling.epsilon
+
+    @property
+    def maximum_size(self) -> Numeric_PS | None:
+        """Upper bound for continuous sizing."""
+        return self._maximum_size
+
+    @maximum_size.setter
+    def maximum_size(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._maximum_size = value
+
+    @property
+    def linked_periods(self) -> Numeric_PS | tuple[int, int] | None:
+        """Describes which periods are linked."""
+        return self._linked_periods
+
+    @linked_periods.setter
+    def linked_periods(self, value: Numeric_PS | tuple[int, int] | None) -> None:
+        self._invalidate()
+        self._linked_periods = value
+
+    # endregion
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
@@ -1175,53 +1280,54 @@ class InvestParameters(Interface):
 
     def transform_data(self) -> None:
         # Validate that either fixed_size or maximum_size is set
-        if self.fixed_size is None and self.maximum_size is None:
+        if self._fixed_size is None and self._maximum_size is None:
             raise ValueError(
                 f'InvestParameters in "{self.prefix}" requires either fixed_size or maximum_size to be set. '
                 f'An upper bound is needed to properly scale the optimization model.'
             )
-        self.effects_of_investment = self._fit_effect_coords(
+        # Use backing fields directly to avoid triggering invalidation
+        self._effects_of_investment = self._fit_effect_coords(
             prefix=self.prefix,
-            effect_values=self.effects_of_investment,
+            effect_values=self._effects_of_investment,
             suffix='effects_of_investment',
             dims=['period', 'scenario'],
         )
-        self.effects_of_retirement = self._fit_effect_coords(
+        self._effects_of_retirement = self._fit_effect_coords(
             prefix=self.prefix,
-            effect_values=self.effects_of_retirement,
+            effect_values=self._effects_of_retirement,
             suffix='effects_of_retirement',
             dims=['period', 'scenario'],
         )
-        self.effects_of_investment_per_size = self._fit_effect_coords(
+        self._effects_of_investment_per_size = self._fit_effect_coords(
             prefix=self.prefix,
-            effect_values=self.effects_of_investment_per_size,
+            effect_values=self._effects_of_investment_per_size,
             suffix='effects_of_investment_per_size',
             dims=['period', 'scenario'],
         )
 
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data()
+        if self._piecewise_effects_of_investment is not None:
+            self._piecewise_effects_of_investment.has_time_dim = False
+            self._piecewise_effects_of_investment.transform_data()
 
-        self.minimum_size = self._fit_coords(
-            f'{self.prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
+        self._minimum_size = self._fit_coords(
+            f'{self.prefix}|minimum_size', self._minimum_size, dims=['period', 'scenario']
         )
-        self.maximum_size = self._fit_coords(
-            f'{self.prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
+        self._maximum_size = self._fit_coords(
+            f'{self.prefix}|maximum_size', self._maximum_size, dims=['period', 'scenario']
         )
         # Convert tuple (first_period, last_period) to DataArray if needed
-        if isinstance(self.linked_periods, (tuple, list)):
-            if len(self.linked_periods) != 2:
+        if isinstance(self._linked_periods, (tuple, list)):
+            if len(self._linked_periods) != 2:
                 raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
+                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self._linked_periods)=}'
                 )
             if self.flow_system.periods is None:
                 raise ValueError(
-                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
+                    f'Cannot use linked_periods={self._linked_periods} when FlowSystem has no periods defined. '
                     f'Please define periods in FlowSystem or use linked_periods=None.'
                 )
-            logger.debug(f'Computing linked_periods from {self.linked_periods}')
-            start, end = self.linked_periods
+            logger.debug(f'Computing linked_periods from {self._linked_periods}')
+            start, end = self._linked_periods
             if start not in self.flow_system.periods.values:
                 logger.warning(
                     f'Start of linked periods ({start} not found in periods directly: {self.flow_system.periods.values}'
@@ -1230,13 +1336,13 @@ class InvestParameters(Interface):
                 logger.warning(
                     f'End of linked periods ({end} not found in periods directly: {self.flow_system.periods.values}'
                 )
-            self.linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
-            logger.debug(f'Computed {self.linked_periods=}')
+            self._linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
+            logger.debug(f'Computed {self._linked_periods=}')
 
-        self.linked_periods = self._fit_coords(
-            f'{self.prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
+        self._linked_periods = self._fit_coords(
+            f'{self.prefix}|linked_periods', self._linked_periods, dims=['period', 'scenario']
         )
-        self.fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
+        self._fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self._fixed_size, dims=['period', 'scenario'])
 
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
@@ -1482,41 +1588,163 @@ class StatusParameters(Interface):
         force_startup_tracking: bool = False,
         cluster_mode: Literal['relaxed', 'cyclic'] = 'relaxed',
     ):
-        self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
-        self.effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
-        self.active_hours_min = active_hours_min
-        self.active_hours_max = active_hours_max
-        self.min_uptime = min_uptime
-        self.max_uptime = max_uptime
-        self.min_downtime = min_downtime
-        self.max_downtime = max_downtime
-        self.startup_limit = startup_limit
-        self.force_startup_tracking: bool = force_startup_tracking
-        self.cluster_mode = cluster_mode
+        self._effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
+        self._effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
+        self._active_hours_min = active_hours_min
+        self._active_hours_max = active_hours_max
+        self._min_uptime = min_uptime
+        self._max_uptime = max_uptime
+        self._min_downtime = min_downtime
+        self._max_downtime = max_downtime
+        self._startup_limit = startup_limit
+        self._force_startup_tracking: bool = force_startup_tracking
+        self._cluster_mode = cluster_mode
+
+    # region Properties
+    @property
+    def effects_per_startup(self) -> Effect_TPS:
+        """Costs per startup transition."""
+        return (
+            dict(self._effects_per_startup)
+            if isinstance(self._effects_per_startup, dict)
+            else self._effects_per_startup
+        )
+
+    @effects_per_startup.setter
+    def effects_per_startup(self, value: Effect_TPS | Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._effects_per_startup = value if value is not None else {}
+
+    @property
+    def effects_per_active_hour(self) -> Effect_TPS:
+        """Ongoing costs while active."""
+        return (
+            dict(self._effects_per_active_hour)
+            if isinstance(self._effects_per_active_hour, dict)
+            else self._effects_per_active_hour
+        )
+
+    @effects_per_active_hour.setter
+    def effects_per_active_hour(self, value: Effect_TPS | Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._effects_per_active_hour = value if value is not None else {}
+
+    @property
+    def active_hours_min(self) -> Numeric_PS | None:
+        """Minimum total active hours per period."""
+        return self._active_hours_min
+
+    @active_hours_min.setter
+    def active_hours_min(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._active_hours_min = value
+
+    @property
+    def active_hours_max(self) -> Numeric_PS | None:
+        """Maximum total active hours per period."""
+        return self._active_hours_max
+
+    @active_hours_max.setter
+    def active_hours_max(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._active_hours_max = value
+
+    @property
+    def min_uptime(self) -> Numeric_TPS | None:
+        """Minimum continuous operating duration once started."""
+        return self._min_uptime
+
+    @min_uptime.setter
+    def min_uptime(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._min_uptime = value
+
+    @property
+    def max_uptime(self) -> Numeric_TPS | None:
+        """Maximum continuous operating duration."""
+        return self._max_uptime
+
+    @max_uptime.setter
+    def max_uptime(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._max_uptime = value
+
+    @property
+    def min_downtime(self) -> Numeric_TPS | None:
+        """Minimum continuous shutdown duration."""
+        return self._min_downtime
+
+    @min_downtime.setter
+    def min_downtime(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._min_downtime = value
+
+    @property
+    def max_downtime(self) -> Numeric_TPS | None:
+        """Maximum continuous shutdown duration."""
+        return self._max_downtime
+
+    @max_downtime.setter
+    def max_downtime(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._max_downtime = value
+
+    @property
+    def startup_limit(self) -> Numeric_PS | None:
+        """Maximum number of startups per period."""
+        return self._startup_limit
+
+    @startup_limit.setter
+    def startup_limit(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._startup_limit = value
+
+    @property
+    def force_startup_tracking(self) -> bool:
+        """Whether to create startup variables even without limits."""
+        return self._force_startup_tracking
+
+    @force_startup_tracking.setter
+    def force_startup_tracking(self, value: bool) -> None:
+        self._invalidate()
+        self._force_startup_tracking = value
+
+    @property
+    def cluster_mode(self) -> Literal['relaxed', 'cyclic']:
+        """How this on/off is treated during clustering optimization."""
+        return self._cluster_mode
+
+    @cluster_mode.setter
+    def cluster_mode(self, value: Literal['relaxed', 'cyclic']) -> None:
+        self._invalidate()
+        self._cluster_mode = value
+
+    # endregion
 
     def transform_data(self) -> None:
-        self.effects_per_startup = self._fit_effect_coords(
+        # Use backing fields directly to avoid triggering invalidation
+        self._effects_per_startup = self._fit_effect_coords(
             prefix=self.prefix,
-            effect_values=self.effects_per_startup,
+            effect_values=self._effects_per_startup,
             suffix='per_startup',
         )
-        self.effects_per_active_hour = self._fit_effect_coords(
+        self._effects_per_active_hour = self._fit_effect_coords(
             prefix=self.prefix,
-            effect_values=self.effects_per_active_hour,
+            effect_values=self._effects_per_active_hour,
             suffix='per_active_hour',
         )
-        self.min_uptime = self._fit_coords(f'{self.prefix}|min_uptime', self.min_uptime)
-        self.max_uptime = self._fit_coords(f'{self.prefix}|max_uptime', self.max_uptime)
-        self.min_downtime = self._fit_coords(f'{self.prefix}|min_downtime', self.min_downtime)
-        self.max_downtime = self._fit_coords(f'{self.prefix}|max_downtime', self.max_downtime)
-        self.active_hours_max = self._fit_coords(
-            f'{self.prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
+        self._min_uptime = self._fit_coords(f'{self.prefix}|min_uptime', self._min_uptime)
+        self._max_uptime = self._fit_coords(f'{self.prefix}|max_uptime', self._max_uptime)
+        self._min_downtime = self._fit_coords(f'{self.prefix}|min_downtime', self._min_downtime)
+        self._max_downtime = self._fit_coords(f'{self.prefix}|max_downtime', self._max_downtime)
+        self._active_hours_max = self._fit_coords(
+            f'{self.prefix}|active_hours_max', self._active_hours_max, dims=['period', 'scenario']
         )
-        self.active_hours_min = self._fit_coords(
-            f'{self.prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
+        self._active_hours_min = self._fit_coords(
+            f'{self.prefix}|active_hours_min', self._active_hours_min, dims=['period', 'scenario']
         )
-        self.startup_limit = self._fit_coords(
-            f'{self.prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
+        self._startup_limit = self._fit_coords(
+            f'{self.prefix}|startup_limit', self._startup_limit, dims=['period', 'scenario']
         )
 
     @property

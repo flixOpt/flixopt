@@ -206,9 +206,9 @@ class Effect(Element):
         maximum_over_periods: Numeric_S | None = None,
     ):
         super().__init__(label, meta_data=meta_data)
-        self.unit = unit
-        self.description = description
-        self.is_standard = is_standard
+        self._unit = unit
+        self._description = description
+        self._is_standard = is_standard
 
         # Validate that Penalty cannot be set as objective
         if is_objective and label == PENALTY_EFFECT_LABEL:
@@ -217,25 +217,180 @@ class Effect(Element):
                 f'Please use a different effect as the optimization objective.'
             )
 
-        self.is_objective = is_objective
-        self.period_weights = period_weights
+        self._is_objective = is_objective
+        self._period_weights = period_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
         # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
         # Default to {} when None (no shares defined).
-        self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
+        self._share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
+        self._share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
 
-        # Set attributes directly
-        self.minimum_temporal = minimum_temporal
-        self.maximum_temporal = maximum_temporal
-        self.minimum_periodic = minimum_periodic
-        self.maximum_periodic = maximum_periodic
-        self.minimum_per_hour = minimum_per_hour
-        self.maximum_per_hour = maximum_per_hour
-        self.minimum_total = minimum_total
-        self.maximum_total = maximum_total
-        self.minimum_over_periods = minimum_over_periods
-        self.maximum_over_periods = maximum_over_periods
+        # Set backing fields directly
+        self._minimum_temporal = minimum_temporal
+        self._maximum_temporal = maximum_temporal
+        self._minimum_periodic = minimum_periodic
+        self._maximum_periodic = maximum_periodic
+        self._minimum_per_hour = minimum_per_hour
+        self._maximum_per_hour = maximum_per_hour
+        self._minimum_total = minimum_total
+        self._maximum_total = maximum_total
+        self._minimum_over_periods = minimum_over_periods
+        self._maximum_over_periods = maximum_over_periods
+
+    # --- Properties with invalidation ---
+
+    @property
+    def unit(self) -> str:
+        return self._unit
+
+    @unit.setter
+    def unit(self, value: str) -> None:
+        self._invalidate()
+        self._unit = value
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @description.setter
+    def description(self, value: str) -> None:
+        self._invalidate()
+        self._description = value
+
+    @property
+    def is_standard(self) -> bool:
+        return self._is_standard
+
+    @is_standard.setter
+    def is_standard(self, value: bool) -> None:
+        self._invalidate()
+        self._is_standard = value
+
+    @property
+    def is_objective(self) -> bool:
+        return self._is_objective
+
+    @is_objective.setter
+    def is_objective(self, value: bool) -> None:
+        self._invalidate()
+        self._is_objective = value
+
+    @property
+    def period_weights(self) -> Numeric_PS | None:
+        return self._period_weights
+
+    @period_weights.setter
+    def period_weights(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._period_weights = value
+
+    @property
+    def share_from_temporal(self) -> Effect_TPS | Numeric_TPS:
+        return dict(self._share_from_temporal) if self._share_from_temporal else {}
+
+    @share_from_temporal.setter
+    def share_from_temporal(self, value: Effect_TPS | Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._share_from_temporal = value if value is not None else {}
+
+    @property
+    def share_from_periodic(self) -> Effect_PS | Numeric_PS:
+        return dict(self._share_from_periodic) if self._share_from_periodic else {}
+
+    @share_from_periodic.setter
+    def share_from_periodic(self, value: Effect_PS | Numeric_PS | None) -> None:
+        self._invalidate()
+        self._share_from_periodic = value if value is not None else {}
+
+    @property
+    def minimum_temporal(self) -> Numeric_PS | None:
+        return self._minimum_temporal
+
+    @minimum_temporal.setter
+    def minimum_temporal(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._minimum_temporal = value
+
+    @property
+    def maximum_temporal(self) -> Numeric_PS | None:
+        return self._maximum_temporal
+
+    @maximum_temporal.setter
+    def maximum_temporal(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._maximum_temporal = value
+
+    @property
+    def minimum_periodic(self) -> Numeric_PS | None:
+        return self._minimum_periodic
+
+    @minimum_periodic.setter
+    def minimum_periodic(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._minimum_periodic = value
+
+    @property
+    def maximum_periodic(self) -> Numeric_PS | None:
+        return self._maximum_periodic
+
+    @maximum_periodic.setter
+    def maximum_periodic(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._maximum_periodic = value
+
+    @property
+    def minimum_per_hour(self) -> Numeric_TPS | None:
+        return self._minimum_per_hour
+
+    @minimum_per_hour.setter
+    def minimum_per_hour(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._minimum_per_hour = value
+
+    @property
+    def maximum_per_hour(self) -> Numeric_TPS | None:
+        return self._maximum_per_hour
+
+    @maximum_per_hour.setter
+    def maximum_per_hour(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._maximum_per_hour = value
+
+    @property
+    def minimum_total(self) -> Numeric_PS | None:
+        return self._minimum_total
+
+    @minimum_total.setter
+    def minimum_total(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._minimum_total = value
+
+    @property
+    def maximum_total(self) -> Numeric_PS | None:
+        return self._maximum_total
+
+    @maximum_total.setter
+    def maximum_total(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._maximum_total = value
+
+    @property
+    def minimum_over_periods(self) -> Numeric_S | None:
+        return self._minimum_over_periods
+
+    @minimum_over_periods.setter
+    def minimum_over_periods(self, value: Numeric_S | None) -> None:
+        self._invalidate()
+        self._minimum_over_periods = value
+
+    @property
+    def maximum_over_periods(self) -> Numeric_S | None:
+        return self._maximum_over_periods
+
+    @maximum_over_periods.setter
+    def maximum_over_periods(self, value: Numeric_S | None) -> None:
+        self._invalidate()
+        self._maximum_over_periods = value
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Link this effect to a FlowSystem.
@@ -245,47 +400,48 @@ class Effect(Element):
         super().link_to_flow_system(flow_system, self.label_full)
 
     def transform_data(self) -> None:
-        self.minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self.minimum_per_hour)
-        self.maximum_per_hour = self._fit_coords(f'{self.prefix}|maximum_per_hour', self.maximum_per_hour)
+        # Use backing fields directly to avoid triggering invalidation
+        self._minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self._minimum_per_hour)
+        self._maximum_per_hour = self._fit_coords(f'{self.prefix}|maximum_per_hour', self._maximum_per_hour)
 
-        self.share_from_temporal = self._fit_effect_coords(
+        self._share_from_temporal = self._fit_effect_coords(
             prefix=None,
-            effect_values=self.share_from_temporal,
+            effect_values=self._share_from_temporal,
             suffix=f'(temporal)->{self.prefix}(temporal)',
         )
-        self.share_from_periodic = self._fit_effect_coords(
+        self._share_from_periodic = self._fit_effect_coords(
             prefix=None,
-            effect_values=self.share_from_periodic,
+            effect_values=self._share_from_periodic,
             suffix=f'(periodic)->{self.prefix}(periodic)',
             dims=['period', 'scenario'],
         )
 
-        self.minimum_temporal = self._fit_coords(
-            f'{self.prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
+        self._minimum_temporal = self._fit_coords(
+            f'{self.prefix}|minimum_temporal', self._minimum_temporal, dims=['period', 'scenario']
         )
-        self.maximum_temporal = self._fit_coords(
-            f'{self.prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
+        self._maximum_temporal = self._fit_coords(
+            f'{self.prefix}|maximum_temporal', self._maximum_temporal, dims=['period', 'scenario']
         )
-        self.minimum_periodic = self._fit_coords(
-            f'{self.prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
+        self._minimum_periodic = self._fit_coords(
+            f'{self.prefix}|minimum_periodic', self._minimum_periodic, dims=['period', 'scenario']
         )
-        self.maximum_periodic = self._fit_coords(
-            f'{self.prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
+        self._maximum_periodic = self._fit_coords(
+            f'{self.prefix}|maximum_periodic', self._maximum_periodic, dims=['period', 'scenario']
         )
-        self.minimum_total = self._fit_coords(
-            f'{self.prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
+        self._minimum_total = self._fit_coords(
+            f'{self.prefix}|minimum_total', self._minimum_total, dims=['period', 'scenario']
         )
-        self.maximum_total = self._fit_coords(
-            f'{self.prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
+        self._maximum_total = self._fit_coords(
+            f'{self.prefix}|maximum_total', self._maximum_total, dims=['period', 'scenario']
         )
-        self.minimum_over_periods = self._fit_coords(
-            f'{self.prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
+        self._minimum_over_periods = self._fit_coords(
+            f'{self.prefix}|minimum_over_periods', self._minimum_over_periods, dims=['scenario']
         )
-        self.maximum_over_periods = self._fit_coords(
-            f'{self.prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
+        self._maximum_over_periods = self._fit_coords(
+            f'{self.prefix}|maximum_over_periods', self._maximum_over_periods, dims=['scenario']
         )
-        self.period_weights = self._fit_coords(
-            f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
+        self._period_weights = self._fit_coords(
+            f'{self.prefix}|period_weights', self._period_weights, dims=['period', 'scenario']
         )
 
     def create_model(self, model: FlowSystemModel) -> EffectModel:

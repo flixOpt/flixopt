@@ -435,6 +435,31 @@ class Interface:
         self._flow_system = flow_system
         self._prefix = prefix
 
+    def _invalidate(self) -> None:
+        """Invalidate the FlowSystem's model if this interface is linked to one.
+
+        Called by property setters to ensure the FlowSystem is re-transformed
+        after any parameter modification. This prevents silent bugs where
+        modifications don't take effect because the model was already built.
+
+        Raises:
+            RuntimeError: If the FlowSystem has a solution (is locked).
+                Call ``flow_system.reset()`` first to clear the solution.
+        """
+        if self._flow_system is not None:
+            if self._flow_system.is_locked:
+                # Build a helpful identifier for the object being modified
+                obj_id = getattr(self, 'label_full', None) or getattr(self, 'label', None) or self.__class__.__name__
+                raise RuntimeError(
+                    f"Cannot modify '{obj_id}' after optimization. "
+                    f'The FlowSystem has a solution and is locked.\n'
+                    f'To modify parameters and re-optimize:\n'
+                    f'  1. Call flow_system.reset() to clear the solution\n'
+                    f'  2. Make your modifications\n'
+                    f'  3. Call flow_system.optimize(solver) again'
+                )
+            self._flow_system._invalidate_model()
+
     @property
     def flow_system(self) -> FlowSystem:
         """Access the FlowSystem this interface is linked to.
@@ -1129,14 +1154,46 @@ class Element(Interface):
             _variable_names: Internal. Variable names for this element (populated after modeling).
             _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
-        self.label = Element._valid_label(label)
-        self.meta_data = meta_data if meta_data is not None else {}
-        self.color = color
+        self._label = Element._valid_label(label)
+        self._meta_data = meta_data if meta_data is not None else {}
+        self._color = color
         self.submodel = None
         self._flow_system: FlowSystem | None = None
         # Variable/constraint names - populated after modeling, serialized for results
         self._variable_names: list[str] = _variable_names if _variable_names is not None else []
         self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
+
+    @property
+    def label(self) -> str:
+        """The unique label identifying this element. Immutable after creation."""
+        return self._label
+
+    @label.setter
+    def label(self, value: str) -> None:
+        raise AttributeError(
+            f"Cannot modify 'label' on '{self._label}'. Labels are immutable after element creation. "
+            f'Create a new element with the desired label instead.'
+        )
+
+    @property
+    def meta_data(self) -> dict:
+        """Metadata dictionary for storing additional information about the element."""
+        return self._meta_data
+
+    @meta_data.setter
+    def meta_data(self, value: dict) -> None:
+        self._invalidate()
+        self._meta_data = value if value is not None else {}
+
+    @property
+    def color(self) -> str | None:
+        """Optional color for visualizations (e.g., '#FF6B6B')."""
+        return self._color
+
+    @color.setter
+    def color(self, value: str | None) -> None:
+        self._invalidate()
+        self._color = value
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.

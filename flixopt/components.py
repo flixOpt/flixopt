@@ -173,8 +173,31 @@ class LinearConverter(Component):
         meta_data: dict | None = None,
     ):
         super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data)
-        self.conversion_factors = conversion_factors or []
-        self.piecewise_conversion = piecewise_conversion
+        self._conversion_factors = conversion_factors or []
+        self._piecewise_conversion = piecewise_conversion
+
+    # region Properties
+    @property
+    def conversion_factors(self) -> list[dict[str, Numeric_TPS]]:
+        """Linear relationships between flows expressed as a list of dictionaries."""
+        return list(self._conversion_factors)  # Return copy
+
+    @conversion_factors.setter
+    def conversion_factors(self, value: list[dict[str, Numeric_TPS]] | None) -> None:
+        self._invalidate()
+        self._conversion_factors = value or []
+
+    @property
+    def piecewise_conversion(self) -> PiecewiseConversion | None:
+        """Piecewise linear relationships between flow rates."""
+        return self._piecewise_conversion
+
+    @piecewise_conversion.setter
+    def piecewise_conversion(self, value: PiecewiseConversion | None) -> None:
+        self._invalidate()
+        self._piecewise_conversion = value
+
+    # endregion
 
     def create_model(self, model: FlowSystemModel) -> LinearConverterModel:
         self._plausibility_checks()
@@ -184,8 +207,8 @@ class LinearConverter(Component):
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
         super().link_to_flow_system(flow_system, prefix)
-        if self.piecewise_conversion is not None:
-            self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
+        if self._piecewise_conversion is not None:
+            self._piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
     def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
@@ -219,16 +242,17 @@ class LinearConverter(Component):
 
     def transform_data(self) -> None:
         super().transform_data()
-        if self.conversion_factors:
-            self.conversion_factors = self._transform_conversion_factors()
-        if self.piecewise_conversion:
-            self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data()
+        # Use backing fields directly to avoid triggering invalidation
+        if self._conversion_factors:
+            self._conversion_factors = self._transform_conversion_factors()
+        if self._piecewise_conversion:
+            self._piecewise_conversion.has_time_dim = True
+            self._piecewise_conversion.transform_data()
 
     def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
         list_of_conversion_factors = []
-        for idx, conversion_factor in enumerate(self.conversion_factors):
+        for idx, conversion_factor in enumerate(self._conversion_factors):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
@@ -426,25 +450,188 @@ class Storage(Component):
             meta_data=meta_data,
         )
 
-        self.charging = charging
-        self.discharging = discharging
-        self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: Numeric_TPS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: Numeric_TPS = relative_maximum_charge_state
+        self._charging = charging
+        self._discharging = discharging
+        self._capacity_in_flow_hours = capacity_in_flow_hours
+        self._relative_minimum_charge_state: Numeric_TPS = relative_minimum_charge_state
+        self._relative_maximum_charge_state: Numeric_TPS = relative_maximum_charge_state
 
-        self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
-        self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
+        self._relative_minimum_final_charge_state = relative_minimum_final_charge_state
+        self._relative_maximum_final_charge_state = relative_maximum_final_charge_state
 
-        self.initial_charge_state = initial_charge_state
-        self.minimal_final_charge_state = minimal_final_charge_state
-        self.maximal_final_charge_state = maximal_final_charge_state
+        self._initial_charge_state = initial_charge_state
+        self._minimal_final_charge_state = minimal_final_charge_state
+        self._maximal_final_charge_state = maximal_final_charge_state
 
-        self.eta_charge: Numeric_TPS = eta_charge
-        self.eta_discharge: Numeric_TPS = eta_discharge
-        self.relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
-        self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
-        self.balanced = balanced
-        self.cluster_mode = cluster_mode
+        self._eta_charge: Numeric_TPS = eta_charge
+        self._eta_discharge: Numeric_TPS = eta_discharge
+        self._relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
+        self._prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+        self._balanced = balanced
+        self._cluster_mode = cluster_mode
+
+    # region Properties
+    @property
+    def charging(self) -> Flow:
+        """Incoming flow for loading the storage."""
+        return self._charging
+
+    @charging.setter
+    def charging(self, value: Flow) -> None:
+        self._invalidate()
+        self._charging = value
+
+    @property
+    def discharging(self) -> Flow:
+        """Outgoing flow for unloading the storage."""
+        return self._discharging
+
+    @discharging.setter
+    def discharging(self, value: Flow) -> None:
+        self._invalidate()
+        self._discharging = value
+
+    @property
+    def capacity_in_flow_hours(self) -> Numeric_PS | InvestParameters | None:
+        """Storage capacity in flow-hours."""
+        return self._capacity_in_flow_hours
+
+    @capacity_in_flow_hours.setter
+    def capacity_in_flow_hours(self, value: Numeric_PS | InvestParameters | None) -> None:
+        self._invalidate()
+        self._capacity_in_flow_hours = value
+
+    @property
+    def relative_minimum_charge_state(self) -> Numeric_TPS:
+        """Minimum charge state (0-1)."""
+        return self._relative_minimum_charge_state
+
+    @relative_minimum_charge_state.setter
+    def relative_minimum_charge_state(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._relative_minimum_charge_state = value
+
+    @property
+    def relative_maximum_charge_state(self) -> Numeric_TPS:
+        """Maximum charge state (0-1)."""
+        return self._relative_maximum_charge_state
+
+    @relative_maximum_charge_state.setter
+    def relative_maximum_charge_state(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._relative_maximum_charge_state = value
+
+    @property
+    def initial_charge_state(self) -> Numeric_PS | Literal['equals_final'] | None:
+        """Charge at start of optimization."""
+        return self._initial_charge_state
+
+    @initial_charge_state.setter
+    def initial_charge_state(self, value: Numeric_PS | Literal['equals_final'] | None) -> None:
+        self._invalidate()
+        self._initial_charge_state = value
+
+    @property
+    def minimal_final_charge_state(self) -> Numeric_PS | None:
+        """Minimum absolute charge required at end."""
+        return self._minimal_final_charge_state
+
+    @minimal_final_charge_state.setter
+    def minimal_final_charge_state(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._minimal_final_charge_state = value
+
+    @property
+    def maximal_final_charge_state(self) -> Numeric_PS | None:
+        """Maximum absolute charge allowed at end."""
+        return self._maximal_final_charge_state
+
+    @maximal_final_charge_state.setter
+    def maximal_final_charge_state(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._maximal_final_charge_state = value
+
+    @property
+    def relative_minimum_final_charge_state(self) -> Numeric_PS | None:
+        """Minimum relative charge at end."""
+        return self._relative_minimum_final_charge_state
+
+    @relative_minimum_final_charge_state.setter
+    def relative_minimum_final_charge_state(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._relative_minimum_final_charge_state = value
+
+    @property
+    def relative_maximum_final_charge_state(self) -> Numeric_PS | None:
+        """Maximum relative charge at end."""
+        return self._relative_maximum_final_charge_state
+
+    @relative_maximum_final_charge_state.setter
+    def relative_maximum_final_charge_state(self, value: Numeric_PS | None) -> None:
+        self._invalidate()
+        self._relative_maximum_final_charge_state = value
+
+    @property
+    def eta_charge(self) -> Numeric_TPS:
+        """Charging efficiency (0-1)."""
+        return self._eta_charge
+
+    @eta_charge.setter
+    def eta_charge(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._eta_charge = value
+
+    @property
+    def eta_discharge(self) -> Numeric_TPS:
+        """Discharging efficiency (0-1)."""
+        return self._eta_discharge
+
+    @eta_discharge.setter
+    def eta_discharge(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._eta_discharge = value
+
+    @property
+    def relative_loss_per_hour(self) -> Numeric_TPS:
+        """Self-discharge per hour (0-0.1)."""
+        return self._relative_loss_per_hour
+
+    @relative_loss_per_hour.setter
+    def relative_loss_per_hour(self, value: Numeric_TPS) -> None:
+        self._invalidate()
+        self._relative_loss_per_hour = value
+
+    @property
+    def prevent_simultaneous_charge_and_discharge(self) -> bool:
+        """Prevent charging and discharging simultaneously."""
+        return self._prevent_simultaneous_charge_and_discharge
+
+    @prevent_simultaneous_charge_and_discharge.setter
+    def prevent_simultaneous_charge_and_discharge(self, value: bool) -> None:
+        self._invalidate()
+        self._prevent_simultaneous_charge_and_discharge = value
+
+    @property
+    def balanced(self) -> bool:
+        """Whether charging and discharging flows are balanced."""
+        return self._balanced
+
+    @balanced.setter
+    def balanced(self, value: bool) -> None:
+        self._invalidate()
+        self._balanced = value
+
+    @property
+    def cluster_mode(self) -> Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic']:
+        """How this storage is treated during clustering optimization."""
+        return self._cluster_mode
+
+    @cluster_mode.setter
+    def cluster_mode(self, value: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic']) -> None:
+        self._invalidate()
+        self._cluster_mode = value
+
+    # endregion
 
     def create_model(self, model: FlowSystemModel) -> StorageModel:
         """Create the appropriate storage model based on cluster_mode and flow system state.
@@ -483,42 +670,43 @@ class Storage(Component):
 
     def transform_data(self) -> None:
         super().transform_data()
-        self.relative_minimum_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
+        # Use backing fields directly to avoid triggering invalidation
+        self._relative_minimum_charge_state = self._fit_coords(
+            f'{self.prefix}|relative_minimum_charge_state', self._relative_minimum_charge_state
         )
-        self.relative_maximum_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
+        self._relative_maximum_charge_state = self._fit_coords(
+            f'{self.prefix}|relative_maximum_charge_state', self._relative_maximum_charge_state
         )
-        self.eta_charge = self._fit_coords(f'{self.prefix}|eta_charge', self.eta_charge)
-        self.eta_discharge = self._fit_coords(f'{self.prefix}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = self._fit_coords(
-            f'{self.prefix}|relative_loss_per_hour', self.relative_loss_per_hour
+        self._eta_charge = self._fit_coords(f'{self.prefix}|eta_charge', self._eta_charge)
+        self._eta_discharge = self._fit_coords(f'{self.prefix}|eta_discharge', self._eta_discharge)
+        self._relative_loss_per_hour = self._fit_coords(
+            f'{self.prefix}|relative_loss_per_hour', self._relative_loss_per_hour
         )
-        if self.initial_charge_state is not None and not isinstance(self.initial_charge_state, str):
-            self.initial_charge_state = self._fit_coords(
-                f'{self.prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
+        if self._initial_charge_state is not None and not isinstance(self._initial_charge_state, str):
+            self._initial_charge_state = self._fit_coords(
+                f'{self.prefix}|initial_charge_state', self._initial_charge_state, dims=['period', 'scenario']
             )
-        self.minimal_final_charge_state = self._fit_coords(
-            f'{self.prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
+        self._minimal_final_charge_state = self._fit_coords(
+            f'{self.prefix}|minimal_final_charge_state', self._minimal_final_charge_state, dims=['period', 'scenario']
         )
-        self.maximal_final_charge_state = self._fit_coords(
-            f'{self.prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
+        self._maximal_final_charge_state = self._fit_coords(
+            f'{self.prefix}|maximal_final_charge_state', self._maximal_final_charge_state, dims=['period', 'scenario']
         )
-        self.relative_minimum_final_charge_state = self._fit_coords(
+        self._relative_minimum_final_charge_state = self._fit_coords(
             f'{self.prefix}|relative_minimum_final_charge_state',
-            self.relative_minimum_final_charge_state,
+            self._relative_minimum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        self.relative_maximum_final_charge_state = self._fit_coords(
+        self._relative_maximum_final_charge_state = self._fit_coords(
             f'{self.prefix}|relative_maximum_final_charge_state',
-            self.relative_maximum_final_charge_state,
+            self._relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data()
+        if isinstance(self._capacity_in_flow_hours, InvestParameters):
+            self._capacity_in_flow_hours.transform_data()
         else:
-            self.capacity_in_flow_hours = self._fit_coords(
-                f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
+            self._capacity_in_flow_hours = self._fit_coords(
+                f'{self.prefix}|capacity_in_flow_hours', self._capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
     def _plausibility_checks(self) -> None:
@@ -750,14 +938,87 @@ class Transmission(Component):
             else [in1, in2],
             meta_data=meta_data,
         )
-        self.in1 = in1
-        self.out1 = out1
-        self.in2 = in2
-        self.out2 = out2
+        self._in1 = in1
+        self._out1 = out1
+        self._in2 = in2
+        self._out2 = out2
 
-        self.relative_losses = relative_losses
-        self.absolute_losses = absolute_losses
-        self.balanced = balanced
+        self._relative_losses = relative_losses
+        self._absolute_losses = absolute_losses
+        self._balanced = balanced
+
+    # region Properties
+    @property
+    def in1(self) -> Flow:
+        """Primary inflow (side A)."""
+        return self._in1
+
+    @in1.setter
+    def in1(self, value: Flow) -> None:
+        self._invalidate()
+        self._in1 = value
+
+    @property
+    def out1(self) -> Flow:
+        """Primary outflow (side B)."""
+        return self._out1
+
+    @out1.setter
+    def out1(self, value: Flow) -> None:
+        self._invalidate()
+        self._out1 = value
+
+    @property
+    def in2(self) -> Flow | None:
+        """Secondary inflow (side B) for bidirectional operation."""
+        return self._in2
+
+    @in2.setter
+    def in2(self, value: Flow | None) -> None:
+        self._invalidate()
+        self._in2 = value
+
+    @property
+    def out2(self) -> Flow | None:
+        """Secondary outflow (side A) for bidirectional operation."""
+        return self._out2
+
+    @out2.setter
+    def out2(self, value: Flow | None) -> None:
+        self._invalidate()
+        self._out2 = value
+
+    @property
+    def relative_losses(self) -> Numeric_TPS | None:
+        """Proportional losses as fraction of throughput."""
+        return self._relative_losses
+
+    @relative_losses.setter
+    def relative_losses(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._relative_losses = value
+
+    @property
+    def absolute_losses(self) -> Numeric_TPS | None:
+        """Fixed losses that occur when transmission is active."""
+        return self._absolute_losses
+
+    @absolute_losses.setter
+    def absolute_losses(self, value: Numeric_TPS | None) -> None:
+        self._invalidate()
+        self._absolute_losses = value
+
+    @property
+    def balanced(self) -> bool:
+        """Whether to equate the size of the in1 and in2 Flow."""
+        return self._balanced
+
+    @balanced.setter
+    def balanced(self, value: bool) -> None:
+        self._invalidate()
+        self._balanced = value
+
+    # endregion
 
     def _plausibility_checks(self):
         super()._plausibility_checks()
@@ -792,8 +1053,9 @@ class Transmission(Component):
 
     def transform_data(self) -> None:
         super().transform_data()
-        self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
-        self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
+        # Use backing fields directly to avoid triggering invalidation
+        self._relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self._relative_losses)
+        self._absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self._absolute_losses)
 
 
 class TransmissionModel(ComponentModel):
@@ -801,10 +1063,11 @@ class TransmissionModel(ComponentModel):
 
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
-            for flow in element.inputs + element.outputs:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
+            # Use backing fields to avoid triggering invalidation during modeling
+            for flow in element._inputs + element._outputs:
+                if flow._status_parameters is None:
+                    flow._status_parameters = StatusParameters()
+                    flow._status_parameters.link_to_flow_system(
                         model.flow_system, f'{flow.label_full}|status_parameters'
                     )
 
@@ -1649,6 +1912,7 @@ class SourceAndSink(Component):
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
     ):
+        self._prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
             inputs=inputs,
@@ -1656,7 +1920,18 @@ class SourceAndSink(Component):
             prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
         )
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+
+    @property
+    def prevent_simultaneous_flow_rates(self) -> bool:
+        """If True, prevents simultaneous input and output flows."""
+        return self._prevent_simultaneous_flow_rates
+
+    @prevent_simultaneous_flow_rates.setter
+    def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
+        self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._inputs) + list(self._outputs) if value else []
 
 
 @register_class_for_io
@@ -1742,13 +2017,25 @@ class Source(Component):
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
     ):
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+        self._prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
             outputs=outputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
         )
+
+    @property
+    def prevent_simultaneous_flow_rates(self) -> bool:
+        """If True, only one output flow can be active at a time."""
+        return self._prevent_simultaneous_flow_rates
+
+    @prevent_simultaneous_flow_rates.setter
+    def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
+        self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._outputs) if value else []
 
 
 @register_class_for_io
@@ -1845,10 +2132,22 @@ class Sink(Component):
                 across the element's inputs by wiring that restriction into the base Component setup.
         """
 
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+        self._prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
             label,
             inputs=inputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
         )
+
+    @property
+    def prevent_simultaneous_flow_rates(self) -> bool:
+        """If True, only one input flow can be active at a time."""
+        return self._prevent_simultaneous_flow_rates
+
+    @prevent_simultaneous_flow_rates.setter
+    def prevent_simultaneous_flow_rates(self, value: bool) -> None:
+        self._invalidate()
+        self._prevent_simultaneous_flow_rates = value
+        # Update the underlying constraint list on Component base class
+        self._prevent_simultaneous_flows = list(self._inputs) if value else []
