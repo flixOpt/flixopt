@@ -411,7 +411,12 @@ class ClusterResult:
 
         timestep_mapping = self.timestep_mapping
         has_cluster_dim = 'cluster' in aggregated.dims
-        timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster if has_cluster_dim else None
+        if has_cluster_dim:
+            if self.cluster_structure is None:
+                raise RuntimeError("cluster_structure is required when data has 'cluster' dimension")
+            timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
+        else:
+            timesteps_per_cluster = None
 
         def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
             """Expand a single slice using the mapping."""

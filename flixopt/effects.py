@@ -334,6 +334,8 @@ class EffectModel(ElementModel):
             Weights with period dimensions (if applicable)
         """
         effect_weights = self.element.period_weights
+        if self.element._flow_system is None:
+            raise RuntimeError('Effect must have a FlowSystem assigned')
         default_weights = self.element._flow_system.period_weights
         if effect_weights is not None:  # Use effect-specific weights
             return effect_weights
@@ -616,8 +618,9 @@ class EffectCollection(ElementContainer[Effect]):
     ]:
         shares_periodic: dict[str, dict[str, xr.DataArray]] = {}
         for name, effect in self.items():
-            if effect.share_from_periodic:
-                for source, data in effect.share_from_periodic.items():
+            share_periodic = effect.share_from_periodic
+            if share_periodic and isinstance(share_periodic, dict):
+                for source, data in share_periodic.items():
                     if source not in shares_periodic:
                         shares_periodic[source] = {}
                     shares_periodic[source][name] = data
@@ -625,8 +628,9 @@ class EffectCollection(ElementContainer[Effect]):
 
         shares_temporal: dict[str, dict[str, xr.DataArray]] = {}
         for name, effect in self.items():
-            if effect.share_from_temporal:
-                for source, data in effect.share_from_temporal.items():
+            share_temporal = effect.share_from_temporal
+            if share_temporal and isinstance(share_temporal, dict):
+                for source, data in share_temporal.items():
                     if source not in shares_temporal:
                         shares_temporal[source] = {}
                     shares_temporal[source][name] = data
@@ -651,14 +655,17 @@ class EffectCollectionModel(Submodel):
         target: Literal['temporal', 'periodic'],
     ) -> None:
         for effect, expression in expressions.items():
+            submodel = self.effects[effect].submodel
+            if submodel is None:
+                raise RuntimeError(f'Effect {effect} has no submodel')
             if target == 'temporal':
-                self.effects[effect].submodel.temporal.add_share(
+                submodel.temporal.add_share(
                     name,
                     expression,
                     dims=('time', 'period', 'scenario'),
                 )
             elif target == 'periodic':
-                self.effects[effect].submodel.periodic.add_share(
+                submodel.periodic.add_share(
                     name,
                     expression,
                     dims=('period', 'scenario'),

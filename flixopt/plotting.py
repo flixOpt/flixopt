@@ -847,6 +847,8 @@ def plot_network(
         try:
             import webbrowser
 
+            if not isinstance(path, pathlib.Path):
+                raise RuntimeError('path must be set when show=True')
             worked = webbrowser.open(f'file://{path.resolve()}', 2)
             if not worked:
                 logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')

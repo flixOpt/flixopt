@@ -286,7 +286,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         Objective weights of model (period_weights × scenario_weights).
         """
-        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        objective_effect = self.flow_system.effects.objective_effect
+        if objective_effect.submodel is None:
+            raise RuntimeError('objective_effect model must be built before accessing objective_weights')
+        period_weights = objective_effect.submodel.period_weights
         scenario_weights = self.scenario_weights
 
         return period_weights * scenario_weights

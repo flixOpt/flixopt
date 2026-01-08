@@ -5,7 +5,7 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import xarray as xr
@@ -566,7 +566,7 @@ class Flow(Element):
 
     def _plausibility_checks(self) -> None:
         # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
-        if (self.relative_minimum > self.relative_maximum).any():
+        if np.any(self.relative_minimum > self.relative_maximum):
             raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
 
         # Size is required when using StatusParameters (for big-M constraints)
@@ -876,12 +876,17 @@ class FlowModel(ElementModel):
                 # Basic case without investment and without Status
                 if self.element.size is not None:
                     lb = lb_relative * self.element.size
-            elif self.with_investment and self.element.size.mandatory:
-                # With mandatory Investment
-                lb = lb_relative * self.element.size.minimum_or_fixed_size
+            elif self.with_investment:
+                # with_investment guarantees size is InvestParameters
+                size = cast('InvestParameters', self.element.size)
+                if size.mandatory:
+                    # With mandatory Investment
+                    lb = lb_relative * size.minimum_or_fixed_size
 
         if self.with_investment:
-            ub = ub_relative * self.element.size.maximum_or_fixed_size
+            # with_investment guarantees size is InvestParameters
+            size = cast('InvestParameters', self.element.size)
+            ub = ub_relative * size.maximum_or_fixed_size
         elif self.element.size is not None:
             ub = ub_relative * self.element.size
         else:
@@ -1074,8 +1079,12 @@ class ComponentModel(ElementModel):
         if self.element.status_parameters is None:
             raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
 
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.inputs + self.element.outputs]
-        previous_status = [da for da in previous_status if da is not None]
+        previous_status: list[xr.DataArray] = []
+        for flow in self.element.inputs + self.element.outputs:
+            if flow.submodel is not None and flow.submodel.status is not None:
+                prev = flow.submodel.status._previous_status
+                if prev is not None:
+                    previous_status.append(prev)
 
         if not previous_status:  # Empty list
             return None

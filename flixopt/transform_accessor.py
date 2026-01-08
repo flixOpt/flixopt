@@ -520,12 +520,15 @@ class TransformAccessor:
             sizes = self._fs.statistics.sizes
 
         # Convert dict to Dataset format
+        sizes_ds: xr.Dataset
         if isinstance(sizes, dict):
-            sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
+            sizes_ds = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
+        else:
+            sizes_ds = sizes
 
         # Apply rounding
         if decimal_rounding is not None:
-            sizes = sizes.round(decimal_rounding)
+            sizes_ds = sizes_ds.round(decimal_rounding)
 
         # Create copy of FlowSystem
         if not self._fs.connected_and_transformed:
@@ -537,10 +540,10 @@ class TransformAccessor:
         # Fix sizes in the new FlowSystem's InvestParameters
         # Note: statistics.sizes returns keys without '|size' suffix (e.g., 'Boiler(Q_fu)')
         # but dicts may have either format
-        for size_var in sizes.data_vars:
+        for size_var in sizes_ds.data_vars:
             # Normalize: strip '|size' suffix if present
-            base_name = size_var.replace('|size', '') if size_var.endswith('|size') else size_var
-            fixed_value = float(sizes[size_var].item())
+            base_name = str(size_var).replace('|size', '') if str(size_var).endswith('|size') else str(size_var)
+            fixed_value = float(sizes_ds[size_var].item())
 
             # Find matching element with InvestParameters
             found = False
@@ -684,11 +687,14 @@ class TransformAccessor:
         )
 
         # Validation
-        dt = float(self._fs.timestep_duration.min().item())
-        if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
+        if self._fs.timestep_duration is None:
+            raise RuntimeError('timestep_duration must be set before clustering')
+        timestep_duration = self._fs.timestep_duration
+        dt = float(timestep_duration.min().item())
+        if not np.isclose(dt, float(timestep_duration.max().item())):
             raise ValueError(
                 f'cluster() requires uniform timestep sizes, got min={dt}h, '
-                f'max={float(self._fs.timestep_duration.max().item())}h.'
+                f'max={float(timestep_duration.max().item())}h.'
             )
         if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
             raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
@@ -1268,16 +1274,19 @@ class TransformAccessor:
             n_original_clusters: Number of original clusters before aggregation.
         """
         n_original_timesteps_extra = len(original_timesteps_extra)
+        if expanded_fs._solution is None:
+            raise RuntimeError('expanded FlowSystem must have a solution')
+        solution = expanded_fs._solution
         soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
             charge_state_name = f'{storage_name}|charge_state'
-            if charge_state_name not in expanded_fs._solution:
+            if charge_state_name not in solution:
                 continue
 
             soc_boundary = reduced_solution[soc_boundary_name]
-            expanded_charge_state = expanded_fs._solution[charge_state_name]
+            expanded_charge_state = solution[charge_state_name]
 
             # Map each original timestep to its original period index
             original_cluster_indices = np.minimum(
@@ -1306,10 +1315,10 @@ class TransformAccessor:
 
         # Clean up SOC_boundary variables and orphaned coordinates
         for soc_boundary_name in soc_boundary_vars:
-            if soc_boundary_name in expanded_fs._solution:
-                del expanded_fs._solution[soc_boundary_name]
-        if 'cluster_boundary' in expanded_fs._solution.coords:
-            expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
+            if soc_boundary_name in solution:
+                del solution[soc_boundary_name]
+        if 'cluster_boundary' in solution.coords:
+            expanded_fs._solution = solution.drop_vars('cluster_boundary')
 
     def _apply_soc_decay(
         self,
@@ -1347,9 +1356,15 @@ class TransformAccessor:
         )
 
         # Decay factor: (1 - loss)^t
-        loss_value = storage.relative_loss_per_hour.mean('time')
-        if not np.any(loss_value.values > 0):
-            return soc_boundary_per_timestep
+        relative_loss = storage.relative_loss_per_hour
+        if isinstance(relative_loss, xr.DataArray):
+            loss_value = relative_loss.mean('time')
+            if not np.any(loss_value.values > 0):
+                return soc_boundary_per_timestep
+        else:
+            loss_value = float(relative_loss)
+            if loss_value <= 0:
+                return soc_boundary_per_timestep
 
         decay_da = (1 - loss_value) ** time_within_period_da
 
@@ -1484,6 +1499,8 @@ class TransformAccessor:
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
         # 2. Expand solution
+        if self._fs.solution is None:
+            raise RuntimeError('FlowSystem has no solution')
         reduced_solution = self._fs.solution
         expanded_fs._solution = xr.Dataset(
             {name: expand_da(da, name) for name, da in reduced_solution.data_vars.items()},

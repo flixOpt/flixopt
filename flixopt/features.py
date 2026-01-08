@@ -679,6 +679,10 @@ class ShareAllocationModel(Submodel):
             )
 
             if 'time' not in dims:
+                if self._eq_total is None:
+                    raise RuntimeError('_eq_total constraint not initialized')
                 self._eq_total.lhs -= self.shares[name]
             else:
+                if self._eq_total_per_timestep is None:
+                    raise RuntimeError('_eq_total_per_timestep constraint not initialized')
                 self._eq_total_per_timestep.lhs -= self.shares[name]

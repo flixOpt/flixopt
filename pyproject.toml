@@ -240,7 +240,6 @@ disable_error_code = [
     "arg-type",       # xarray type stubs have many mismatches
     "return-value",   # xarray return types often inaccurate
     "assignment",     # Type inference issues with complex unions
-    "union-attr",     # Accessing attrs on Optional without None checks (156 errors - future work)
     "index",          # Hashable vs str index type issues
     "operator",       # Unsupported operand types with unions
     "dict-item",      # Dict entry type mismatches

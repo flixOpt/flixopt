@@ -143,7 +143,8 @@ class Comparison:
         """Combined solution Dataset with 'case' dimension."""
         if self._solution is None:
             self._require_solutions()
-            datasets = [fs.solution for fs in self._systems]
+            # We know solutions exist after _require_solutions()
+            datasets = [fs.solution for fs in self._systems if fs.solution is not None]
             self._warn_mismatched_dimensions(datasets)
             self._solution = xr.concat(
                 [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -570,8 +570,11 @@ class Storage(Component):
             # Initial charge state should not constrain investment decision
             # If initial > (min_cap * rel_max), investment is forced to increase capacity
             # If initial < (max_cap * rel_min), investment is forced to decrease capacity
-            min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-            max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+            # Cast to DataArray: after transform_data(), charge states are always DataArrays
+            rel_min_charge = cast('xr.DataArray', self.relative_minimum_charge_state)
+            rel_max_charge = cast('xr.DataArray', self.relative_maximum_charge_state)
+            min_initial_at_max_capacity = maximum_capacity * rel_min_charge.isel(time=0)
+            max_initial_at_min_capacity = minimum_capacity * rel_max_charge.isel(time=0)
 
             # Only perform numeric comparisons if using a numeric initial_charge_state
             if not initial_equals_final and self.initial_charge_state is not None:
@@ -594,9 +597,9 @@ class Storage(Component):
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
                 )
 
-            if (self.charging.size.minimum_or_fixed_size > self.discharging.size.maximum_or_fixed_size).any() or (
+            if np.any(self.charging.size.minimum_or_fixed_size > self.discharging.size.maximum_or_fixed_size) or np.any(
                 self.charging.size.maximum_or_fixed_size < self.discharging.size.minimum_or_fixed_size
-            ).any():
+            ):
                 raise PlausibilityError(
                     f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
                     f'Got: {self.charging.size.minimum_or_fixed_size=}, {self.charging.size.maximum_or_fixed_size=} and '
@@ -832,6 +835,10 @@ class TransmissionModel(ComponentModel):
     def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
+        if in_flow.submodel is None or out_flow.submodel is None:
+            raise RuntimeError('Flow submodels must be initialized')
+        if in_flow.submodel.flow_rate is None or out_flow.submodel.flow_rate is None:
+            raise RuntimeError('Flow rate variables must be initialized')
         rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
         con_transmission = self.add_constraints(
             out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
@@ -839,6 +846,8 @@ class TransmissionModel(ComponentModel):
         )
 
         if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
+            if in_flow.submodel.status is None:
+                raise RuntimeError('Flow status must be initialized for absolute losses')
             con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
 
         return con_transmission
@@ -1102,22 +1111,26 @@ class StorageModel(ComponentModel):
         """
         final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
 
+        # Cast to DataArray: after transform_data(), charge states are always DataArrays
+        rel_min_charge = cast('xr.DataArray', self.element.relative_minimum_charge_state)
+        rel_max_charge = cast('xr.DataArray', self.element.relative_maximum_charge_state)
+
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = self.element.relative_minimum_charge_state.isel(time=-1, drop=True)
+            min_final = rel_min_charge.isel(time=-1, drop=True)
         else:
             min_final = self.element.relative_minimum_final_charge_state
         min_final = min_final.expand_dims('time').assign_coords(time=final_coords['time'])
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = self.element.relative_maximum_charge_state.isel(time=-1, drop=True)
+            max_final = rel_max_charge.isel(time=-1, drop=True)
         else:
             max_final = self.element.relative_maximum_final_charge_state
         max_final = max_final.expand_dims('time').assign_coords(time=final_coords['time'])
         # Concatenate with original bounds
-        min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
-        max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
+        min_bounds = xr.concat([rel_min_charge, min_final], dim='time')
+        max_bounds = xr.concat([rel_max_charge, max_final], dim='time')
 
         return min_bounds, max_bounds
 
@@ -1477,7 +1490,8 @@ class InterclusterStorageModel(StorageModel):
         # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
         # Use mean over time (linking operates at period level, not timestep)
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
+        # Cast to DataArray: after transform_data(), relative_loss_per_hour is always a DataArray
+        rel_loss = cast('xr.DataArray', self.element.relative_loss_per_hour).mean('time')
         hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
         decay_n = (1 - rel_loss) ** hours_per_cluster
 
@@ -1522,7 +1536,8 @@ class InterclusterStorageModel(StorageModel):
         # Get self-discharge rate for decay calculation
         # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
+        # Cast to DataArray: after transform_data(), relative_loss_per_hour is always a DataArray
+        rel_loss = cast('xr.DataArray', self.element.relative_loss_per_hour).mean('time')
         mean_timestep_duration = self._model.timestep_duration.mean('time')
 
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]

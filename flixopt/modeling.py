@@ -293,6 +293,10 @@ class ModelingPrimitives:
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
 
+        # Convert scalar duration_per_step to DataArray with same coords as state
+        if not isinstance(duration_per_step, xr.DataArray):
+            duration_per_step = xr.DataArray(duration_per_step, coords=state.coords, dims=state.dims).astype(float)
+
         # Big-M value (use 0 for previous_duration if None)
         mega = duration_per_step.sum(duration_dim) + (previous_duration if previous_duration is not None else 0)
 

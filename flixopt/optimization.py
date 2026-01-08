@@ -207,7 +207,7 @@ class Optimization:
             ds: The dataset that contains the variable names mapped to their sizes. If None, the dataset is loaded from the results.
             decimal_rounding: The number of decimal places to round the sizes to. If no rounding is applied, numerical errors might lead to infeasibility.
         """
-        if not self.modeled:
+        if not self.modeled or self.model is None:
             raise RuntimeError('Model was not created. Call do_modeling() first.')
 
         if ds is None:
@@ -218,15 +218,16 @@ class Optimization:
         if decimal_rounding is not None:
             ds = ds.round(decimal_rounding)
 
+        model = self.model
         for name, da in ds.data_vars.items():
             if '|size' not in name:
                 continue
-            if name not in self.model.variables:
+            if name not in model.variables:
                 logger.debug(f'Variable {name} not found in calculation model. Skipping.')
                 continue
 
-            con = self.model.add_constraints(
-                self.model[name] == da,
+            con = model.add_constraints(
+                model[name] == da,
                 name=f'{name}-fixed',
             )
             logger.debug(f'Fixed "{name}":\n{con}')
@@ -241,9 +242,13 @@ class Optimization:
             logger.info('Model not yet created. Calling do_modeling() automatically.')
             self.do_modeling()
 
+        if self.model is None:
+            raise RuntimeError('Model was not created')
+
         t_start = timeit.default_timer()
 
-        self.model.solve(
+        model = self.model
+        model.solve(
             log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
             solver_name=solver.name,
             progress=CONFIG.Solving.log_to_console,
@@ -251,15 +256,15 @@ class Optimization:
         )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
         logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
-        logger.info(f'Model status after solve: {self.model.status}')
+        logger.info(f'Model status after solve: {model.status}')
 
-        if self.model.status == 'warning':
+        if model.status == 'warning':
             # Save the model and the flow_system to file in case of infeasibility
             self.folder.mkdir(parents=True, exist_ok=True)
             paths = fx_io.ResultsPaths(self.folder, self.name)
             from .io import document_linopy_model
 
-            document_linopy_model(self.model, paths.model_documentation)
+            document_linopy_model(model, paths.model_documentation)
             self.flow_system.to_netcdf(paths.flow_system, overwrite=True)
             raise RuntimeError(
                 f'Model was infeasible. Please check {paths.model_documentation=} and {paths.flow_system=} for more information.'
@@ -274,7 +279,7 @@ class Optimization:
             )
 
         # Store solution on FlowSystem for direct Element access
-        self.flow_system.solution = self.model.solution
+        self.flow_system.solution = model.solution
 
         self.results = Results.from_optimization(self)
 
@@ -287,55 +292,80 @@ class Optimization:
 
         try:
             penalty_effect = self.flow_system.effects.penalty_effect
+            penalty_submodel = penalty_effect.submodel
+            if penalty_submodel is None:
+                raise KeyError('No penalty submodel')
+            if (
+                penalty_submodel.temporal.total is None
+                or penalty_submodel.periodic.total is None
+                or penalty_submodel.total is None
+            ):
+                raise KeyError('No penalty totals')
             penalty_section = {
-                'temporal': penalty_effect.submodel.temporal.total.solution.values,
-                'periodic': penalty_effect.submodel.periodic.total.solution.values,
-                'total': penalty_effect.submodel.total.solution.values,
+                'temporal': penalty_submodel.temporal.total.solution.values,
+                'periodic': penalty_submodel.periodic.total.solution.values,
+                'total': penalty_submodel.total.solution.values,
             }
         except KeyError:
             penalty_section = {'temporal': 0.0, 'periodic': 0.0, 'total': 0.0}
 
+        # Build effects section
+        effects_section: dict[str, dict] = {}
+        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper()):
+            if effect.label_full == PENALTY_EFFECT_LABEL or effect.submodel is None:
+                continue
+            temporal_total = effect.submodel.temporal.total
+            periodic_total = effect.submodel.periodic.total
+            total_var = effect.submodel.total
+            if temporal_total is None or periodic_total is None or total_var is None:
+                continue
+            effects_section[f'{effect.label} [{effect.unit}]'] = {
+                'temporal': temporal_total.solution.values,
+                'periodic': periodic_total.solution.values,
+                'total': total_var.solution.values,
+            }
+
+        # Build invest-decisions section
+        invested: dict[str, xr.DataArray] = {}
+        not_invested: dict[str, xr.DataArray] = {}
+        for component in self.flow_system.components.values():
+            if component.submodel is None:
+                continue
+            for model in component.submodel.all_submodels:
+                if isinstance(model, InvestmentModel):
+                    if model.size.solution.max().item() >= CONFIG.Modeling.epsilon:
+                        invested[model.label_of_element] = model.size.solution
+                    else:
+                        not_invested[model.label_of_element] = model.size.solution
+
+        # Build buses with excess section
+        buses_with_excess: list[dict] = []
+        for bus in self.flow_system.buses.values():
+            if not bus.allows_imbalance or bus.submodel is None:
+                continue
+            if bus.submodel.virtual_supply is None or bus.submodel.virtual_demand is None:
+                continue
+            supply_sum = bus.submodel.virtual_supply.solution.sum().item()
+            demand_sum = bus.submodel.virtual_demand.solution.sum().item()
+            if supply_sum > 1e-3 or demand_sum > 1e-3:
+                buses_with_excess.append(
+                    {
+                        bus.label_full: {
+                            'virtual_supply': bus.submodel.virtual_supply.solution.sum('time'),
+                            'virtual_demand': bus.submodel.virtual_demand.solution.sum('time'),
+                        }
+                    }
+                )
+
         main_results = {
             'Objective': self.model.objective.value,
             'Penalty': penalty_section,
-            'Effects': {
-                f'{effect.label} [{effect.unit}]': {
-                    'temporal': effect.submodel.temporal.total.solution.values,
-                    'periodic': effect.submodel.periodic.total.solution.values,
-                    'total': effect.submodel.total.solution.values,
-                }
-                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
-                if effect.label_full != PENALTY_EFFECT_LABEL
-            },
+            'Effects': effects_section,
             'Invest-Decisions': {
-                'Invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel)
-                    and model.size.solution.max().item() >= CONFIG.Modeling.epsilon
-                },
-                'Not invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max().item() < CONFIG.Modeling.epsilon
-                },
+                'Invested': invested,
+                'Not invested': not_invested,
             },
-            'Buses with excess': [
-                {
-                    bus.label_full: {
-                        'virtual_supply': bus.submodel.virtual_supply.solution.sum('time'),
-                        'virtual_demand': bus.submodel.virtual_demand.solution.sum('time'),
-                    }
-                }
-                for bus in self.flow_system.buses.values()
-                if bus.allows_imbalance
-                and (
-                    bus.submodel.virtual_supply.solution.sum().item() > 1e-3
-                    or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
-                )
-            ],
+            'Buses with excess': buses_with_excess,
         }
 
         return fx_io.round_nested_floats(main_results)
@@ -576,6 +606,7 @@ class SegmentedOptimization:
             invest_elements = [
                 model.label_full
                 for component in optimization.flow_system.components.values()
+                if component.submodel is not None
                 for model in component.submodel.all_submodels
                 if isinstance(model, InvestmentModel)
             ]
@@ -689,6 +720,8 @@ class SegmentedOptimization:
 
         for current_flow in current_flow_system.flows.values():
             next_flow = next_flow_system.flows[current_flow.label_full]
+            if current_flow.submodel is None or current_flow.submodel.flow_rate is None:
+                continue
             next_flow.previous_flow_rate = current_flow.submodel.flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
@@ -697,7 +730,12 @@ class SegmentedOptimization:
         for current_comp in current_flow_system.components.values():
             next_comp = next_flow_system.components[current_comp.label_full]
             if isinstance(next_comp, Storage):
-                next_comp.initial_charge_state = current_comp.submodel.charge_state.solution.sel(time=start).item()
+                if current_comp.submodel is None or not hasattr(current_comp.submodel, 'charge_state'):
+                    continue
+                charge_state = getattr(current_comp.submodel, 'charge_state', None)
+                if charge_state is None:
+                    continue
+                next_comp.initial_charge_state = charge_state.solution.sel(time=start).item()
                 start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
 
         self._transfered_start_values.append(start_values_of_this_segment)
@@ -752,13 +790,14 @@ class SegmentedOptimization:
             )
 
         # Use SegmentedResults to get the proper aggregated solution
+        objective_sum = sum(
+            calc.model.objective.value for calc in self.sub_optimizations if calc.modeled and calc.model is not None
+        )
         return {
             'Note': 'SegmentedOptimization results are aggregated via SegmentedResults',
             'Number of segments': len(self.sub_optimizations),
             'Total timesteps': len(self.all_timesteps),
-            'Objective (sum of segments, includes overlaps)': sum(
-                calc.model.objective.value for calc in self.sub_optimizations if calc.modeled
-            ),
+            'Objective (sum of segments, includes overlaps)': objective_sum,
         }
 
     @property

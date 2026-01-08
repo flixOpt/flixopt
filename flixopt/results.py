@@ -205,6 +205,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         Returns:
             Results: New instance containing the optimization results.
         """
+        if optimization.model is None:
+            raise RuntimeError('Optimization has no model')
         return cls(
             solution=optimization.model.solution,
             flow_system_data=optimization.flow_system.to_dataset(),
@@ -2024,7 +2026,10 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return self._results.flow_system.flows[self.label].size.rename(name)
+            size_val = self._results.flow_system.flows[self.label].size
+            if isinstance(size_val, xr.DataArray):
+                return size_val.rename(name)
+            return xr.DataArray(size_val).rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
@@ -2161,6 +2166,8 @@ class SegmentedResults:
         meta_data_path = path.with_suffix('.json')
         logger.info(f'loading segemented optimization meta data from file ("{meta_data_path}")')
         meta_data = fx_io.load_json(meta_data_path)
+        if not isinstance(meta_data, dict):
+            raise TypeError('Expected metadata to be a dict')
 
         # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
         sub_names = meta_data.get('sub_optimizations') or meta_data.get('sub_calculations')

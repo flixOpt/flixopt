@@ -1082,6 +1082,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return None
 
         effect_values_dict = self.effects.create_effect_values_dict(effect_values)
+        if effect_values_dict is None:
+            return None
 
         return {
             effect: self.fit_to_model_coords(
@@ -1393,9 +1395,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         self.connect_and_transform()
-        self.create_model()
+        model = self.create_model()
 
-        self.model.do_modeling()
+        model.do_modeling()
 
         return self
 
@@ -2050,7 +2052,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def n_timesteps(self) -> int:
         """Number of timesteps (within each cluster if clustered)."""
-        if self.is_clustered:
+        if self.clustering is not None:
             return self.clustering.timesteps_per_cluster
         return len(self.timesteps)
 
@@ -2092,6 +2094,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+        if weights is None:
+            raise RuntimeError('Failed to convert scenario_weights to DataArray')
 
         # Normalize to sum to 1
         norm = weights.sum('scenario')
