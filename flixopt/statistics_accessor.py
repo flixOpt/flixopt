@@ -344,6 +344,28 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
     return df.melt(id_vars=coord_cols, var_name=var_name, value_name=value_name)
 
 
+def _build_color_kwargs(colors: ColorType | None, labels: list[str]) -> dict[str, Any]:
+    """Build color kwargs for plotly based on color type.
+
+    Args:
+        colors: Dict (color_discrete_map), list (color_discrete_sequence),
+               or string (colorscale name to convert to dict).
+        labels: Variable labels for creating dict from colorscale name.
+
+    Returns:
+        Dict with either 'color_discrete_map' or 'color_discrete_sequence'.
+    """
+    if colors is None:
+        return {}
+    if isinstance(colors, dict):
+        return {'color_discrete_map': colors}
+    if isinstance(colors, list):
+        return {'color_discrete_sequence': colors}
+    if isinstance(colors, str):
+        return {'color_discrete_map': process_colors(colors, labels)}
+    return {}
+
+
 # --- Statistics Accessor (data only) ---
 
 
@@ -1468,12 +1490,17 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build color map from Element.color attributes if no colors specified
+        # Build color kwargs - handle dict, list, or colorscale string
+        color_kwargs: dict[str, Any] = {}
         if colors is None:
-            colors = self._get_color_map_for_balance(node, list(ds.data_vars))
+            color_kwargs['color_discrete_map'] = self._get_color_map_for_balance(node, list(ds.data_vars))
+        elif isinstance(colors, dict):
+            color_kwargs['color_discrete_map'] = colors
+        elif isinstance(colors, list):
+            color_kwargs['color_discrete_sequence'] = colors
         elif isinstance(colors, str):
             # Convert colorscale name to dict mapping
-            colors = process_colors(colors, list(ds.data_vars))
+            color_kwargs['color_discrete_map'] = process_colors(colors, list(ds.data_vars))
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -1487,8 +1514,8 @@ class StatisticsPlotAccessor:
 
         fig = ds.plotly.bar(
             x='time',
-            color_discrete_map=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
@@ -1580,7 +1607,7 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Use cached component colors for flows
+        # Build color kwargs
         if colors is None:
             component_colors = self._stats.component_colors
             color_map = {}
@@ -1595,10 +1622,9 @@ class StatisticsPlotAccessor:
                 uncolored.append(label)
             if uncolored:
                 color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
-            colors = color_map
-        elif isinstance(colors, str):
-            # Convert colorscale name to dict mapping
-            colors = process_colors(colors, list(ds.data_vars))
+            color_kwargs = {'color_discrete_map': color_map}
+        else:
+            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -1612,8 +1638,8 @@ class StatisticsPlotAccessor:
 
         fig = ds.plotly.bar(
             x='time',
-            color_discrete_map=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
@@ -1768,14 +1794,13 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        # Convert colorscale name to dict if needed
-        if isinstance(colors, str):
-            colors = process_colors(colors, list(ds.data_vars))
+        # Build color kwargs
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
         fig = ds.plotly.line(
             x='time',
-            color_discrete_map=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
+            **color_kwargs,
             **plotly_kwargs,
         )
 
@@ -1826,15 +1851,14 @@ class StatisticsPlotAccessor:
         if not ds.data_vars:
             fig = go.Figure()
         else:
-            # Convert colorscale name to dict if needed
-            if isinstance(colors, str):
-                colors = process_colors(colors, list(ds.data_vars))
+            # Build color kwargs
+            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
             fig = ds.plotly.bar(
                 x='variable',
                 color='variable',
-                color_discrete_map=colors,
                 title='Investment Sizes',
                 labels={'value': 'Size'},
+                **color_kwargs,
                 **plotly_kwargs,
             )
 
@@ -1918,13 +1942,12 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        # Convert colorscale name to dict if needed
-        if isinstance(colors, str):
-            colors = process_colors(colors, list(result_ds.data_vars))
+        # Build color kwargs
+        color_kwargs = _build_color_kwargs(colors, list(result_ds.data_vars))
 
         fig = result_ds.plotly.line(
-            color_discrete_map=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
+            **color_kwargs,
             **plotly_kwargs,
         )
 
@@ -2038,24 +2061,21 @@ class StatisticsPlotAccessor:
         # Allow user override of color via plotly_kwargs
         color = plotly_kwargs.pop('color', color_col)
 
-        # Convert colorscale name to dict if needed
-        if isinstance(colors, str):
-            # Use component or variable dimension for color mapping
-            color_dim = color or color_col or 'variable'
-            if color_dim in ds.coords:
-                labels = list(ds.coords[color_dim].values)
-            elif color_dim == 'variable':
-                labels = list(ds.data_vars)
-            else:
-                labels = []
-            if labels:
-                colors = process_colors(colors, labels)
+        # Build color kwargs
+        color_dim = color or color_col or 'variable'
+        if color_dim in ds.coords:
+            labels = list(ds.coords[color_dim].values)
+        elif color_dim == 'variable':
+            labels = list(ds.data_vars)
+        else:
+            labels = []
+        color_kwargs = _build_color_kwargs(colors, labels) if labels else {}
 
         fig = ds.plotly.bar(
             x=x_col,
             color=color,
-            color_discrete_map=colors,
             title=title,
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(bargap=0, bargroupgap=0)
@@ -2106,14 +2126,13 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
-        # Convert colorscale name to dict if needed
-        if isinstance(colors, str):
-            colors = process_colors(colors, list(ds.data_vars))
+        # Build color kwargs
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
         fig = ds.plotly.line(
             x='time',
-            color_discrete_map=colors,
             title='Storage Charge States',
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_yaxes(title_text='Charge State')
