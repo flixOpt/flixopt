@@ -12,10 +12,13 @@ except (PackageNotFoundError, TypeError):
     __version__ = '0.0.0.dev0'
 
 # Import commonly used classes and functions
-from . import clustering, linear_converters, plotting, results, solvers
+# Register xarray accessors:
+# - xr.Dataset.plotly / xr.DataArray.plotly (from xarray_plotly package)
+# - xr.Dataset.fxstats (from dataset_plot_accessor)
+import xarray_plotly as _xpx  # noqa: F401
 
-# Register xr.Dataset.fxplot accessor (import triggers registration via decorator)
-from . import dataset_plot_accessor as _  # noqa: F401
+from . import clustering, linear_converters, plotting, results, solvers
+from . import dataset_plot_accessor as _fxstats  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .comparison import Comparison
 from .components import (

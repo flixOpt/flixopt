@@ -234,8 +234,8 @@ class ClusterStructure:
         else:
             plot_ds = ds
 
-        fig = plot_ds.fxplot.heatmap(
-            colors=colorscale,
+        fig = plot_ds.plotly.imshow(
+            color_continuous_scale=colorscale,
             title=f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)',
         )
 
@@ -639,8 +639,8 @@ class ClusteringPlotAccessor:
             if line_dash == 'representation':
                 line_kwargs['line_dash_map'] = {'Original': 'dot', 'Clustered': 'solid'}
 
-        fig = ds.fxplot.line(
-            colors=colors,
+        fig = ds.plotly.line(
+            color_discrete_map=colors,
             color=color,
             title=title,
             facet_col=facet_col,
@@ -764,9 +764,9 @@ class ClusteringPlotAccessor:
         heatmap_da.name = 'cluster_assignment'
         heatmap_da = heatmap_da.transpose('time', 'y', ...)
 
-        # Use fxplot.heatmap for smart defaults
-        fig = heatmap_da.fxplot.heatmap(
-            colors=colors,
+        # Use plotly.imshow for heatmap
+        fig = heatmap_da.plotly.imshow(
+            color_continuous_scale=colors,
             title='Cluster Assignments',
             facet_col=facet_col,
             animation_frame=animation_frame,
@@ -897,13 +897,12 @@ class ClusteringPlotAccessor:
         ds = xr.Dataset(data_vars)
         title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
 
-        # Use fxplot for smart defaults
-        fig = ds.fxplot.line(
-            colors=colors,
+        fig = ds.plotly.line(
+            color_discrete_map=colors,
             color=color,
             title=title,
             facet_col=facet_col,
-            facet_cols=facet_cols,
+            facet_col_wrap=facet_cols,
             **plotly_kwargs,
         )
         fig.update_yaxes(matches=None)

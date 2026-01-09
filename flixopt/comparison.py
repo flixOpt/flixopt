@@ -479,7 +479,9 @@ class ComparisonStatisticsPlot:
         flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
 
         # Create stacked bar for flows
-        fig = flow_ds.fxplot.stacked_bar(title=f'{storage} Operation', **plot_kwargs)
+        fig = flow_ds.plotly.bar(title=f'{storage} Operation', **plot_kwargs)
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
@@ -532,7 +534,10 @@ class ComparisonStatisticsPlot:
 
         plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color'}
         plot_kwargs = {k: kwargs[k] for k in list(kwargs) if k in plot_keys}
-        fig = ds.fxplot.bar(title=title, **plot_kwargs)
+        # Rename 'colors' to 'color_discrete_map' for plotly
+        if 'colors' in plot_kwargs:
+            plot_kwargs['color_discrete_map'] = plot_kwargs.pop('colors')
+        fig = ds.plotly.bar(title=title, **plot_kwargs)
         fig.update_layout(bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
         return self._finalize(ds, fig, show)
@@ -546,5 +551,8 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
         da = ds[next(iter(ds.data_vars))]
-        fig = da.fxplot.heatmap(**plot_kwargs)
+        # Rename 'colors' to 'color_continuous_scale' for plotly imshow
+        if 'colors' in plot_kwargs:
+            plot_kwargs['color_continuous_scale'] = plot_kwargs.pop('colors')
+        fig = da.plotly.imshow(**plot_kwargs)
         return self._finalize(ds, fig, show)

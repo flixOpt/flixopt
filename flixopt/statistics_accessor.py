@@ -246,7 +246,7 @@ def add_line_overlay(
         x = 'time' if 'time' in da.dims else da.dims[0]
 
     # Create line figure with same facets
-    line_fig = da.fxplot.line(
+    line_fig = da.plotly.line(
         x=x,
         color=color,
         facet_col=facet_col,
@@ -1471,14 +1471,16 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
+        fig = ds.plotly.bar(
+            color_discrete_map=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
             **plotly_kwargs,
         )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1598,14 +1600,16 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = ds.fxplot.stacked_bar(
-            colors=colors,
+        fig = ds.plotly.bar(
+            color_discrete_map=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
             **plotly_kwargs,
         )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1671,7 +1675,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=da.to_dataset(name='value'), figure=go.Figure())
 
-        fig = da.fxplot.heatmap(colors=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs)
+        fig = da.plotly.imshow(
+            color_continuous_scale=colors, facet_col=facet_col, animation_frame=animation_frame, **plotly_kwargs
+        )
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1762,8 +1768,8 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = ds.fxplot.line(
-            colors=colors,
+        fig = ds.plotly.line(
+            color_discrete_map=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             facet_col=facet_col,
             facet_row=facet_row,
@@ -1822,12 +1828,12 @@ class StatisticsPlotAccessor:
         if not ds.data_vars:
             fig = go.Figure()
         else:
-            fig = ds.fxplot.bar(
+            fig = ds.plotly.bar(
                 x='variable',
                 color='variable',
-                colors=colors,
+                color_discrete_map=colors,
                 title='Investment Sizes',
-                ylabel='Size',
+                labels={'value': 'Size'},
                 facet_col=facet_col,
                 facet_row=facet_row,
                 animation_frame=animation_frame,
@@ -1937,8 +1943,8 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        fig = result_ds.fxplot.line(
-            colors=colors,
+        fig = result_ds.plotly.line(
+            color_discrete_map=colors,
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             facet_col=facet_col,
             facet_row=facet_row,
@@ -2060,10 +2066,10 @@ class StatisticsPlotAccessor:
         # Allow user override of color via plotly_kwargs
         color = plotly_kwargs.pop('color', color_col)
 
-        fig = ds.fxplot.bar(
+        fig = ds.plotly.bar(
             x=x_col,
             color=color,
-            colors=colors,
+            color_discrete_map=colors,
             title=title,
             facet_col=facet_col,
             facet_row=facet_row,
@@ -2122,8 +2128,8 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
-        fig = ds.fxplot.line(
-            colors=colors,
+        fig = ds.plotly.line(
+            color_discrete_map=colors,
             title='Storage Charge States',
             facet_col=facet_col,
             facet_row=facet_row,
@@ -2227,17 +2233,19 @@ class StatisticsPlotAccessor:
         if colors is None:
             colors = self._get_color_map_for_balance(storage, flow_labels)
 
-        # Create stacked bar chart for flows using fxplot
-        fig = flow_ds.fxplot.stacked_bar(
+        # Create stacked bar chart for flows
+        fig = flow_ds.plotly.bar(
             x='time',
             color='variable',
-            colors=colors,
+            color_discrete_map=colors,
             title=f'{storage} Operation ({unit})',
             facet_col=facet_col,
             facet_row=facet_row,
             animation_frame=animation_frame,
             **plotly_kwargs,
         )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
         # Add charge state as line on secondary y-axis
         add_line_overlay(
