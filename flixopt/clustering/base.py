@@ -546,8 +546,6 @@ class ClusteringPlotAccessor:
         colors: ColorType | None = None,
         color: str | None = None,
         line_dash: str | None = 'representation',
-        facet_col: str | None = None,
-        facet_row: str | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -561,17 +559,12 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
-                Use 'representation' to color by Original/Clustered instead of line_dash.
+            color: Dimension for line colors (e.g., 'variable', 'representation').
             line_dash: Dimension for line dash styles. Defaults to 'representation'.
                 Set to None to disable line dash differentiation.
-            facet_col: Dimension for subplot columns. 'auto' uses CONFIG priority.
-                Use 'variable' to create separate columns per variable.
-            facet_row: Dimension for subplot rows. 'auto' uses CONFIG priority.
-                Use 'variable' to create separate rows per variable.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
-            **plotly_kwargs: Additional arguments passed to plotly.
+            **plotly_kwargs: Additional arguments passed to plotly (e.g., facet_col, facet_row).
 
         Returns:
             PlotResult containing the comparison figure and underlying data.
@@ -639,12 +632,13 @@ class ClusteringPlotAccessor:
             if line_dash == 'representation':
                 line_kwargs['line_dash_map'] = {'Original': 'dot', 'Clustered': 'solid'}
 
+        # Build line kwargs, only adding color if specified
+        if color is not None:
+            line_kwargs['color'] = color
+
         fig = ds.plotly.line(
             color_discrete_map=colors,
-            color=color,
             title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
             **line_kwargs,
             **plotly_kwargs,
         )
@@ -695,8 +689,6 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: str | list[str] | None = None,
-        facet_col: str | None = None,
-        animation_frame: str | None = None,
         show: bool | None = None,
         **plotly_kwargs: Any,
     ) -> PlotResult:
@@ -714,11 +706,9 @@ class ClusteringPlotAccessor:
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps.
                 Defaults to CONFIG.Plotting.default_sequential_colorscale.
-            facet_col: Dimension to facet on columns. 'auto' uses CONFIG priority.
-            animation_frame: Dimension for animation slider. 'auto' uses CONFIG priority.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
-            **plotly_kwargs: Additional arguments passed to plotly.
+            **plotly_kwargs: Additional arguments passed to plotly (e.g., facet_col, animation_frame).
 
         Returns:
             PlotResult containing the heatmap figure and cluster assignment data.
@@ -768,8 +758,6 @@ class ClusteringPlotAccessor:
         fig = heatmap_da.plotly.imshow(
             color_continuous_scale=colors,
             title='Cluster Assignments',
-            facet_col=facet_col,
-            animation_frame=animation_frame,
             aspect='auto',
             **plotly_kwargs,
         )
@@ -812,8 +800,7 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
-                Use 'cluster' to color by cluster instead of faceting.
+            color: Dimension for line colors (e.g., 'variable', 'cluster').
             facet_col: Dimension for subplot columns. Defaults to 'cluster'.
                 Use 'variable' to facet by variable instead.
             facet_cols: Max columns before wrapping facets.
@@ -897,12 +884,19 @@ class ClusteringPlotAccessor:
         ds = xr.Dataset(data_vars)
         title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
 
+        # Build kwargs, only passing optional parameters if specified
+        line_kwargs: dict[str, Any] = {}
+        if color is not None:
+            line_kwargs['color'] = color
+        if facet_col is not None:
+            line_kwargs['facet_col'] = facet_col
+        if facet_cols is not None:
+            line_kwargs['facet_col_wrap'] = facet_cols
+
         fig = ds.plotly.line(
             color_discrete_map=colors,
-            color=color,
             title=title,
-            facet_col=facet_col,
-            facet_col_wrap=facet_cols,
+            **line_kwargs,
             **plotly_kwargs,
         )
         fig.update_yaxes(matches=None)
