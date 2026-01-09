@@ -1912,26 +1912,7 @@ class StatisticsPlotAccessor:
         ds = xr.merge(ds_parts)
         ds = _apply_selection(ds, select)
 
-        if 'time' not in ds.dims:
-            raise ValueError('Duration curve requires time dimension')
-
-        def sort_descending(arr: np.ndarray) -> np.ndarray:
-            return np.sort(arr)[::-1]
-
-        result_ds = xr.apply_ufunc(
-            sort_descending,
-            ds,
-            input_core_dims=[['time']],
-            output_core_dims=[['time']],
-            vectorize=True,
-        )
-
-        duration_name = 'duration_pct' if normalize else 'duration'
-        result_ds = result_ds.rename({'time': duration_name})
-
-        n_timesteps = result_ds.sizes[duration_name]
-        duration_coord = np.linspace(0, 100, n_timesteps) if normalize else np.arange(n_timesteps)
-        result_ds = result_ds.assign_coords({duration_name: duration_coord})
+        result_ds = ds.fxstats.to_duration_curve(normalize=normalize)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
