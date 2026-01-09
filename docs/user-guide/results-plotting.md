@@ -3,7 +3,7 @@
 After solving an optimization, flixOpt provides a powerful plotting API to visualize and analyze your results. The API is designed to be intuitive and chainable, giving you quick access to common plots while still allowing deep customization.
 
 !!! tip "Plotting Custom Data"
-    For plotting arbitrary xarray data (not just flixopt results), see the [Custom Data Plotting](recipes/plotting-custom-data.md) guide which covers the `.fxplot` accessor.
+    For plotting arbitrary xarray data (not just flixopt results), see the [Custom Data Plotting](recipes/plotting-custom-data.md) guide which covers the `.plotly` accessor.
 
 ## The Plot Accessor
 
