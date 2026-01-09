@@ -14,11 +14,11 @@ except (PackageNotFoundError, TypeError):
 # Import commonly used classes and functions
 # Register xarray accessors:
 # - xr.Dataset.plotly / xr.DataArray.plotly (from xarray_plotly package)
-# - xr.Dataset.fxstats (from dataset_plot_accessor)
+# - xr.Dataset.fxstats (from stats_accessor)
 import xarray_plotly as _xpx  # noqa: F401
 
 from . import clustering, linear_converters, plotting, results, solvers
-from . import dataset_plot_accessor as _fxstats  # noqa: F401
+from . import stats_accessor as _fxstats  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .comparison import Comparison
 from .components import (

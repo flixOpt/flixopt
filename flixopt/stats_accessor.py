@@ -1,9 +1,4 @@
-"""Xarray accessor for statistics (``.fxstats``).
-
-Note:
-    Generic plotting accessors (``.plotly``) are provided by the ``xarray_plotly`` package.
-    This module only contains the statistics/transformation accessor.
-"""
+"""Xarray accessor for statistics and transformations (``.fxstats``)."""
 
 from __future__ import annotations
 
