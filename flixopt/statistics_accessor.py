@@ -153,19 +153,12 @@ def _prepare_for_heatmap(
     has_time = 'time' in da.dims
 
     # Clustered: use (time, cluster) as natural 2D
-    if is_clustered and reshape in ('auto', None):
+    if is_clustered and reshape is None:
         return finalize(da, ['time', 'cluster'])
 
-    # Explicit reshape: always apply
-    if reshape and reshape != 'auto' and has_time:
+    # Apply reshape if specified
+    if reshape and has_time:
         return finalize(_reshape_time_for_heatmap(da, reshape), ['timestep', 'timeframe'])
-
-    # Auto reshape (non-clustered): apply only if extra dims fit in available slots
-    if reshape == 'auto' and has_time:
-        extra = [d for d in da.dims if d not in ('time', 'variable') and da.sizes[d] > 1]
-        slots = (facet_col == 'auto') + (animation_frame == 'auto')
-        if len(extra) <= slots:
-            return finalize(_reshape_time_for_heatmap(da, ('D', 'h')), ['timestep', 'timeframe'])
 
     return finalize(da, fallback_dims())
 
@@ -1398,9 +1391,9 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1472,6 +1465,7 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         fig = ds.plotly.bar(
+            x='time',
             color_discrete_map=colors,
             title=f'{node} [{unit_label}]' if unit_label else node,
             facet_col=facet_col,
@@ -1498,9 +1492,9 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1601,6 +1595,7 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         fig = ds.plotly.bar(
+            x='time',
             color_discrete_map=colors,
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             facet_col=facet_col,
@@ -1623,10 +1618,10 @@ class StatisticsPlotAccessor:
         variables: str | list[str],
         *,
         select: SelectType | None = None,
-        reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
+        reshape: tuple[str, str] | None = None,
         colors: str | list[str] | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1695,9 +1690,9 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1769,6 +1764,7 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         fig = ds.plotly.line(
+            x='time',
             color_discrete_map=colors,
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             facet_col=facet_col,
@@ -1790,9 +1786,9 @@ class StatisticsPlotAccessor:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1854,9 +1850,9 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1951,9 +1947,9 @@ class StatisticsPlotAccessor:
         by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2073,9 +2069,9 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2110,6 +2106,7 @@ class StatisticsPlotAccessor:
             return PlotResult(data=ds, figure=go.Figure())
 
         fig = ds.plotly.line(
+            x='time',
             color_discrete_map=colors,
             title='Storage Charge States',
             facet_col=facet_col,
@@ -2134,9 +2131,9 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
-        facet_col: str | Literal['auto'] | None = 'auto',
-        facet_row: str | Literal['auto'] | None = 'auto',
-        animation_frame: str | Literal['auto'] | None = 'auto',
+        facet_col: str | None = None,
+        facet_row: str | None = None,
+        animation_frame: str | None = None,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
