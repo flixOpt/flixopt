@@ -499,3 +499,13 @@ class ClusteringPlotAccessor:
             if invalid:
                 raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
             return list(variables)
+
+
+def _register_clustering_classes():
+    """Register clustering classes for IO deserialization.
+
+    This is called from flow_system.py to defer the import and avoid circular imports.
+    """
+    from ..structure import CLASS_REGISTRY
+
+    CLASS_REGISTRY['Clustering'] = Clustering

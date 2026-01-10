@@ -41,13 +41,3 @@ __all__ = [
     'Clustering',
     'tsam_adapter',
 ]
-
-
-def _register_io_classes():
-    """Register clustering classes for IO deserialization."""
-    from ..structure import CLASS_REGISTRY
-
-    CLASS_REGISTRY['Clustering'] = Clustering
-
-
-_register_io_classes()
