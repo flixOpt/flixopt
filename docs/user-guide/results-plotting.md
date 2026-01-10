@@ -546,3 +546,206 @@ ds.to_dataframe()  # Convert to pandas
 ds.to_netcdf('data.nc')  # Native xarray format
 ds.to_zarr('data.zarr')  # Zarr format for large datasets
 ```
+
+## Plotly Express Internals
+
+flixOpt's plotting is built on [Plotly Express](https://plotly.com/python/plotly-express/). Understanding how Plotly Express works helps you customize plots effectively.
+
+### Slots: How Dimensions Map to Visual Properties
+
+Plotly Express uses **slots** to map data dimensions to visual properties. When you have multi-dimensional data, each dimension can be assigned to a slot:
+
+| Slot | Visual Effect | Example |
+|------|---------------|---------|
+| `x` | X-axis position | `x='time'` |
+| `y` | Y-axis position | `y='value'` |
+| `color` | Color encoding | `color='variable'` → different line colors |
+| `facet_col` | Column subplots | `facet_col='scenario'` → side-by-side plots |
+| `facet_row` | Row subplots | `facet_row='period'` → stacked plots |
+| `animation_frame` | Animation slider | `animation_frame='year'` |
+| `line_dash` | Line style (line plots) | `line_dash='method'` → solid/dashed |
+| `symbol` | Marker shape (scatter) | `symbol='category'` |
+| `pattern_shape` | Bar pattern (bar plots) | `pattern_shape='type'` → hatching |
+
+**Example:** A dataset with dimensions `(time, scenario, variable)`:
+
+```python
+# Each dimension assigned to a different slot
+ds.plotly.line(
+    x='time',           # X-axis
+    color='variable',   # Different colored lines
+    facet_col='scenario' # Separate subplot per scenario
+)
+```
+
+### flixOpt's Default Slot Assignments
+
+flixOpt pre-assigns slots to provide sensible defaults:
+
+| Plot Type | Default Assignments |
+|-----------|---------------------|
+| Balance (bar) | `x='time'`, `color='variable'` |
+| Flows (line) | `x='time'`, `color='variable'` |
+| Comparison balance | `x='time'`, `color='variable'`, `facet_col='case'` |
+| Comparison flows | `x='time'`, `color='variable'`, `line_dash='case'` |
+
+You can override any default by passing the parameter explicitly:
+
+```python
+# Override: use facet_row instead of facet_col for case
+comp.statistics.plot.balance('Heat', facet_row='case', facet_col=None)
+
+# Override: use animation instead of faceting
+comp.statistics.plot.balance('Heat', animation_frame='case', facet_col=None)
+```
+
+### Colorscales: Qualitative vs Sequential
+
+Plotly automatically chooses colorscale type based on data:
+
+| Data Type | Colorscale | Example |
+|-----------|------------|---------|
+| **Categorical** (strings, few unique values) | Qualitative (discrete colors) | `['Boiler', 'CHP', 'HeatPump']` |
+| **Continuous** (numeric range) | Sequential (gradient) | `[0.0, 0.5, 1.0, ...]` |
+
+**Qualitative** colorscales cycle through distinct colors:
+```
+Plotly: #636EFA, #EF553B, #00CC96, #AB63FA, ...
+Set1:   #E41A1C, #377EB8, #4DAF4A, #984EA3, ...
+```
+
+**Sequential** colorscales show gradients:
+```
+Turbo:  blue → cyan → green → yellow → red
+Viridis: purple → blue → green → yellow
+```
+
+### Configuring Default Colorscales
+
+flixOpt registers a `'flixopt'` template with default colorscales from CONFIG:
+
+```python
+# View current defaults
+fx.CONFIG.Plotting.default_qualitative_colorscale  # 'plotly'
+fx.CONFIG.Plotting.default_sequential_colorscale   # 'turbo'
+
+# Change defaults before plotting
+fx.CONFIG.Plotting.default_qualitative_colorscale = 'Set2'
+fx.CONFIG.Plotting.default_sequential_colorscale = 'viridis'
+
+# Activate the flixopt template (done automatically by CONFIG.notebook())
+fx.CONFIG.use_theme()
+```
+
+**Per-plot override:**
+
+```python
+# Qualitative (for color dimension)
+ds.plotly.bar(color='variable', color_discrete_sequence=px.colors.qualitative.Set1)
+
+# Sequential (for heatmaps)
+ds.plotly.imshow(color_continuous_scale='viridis')
+```
+
+### The flixopt Plotly Template
+
+On import, flixopt registers a Plotly template but does **not** activate it by default:
+
+```python
+import plotly.io as pio
+
+# Template is available
+'flixopt' in pio.templates  # True
+
+# But not active yet
+pio.templates.default  # 'plotly'
+
+# Activate explicitly
+fx.CONFIG.use_theme()  # Sets 'plotly_white+flixopt'
+
+# Or via presets (which call use_theme internally)
+fx.CONFIG.notebook()
+fx.CONFIG.exploring()
+```
+
+This design lets you use flixOpt without affecting your other Plotly plots.
+
+### Useful Plotly Customizations
+
+**Update layout after creation:**
+
+```python
+result = flow_system.statistics.plot.balance('Heat')
+result.figure.update_layout(
+    title='Custom Title',
+    xaxis_title='Time',
+    yaxis_title='Power [kW]',
+    legend_title='Component',
+    height=500,
+    template='plotly_dark',  # Different template
+)
+```
+
+**Update all traces:**
+
+```python
+result.figure.update_traces(
+    opacity=0.8,
+    line_width=2,
+)
+```
+
+**Access individual traces:**
+
+```python
+for trace in result.figure.data:
+    print(trace.name)  # Trace names
+    if 'Boiler' in trace.name:
+        trace.line.width = 3  # Make Boiler line thicker
+```
+
+**Combine multiple figures:**
+
+```python
+from plotly.subplots import make_subplots
+
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+
+balance = flow_system.statistics.plot.balance('Heat', show=False)
+storage = flow_system.statistics.plot.storage('Tank', show=False)
+
+for trace in balance.figure.data:
+    fig.add_trace(trace, row=1, col=1)
+for trace in storage.figure.data:
+    fig.add_trace(trace, row=2, col=1)
+
+fig.show()
+```
+
+### Common Plotly Express Parameters
+
+These parameters work with most flixOpt plot methods via `**plotly_kwargs`:
+
+| Parameter | Description |
+|-----------|-------------|
+| `title` | Plot title |
+| `height`, `width` | Figure dimensions in pixels |
+| `facet_col_wrap` | Max columns before wrapping facets |
+| `color_discrete_map` | Dict mapping labels to colors |
+| `color_discrete_sequence` | List of colors to cycle through |
+| `color_continuous_scale` | Colorscale name for heatmaps |
+| `line_shape` | Line interpolation: `'linear'`, `'hv'`, `'spline'` |
+| `barmode` | Bar arrangement: `'relative'`, `'group'`, `'overlay'` |
+| `template` | Plotly template name |
+
+**Example:**
+
+```python
+flow_system.statistics.plot.balance(
+    'Heat',
+    title='Heat Balance',
+    height=400,
+    facet_col_wrap=2,
+    color_discrete_map={'Boiler(Q_th)': 'red', 'CHP(Q_th)': 'blue'},
+)
+```
