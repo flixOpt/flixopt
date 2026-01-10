@@ -64,8 +64,10 @@ jobs:
       - name: Run tests
         run: |
           if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
-            pytest -v --numprocesses=auto -m "not slow and not deprecated_api"
+            # Draft PR: skip examples, slow, and deprecated_api
+            pytest -v --numprocesses=auto -m "not examples and not slow and not deprecated_api"
           else
+            # Ready PR & main push: examples excluded via addopts
             pytest -v --numprocesses=auto
           fi
 
