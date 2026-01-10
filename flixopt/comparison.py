@@ -605,6 +605,10 @@ class ComparisonStatisticsPlot:
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
+            # Only pass faceting kwargs that add_line_overlay accepts
+            overlay_kwargs = {
+                k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
+            }
             add_line_overlay(
                 fig,
                 ds['charge_state'],
@@ -612,6 +616,7 @@ class ComparisonStatisticsPlot:
                 name='charge_state',
                 secondary_y=True,
                 y_title='Charge State',
+                **overlay_kwargs,
             )
 
         return self._finalize(ds, fig, show)
