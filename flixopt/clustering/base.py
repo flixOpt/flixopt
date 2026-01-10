@@ -224,7 +224,7 @@ class Clustering:
         # Store scalars as attrs
         ref['n_clusters'] = int(self.n_clusters)
         ref['timesteps_per_cluster'] = int(self.timesteps_per_cluster)
-        ref['original_timesteps'] = self.original_timesteps.tolist()
+        ref['original_timesteps'] = [t.isoformat() for t in self.original_timesteps]
 
         # Store metrics if present
         if self.metrics is not None and len(self.metrics.data_vars) > 0:
