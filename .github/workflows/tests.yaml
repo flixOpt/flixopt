@@ -64,7 +64,7 @@ jobs:
       - name: Run tests
         run: |
           if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
-            pytest -v --numprocesses=auto -m "not slow"
+            pytest -v --numprocesses=auto -m "not slow and not deprecated_api"
           else
             pytest -v --numprocesses=auto
           fi
