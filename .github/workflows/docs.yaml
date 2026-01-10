@@ -11,6 +11,7 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'flixopt/**'
   workflow_dispatch:
   workflow_call:
     inputs:
