@@ -1506,9 +1506,9 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
+        plotly_kwargs.setdefault('x', 'time')
         plotly_kwargs.setdefault('pattern_shape', None)
         fig = ds.plotly.bar(
-            x='time',
             title=f'{node} [{unit_label}]' if unit_label else node,
             **color_kwargs,
             **plotly_kwargs,
@@ -1631,9 +1631,9 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
+        plotly_kwargs.setdefault('x', 'time')
         plotly_kwargs.setdefault('pattern_shape', None)
         fig = ds.plotly.bar(
-            x='time',
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             **color_kwargs,
             **plotly_kwargs,
@@ -1793,9 +1793,9 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
+        plotly_kwargs.setdefault('x', 'time')
         plotly_kwargs.setdefault('symbol', None)
         fig = ds.plotly.line(
-            x='time',
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             **color_kwargs,
             **plotly_kwargs,
@@ -1850,8 +1850,8 @@ class StatisticsPlotAccessor:
         else:
             # Build color kwargs
             color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+            plotly_kwargs.setdefault('x', 'variable')
             fig = ds.plotly.bar(
-                x='variable',
                 color='variable',
                 title='Investment Sizes',
                 labels={'value': 'Size'},
@@ -1942,6 +1942,8 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(result_ds.data_vars))
 
+        x_dim = 'duration_pct' if normalize else 'duration'
+        plotly_kwargs.setdefault('x', x_dim)
         plotly_kwargs.setdefault('symbol', None)
         fig = result_ds.plotly.line(
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
@@ -2069,8 +2071,8 @@ class StatisticsPlotAccessor:
             labels = []
         color_kwargs = _build_color_kwargs(colors, labels) if labels else {}
 
+        plotly_kwargs.setdefault('x', x_col)
         fig = ds.plotly.bar(
-            x=x_col,
             color=color,
             title=title,
             **color_kwargs,
@@ -2127,9 +2129,9 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
+        plotly_kwargs.setdefault('x', 'time')
         plotly_kwargs.setdefault('symbol', None)
         fig = ds.plotly.line(
-            x='time',
             title='Storage Charge States',
             **color_kwargs,
             **plotly_kwargs,
@@ -2230,9 +2232,9 @@ class StatisticsPlotAccessor:
             color_kwargs = _build_color_kwargs(colors, flow_labels)
 
         # Create stacked bar chart for flows
+        plotly_kwargs.setdefault('x', 'time')
         plotly_kwargs.setdefault('pattern_shape', None)
         fig = flow_ds.plotly.bar(
-            x='time',
             title=f'{storage} Operation ({unit})',
             **color_kwargs,
             **plotly_kwargs,

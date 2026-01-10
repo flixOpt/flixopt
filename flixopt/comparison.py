@@ -452,10 +452,10 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        plotly_kwargs.setdefault('x', 'time')
         _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            x='time',
             color='variable',
             title=f'{node} Balance Comparison',
             **color_kwargs,
@@ -498,10 +498,10 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        plotly_kwargs.setdefault('x', 'time')
         _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            x='time',
             color='variable',
             title=f'{carrier.capitalize()} Balance Comparison',
             **color_kwargs,
@@ -542,10 +542,10 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        plotly_kwargs.setdefault('x', 'time')
         _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
-            x='time',
             title='Flows Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -583,10 +583,10 @@ class ComparisonStatisticsPlot:
         flow_vars = [v for v in ds.data_vars if v != 'charge_state']
         flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
 
+        plotly_kwargs.setdefault('x', 'time')
         _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, flow_vars)
         fig = flow_ds.plotly.bar(
-            x='time',
             color='variable',
             title=f'{storage} Operation Comparison',
             **color_kwargs,
@@ -633,10 +633,10 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        plotly_kwargs.setdefault('x', 'time')
         _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
-            x='time',
             title='Charge States Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -670,6 +670,8 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        x_dim = 'duration_pct' if normalize else 'duration'
+        plotly_kwargs.setdefault('x', x_dim)
         _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
@@ -704,10 +706,10 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        plotly_kwargs.setdefault('x', 'variable')
         _set_case_default(plotly_kwargs, 'color')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            x='variable',
             title='Investment Sizes Comparison',
             labels={'value': 'Size'},
             barmode='group',
@@ -745,11 +747,11 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        _set_case_default(plotly_kwargs, 'color')
         x_col = by if by else 'variable'
+        plotly_kwargs.setdefault('x', x_col)
+        _set_case_default(plotly_kwargs, 'color')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            x=x_col,
             title=f'Effects Comparison ({aspect})',
             barmode='group',
             **color_kwargs,
