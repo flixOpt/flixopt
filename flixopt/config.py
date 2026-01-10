@@ -818,10 +818,14 @@ class CONFIG:
         """Configure for Jupyter notebook environments.
 
         Optimizes settings for notebook usage:
-        - Sets plotly renderer to 'notebook' for inline display
+        - Sets plotly renderer to 'notebook' for inline display (unless PLOTLY_RENDERER env var is set)
         - Disables automatic plot.show() calls (notebooks display via _repr_html_)
         - Enables SUCCESS-level console logging
         - Disables solver console output for cleaner notebook cells
+
+        Note:
+            The plotly renderer can be overridden by setting the PLOTLY_RENDERER
+            environment variable (e.g., 'notebook_connected' for CDN-based rendering).
 
         Examples:
             ```python
@@ -836,8 +840,9 @@ class CONFIG:
         """
         import plotly.io as pio
 
-        # Set plotly to render inline in notebooks
-        pio.renderers.default = 'notebook'
+        # Set plotly to render inline in notebooks (respect PLOTLY_RENDERER env var)
+        if 'PLOTLY_RENDERER' not in os.environ:
+            pio.renderers.default = 'notebook'
         pio.templates.default = 'plotly_white'
 
         # Disable default show since notebooks render via _repr_html_
