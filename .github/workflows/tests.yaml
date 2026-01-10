@@ -3,8 +3,16 @@ name: Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'flixopt/**'
+      - 'tests/**'
+      - 'pyproject.toml'
   pull_request:
     branches: ["**"]
+    paths:
+      - 'flixopt/**'
+      - 'tests/**'
+      - 'pyproject.toml'
   workflow_dispatch:
   workflow_call:  # Allow release.yaml to call this workflow.
 
