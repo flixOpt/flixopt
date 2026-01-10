@@ -786,6 +786,38 @@ class CONFIG:
 
             pio.renderers.default = 'browser'
 
+        # Activate flixopt theme
+        cls.use_theme()
+
+        return cls
+
+    @classmethod
+    def use_theme(cls) -> type[CONFIG]:
+        """Activate the flixopt plotly theme as the default template.
+
+        Sets ``plotly.io.templates.default = 'plotly_white+flixopt'``.
+
+        The 'flixopt' template is registered automatically on import with colorscales
+        from CONFIG.Plotting. Call this method to make it the default for all plots.
+
+        Returns:
+            The CONFIG class for method chaining.
+
+        Examples:
+            ```python
+            # Activate flixopt theme globally
+            CONFIG.use_theme()
+
+            # Or combine with other setup
+            CONFIG.notebook()  # Already calls use_theme() internally
+
+            # Per-figure usage (without setting global default)
+            fig.update_layout(template='plotly_white+flixopt')
+            ```
+        """
+        import plotly.io as pio
+
+        pio.templates.default = 'plotly_white+flixopt'
         return cls
 
     @classmethod
@@ -818,7 +850,9 @@ class CONFIG:
         # Set plotly to render inline in notebooks (respect PLOTLY_RENDERER env var)
         if 'PLOTLY_RENDERER' not in os.environ:
             pio.renderers.default = 'notebook'
-        pio.templates.default = 'plotly_white'
+
+        # Activate flixopt theme
+        cls.use_theme()
 
         # Disable default show since notebooks render via _repr_html_
         cls.Plotting.default_show = False
@@ -899,3 +933,32 @@ class CONFIG:
             elif hasattr(cls, key) and key != 'logging':
                 # Skip 'logging' as it requires special handling via CONFIG.Logging methods
                 setattr(cls, key, value)
+
+
+def _register_flixopt_template() -> None:
+    """Register the 'flixopt' plotly template (called on module import).
+
+    This makes the template available as 'flixopt' or 'plotly_white+flixopt',
+    but does NOT set it as the default. Users must call CONFIG.use_theme()
+    to activate it globally, or use it per-figure via template='flixopt'.
+    """
+    import plotly.graph_objects as go
+    import plotly.io as pio
+    from plotly.express import colors
+
+    # Get colorway from qualitative colorscale name
+    colorscale_name = CONFIG.Plotting.default_qualitative_colorscale.capitalize()
+    colorway = getattr(colors.qualitative, colorscale_name, None)
+
+    pio.templates['flixopt'] = go.layout.Template(
+        layout=go.Layout(
+            colorway=colorway,
+            colorscale=dict(
+                sequential=CONFIG.Plotting.default_sequential_colorscale,
+            ),
+        )
+    )
+
+
+# Register flixopt template on import (no side effects - just makes it available)
+_register_flixopt_template()
