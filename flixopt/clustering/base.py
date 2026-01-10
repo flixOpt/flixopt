@@ -615,7 +615,8 @@ class ClusteringPlotAccessor:
                 for rep in ds.coords['representation'].values:
                     values = np.sort(ds[var].sel(representation=rep).values.flatten())[::-1]
                     sorted_vars[(var, rep)] = values
-            n = len(values)
+            # Get length from first sorted array
+            n = len(next(iter(sorted_vars.values())))
             ds = xr.Dataset(
                 {
                     var: xr.DataArray(
