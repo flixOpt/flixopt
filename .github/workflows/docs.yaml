@@ -7,11 +7,13 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'  # notebooks import flixopt; catch library changes that break docs
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       deploy:
