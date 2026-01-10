@@ -836,8 +836,9 @@ class CONFIG:
         """
         import plotly.io as pio
 
-        # Set plotly to render inline in notebooks
-        pio.renderers.default = 'notebook'
+        # Set plotly to render inline in notebooks (respect PLOTLY_RENDERER env var)
+        if 'PLOTLY_RENDERER' not in os.environ:
+            pio.renderers.default = 'notebook'
         pio.templates.default = 'plotly_white'
 
         # Disable default show since notebooks render via _repr_html_
