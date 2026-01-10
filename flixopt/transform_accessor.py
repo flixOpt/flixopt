@@ -865,8 +865,8 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = None
 
-        # Build simplified Clustering (no more ClusterStructure/ClusterResult)
-        reduced_fs.clustering = Clustering(
+        # Build Clustering using create() for DatetimeIndex and Dataset conversion
+        reduced_fs.clustering = Clustering.create(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
             n_clusters=actual_n_clusters,

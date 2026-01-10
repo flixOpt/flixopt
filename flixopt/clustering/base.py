@@ -1,7 +1,7 @@
 """
 Minimal clustering data structure for time series aggregation.
 
-This module provides a single `Clustering` dataclass that stores only the essential
+This module provides a single `Clustering` class that stores only the essential
 data needed for:
 - Expanding solutions back to original timesteps
 - Inter-cluster storage linking constraints
@@ -12,7 +12,6 @@ All other values (timestep_mapping, etc.) are computed on demand from the core d
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -36,10 +35,10 @@ def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | No
     return result
 
 
-@dataclass
 class Clustering:
     """Minimal clustering info for expansion, inter-cluster storage, and IO.
 
+    Inherits from Interface for standard flixopt IO serialization.
     All derived values (timestep_mapping, n_original_clusters) are computed on demand.
 
     Attributes:
@@ -49,9 +48,11 @@ class Clustering:
             For 365 days into 8 clusters, values sum to 365.
         n_clusters: Number of distinct clusters (e.g., 8 typical days).
         timesteps_per_cluster: Timesteps within each cluster (e.g., 24 for daily).
-        original_timesteps: Original time coordinates before clustering.
-        predefined: tsam PredefinedConfig for transferring clustering to another system.
-        metrics: Optional clustering quality metrics (RMSE, MAE, etc.).
+        original_timesteps_iso: Original time coordinates as ISO strings (for IO compatibility).
+        predefined: tsam PredefinedConfig dict for transferring clustering to another system.
+        metrics_rmse: Optional RMSE metric DataArray.
+        metrics_mae: Optional MAE metric DataArray.
+        metrics_rmse_duration: Optional RMSE duration metric DataArray.
 
     Example:
         >>> fs_clustered = fs.transform.cluster(n_clusters=8)
@@ -62,30 +63,144 @@ class Clustering:
         >>> fs_clustered.clustering.expand_data(some_data)  # Expand to original timesteps
     """
 
-    cluster_assignments: xr.DataArray
-    cluster_weights: xr.DataArray
-    n_clusters: int
-    timesteps_per_cluster: int
-    original_timesteps: pd.DatetimeIndex
-    predefined: Any = None  # tsam.PredefinedConfig
-    metrics: xr.Dataset = field(default_factory=lambda: xr.Dataset())
+    def __init__(
+        self,
+        cluster_assignments: xr.DataArray,
+        cluster_weights: xr.DataArray,
+        n_clusters: int,
+        timesteps_per_cluster: int,
+        original_timesteps_iso: list[str],
+        predefined: dict | Any | None = None,
+        metrics_rmse: xr.DataArray | None = None,
+        metrics_mae: xr.DataArray | None = None,
+        metrics_rmse_duration: xr.DataArray | None = None,
+    ):
+        """Initialize Clustering.
 
-    # Optional reference to original data for comparison plots
-    _original_data: xr.Dataset | None = field(default=None, repr=False)
+        Args:
+            cluster_assignments: Cluster ID for each original period.
+            cluster_weights: Count of original periods per cluster.
+            n_clusters: Number of distinct clusters.
+            timesteps_per_cluster: Timesteps within each cluster.
+            original_timesteps_iso: Original time coordinates as ISO strings.
+            predefined: tsam PredefinedConfig or dict for transferring clustering.
+            metrics_rmse: Optional RMSE metric DataArray.
+            metrics_mae: Optional MAE metric DataArray.
+            metrics_rmse_duration: Optional RMSE duration metric DataArray.
+        """
+        # Ensure DataArrays have names for IO
+        if cluster_assignments.name is None:
+            cluster_assignments = cluster_assignments.rename('cluster_assignments')
+        if cluster_weights.name is None:
+            cluster_weights = cluster_weights.rename('cluster_weights')
 
-    def __post_init__(self):
-        """Convert predefined dict to PredefinedConfig if needed."""
-        if isinstance(self.predefined, dict):
+        self.cluster_assignments = cluster_assignments
+        self.cluster_weights = cluster_weights
+        self.n_clusters = n_clusters
+        self.timesteps_per_cluster = timesteps_per_cluster
+        self.original_timesteps_iso = original_timesteps_iso
+
+        # Convert predefined dict to PredefinedConfig if tsam available
+        if isinstance(predefined, dict):
             try:
                 import tsam
 
-                self.predefined = tsam.PredefinedConfig.from_dict(self.predefined)
+                predefined = tsam.PredefinedConfig.from_dict(predefined)
             except (ImportError, Exception):
                 pass  # Keep as dict if tsam not available
+        self.predefined = predefined
+
+        # Store metrics DataArrays (named for IO)
+        if metrics_rmse is not None and metrics_rmse.name is None:
+            metrics_rmse = metrics_rmse.rename('metrics_rmse')
+        if metrics_mae is not None and metrics_mae.name is None:
+            metrics_mae = metrics_mae.rename('metrics_mae')
+        if metrics_rmse_duration is not None and metrics_rmse_duration.name is None:
+            metrics_rmse_duration = metrics_rmse_duration.rename('metrics_rmse_duration')
+
+        self.metrics_rmse = metrics_rmse
+        self.metrics_mae = metrics_mae
+        self.metrics_rmse_duration = metrics_rmse_duration
+
+        # Not serialized - for comparison plots only
+        self._original_data: xr.Dataset | None = None
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Convenience constructors
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @classmethod
+    def create(
+        cls,
+        cluster_assignments: xr.DataArray,
+        cluster_weights: xr.DataArray,
+        n_clusters: int,
+        timesteps_per_cluster: int,
+        original_timesteps: pd.DatetimeIndex,
+        predefined: Any | None = None,
+        metrics: xr.Dataset | None = None,
+    ) -> Clustering:
+        """Create Clustering with DatetimeIndex and Dataset (convenience method).
+
+        This is the preferred way to create Clustering objects programmatically.
+        Converts DatetimeIndex to ISO strings and Dataset to individual DataArrays
+        for IO compatibility.
+
+        Args:
+            cluster_assignments: Cluster ID for each original period.
+            cluster_weights: Count of original periods per cluster.
+            n_clusters: Number of distinct clusters.
+            timesteps_per_cluster: Timesteps within each cluster.
+            original_timesteps: Original time coordinates.
+            predefined: tsam PredefinedConfig for transferring clustering.
+            metrics: Optional clustering quality metrics Dataset.
+
+        Returns:
+            Clustering instance.
+        """
+        # Convert DatetimeIndex to ISO strings
+        original_timesteps_iso = [t.isoformat() for t in original_timesteps]
+
+        # Convert predefined to dict for storage
+        predefined_dict = None
+        if predefined is not None:
+            if hasattr(predefined, 'to_dict'):
+                predefined_dict = predefined.to_dict()
+            else:
+                predefined_dict = predefined
+
+        # Extract metrics DataArrays
+        metrics_rmse = None
+        metrics_mae = None
+        metrics_rmse_duration = None
+        if metrics is not None and len(metrics.data_vars) > 0:
+            if 'RMSE' in metrics:
+                metrics_rmse = metrics['RMSE'].rename('metrics_rmse')
+            if 'MAE' in metrics:
+                metrics_mae = metrics['MAE'].rename('metrics_mae')
+            if 'RMSE_DURATION' in metrics:
+                metrics_rmse_duration = metrics['RMSE_DURATION'].rename('metrics_rmse_duration')
+
+        return cls(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=n_clusters,
+            timesteps_per_cluster=timesteps_per_cluster,
+            original_timesteps_iso=original_timesteps_iso,
+            predefined=predefined_dict,
+            metrics_rmse=metrics_rmse,
+            metrics_mae=metrics_mae,
+            metrics_rmse_duration=metrics_rmse_duration,
+        )
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Computed Properties
     # ═══════════════════════════════════════════════════════════════════════════
+
+    @property
+    def original_timesteps(self) -> pd.DatetimeIndex:
+        """Original time coordinates before clustering."""
+        return pd.DatetimeIndex(self.original_timesteps_iso)
 
     @property
     def n_original_clusters(self) -> int:
@@ -101,6 +216,18 @@ class Clustering:
     def cluster_occurrences(self) -> xr.DataArray:
         """Alias for cluster_weights (legacy name)."""
         return self.cluster_weights
+
+    @property
+    def metrics(self) -> xr.Dataset:
+        """Clustering quality metrics as Dataset."""
+        data_vars = {}
+        if self.metrics_rmse is not None:
+            data_vars['RMSE'] = self.metrics_rmse
+        if self.metrics_mae is not None:
+            data_vars['MAE'] = self.metrics_mae
+        if self.metrics_rmse_duration is not None:
+            data_vars['RMSE_DURATION'] = self.metrics_rmse_duration
+        return xr.Dataset(data_vars)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Core Methods
@@ -219,65 +346,49 @@ class Clustering:
         )
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # IO Serialization
+    # IO Serialization (Interface-compatible pattern)
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for netCDF serialization.
+        """Create reference structure for serialization (Interface-compatible).
 
-        Returns a tuple of (reference_dict, data_arrays) where:
-        - reference_dict contains __dataarray__ references and scalar values
-        - data_arrays contains the actual DataArrays to store
+        Returns tuple of (reference_dict, extracted_arrays) following the Interface pattern.
+        DataArrays are referenced via ':::array_name' format.
         """
-        ref = {'__class__': self.__class__.__name__}
+        reference = {'__class__': self.__class__.__name__}
+        arrays = {}
 
-        # Store DataArrays with __dataarray__ references for _resolve_reference_structure
-        data_arrays = {
-            'cluster_assignments': self.cluster_assignments,
-            'cluster_weights': self.cluster_weights,
-        }
-        ref['cluster_assignments'] = {'__dataarray__': 'cluster_assignments'}
-        ref['cluster_weights'] = {'__dataarray__': 'cluster_weights'}
+        # DataArrays use :::name reference pattern
+        arrays[self.cluster_assignments.name] = self.cluster_assignments
+        reference['cluster_assignments'] = f':::{self.cluster_assignments.name}'
 
-        # Store scalars as attrs
-        ref['n_clusters'] = int(self.n_clusters)
-        ref['timesteps_per_cluster'] = int(self.timesteps_per_cluster)
-        ref['original_timesteps'] = [t.isoformat() for t in self.original_timesteps]
+        arrays[self.cluster_weights.name] = self.cluster_weights
+        reference['cluster_weights'] = f':::{self.cluster_weights.name}'
 
-        # Store predefined config for transferring clustering
+        # Scalars
+        reference['n_clusters'] = self.n_clusters
+        reference['timesteps_per_cluster'] = self.timesteps_per_cluster
+        reference['original_timesteps_iso'] = self.original_timesteps_iso
+
+        # Predefined config as dict
         if self.predefined is not None:
-            ref['predefined'] = self.predefined.to_dict()
+            if hasattr(self.predefined, 'to_dict'):
+                reference['predefined'] = self.predefined.to_dict()
+            else:
+                reference['predefined'] = self.predefined
 
-        # Store metrics if present
-        if self.metrics is not None and len(self.metrics.data_vars) > 0:
-            for name, da in self.metrics.items():
-                data_arrays[f'metrics|{name}'] = da
+        # Metrics DataArrays
+        if self.metrics_rmse is not None:
+            arrays[self.metrics_rmse.name] = self.metrics_rmse
+            reference['metrics_rmse'] = f':::{self.metrics_rmse.name}'
+        if self.metrics_mae is not None:
+            arrays[self.metrics_mae.name] = self.metrics_mae
+            reference['metrics_mae'] = f':::{self.metrics_mae.name}'
+        if self.metrics_rmse_duration is not None:
+            arrays[self.metrics_rmse_duration.name] = self.metrics_rmse_duration
+            reference['metrics_rmse_duration'] = f':::{self.metrics_rmse_duration.name}'
 
-        return ref, data_arrays
-
-    @classmethod
-    def from_dataset(cls, ds: xr.Dataset, ref: dict) -> Clustering:
-        """Reconstruct Clustering from dataset and reference dict.
-
-        This method is for direct use in tests. Normal IO goes through
-        _resolve_reference_structure which calls __init__ directly.
-        """
-        cluster_assignments = ds['cluster_assignments']
-        cluster_weights = ds['cluster_weights']
-
-        # Reconstruct metrics
-        metrics_vars = {name.replace('metrics|', ''): ds[name] for name in ds.data_vars if name.startswith('metrics|')}
-        metrics = xr.Dataset(metrics_vars) if metrics_vars else xr.Dataset()
-
-        return cls(
-            cluster_assignments=cluster_assignments,
-            cluster_weights=cluster_weights,
-            n_clusters=ref['n_clusters'],
-            timesteps_per_cluster=ref['timesteps_per_cluster'],
-            original_timesteps=pd.DatetimeIndex(ref['original_timesteps']),
-            predefined=ref.get('predefined'),  # __post_init__ converts dict to PredefinedConfig
-            metrics=metrics,
-        )
+        return reference, arrays
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Convenience
