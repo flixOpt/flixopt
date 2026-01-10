@@ -6,6 +6,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
 import xarray as xr
+from xarray_plotly import SLOT_ORDERS
 
 from .config import CONFIG
 from .plot_result import PlotResult
@@ -20,6 +21,15 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 __all__ = ['Comparison']
+
+# Extract all unique slot names from xarray_plotly
+_CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
+
+
+def _set_case_default(kwargs: dict, slot: str) -> None:
+    """Set default slot for 'case' dimension if not already assigned elsewhere."""
+    if not any(kwargs.get(s) == 'case' for s in _CASE_SLOTS):
+        kwargs.setdefault(slot, 'case')
 
 
 class Comparison:
@@ -442,6 +452,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             x='time',
@@ -487,6 +498,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             x='time',
@@ -530,6 +542,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             x='time',
@@ -570,6 +583,7 @@ class ComparisonStatisticsPlot:
         flow_vars = [v for v in ds.data_vars if v != 'charge_state']
         flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
 
+        _set_case_default(plotly_kwargs, 'facet_col')
         color_kwargs = _build_color_kwargs(colors, flow_vars)
         fig = flow_ds.plotly.bar(
             x='time',
@@ -619,6 +633,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             x='time',
@@ -655,6 +670,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'line_dash')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             title='Duration Curve Comparison',
@@ -688,12 +704,13 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'color')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             x='variable',
-            color='variable',
             title='Investment Sizes Comparison',
             labels={'value': 'Size'},
+            barmode='group',
             **color_kwargs,
             **plotly_kwargs,
         )
@@ -728,11 +745,13 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
+        _set_case_default(plotly_kwargs, 'color')
         x_col = by if by else 'variable'
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             x=x_col,
             title=f'Effects Comparison ({aspect})',
+            barmode='group',
             **color_kwargs,
             **plotly_kwargs,
         )
@@ -769,6 +788,7 @@ class ComparisonStatisticsPlot:
 
         da = ds[next(iter(ds.data_vars))]
 
+        _set_case_default(plotly_kwargs, 'facet_col')
         # Handle colorscale
         if colors is not None and 'color_continuous_scale' not in plotly_kwargs:
             plotly_kwargs['color_continuous_scale'] = colors
