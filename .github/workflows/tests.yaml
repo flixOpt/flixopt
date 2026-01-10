@@ -62,7 +62,12 @@ jobs:
         run: uv pip install --system .[dev]
 
       - name: Run tests
-        run: pytest -v --numprocesses=auto
+        run: |
+          if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            pytest -v --numprocesses=auto -m "not slow"
+          else
+            pytest -v --numprocesses=auto
+          fi
 
   test-examples:
     runs-on: ubuntu-24.04
