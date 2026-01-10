@@ -780,9 +780,8 @@ class TransformAccessor:
         cluster_occurrences_da = combined['cluster_occurrences']
         cluster_weight = combined['cluster_weight']
 
-        # Convert metrics
-        clustering_metrics = tsam_adapter.accuracy_to_dataset(first_result)
-        # TODO: Combine metrics for multi-dim case if needed
+        # Convert and combine metrics across all (period, scenario) slices
+        clustering_metrics = tsam_adapter.combine_metrics_multidim(tsam_results, periods, scenarios)
 
         logger.info(
             f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
