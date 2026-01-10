@@ -1673,7 +1673,7 @@ class StatisticsPlotAccessor:
         variables: str | list[str],
         *,
         select: SelectType | None = None,
-        reshape: tuple[str, str] | None = None,
+        reshape: tuple[str, str] | Literal['auto'] | None = None,
         colors: str | list[str] | None = None,
         show: bool | None = None,
         data_only: bool = False,
@@ -1693,7 +1693,8 @@ class StatisticsPlotAccessor:
                 names like 'Storage|charge_state' are used as-is.
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
             reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
-                days × hours. None disables reshaping.
+                days × hours. Use 'auto' to reshape to ('D', 'h') if data has a time
+                index. None disables reshaping.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps (use str or list[str]).
             show: Whether to display the figure.
