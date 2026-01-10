@@ -73,6 +73,16 @@ class Clustering:
     # Optional reference to original data for comparison plots
     _original_data: xr.Dataset | None = field(default=None, repr=False)
 
+    def __post_init__(self):
+        """Convert predefined dict to PredefinedConfig if needed."""
+        if isinstance(self.predefined, dict):
+            try:
+                import tsam
+
+                self.predefined = tsam.PredefinedConfig.from_dict(self.predefined)
+            except (ImportError, Exception):
+                pass  # Keep as dict if tsam not available
+
     # ═══════════════════════════════════════════════════════════════════════════
     # Computed Properties
     # ═══════════════════════════════════════════════════════════════════════════
@@ -213,38 +223,50 @@ class Clustering:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for netCDF serialization."""
+        """Create reference structure for netCDF serialization.
+
+        Returns a tuple of (reference_dict, data_arrays) where:
+        - reference_dict contains __dataarray__ references and scalar values
+        - data_arrays contains the actual DataArrays to store
+        """
         ref = {'__class__': self.__class__.__name__}
 
+        # Store DataArrays with __dataarray__ references for _resolve_reference_structure
         data_arrays = {
-            'clustering|cluster_assignments': self.cluster_assignments,
-            'clustering|cluster_weights': self.cluster_weights,
+            'cluster_assignments': self.cluster_assignments,
+            'cluster_weights': self.cluster_weights,
         }
+        ref['cluster_assignments'] = {'__dataarray__': 'cluster_assignments'}
+        ref['cluster_weights'] = {'__dataarray__': 'cluster_weights'}
 
         # Store scalars as attrs
         ref['n_clusters'] = int(self.n_clusters)
         ref['timesteps_per_cluster'] = int(self.timesteps_per_cluster)
         ref['original_timesteps'] = [t.isoformat() for t in self.original_timesteps]
 
+        # Store predefined config for transferring clustering
+        if self.predefined is not None:
+            ref['predefined'] = self.predefined.to_dict()
+
         # Store metrics if present
         if self.metrics is not None and len(self.metrics.data_vars) > 0:
             for name, da in self.metrics.items():
-                data_arrays[f'clustering|metrics|{name}'] = da
+                data_arrays[f'metrics|{name}'] = da
 
         return ref, data_arrays
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset, ref: dict) -> Clustering:
-        """Reconstruct Clustering from netCDF dataset."""
-        cluster_assignments = ds['clustering|cluster_assignments']
-        cluster_weights = ds['clustering|cluster_weights']
+        """Reconstruct Clustering from dataset and reference dict.
+
+        This method is for direct use in tests. Normal IO goes through
+        _resolve_reference_structure which calls __init__ directly.
+        """
+        cluster_assignments = ds['cluster_assignments']
+        cluster_weights = ds['cluster_weights']
 
         # Reconstruct metrics
-        metrics_vars = {
-            name.replace('clustering|metrics|', ''): ds[name]
-            for name in ds.data_vars
-            if name.startswith('clustering|metrics|')
-        }
+        metrics_vars = {name.replace('metrics|', ''): ds[name] for name in ds.data_vars if name.startswith('metrics|')}
         metrics = xr.Dataset(metrics_vars) if metrics_vars else xr.Dataset()
 
         return cls(
@@ -253,6 +275,7 @@ class Clustering:
             n_clusters=ref['n_clusters'],
             timesteps_per_cluster=ref['timesteps_per_cluster'],
             original_timesteps=pd.DatetimeIndex(ref['original_timesteps']),
+            predefined=ref.get('predefined'),  # __post_init__ converts dict to PredefinedConfig
             metrics=metrics,
         )
 

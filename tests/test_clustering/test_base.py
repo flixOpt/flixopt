@@ -166,8 +166,11 @@ class TestIOSerialization:
         assert ref['__class__'] == 'Clustering'
         assert ref['n_clusters'] == 2
         assert ref['timesteps_per_cluster'] == 24
-        assert 'clustering|cluster_assignments' in data_arrays
-        assert 'clustering|cluster_weights' in data_arrays
+        assert 'cluster_assignments' in data_arrays
+        assert 'cluster_weights' in data_arrays
+        # Check __dataarray__ references are created
+        assert ref['cluster_assignments'] == {'__dataarray__': 'cluster_assignments'}
+        assert ref['cluster_weights'] == {'__dataarray__': 'cluster_weights'}
 
     def test_from_dataset_roundtrip(self):
         """Test roundtrip serialization via _create_reference_structure and from_dataset."""
