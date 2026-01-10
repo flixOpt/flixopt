@@ -1273,11 +1273,17 @@ class TransformAccessor:
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
-        data_vars = {
-            name: expand_da(da, name)
-            for name, da in reduced_ds.data_vars.items()
-            if name != 'cluster_weight' and not name.startswith('clustering|')
-        }
+
+        def should_include(name: str, da: xr.DataArray) -> bool:
+            """Check if variable should be included in expanded dataset."""
+            if name.startswith('clustering|'):
+                return False
+            # Skip cluster-only variables (no time dim)
+            if 'cluster' in da.dims and 'time' not in da.dims:
+                return False
+            return True
+
+        data_vars = {name: expand_da(da, name) for name, da in reduced_ds.data_vars.items() if should_include(name, da)}
         attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
 
