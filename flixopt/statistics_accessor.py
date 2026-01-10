@@ -1490,17 +1490,11 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build color kwargs - handle dict, list, or colorscale string
-        color_kwargs: dict[str, Any] = {}
+        # Build color kwargs - use default colors from element attributes if not specified
         if colors is None:
-            color_kwargs['color_discrete_map'] = self._get_color_map_for_balance(node, list(ds.data_vars))
-        elif isinstance(colors, dict):
-            color_kwargs['color_discrete_map'] = colors
-        elif isinstance(colors, list):
-            color_kwargs['color_discrete_sequence'] = colors
-        elif isinstance(colors, str):
-            # Convert colorscale name to dict mapping
-            color_kwargs['color_discrete_map'] = process_colors(colors, list(ds.data_vars))
+            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(node, list(ds.data_vars))}
+        else:
+            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -2224,16 +2218,17 @@ class StatisticsPlotAccessor:
         flow_ds = ds[flow_labels]
         charge_da = ds['charge_state']
 
-        # Build color map for flows
+        # Build color kwargs - use default colors from element attributes if not specified
         if colors is None:
-            colors = self._get_color_map_for_balance(storage, flow_labels)
+            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(storage, flow_labels)}
+        else:
+            color_kwargs = _build_color_kwargs(colors, flow_labels)
 
         # Create stacked bar chart for flows
         fig = flow_ds.plotly.bar(
             x='time',
-            color='variable',
-            color_discrete_map=colors,
             title=f'{storage} Operation ({unit})',
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
