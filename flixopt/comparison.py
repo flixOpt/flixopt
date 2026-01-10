@@ -25,11 +25,33 @@ __all__ = ['Comparison']
 # Extract all unique slot names from xarray_plotly
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
 
+# Default slot assignments for comparison plotting methods
+# None values block unused slots to prevent auto-assignment
+_SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
+    'balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'},
+    'carrier_balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'},
+    'flows': {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'},
+    'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'},
+    'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'},
+    'sizes': {'x': 'variable', 'color': 'case'},
+    'duration_curve': {'symbol': None, 'line_dash': 'case'},  # x is computed dynamically
+    'effects': {'color': 'case'},  # x is computed dynamically
+    'heatmap': {'facet_col': 'case'},
+}
 
-def _set_case_default(kwargs: dict, slot: str) -> None:
-    """Set default slot for 'case' dimension if not already assigned elsewhere."""
-    if not any(kwargs.get(s) == 'case' for s in _CASE_SLOTS):
-        kwargs.setdefault(slot, 'case')
+
+def _apply_slot_defaults(plotly_kwargs: dict, method: str) -> None:
+    """Apply default slot assignments for a comparison plotting method."""
+    defaults = _SLOT_DEFAULTS.get(method, {})
+
+    # Check if 'case' is already assigned by user to any slot
+    case_already_assigned = any(plotly_kwargs.get(s) == 'case' for s in _CASE_SLOTS)
+
+    for slot, value in defaults.items():
+        if value == 'case' and case_already_assigned:
+            # Skip case assignment if user already assigned 'case' to another slot
+            continue
+        plotly_kwargs.setdefault(slot, value)
 
 
 class Comparison:
@@ -452,11 +474,9 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plotly_kwargs.setdefault('x', 'time')
-        _set_case_default(plotly_kwargs, 'facet_col')
+        _apply_slot_defaults(plotly_kwargs, 'balance')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            color='variable',
             title=f'{node} Balance Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -498,11 +518,9 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plotly_kwargs.setdefault('x', 'time')
-        _set_case_default(plotly_kwargs, 'facet_col')
+        _apply_slot_defaults(plotly_kwargs, 'carrier_balance')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
-            color='variable',
             title=f'{carrier.capitalize()} Balance Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -542,8 +560,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plotly_kwargs.setdefault('x', 'time')
-        _set_case_default(plotly_kwargs, 'line_dash')
+        _apply_slot_defaults(plotly_kwargs, 'flows')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             title='Flows Comparison',
@@ -583,11 +600,9 @@ class ComparisonStatisticsPlot:
         flow_vars = [v for v in ds.data_vars if v != 'charge_state']
         flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
 
-        plotly_kwargs.setdefault('x', 'time')
-        _set_case_default(plotly_kwargs, 'facet_col')
+        _apply_slot_defaults(plotly_kwargs, 'storage')
         color_kwargs = _build_color_kwargs(colors, flow_vars)
         fig = flow_ds.plotly.bar(
-            color='variable',
             title=f'{storage} Operation Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -633,8 +648,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plotly_kwargs.setdefault('x', 'time')
-        _set_case_default(plotly_kwargs, 'line_dash')
+        _apply_slot_defaults(plotly_kwargs, 'charge_states')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             title='Charge States Comparison',
@@ -670,9 +684,9 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        x_dim = 'duration_pct' if normalize else 'duration'
-        plotly_kwargs.setdefault('x', x_dim)
-        _set_case_default(plotly_kwargs, 'line_dash')
+        # Dynamic x based on normalize parameter
+        plotly_kwargs.setdefault('x', 'duration_pct' if normalize else 'duration')
+        _apply_slot_defaults(plotly_kwargs, 'duration_curve')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.line(
             title='Duration Curve Comparison',
@@ -706,8 +720,7 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plotly_kwargs.setdefault('x', 'variable')
-        _set_case_default(plotly_kwargs, 'color')
+        _apply_slot_defaults(plotly_kwargs, 'sizes')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             title='Investment Sizes Comparison',
@@ -747,9 +760,9 @@ class ComparisonStatisticsPlot:
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        x_col = by if by else 'variable'
-        plotly_kwargs.setdefault('x', x_col)
-        _set_case_default(plotly_kwargs, 'color')
+        # Dynamic x based on `by` parameter
+        plotly_kwargs.setdefault('x', by if by else 'variable')
+        _apply_slot_defaults(plotly_kwargs, 'effects')
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
         fig = ds.plotly.bar(
             title=f'Effects Comparison ({aspect})',
@@ -790,7 +803,7 @@ class ComparisonStatisticsPlot:
 
         da = ds[next(iter(ds.data_vars))]
 
-        _set_case_default(plotly_kwargs, 'facet_col')
+        _apply_slot_defaults(plotly_kwargs, 'heatmap')
         # Handle colorscale
         if colors is not None and 'color_continuous_scale' not in plotly_kwargs:
             plotly_kwargs['color_continuous_scale'] = colors

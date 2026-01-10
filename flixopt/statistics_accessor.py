@@ -53,6 +53,28 @@ EffectsSankeySelect = dict[Literal['effect', 'component', 'contributor', 'period
 """Select options for effects sankey: effect, component, contributor, period, scenario."""
 
 
+# Default slot assignments for plotting methods
+# Use None for slots that should be blocked (prevent auto-assignment)
+_SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
+    'balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'carrier_balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'flows': {'x': 'time', 'color': 'variable', 'symbol': None},
+    'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None},
+    'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'sizes': {'x': 'variable', 'color': 'variable'},
+    'duration_curve': {'symbol': None},  # x is computed dynamically
+    'effects': {},  # x is computed dynamically
+    'heatmap': {},
+}
+
+
+def _apply_slot_defaults(plotly_kwargs: dict, method: str) -> None:
+    """Apply default slot assignments for a plotting method."""
+    defaults = _SLOT_DEFAULTS.get(method, {})
+    for slot, value in defaults.items():
+        plotly_kwargs.setdefault(slot, value)
+
+
 def _reshape_time_for_heatmap(
     data: xr.DataArray,
     reshape: tuple[str, str],
@@ -1506,8 +1528,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        plotly_kwargs.setdefault('x', 'time')
-        plotly_kwargs.setdefault('pattern_shape', None)
+        _apply_slot_defaults(plotly_kwargs, 'balance')
         fig = ds.plotly.bar(
             title=f'{node} [{unit_label}]' if unit_label else node,
             **color_kwargs,
@@ -1631,8 +1652,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        plotly_kwargs.setdefault('x', 'time')
-        plotly_kwargs.setdefault('pattern_shape', None)
+        _apply_slot_defaults(plotly_kwargs, 'carrier_balance')
         fig = ds.plotly.bar(
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             **color_kwargs,
@@ -1793,8 +1813,7 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
-        plotly_kwargs.setdefault('x', 'time')
-        plotly_kwargs.setdefault('symbol', None)
+        _apply_slot_defaults(plotly_kwargs, 'flows')
         fig = ds.plotly.line(
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             **color_kwargs,
@@ -1850,9 +1869,8 @@ class StatisticsPlotAccessor:
         else:
             # Build color kwargs
             color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-            plotly_kwargs.setdefault('x', 'variable')
+            _apply_slot_defaults(plotly_kwargs, 'sizes')
             fig = ds.plotly.bar(
-                color='variable',
                 title='Investment Sizes',
                 labels={'value': 'Size'},
                 **color_kwargs,
@@ -1942,9 +1960,8 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(result_ds.data_vars))
 
-        x_dim = 'duration_pct' if normalize else 'duration'
-        plotly_kwargs.setdefault('x', x_dim)
-        plotly_kwargs.setdefault('symbol', None)
+        plotly_kwargs.setdefault('x', 'duration_pct' if normalize else 'duration')
+        _apply_slot_defaults(plotly_kwargs, 'duration_curve')
         fig = result_ds.plotly.line(
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             **color_kwargs,
@@ -2072,6 +2089,7 @@ class StatisticsPlotAccessor:
         color_kwargs = _build_color_kwargs(colors, labels) if labels else {}
 
         plotly_kwargs.setdefault('x', x_col)
+        _apply_slot_defaults(plotly_kwargs, 'effects')
         fig = ds.plotly.bar(
             color=color,
             title=title,
@@ -2129,8 +2147,7 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
-        plotly_kwargs.setdefault('x', 'time')
-        plotly_kwargs.setdefault('symbol', None)
+        _apply_slot_defaults(plotly_kwargs, 'charge_states')
         fig = ds.plotly.line(
             title='Storage Charge States',
             **color_kwargs,
@@ -2232,8 +2249,7 @@ class StatisticsPlotAccessor:
             color_kwargs = _build_color_kwargs(colors, flow_labels)
 
         # Create stacked bar chart for flows
-        plotly_kwargs.setdefault('x', 'time')
-        plotly_kwargs.setdefault('pattern_shape', None)
+        _apply_slot_defaults(plotly_kwargs, 'storage')
         fig = flow_ds.plotly.bar(
             title=f'{storage} Operation ({unit})',
             **color_kwargs,
