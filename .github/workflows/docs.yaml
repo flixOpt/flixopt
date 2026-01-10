@@ -9,6 +9,7 @@ on:
       - 'flixopt/**'
       - '.github/workflows/**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
@@ -85,12 +86,12 @@ jobs:
             xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Execute slow notebooks
-        if: steps.notebook-cache.outputs.cache-hit != 'true' && github.event.pull_request.draft != true
+        if: steps.notebook-cache.outputs.cache-hit != 'true' && github.event.pull_request.draft != 'true'
         run: |
           set -eo pipefail
-          # Execute slow notebooks (skip on draft PRs)
+          # Execute slow notebooks in parallel (skip on draft PRs)
           cd docs/notebooks && cat slow_notebooks.txt | \
-            xargs -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Build docs
         env:
