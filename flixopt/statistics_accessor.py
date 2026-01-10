@@ -2259,6 +2259,10 @@ class StatisticsPlotAccessor:
         fig.update_traces(marker_line_width=0)
 
         # Add charge state as line on secondary y-axis
+        # Only pass faceting kwargs that add_line_overlay accepts
+        overlay_kwargs = {
+            k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
+        }
         add_line_overlay(
             fig,
             charge_da,
@@ -2266,7 +2270,7 @@ class StatisticsPlotAccessor:
             name='charge_state',
             secondary_y=True,
             y_title='Charge State',
-            **plotly_kwargs,
+            **overlay_kwargs,
         )
 
         if show is None:
