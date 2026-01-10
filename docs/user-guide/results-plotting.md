@@ -620,55 +620,126 @@ Turbo:  blue → cyan → green → yellow → red
 Viridis: purple → blue → green → yellow
 ```
 
-### Configuring Default Colorscales
+### Plotly Templates
 
-flixOpt registers a `'flixopt'` template with default colorscales from CONFIG:
+Plotly uses **templates** to define default styling for all plots. Templates control colors, fonts, gridlines, and more.
 
-```python
-# View current defaults
-fx.CONFIG.Plotting.default_qualitative_colorscale  # 'plotly'
-fx.CONFIG.Plotting.default_sequential_colorscale   # 'turbo'
-
-# Change defaults before plotting
-fx.CONFIG.Plotting.default_qualitative_colorscale = 'Set2'
-fx.CONFIG.Plotting.default_sequential_colorscale = 'viridis'
-
-# Activate the flixopt template (done automatically by CONFIG.notebook())
-fx.CONFIG.use_theme()
-```
-
-**Per-plot override:**
-
-```python
-# Qualitative (for color dimension)
-ds.plotly.bar(color='variable', color_discrete_sequence=px.colors.qualitative.Set1)
-
-# Sequential (for heatmaps)
-ds.plotly.imshow(color_continuous_scale='viridis')
-```
-
-### The flixopt Plotly Template
-
-On import, flixopt registers a Plotly template but does **not** activate it by default:
+**Built-in templates:**
 
 ```python
 import plotly.io as pio
 
-# Template is available
-'flixopt' in pio.templates  # True
+# List available templates
+print(pio.templates)  # plotly, plotly_white, plotly_dark, seaborn, ggplot2, ...
 
-# But not active yet
+# View current default
 pio.templates.default  # 'plotly'
 
-# Activate explicitly
-fx.CONFIG.use_theme()  # Sets 'plotly_white+flixopt'
-
-# Or via presets (which call use_theme internally)
-fx.CONFIG.notebook()
-fx.CONFIG.exploring()
+# Change default template
+pio.templates.default = 'plotly_white'
 ```
 
-This design lets you use flixOpt without affecting your other Plotly plots.
+**Template composition** - combine multiple templates with `+`:
+
+```python
+# Base template + customizations
+pio.templates.default = 'plotly_white+seaborn'
+
+# Order matters: later templates override earlier ones
+pio.templates.default = 'plotly_dark+presentation'
+```
+
+**Creating custom templates:**
+
+```python
+import plotly.graph_objects as go
+
+# Create a custom template
+my_template = go.layout.Template(
+    layout=go.Layout(
+        # Default colorway for categorical data
+        colorway=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'],
+
+        # Default sequential colorscale for heatmaps
+        colorscale=dict(
+            sequential='Viridis',
+        ),
+
+        # Other layout defaults
+        font=dict(family='Arial', size=12),
+        title=dict(font=dict(size=16)),
+    )
+)
+
+# Register and use it
+pio.templates['my_style'] = my_template
+pio.templates.default = 'plotly_white+my_style'
+```
+
+**Key template properties:**
+
+| Property | Controls |
+|----------|----------|
+| `colorway` | Default colors for categorical data (lines, bars) |
+| `colorscale.sequential` | Default gradient for continuous data (heatmaps) |
+| `colorscale.diverging` | Default gradient for diverging data |
+| `font` | Default font family and size |
+| `paper_bgcolor` | Background color |
+| `plot_bgcolor` | Plot area background |
+
+### Colorscale Configuration
+
+**Per-plot colorscale override:**
+
+```python
+import plotly.express as px
+
+# Qualitative: for categorical color dimension
+fig = px.line(df, x='time', y='value', color='category',
+              color_discrete_sequence=px.colors.qualitative.Set1)
+
+# Or use a map for specific assignments
+fig = px.bar(df, x='time', y='value', color='variable',
+             color_discrete_map={'Boiler': 'red', 'CHP': 'blue'})
+
+# Sequential: for heatmaps and continuous color
+fig = px.imshow(matrix, color_continuous_scale='Viridis')
+```
+
+**Available colorscales:**
+
+```python
+# List qualitative (categorical) colorscales
+print(dir(px.colors.qualitative))  # Plotly, D3, Set1, Set2, Pastel, ...
+
+# List sequential (continuous) colorscales
+print(dir(px.colors.sequential))  # Viridis, Plasma, Turbo, Blues, ...
+
+# Preview a colorscale
+px.colors.qualitative.swatches()
+px.colors.sequential.swatches()
+```
+
+### flixOpt's Template
+
+flixOpt registers a `'flixopt'` template on import (but doesn't activate it):
+
+```python
+import plotly.io as pio
+import flixopt as fx
+
+# Template is registered but not active
+'flixopt' in pio.templates  # True
+pio.templates.default  # Still 'plotly'
+
+# Activate manually
+fx.CONFIG.use_theme()  # Sets 'plotly_white+flixopt'
+
+# Or via presets (recommended)
+fx.CONFIG.notebook()  # Activates theme + configures for notebooks
+```
+
+This design ensures flixOpt doesn't interfere with your other Plotly plots unless you explicitly opt in.
 
 ### Useful Plotly Customizations
 
