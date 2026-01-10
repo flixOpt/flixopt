@@ -18,8 +18,9 @@ from .plot_result import PlotResult
 from .structure import Interface, register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from collections.abc import Iterator
+    from collections.abc import ItemsView, Iterator
 
+    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
@@ -204,16 +205,16 @@ class Piecewise(Interface):
         self._has_time_dim = False
 
     @property
-    def has_time_dim(self):
+    def has_time_dim(self) -> bool:
         return self._has_time_dim
 
     @has_time_dim.setter
-    def has_time_dim(self, value):
+    def has_time_dim(self, value: bool) -> None:
         self._has_time_dim = value
         for piece in self.pieces:
             piece.has_time_dim = value
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
         Return the number of Piece segments in this Piecewise container.
 
@@ -222,13 +223,13 @@ class Piecewise(Interface):
         """
         return len(self.pieces)
 
-    def __getitem__(self, index) -> Piece:
+    def __getitem__(self, index: int) -> Piece:
         return self.pieces[index]  # Enables indexing like piecewise[i]
 
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piece objects."""
         super().link_to_flow_system(flow_system, prefix)
         for i, piece in enumerate(self.pieces):
@@ -442,16 +443,16 @@ class PiecewiseConversion(Interface):
         self.has_time_dim = True  # Initial propagation
 
     @property
-    def has_time_dim(self):
+    def has_time_dim(self) -> bool:
         return self._has_time_dim
 
     @has_time_dim.setter
-    def has_time_dim(self, value):
+    def has_time_dim(self, value: bool) -> None:
         self._has_time_dim = value
         for piecewise in self.piecewises.values():
             piecewise.has_time_dim = value
 
-    def items(self):
+    def items(self) -> ItemsView[str, Piecewise]:
         """
         Return an iterator over (flow_label, Piecewise) pairs stored in this PiecewiseConversion.
 
@@ -460,7 +461,7 @@ class PiecewiseConversion(Interface):
         """
         return self.piecewises.items()
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
         super().link_to_flow_system(flow_system, prefix)
         for name, piecewise in self.piecewises.items():
@@ -804,17 +805,17 @@ class PiecewiseEffects(Interface):
         self.has_time_dim = False  # Initial propagation
 
     @property
-    def has_time_dim(self):
+    def has_time_dim(self) -> bool:
         return self._has_time_dim
 
     @has_time_dim.setter
-    def has_time_dim(self, value):
+    def has_time_dim(self, value: bool) -> None:
         self._has_time_dim = value
         self.piecewise_origin.has_time_dim = value
         for piecewise in self.piecewise_shares.values():
             piecewise.has_time_dim = value
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Piecewise objects."""
         super().link_to_flow_system(flow_system, prefix)
         self.piecewise_origin.link_to_flow_system(flow_system, self._sub_prefix('origin'))
@@ -1167,7 +1168,7 @@ class InvestParameters(Interface):
         self.maximum_size = maximum_size
         self.linked_periods = linked_periods
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
         super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_effects_of_investment is not None:

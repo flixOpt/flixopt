@@ -17,6 +17,7 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
+    from .clustering.base import ClusterStructure
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -52,7 +53,7 @@ class TransformAccessor:
         self._fs = flow_system
 
     @staticmethod
-    def _calculate_clustering_weights(ds) -> dict[str, float]:
+    def _calculate_clustering_weights(ds: xr.Dataset) -> dict[str, float]:
         """Calculate weights for clustering based on dataset attributes."""
         from collections import Counter
 
@@ -1253,7 +1254,7 @@ class TransformAccessor:
         self,
         expanded_fs: FlowSystem,
         reduced_solution: xr.Dataset,
-        cluster_structure,
+        cluster_structure: ClusterStructure,
         original_timesteps_extra: pd.DatetimeIndex,
         timesteps_per_cluster: int,
         n_original_clusters: int,
@@ -1324,7 +1325,7 @@ class TransformAccessor:
         self,
         soc_boundary_per_timestep: xr.DataArray,
         storage_name: str,
-        cluster_structure,
+        cluster_structure: ClusterStructure,
         original_timesteps_extra: pd.DatetimeIndex,
         original_cluster_indices: np.ndarray,
         timesteps_per_cluster: int,

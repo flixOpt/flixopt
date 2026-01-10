@@ -825,7 +825,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False) -> None:
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -988,11 +988,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         ds = self.to_dataset(include_solution=False)
         return FlowSystem.from_dataset(ds.copy(deep=True))
 
-    def __copy__(self):
+    def __copy__(self) -> FlowSystem:
         """Support for copy.copy()."""
         return self.copy()
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: dict) -> FlowSystem:
         """Support for copy.deepcopy()."""
         return self.copy()
 
@@ -1011,7 +1011,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return super().get_structure(clean, stats)
 
-    def to_json(self, path: str | pathlib.Path):
+    def to_json(self, path: str | pathlib.Path) -> None:
         """
         Save the flow system to a JSON file.
         Ensures FlowSystem is connected before saving.
@@ -1094,7 +1094,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for effect, value in effect_values_dict.items()
         }
 
-    def connect_and_transform(self):
+    def connect_and_transform(self) -> None:
         """Connect the network and transform all element data to model coordinates.
 
         This method performs the following steps:
@@ -1822,7 +1822,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._flows_cache = None
             self._storages_cache = None
 
-    def _add_buses(self, *buses: Bus):
+    def _add_buses(self, *buses: Bus) -> None:
         for new_bus in list(buses):
             new_bus.link_to_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
@@ -1831,7 +1831,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._flows_cache = None
             self._storages_cache = None
 
-    def _connect_network(self):
+    def _connect_network(self) -> None:
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
             for flow in component.inputs + component.outputs:

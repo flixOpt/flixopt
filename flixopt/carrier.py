@@ -108,20 +108,20 @@ class Carrier(Interface):
         """Label for container keying (alias for name)."""
         return self.name
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.name)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, Carrier):
             return self.name == other.name
         if isinstance(other, str):
             return self.name == other.lower()
         return False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Carrier('{self.name}', color='{self.color}', unit='{self.unit}')"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 

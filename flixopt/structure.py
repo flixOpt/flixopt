@@ -43,7 +43,10 @@ logger = logging.getLogger('flixopt')
 CLASS_REGISTRY = {}
 
 
-def register_class_for_io(cls):
+_T = TypeVar('_T')
+
+
+def register_class_for_io(cls: type[_T]) -> type[_T]:
     """Register a class for serialization/deserialization."""
     name = cls.__name__
     if name in CLASS_REGISTRY:
@@ -98,7 +101,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
-    def do_modeling(self):
+    def do_modeling(self) -> None:
         # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
@@ -112,7 +115,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Populate _variable_names and _constraint_names on each Element
         self._populate_element_variable_names()
 
-    def _populate_element_variable_names(self):
+    def _populate_element_variable_names(self) -> None:
         """Populate _variable_names and _constraint_names on each Element from its submodel."""
         for element in self.flow_system.values():
             if element.submodel is not None:
@@ -123,7 +126,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self,
         parameter_type: Literal['flow_rate', 'size'],
         config: bool | list[str],
-    ):
+    ) -> None:
         """Add scenario equality constraints for a specific parameter type.
 
         Args:
@@ -156,7 +159,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 name=f'{var}|scenario_independent',
             )
 
-    def _add_scenario_equality_constraints(self):
+    def _add_scenario_equality_constraints(self) -> None:
         """Add equality constraints to equalize variables across scenarios based on FlowSystem configuration."""
         # Only proceed if we have scenarios
         if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
@@ -166,7 +169,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._add_scenario_equality_for_parameter_type('size', self.flow_system.scenario_independent_sizes)
 
     @property
-    def solution(self):
+    def solution(self) -> xr.Dataset:
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
         # Suppress the linopy warning about coordinate mismatch.
         # This warning is expected when storage charge_state has one more timestep than other variables.
@@ -186,12 +189,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for comp in sorted(
                         self.flow_system.components.values(), key=lambda component: component.label_full.upper()
                     )
+                    if comp.submodel is not None
                 }
             ),
             'Buses': json.dumps(
                 {
                     bus.label_full: bus.submodel.results_structure()
                     for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                    if bus.submodel is not None
                 }
             ),
             'Effects': json.dumps(
@@ -200,12 +205,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for effect in sorted(
                         self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
                     )
+                    if effect.submodel is not None
                 }
             ),
             'Flows': json.dumps(
                 {
                     flow.label_full: flow.submodel.results_structure()
                     for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                    if flow.submodel is not None
                 }
             ),
         }

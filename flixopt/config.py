@@ -40,14 +40,14 @@ class MultilineFormatter(logging.Formatter):
     to simple formatting if any encoding issues occur.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         # Set default format with time
         if not self._fmt:
             self._fmt = '%(asctime)s %(levelname)-8s │ %(message)s'
             self._style = logging.PercentStyle(self._fmt)
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         """Format multi-line messages with box-style borders for better readability."""
         try:
             # Split into lines
@@ -95,7 +95,7 @@ if COLORLOG_AVAILABLE:
         to simple formatting if any encoding issues occur.
         """
 
-        def format(self, record):
+        def format(self, record: logging.LogRecord) -> str:
             """Format multi-line messages with colors and box-style borders."""
             try:
                 # Split into lines

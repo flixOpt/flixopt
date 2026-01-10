@@ -371,7 +371,7 @@ class Optimization:
         return fx_io.round_nested_floats(main_results)
 
     @property
-    def summary(self):
+    def summary(self) -> dict[str, Any]:
         if self.model is None:
             raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing summary.')
 
@@ -573,7 +573,7 @@ class SegmentedOptimization:
         }
         self._transfered_start_values: list[dict[str, Any]] = []
 
-    def _create_sub_optimizations(self):
+    def _create_sub_optimizations(self) -> None:
         for i, (segment_name, timesteps_of_segment) in enumerate(
             zip(self.segment_names, self._timesteps_per_segment, strict=True)
         ):
@@ -699,7 +699,7 @@ class SegmentedOptimization:
 
         return self
 
-    def _transfer_start_values(self, i: int):
+    def _transfer_start_values(self, i: int) -> None:
         """
         This function gets the last values of the previous solved segment and
         inserts them as start values for the next segment
@@ -749,7 +749,7 @@ class SegmentedOptimization:
         return timesteps_per_segment
 
     @property
-    def timesteps_per_segment_with_overlap(self):
+    def timesteps_per_segment_with_overlap(self) -> int:
         return self.timesteps_per_segment + self.overlap_timesteps
 
     @property
@@ -801,7 +801,7 @@ class SegmentedOptimization:
         }
 
     @property
-    def summary(self):
+    def summary(self) -> dict[str, Any]:
         """Summary of the segmented optimization with aggregated information from all segments."""
         if len(self.sub_optimizations) == 0:
             raise RuntimeError(
@@ -809,8 +809,12 @@ class SegmentedOptimization:
             )
 
         # Aggregate constraints and variables from all segments
-        total_constraints = sum(calc.model.constraints.ncons for calc in self.sub_optimizations if calc.modeled)
-        total_variables = sum(calc.model.variables.nvars for calc in self.sub_optimizations if calc.modeled)
+        total_constraints = sum(
+            calc.model.constraints.ncons for calc in self.sub_optimizations if calc.modeled and calc.model is not None
+        )
+        total_variables = sum(
+            calc.model.variables.nvars for calc in self.sub_optimizations if calc.modeled and calc.model is not None
+        )
 
         return {
             'Name': self.name,

@@ -79,7 +79,7 @@ class ClusterStructure:
     n_clusters: int | xr.DataArray
     timesteps_per_cluster: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and ensure proper DataArray formatting."""
         # Ensure cluster_order is a DataArray with proper dims
         if not isinstance(self.cluster_order, xr.DataArray):
@@ -293,7 +293,7 @@ class ClusterResult:
     cluster_structure: ClusterStructure | None = None
     original_data: xr.Dataset | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and ensure proper DataArray formatting."""
         # Ensure timestep_mapping is a DataArray
         if not isinstance(self.timestep_mapping, xr.DataArray):
@@ -1136,7 +1136,7 @@ def create_cluster_structure_from_mapping(
     )
 
 
-def _register_clustering_classes():
+def _register_clustering_classes() -> None:
     """Register clustering classes for IO.
 
     Called from flow_system.py after all imports are complete to avoid circular imports.

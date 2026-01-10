@@ -22,6 +22,7 @@ from .structure import Element, ElementContainer, ElementModel, FlowSystemModel,
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 logger = logging.getLogger('flixopt')
@@ -237,7 +238,7 @@ class Effect(Element):
         self.minimum_over_periods = minimum_over_periods
         self.maximum_over_periods = maximum_over_periods
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Link this effect to a FlowSystem.
 
         Elements use their label_full as prefix by default, ignoring the passed prefix.
@@ -343,7 +344,7 @@ class EffectModel(ElementModel):
             return default_weights
         return self.element._fit_coords(name='period_weights', data=1, dims=['period'])
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -673,7 +674,7 @@ class EffectCollectionModel(Submodel):
             else:
                 raise ValueError(f'Target {target} not supported!')
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -692,27 +693,51 @@ class EffectCollectionModel(Submodel):
         self._add_share_between_effects()
 
         # Use objective weights with objective effect and penalty effect
+        obj_submodel = self.effects.objective_effect.submodel
+        penalty_submodel = self.effects.penalty_effect.submodel
+        if obj_submodel is None or obj_submodel.total is None:
+            raise RuntimeError('Objective effect submodel must be initialized')
+        if penalty_submodel is None or penalty_submodel.total is None:
+            raise RuntimeError('Penalty effect submodel must be initialized')
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
-            + (self.effects.penalty_effect.submodel.total * self._model.objective_weights).sum()
+            (obj_submodel.total * self._model.objective_weights).sum()
+            + (penalty_submodel.total * self._model.objective_weights).sum()
         )
 
-    def _add_share_between_effects(self):
+    def _add_share_between_effects(self) -> None:
         for target_effect in self.effects.values():
+            if target_effect.submodel is None or target_effect.submodel.temporal is None:
+                continue
             # 1. temporal: <- receiving temporal shares from other effects
-            for source_effect, time_series in target_effect.share_from_temporal.items():
-                target_effect.submodel.temporal.add_share(
-                    self.effects[source_effect].submodel.temporal.label_full,
-                    self.effects[source_effect].submodel.temporal.total_per_timestep * time_series,
-                    dims=('time', 'period', 'scenario'),
-                )
+            share_from_temporal = target_effect.share_from_temporal
+            if isinstance(share_from_temporal, dict):
+                for source_effect, time_series in share_from_temporal.items():
+                    source = self.effects[source_effect]
+                    if source.submodel is None or source.submodel.temporal is None:
+                        continue
+                    if source.submodel.temporal.total_per_timestep is None:
+                        continue
+                    target_effect.submodel.temporal.add_share(
+                        source.submodel.temporal.label_full,
+                        source.submodel.temporal.total_per_timestep * time_series,
+                        dims=('time', 'period', 'scenario'),
+                    )
             # 2. periodic: <- receiving periodic shares from other effects
-            for source_effect, factor in target_effect.share_from_periodic.items():
-                target_effect.submodel.periodic.add_share(
-                    self.effects[source_effect].submodel.periodic.label_full,
-                    self.effects[source_effect].submodel.periodic.total * factor,
-                    dims=('period', 'scenario'),
-                )
+            if target_effect.submodel.periodic is None:
+                continue
+            share_from_periodic = target_effect.share_from_periodic
+            if isinstance(share_from_periodic, dict):
+                for source_effect, factor in share_from_periodic.items():
+                    source = self.effects[source_effect]
+                    if source.submodel is None or source.submodel.periodic is None:
+                        continue
+                    if source.submodel.periodic.total is None:
+                        continue
+                    target_effect.submodel.periodic.add_share(
+                        source.submodel.periodic.label_full,
+                        source.submodel.periodic.total * factor,
+                        dims=('period', 'scenario'),
+                    )
 
 
 def calculate_all_conversion_paths(
@@ -803,7 +828,7 @@ def detect_cycles(graph: dict[str, list[str]]) -> list[list[str]]:
     # Store all found cycles
     cycles = []
 
-    def dfs_find_cycles(node, path=None):
+    def dfs_find_cycles(node: str, path: list[str] | None = None) -> None:
         if path is None:
             path = []
 
