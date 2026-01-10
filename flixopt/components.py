@@ -1320,18 +1320,13 @@ class InterclusterStorageModel(StorageModel):
         )
 
         clustering = self._model.flow_system.clustering
-        if clustering is None or clustering.result.cluster_structure is None:
+        if clustering is None:
             return
 
-        cluster_structure = clustering.result.cluster_structure
-        n_clusters = (
-            int(cluster_structure.n_clusters)
-            if isinstance(cluster_structure.n_clusters, (int, np.integer))
-            else int(cluster_structure.n_clusters.values)
-        )
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        n_original_clusters = cluster_structure.n_original_clusters
-        cluster_order = cluster_structure.cluster_order
+        n_clusters = clustering.n_clusters
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        n_original_clusters = clustering.n_original_clusters
+        cluster_order = clustering.cluster_order
 
         # 1. Constrain ΔE = 0 at cluster starts
         self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)

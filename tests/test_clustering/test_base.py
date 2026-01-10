@@ -1,141 +1,218 @@
 """Tests for flixopt.clustering.base module."""
 
 import numpy as np
-import pytest
+import pandas as pd
 import xarray as xr
 
-from flixopt.clustering import (
-    Clustering,
-    ClusterResult,
-    ClusterStructure,
-    create_cluster_structure_from_mapping,
-)
-
-
-class TestClusterStructure:
-    """Tests for ClusterStructure dataclass."""
-
-    def test_basic_creation(self):
-        """Test basic ClusterStructure creation."""
-        cluster_order = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_cluster'])
-        cluster_occurrences = xr.DataArray([3, 2, 1], dims=['cluster'])
-
-        structure = ClusterStructure(
-            cluster_order=cluster_order,
-            cluster_occurrences=cluster_occurrences,
-            n_clusters=3,
-            timesteps_per_cluster=24,
-        )
-
-        assert structure.n_clusters == 3
-        assert structure.timesteps_per_cluster == 24
-        assert structure.n_original_clusters == 6
-
-    def test_creation_from_numpy(self):
-        """Test ClusterStructure creation from numpy arrays."""
-        structure = ClusterStructure(
-            cluster_order=np.array([0, 0, 1, 1, 0]),
-            cluster_occurrences=np.array([3, 2]),
-            n_clusters=2,
-            timesteps_per_cluster=12,
-        )
-
-        assert isinstance(structure.cluster_order, xr.DataArray)
-        assert isinstance(structure.cluster_occurrences, xr.DataArray)
-        assert structure.n_original_clusters == 5
-
-
-class TestClusterResult:
-    """Tests for ClusterResult dataclass."""
-
-    def test_basic_creation(self):
-        """Test basic ClusterResult creation."""
-        result = ClusterResult(
-            timestep_mapping=xr.DataArray([0, 0, 1, 1, 2, 2], dims=['original_time']),
-            n_representatives=3,
-            representative_weights=xr.DataArray([2, 2, 2], dims=['time']),
-        )
-
-        assert result.n_representatives == 3
-        assert result.n_original_timesteps == 6
-
-    def test_creation_from_numpy(self):
-        """Test ClusterResult creation from numpy arrays."""
-        result = ClusterResult(
-            timestep_mapping=np.array([0, 1, 0, 1]),
-            n_representatives=2,
-            representative_weights=np.array([2.0, 2.0]),
-        )
-
-        assert isinstance(result.timestep_mapping, xr.DataArray)
-        assert isinstance(result.representative_weights, xr.DataArray)
-
-    def test_validation_success(self):
-        """Test validation passes for valid result."""
-        result = ClusterResult(
-            timestep_mapping=xr.DataArray([0, 1, 0, 1], dims=['original_time']),
-            n_representatives=2,
-            representative_weights=xr.DataArray([2.0, 2.0], dims=['time']),
-        )
-
-        # Should not raise
-        result.validate()
-
-    def test_validation_invalid_mapping(self):
-        """Test validation fails for out-of-range mapping."""
-        result = ClusterResult(
-            timestep_mapping=xr.DataArray([0, 5, 0, 1], dims=['original_time']),  # 5 is out of range
-            n_representatives=2,
-            representative_weights=xr.DataArray([2.0, 2.0], dims=['time']),
-        )
-
-        with pytest.raises(ValueError, match='timestep_mapping contains index'):
-            result.validate()
-
-    def test_get_expansion_mapping(self):
-        """Test get_expansion_mapping returns named DataArray."""
-        result = ClusterResult(
-            timestep_mapping=xr.DataArray([0, 1, 0], dims=['original_time']),
-            n_representatives=2,
-            representative_weights=xr.DataArray([2.0, 1.0], dims=['time']),
-        )
-
-        mapping = result.get_expansion_mapping()
-        assert mapping.name == 'expansion_mapping'
-
-
-class TestCreateClusterStructureFromMapping:
-    """Tests for create_cluster_structure_from_mapping function."""
-
-    def test_basic_creation(self):
-        """Test creating ClusterStructure from timestep mapping."""
-        # 12 original timesteps, 4 per period, 3 periods
-        # Mapping: period 0 -> cluster 0, period 1 -> cluster 1, period 2 -> cluster 0
-        mapping = xr.DataArray(
-            [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3],  # First and third period map to cluster 0
-            dims=['original_time'],
-        )
-
-        structure = create_cluster_structure_from_mapping(mapping, timesteps_per_cluster=4)
-
-        assert structure.timesteps_per_cluster == 4
-        assert structure.n_original_clusters == 3
+from flixopt.clustering import Clustering
 
 
 class TestClustering:
     """Tests for Clustering dataclass."""
 
-    def test_creation(self):
-        """Test Clustering creation."""
-        result = ClusterResult(
-            timestep_mapping=xr.DataArray([0, 1], dims=['original_time']),
-            n_representatives=2,
-            representative_weights=xr.DataArray([1.0, 1.0], dims=['time']),
+    def test_basic_creation(self):
+        """Test basic Clustering creation."""
+        cluster_assignments = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([3, 2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=3,
+            timesteps_per_cluster=24,
+            original_timesteps=pd.date_range('2024-01-01', periods=144, freq='h'),
         )
 
-        info = Clustering(
-            result=result,
-            backend_name='tsam',
+        assert clustering.n_clusters == 3
+        assert clustering.timesteps_per_cluster == 24
+        assert clustering.n_original_clusters == 6
+
+    def test_cluster_order_alias(self):
+        """Test cluster_order is alias for cluster_assignments."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=24,
+            original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
         )
 
-        assert info.backend_name == 'tsam'
+        xr.testing.assert_equal(clustering.cluster_order, clustering.cluster_assignments)
+
+    def test_cluster_occurrences_alias(self):
+        """Test cluster_occurrences is alias for cluster_weights."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=24,
+            original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
+        )
+
+        xr.testing.assert_equal(clustering.cluster_occurrences, clustering.cluster_weights)
+
+
+class TestTimestepMapping:
+    """Tests for get_timestep_mapping method."""
+
+    def test_get_timestep_mapping(self):
+        """Test timestep mapping computation."""
+        # 3 original clusters, 4 timesteps per cluster = 12 original timesteps
+        # Cluster assignments: [0, 1, 0] - periods 0 and 2 map to cluster 0, period 1 maps to cluster 1
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=4,
+            original_timesteps=pd.date_range('2024-01-01', periods=12, freq='h'),
+        )
+
+        mapping = clustering.get_timestep_mapping()
+
+        # Expected mapping:
+        # t=0-3 (orig cluster 0) -> cluster 0 * 4 + [0,1,2,3] = [0,1,2,3]
+        # t=4-7 (orig cluster 1) -> cluster 1 * 4 + [0,1,2,3] = [4,5,6,7]
+        # t=8-11 (orig cluster 2) -> cluster 0 * 4 + [0,1,2,3] = [0,1,2,3]
+        expected = np.array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3])
+        np.testing.assert_array_equal(mapping, expected)
+
+
+class TestExpandData:
+    """Tests for expand_data method."""
+
+    def test_expand_1d_data(self):
+        """Test expanding 1D time series data."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        original_timesteps = pd.date_range('2024-01-01', periods=12, freq='h')
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=4,
+            original_timesteps=original_timesteps,
+        )
+
+        # Clustered data: 2 clusters × 4 timesteps = 8 values
+        clustered_data = xr.DataArray(
+            [[10, 11, 12, 13], [20, 21, 22, 23]],  # cluster 0 and cluster 1
+            dims=['cluster', 'time'],
+            coords={'cluster': [0, 1], 'time': pd.date_range('2000-01-01', periods=4, freq='h')},
+        )
+
+        expanded = clustering.expand_data(clustered_data)
+
+        # Periods 0 and 2 map to cluster 0, period 1 maps to cluster 1
+        expected_values = [10, 11, 12, 13, 20, 21, 22, 23, 10, 11, 12, 13]
+        np.testing.assert_array_equal(expanded.values, expected_values)
+        assert list(expanded.coords['time'].values) == list(original_timesteps)
+
+    def test_expand_flat_data(self):
+        """Test expanding flat (no cluster dim) time series data."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        original_timesteps = pd.date_range('2024-01-01', periods=12, freq='h')
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=4,
+            original_timesteps=original_timesteps,
+        )
+
+        # Flat clustered data: 8 timesteps (2 clusters × 4)
+        clustered_data = xr.DataArray(
+            [10, 11, 12, 13, 20, 21, 22, 23],  # flat: cluster 0 values, then cluster 1 values
+            dims=['time'],
+            coords={'time': pd.date_range('2000-01-01', periods=8, freq='h')},
+        )
+
+        expanded = clustering.expand_data(clustered_data)
+
+        # Expected: periods 0, 2 map to indices 0-3, period 1 maps to indices 4-7
+        expected_values = [10, 11, 12, 13, 20, 21, 22, 23, 10, 11, 12, 13]
+        np.testing.assert_array_equal(expanded.values, expected_values)
+
+
+class TestIOSerialization:
+    """Tests for IO serialization methods."""
+
+    def test_create_reference_structure(self):
+        """Test _create_reference_structure method."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=24,
+            original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
+        )
+
+        ref, data_arrays = clustering._create_reference_structure()
+
+        assert ref['__class__'] == 'Clustering'
+        assert ref['n_clusters'] == 2
+        assert ref['timesteps_per_cluster'] == 24
+        assert 'clustering|cluster_assignments' in data_arrays
+        assert 'clustering|cluster_weights' in data_arrays
+
+    def test_from_dataset_roundtrip(self):
+        """Test roundtrip serialization via _create_reference_structure and from_dataset."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=24,
+            original_timesteps=original_timesteps,
+        )
+
+        ref, data_arrays = clustering._create_reference_structure()
+        ds = xr.Dataset(data_arrays)
+
+        restored = Clustering.from_dataset(ds, ref)
+
+        assert restored.n_clusters == clustering.n_clusters
+        assert restored.timesteps_per_cluster == clustering.timesteps_per_cluster
+        xr.testing.assert_equal(restored.cluster_assignments, clustering.cluster_assignments)
+        xr.testing.assert_equal(restored.cluster_weights, clustering.cluster_weights)
+        assert list(restored.original_timesteps) == list(clustering.original_timesteps)
+
+
+class TestRepr:
+    """Tests for string representation."""
+
+    def test_repr(self):
+        """Test __repr__ method."""
+        cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+
+        clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
+            n_clusters=2,
+            timesteps_per_cluster=24,
+            original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
+        )
+
+        repr_str = repr(clustering)
+        assert 'Clustering' in repr_str
+        assert 'n_clusters=2' in repr_str
+        assert 'timesteps_per_cluster=24' in repr_str
+        assert 'n_original_clusters=3' in repr_str

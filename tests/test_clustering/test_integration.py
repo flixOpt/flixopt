@@ -283,12 +283,14 @@ class TestClusteringModuleImports:
         """Test that clustering module can be imported from flixopt."""
         from flixopt import clustering
 
-        assert hasattr(clustering, 'ClusterResult')
-        assert hasattr(clustering, 'ClusterStructure')
         assert hasattr(clustering, 'Clustering')
+        assert hasattr(clustering, 'tsam_adapter')
 
-    def test_create_cluster_structure_from_mapping_available(self):
-        """Test that create_cluster_structure_from_mapping is available."""
-        from flixopt.clustering import create_cluster_structure_from_mapping
+    def test_clustering_class_has_required_methods(self):
+        """Test that Clustering class has required methods."""
+        from flixopt.clustering import Clustering
 
-        assert callable(create_cluster_structure_from_mapping)
+        # Check key attributes and methods
+        assert hasattr(Clustering, 'expand_data')
+        assert hasattr(Clustering, 'get_timestep_mapping')
+        assert hasattr(Clustering, 'from_dataset')

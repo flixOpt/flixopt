@@ -1,21 +1,19 @@
 """
 Time Series Aggregation Module for flixopt.
 
-This module provides data structures for time series clustering/aggregation.
+This module provides a minimal `Clustering` dataclass for time series aggregation.
 
-Key classes:
-- ClusterResult: Universal result container for clustering
-- ClusterStructure: Hierarchical structure info for storage inter-cluster linking
-- Clustering: Stored on FlowSystem after clustering
+Key class:
+- Clustering: Stores essential clustering info for expansion, inter-cluster storage, and IO.
 
 Example usage:
 
     # Cluster a FlowSystem to reduce timesteps (uses tsam v3 API)
-    fs_clustered = flow_system.transform.cluster(n_clusters=8)
+    fs_clustered = fs.transform.cluster(n_clusters=8)
 
     # With peak preservation
     from tsam import ClusterConfig, ExtremeConfig
-    fs_clustered = flow_system.transform.cluster(
+    fs_clustered = fs.transform.cluster(
         n_clusters=8,
         cluster=ClusterConfig(method='hierarchical'),
         extremes=ExtremeConfig(max_value=['Demand|fixed_relative_profile']),
@@ -24,6 +22,7 @@ Example usage:
     # Access clustering metadata
     info = fs_clustered.clustering
     print(f'Number of clusters: {info.n_clusters}')
+    print(f'Original periods: {info.n_original_clusters}')
 
     # Transfer clustering to another system
     fs2_clustered = fs2.transform.cluster(
@@ -36,20 +35,19 @@ Example usage:
 """
 
 from . import tsam_adapter
-from .base import (
-    Clustering,
-    ClusterResult,
-    ClusterStructure,
-    create_cluster_structure_from_mapping,
-)
+from .base import Clustering
 
 __all__ = [
-    # Core classes
-    'ClusterResult',
     'Clustering',
-    'ClusterStructure',
-    # Utilities
-    'create_cluster_structure_from_mapping',
-    # Adapter
     'tsam_adapter',
 ]
+
+
+def _register_io_classes():
+    """Register clustering classes for IO deserialization."""
+    from ..structure import CLASS_REGISTRY
+
+    CLASS_REGISTRY['Clustering'] = Clustering
+
+
+_register_io_classes()

@@ -17,6 +17,7 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
+    from .clustering import Clustering
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -656,7 +657,7 @@ class TransformAccessor:
         """
         import tsam
 
-        from .clustering import Clustering, ClusterResult, ClusterStructure, tsam_adapter
+        from .clustering import Clustering, tsam_adapter
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
@@ -771,14 +772,10 @@ class TransformAccessor:
         actual_n_clusters = first_result.n_clusters
         n_reduced_timesteps = actual_n_clusters * timesteps_per_cluster
 
-        # Convert results to xarray using adapter
-        combined = tsam_adapter.combine_results_multidim(
-            tsam_results, periods, scenarios, self._fs.timesteps, timesteps_per_cluster
-        )
-        cluster_order_da = combined['cluster_order']
-        timestep_mapping_da = combined['timestep_mapping']
-        cluster_occurrences_da = combined['cluster_occurrences']
-        cluster_weight = combined['cluster_weight']
+        # Convert results to xarray using adapter (simplified: only assignments and weights)
+        combined = tsam_adapter.combine_results_multidim(tsam_results, periods, scenarios)
+        cluster_assignments = combined['cluster_assignments']
+        cluster_weights = combined['cluster_weights']
 
         # Convert and combine metrics across all (period, scenario) slices
         clustering_metrics = tsam_adapter.combine_metrics_multidim(tsam_results, periods, scenarios)
@@ -859,7 +856,7 @@ class TransformAccessor:
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
         # Set cluster_weight - shape (cluster,) possibly with period/scenario dimensions
-        reduced_fs.cluster_weight = cluster_weight
+        reduced_fs.cluster_weight = cluster_weights
 
         # Remove 'equals_final' from storages - doesn't make sense on reduced timesteps
         # Set to None so initial SOC is free (handled by storage_mode constraints)
@@ -868,37 +865,15 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = None
 
-        # Build Clustering for inter-cluster linking and solution expansion
-        # (cluster_order_da, timestep_mapping_da, cluster_occurrences_da, cluster_weight
-        # were already computed by tsam_adapter.combine_results_multidim above)
-
-        cluster_structure = ClusterStructure(
-            cluster_order=cluster_order_da,
-            cluster_occurrences=cluster_occurrences_da,
+        # Build simplified Clustering (no more ClusterStructure/ClusterResult)
+        reduced_fs.clustering = Clustering(
+            cluster_assignments=cluster_assignments,
+            cluster_weights=cluster_weights,
             n_clusters=actual_n_clusters,
             timesteps_per_cluster=timesteps_per_cluster,
-        )
-
-        # representative_weights is the same as cluster_weight (occurrences per cluster)
-        representative_weights = cluster_weight.rename('representative_weights')
-
-        aggregation_result = ClusterResult(
-            timestep_mapping=timestep_mapping_da,
-            n_representatives=n_reduced_timesteps,
-            representative_weights=representative_weights,
-            cluster_structure=cluster_structure,
-            original_data=ds,
-            aggregated_data=ds_new,
-        )
-
-        # Store predefined config for transfer to other systems
-        predefined_config = first_result.predefined
-
-        reduced_fs.clustering = Clustering(
-            result=aggregation_result,
-            backend_name='tsam',
+            original_timesteps=self._fs.timesteps,
+            predefined=first_result.predefined,
             metrics=clustering_metrics,
-            predefined=predefined_config,
         )
 
         return reduced_fs
@@ -1057,15 +1032,16 @@ class TransformAccessor:
 
         return result.assign_attrs(original_da.attrs)
 
-    def _validate_for_expansion(self) -> tuple:
-        """Validate FlowSystem can be expanded and return clustering info.
+    def _validate_for_expansion(self) -> Clustering:
+        """Validate FlowSystem can be expanded and return Clustering info.
 
         Returns:
-            Tuple of (clustering, cluster_structure).
+            The Clustering object.
 
         Raises:
             ValueError: If FlowSystem wasn't created with cluster() or has no solution.
         """
+
         if self._fs.clustering is None:
             raise ValueError(
                 'expand() requires a FlowSystem created with cluster(). This FlowSystem has no aggregation info.'
@@ -1073,17 +1049,13 @@ class TransformAccessor:
         if self._fs.solution is None:
             raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
-        cluster_structure = self._fs.clustering.result.cluster_structure
-        if cluster_structure is None:
-            raise ValueError('No cluster structure available for expansion.')
-
-        return self._fs.clustering, cluster_structure
+        return self._fs.clustering
 
     def _combine_intercluster_charge_states(
         self,
         expanded_fs: FlowSystem,
         reduced_solution: xr.Dataset,
-        cluster_structure,
+        clustering: Clustering,
         original_timesteps_extra: pd.DatetimeIndex,
         timesteps_per_cluster: int,
         n_original_clusters: int,
@@ -1098,7 +1070,7 @@ class TransformAccessor:
         Args:
             expanded_fs: The expanded FlowSystem (modified in-place).
             reduced_solution: The original reduced solution dataset.
-            cluster_structure: ClusterStructure with cluster order info.
+            clustering: Clustering with cluster order info.
             original_timesteps_extra: Original timesteps including the extra final timestep.
             timesteps_per_cluster: Number of timesteps per cluster.
             n_original_clusters: Number of original clusters before aggregation.
@@ -1130,7 +1102,7 @@ class TransformAccessor:
             soc_boundary_per_timestep = self._apply_soc_decay(
                 soc_boundary_per_timestep,
                 storage_name,
-                cluster_structure,
+                clustering,
                 original_timesteps_extra,
                 original_cluster_indices,
                 timesteps_per_cluster,
@@ -1151,7 +1123,7 @@ class TransformAccessor:
         self,
         soc_boundary_per_timestep: xr.DataArray,
         storage_name: str,
-        cluster_structure,
+        clustering: Clustering,
         original_timesteps_extra: pd.DatetimeIndex,
         original_cluster_indices: np.ndarray,
         timesteps_per_cluster: int,
@@ -1161,7 +1133,7 @@ class TransformAccessor:
         Args:
             soc_boundary_per_timestep: SOC boundary values mapped to each timestep.
             storage_name: Name of the storage component.
-            cluster_structure: ClusterStructure with cluster order info.
+            clustering: Clustering with cluster order info.
             original_timesteps_extra: Original timesteps including final extra timestep.
             original_cluster_indices: Mapping of timesteps to original cluster indices.
             timesteps_per_cluster: Number of timesteps per cluster.
@@ -1191,7 +1163,7 @@ class TransformAccessor:
 
         # Handle cluster dimension if present
         if 'cluster' in decay_da.dims:
-            cluster_order = cluster_structure.cluster_order
+            cluster_order = clustering.cluster_order
             if cluster_order.ndim == 1:
                 cluster_per_timestep = xr.DataArray(
                     cluster_order.values[original_cluster_indices],
@@ -1260,18 +1232,14 @@ class TransformAccessor:
         from .flow_system import FlowSystem
 
         # Validate and extract clustering info
-        info, cluster_structure = self._validate_for_expansion()
+        clustering = self._validate_for_expansion()
 
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        n_clusters = (
-            int(cluster_structure.n_clusters)
-            if isinstance(cluster_structure.n_clusters, (int, np.integer))
-            else int(cluster_structure.n_clusters.values)
-        )
-        n_original_clusters = cluster_structure.n_original_clusters
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        n_clusters = clustering.n_clusters
+        n_original_clusters = clustering.n_original_clusters
 
         # Get original timesteps and dimensions
-        original_timesteps = info.original_timesteps
+        original_timesteps = clustering.original_timesteps
         n_original_timesteps = len(original_timesteps)
         original_timesteps_extra = FlowSystem._create_timesteps_with_extra(original_timesteps, None)
 
@@ -1285,11 +1253,11 @@ class TransformAccessor:
             """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
-            expanded = info.result.expand_data(da, original_time=original_timesteps)
+            expanded = clustering.expand_data(da)
 
             # For charge_state with cluster dim, append the extra timestep value
             if var_name.endswith('|charge_state') and 'cluster' in da.dims:
-                cluster_order = cluster_structure.cluster_order
+                cluster_order = clustering.cluster_order
                 if cluster_order.ndim == 1:
                     last_cluster = int(cluster_order[last_original_cluster_idx])
                     extra_val = da.isel(cluster=last_cluster, time=-1)
@@ -1331,7 +1299,7 @@ class TransformAccessor:
         self._combine_intercluster_charge_states(
             expanded_fs,
             reduced_solution,
-            cluster_structure,
+            clustering,
             original_timesteps_extra,
             timesteps_per_cluster,
             n_original_clusters,
