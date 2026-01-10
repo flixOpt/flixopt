@@ -165,7 +165,7 @@ hex_to_rgba = color_to_rgba
 def process_colors(
     colors: None | str | list[str] | dict[str, str],
     labels: list[str],
-    default_colorscale: str = 'turbo',
+    default_colorscale: str | None = None,
 ) -> dict[str, str]:
     """Process color input and return a label-to-color mapping.
 
@@ -180,7 +180,8 @@ def process_colors(
             - list[str]: List of color strings (hex, named colors, etc.)
             - dict[str, str]: Direct label-to-color mapping
         labels: List of labels that need colors assigned
-        default_colorscale: Fallback colorscale name if requested scale not found
+        default_colorscale: Fallback colorscale name if requested scale not found.
+            Defaults to CONFIG.Plotting.default_qualitative_colorscale.
 
     Returns:
         Dictionary mapping each label to a color string
@@ -204,6 +205,12 @@ def process_colors(
     """
     if not labels:
         return {}
+
+    # Resolve default colorscale from CONFIG if not provided
+    if default_colorscale is None:
+        from .config import CONFIG
+
+        default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
 
     # Case 1: Already a mapping dictionary
     if isinstance(colors, dict):
