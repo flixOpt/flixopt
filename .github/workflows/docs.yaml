@@ -28,7 +28,7 @@ concurrency:
 env:
   PYTHON_VERSION: "3.11"
   MPLBACKEND: Agg
-  PLOTLY_RENDERER: json
+  PLOTLY_RENDERER: cdn
 
 jobs:
   build:
