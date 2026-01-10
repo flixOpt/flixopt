@@ -209,7 +209,7 @@ class ClusterStructure:
 
         Args:
             colors: Colorscale name (str) or list of colors.
-                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+                Defaults to plotly template's sequential colorscale.
             show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
 
         Returns:
@@ -221,7 +221,6 @@ class ClusterStructure:
         n_clusters = (
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
-        colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
 
         # Build DataArray with 1-based original_cluster coords
         cluster_da = self.cluster_order.assign_coords(
@@ -247,10 +246,10 @@ class ClusterStructure:
         else:
             plot_ds = ds
 
-        fig = plot_ds.plotly.imshow(
-            color_continuous_scale=colorscale,
-            title=f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)',
-        )
+        imshow_kwargs = {'title': f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)'}
+        if colors is not None:
+            imshow_kwargs['color_continuous_scale'] = colors
+        fig = plot_ds.plotly.imshow(**imshow_kwargs)
 
         fig.update_coloraxes(colorbar_title='Cluster')
         if not has_period and not has_scenario:
@@ -722,7 +721,7 @@ class ClusteringPlotAccessor:
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps.
-                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+                Defaults to plotly template's sequential colorscale.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
             data_only: If True, skip figure creation and return only data.
@@ -780,9 +779,10 @@ class ClusteringPlotAccessor:
         heatmap_da = heatmap_da.transpose('time', 'y', ...)
 
         # Use plotly.imshow for heatmap
-        colorscale = colors if colors is not None else CONFIG.Plotting.default_sequential_colorscale
+        # Only pass color_continuous_scale if explicitly provided (template handles default)
+        if colors is not None:
+            plotly_kwargs.setdefault('color_continuous_scale', colors)
         fig = heatmap_da.plotly.imshow(
-            color_continuous_scale=colorscale,
             title='Cluster Assignments',
             aspect='auto',
             **plotly_kwargs,

@@ -1410,7 +1410,7 @@ class StatisticsPlotAccessor:
                 uncolored.append(label)
 
         if uncolored:
-            color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
+            color_map.update(process_colors(None, uncolored))
 
         return color_map
 
@@ -1637,7 +1637,7 @@ class StatisticsPlotAccessor:
                         continue
                 uncolored.append(label)
             if uncolored:
-                color_map.update(process_colors(CONFIG.Plotting.default_qualitative_colorscale, uncolored))
+                color_map.update(process_colors(None, uncolored))
             color_kwargs = {'color_discrete_map': color_map}
         else:
             color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
