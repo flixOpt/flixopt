@@ -28,7 +28,7 @@ concurrency:
 env:
   PYTHON_VERSION: "3.11"
   MPLBACKEND: Agg
-  PLOTLY_RENDERER: cdn
+  PLOTLY_RENDERER: notebook_connected
 
 jobs:
   build:
