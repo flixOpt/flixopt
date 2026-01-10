@@ -81,6 +81,14 @@ jobs:
             grep -vFf slow_notebooks.txt | \
             xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
+      - name: Execute slow notebooks
+        if: steps.notebook-cache.outputs.cache-hit != 'true' && github.event.pull_request.draft != true
+        run: |
+          set -eo pipefail
+          # Execute slow notebooks (skip on draft PRs)
+          cd docs/notebooks && cat slow_notebooks.txt | \
+            xargs -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+
       - name: Build docs
         env:
           MKDOCS_JUPYTER_EXECUTE: "false"
