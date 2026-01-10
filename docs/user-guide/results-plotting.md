@@ -609,13 +609,13 @@ Plotly automatically chooses colorscale type based on data:
 | **Continuous** (numeric range) | Sequential (gradient) | `[0.0, 0.5, 1.0, ...]` |
 
 **Qualitative** colorscales cycle through distinct colors:
-```
+```text
 Plotly: #636EFA, #EF553B, #00CC96, #AB63FA, ...
 Set1:   #E41A1C, #377EB8, #4DAF4A, #984EA3, ...
 ```
 
 **Sequential** colorscales show gradients:
-```
+```text
 Turbo:  blue → cyan → green → yellow → red
 Viridis: purple → blue → green → yellow
 ```

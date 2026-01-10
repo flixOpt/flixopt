@@ -947,8 +947,13 @@ def _register_flixopt_template() -> None:
     from plotly.express import colors
 
     # Get colorway from qualitative colorscale name
-    colorscale_name = CONFIG.Plotting.default_qualitative_colorscale.capitalize()
+    # Use .title() for multi-word names like 'dark24' -> 'Dark24'
+    colorscale_name = CONFIG.Plotting.default_qualitative_colorscale.title()
     colorway = getattr(colors.qualitative, colorscale_name, None)
+
+    # Fall back to Plotly default if colorscale not found
+    if colorway is None:
+        colorway = colors.qualitative.Plotly
 
     pio.templates['flixopt'] = go.layout.Template(
         layout=go.Layout(

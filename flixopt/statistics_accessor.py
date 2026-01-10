@@ -1673,7 +1673,7 @@ class StatisticsPlotAccessor:
         variables: str | list[str],
         *,
         select: SelectType | None = None,
-        reshape: tuple[str, str] | Literal['auto'] | None = None,
+        reshape: tuple[str, str] | Literal['auto'] | None = ('D', 'h'),
         colors: str | list[str] | None = None,
         show: bool | None = None,
         data_only: bool = False,
@@ -1681,20 +1681,20 @@ class StatisticsPlotAccessor:
     ) -> PlotResult:
         """Plot heatmap of time series data.
 
-        Time is reshaped into 2D (e.g., days × hours) when possible. For clustered data,
-        the natural (cluster, time) shape is used directly without reshaping.
+        By default, time is reshaped into days × hours for clear daily pattern visualization.
+        For clustered data, the natural (cluster, time) shape is used instead.
 
-        Multiple variables are shown as facets. If too many dimensions exist to display
-        without data loss, reshaping is skipped and variables are shown on the y-axis.
+        Multiple variables are shown as facets. If no time dimension exists, reshaping
+        is skipped and data dimensions are used directly.
 
         Args:
             variables: Flow label(s) or variable name(s). Flow labels like 'Boiler(Q_th)'
                 are automatically resolved to 'Boiler(Q_th)|flow_rate'. Full variable
                 names like 'Storage|charge_state' are used as-is.
             select: xarray-style selection, e.g. {'scenario': 'Base Case'}.
-            reshape: Time reshape frequencies as (outer, inner), e.g. ('D', 'h') for
-                days × hours. Use 'auto' to reshape to ('D', 'h') if data has a time
-                index. None disables reshaping.
+            reshape: Time reshape frequencies as (outer, inner). Default ``('D', 'h')``
+                reshapes into days × hours. Use None to disable reshaping and use
+                data dimensions directly.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps (use str or list[str]).
             show: Whether to display the figure.
