@@ -938,6 +938,7 @@ class Clustering:
         metrics: Clustering quality metrics (RMSE, MAE, etc.) as xr.Dataset.
             Each metric (e.g., 'RMSE', 'MAE') is a DataArray with dims
             ``[time_series, period?, scenario?]``.
+        predefined: tsam PredefinedConfig for transferring clustering to another system.
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
@@ -945,11 +946,19 @@ class Clustering:
         8
         >>> fs_clustered.clustering.plot.compare()
         >>> fs_clustered.clustering.plot.heatmap()
+
+        Transfer clustering to another system:
+
+        >>> fs2_clustered = fs2.transform.cluster(
+        ...     n_clusters=8,
+        ...     predefined=fs1.clustering.predefined,
+        ... )
     """
 
     result: ClusterResult
     backend_name: str = 'unknown'
     metrics: xr.Dataset | None = None
+    predefined: Any = None  # tsam.PredefinedConfig, but avoid import for typing
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create reference structure for serialization."""

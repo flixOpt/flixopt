@@ -10,21 +10,32 @@ Key classes:
 
 Example usage:
 
-    # Cluster a FlowSystem to reduce timesteps
+    # Cluster a FlowSystem to reduce timesteps (uses tsam v3 API)
+    fs_clustered = flow_system.transform.cluster(n_clusters=8)
+
+    # With peak preservation
+    from tsam import ClusterConfig, ExtremeConfig
     fs_clustered = flow_system.transform.cluster(
         n_clusters=8,
-        cluster_duration='1D',
-        time_series_for_high_peaks=['Demand|fixed_relative_profile'],
+        cluster=ClusterConfig(method='hierarchical'),
+        extremes=ExtremeConfig(max_value=['Demand|fixed_relative_profile']),
     )
 
     # Access clustering metadata
     info = fs_clustered.clustering
-    print(f'Number of clusters: {info.result.cluster_structure.n_clusters}')
+    print(f'Number of clusters: {info.n_clusters}')
+
+    # Transfer clustering to another system
+    fs2_clustered = fs2.transform.cluster(
+        n_clusters=8,
+        predefined=fs_clustered.clustering.predefined,
+    )
 
     # Expand back to full resolution
     fs_expanded = fs_clustered.transform.expand()
 """
 
+from . import tsam_adapter
 from .base import (
     Clustering,
     ClusterResult,
@@ -39,4 +50,6 @@ __all__ = [
     'ClusterStructure',
     # Utilities
     'create_cluster_structure_from_mapping',
+    # Adapter
+    'tsam_adapter',
 ]
