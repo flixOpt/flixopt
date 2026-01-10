@@ -7,12 +7,14 @@ on:
       - 'flixopt/**'
       - 'tests/**'
       - 'pyproject.toml'
+      - '.github/workflows/**'
   pull_request:
     branches: ["**"]
     paths:
       - 'flixopt/**'
       - 'tests/**'
       - 'pyproject.toml'
+      - '.github/workflows/**'
   workflow_dispatch:
   workflow_call:  # Allow release.yaml to call this workflow.
 

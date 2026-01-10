@@ -7,11 +7,13 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'
+      - '.github/workflows/**'
   workflow_dispatch:
   workflow_call:
     inputs:
