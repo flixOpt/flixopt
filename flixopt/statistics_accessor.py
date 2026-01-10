@@ -1506,6 +1506,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
+        plotly_kwargs.setdefault('pattern_shape', None)
         fig = ds.plotly.bar(
             x='time',
             title=f'{node} [{unit_label}]' if unit_label else node,
@@ -1630,6 +1631,7 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
+        plotly_kwargs.setdefault('pattern_shape', None)
         fig = ds.plotly.bar(
             x='time',
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
@@ -1791,6 +1793,7 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
+        plotly_kwargs.setdefault('symbol', None)
         fig = ds.plotly.line(
             x='time',
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
@@ -1939,6 +1942,7 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(result_ds.data_vars))
 
+        plotly_kwargs.setdefault('symbol', None)
         fig = result_ds.plotly.line(
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             **color_kwargs,
@@ -2123,6 +2127,7 @@ class StatisticsPlotAccessor:
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
 
+        plotly_kwargs.setdefault('symbol', None)
         fig = ds.plotly.line(
             x='time',
             title='Storage Charge States',
@@ -2225,6 +2230,7 @@ class StatisticsPlotAccessor:
             color_kwargs = _build_color_kwargs(colors, flow_labels)
 
         # Create stacked bar chart for flows
+        plotly_kwargs.setdefault('pattern_shape', None)
         fig = flow_ds.plotly.bar(
             x='time',
             title=f'{storage} Operation ({unit})',
