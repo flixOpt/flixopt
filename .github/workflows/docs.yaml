@@ -72,14 +72,14 @@ jobs:
           path: docs/notebooks/**/*.ipynb
           key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
 
-      - name: Execute notebooks in parallel
+      - name: Execute fast notebooks
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
           set -eo pipefail
-          # Execute all notebooks in parallel (4 at a time)
-          # Run from notebooks directory so relative imports work
-          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+          # Execute fast notebooks in parallel (4 at a time), excluding slow ones
+          cd docs/notebooks && find . -name '*.ipynb' | \
+            grep -vFf slow_notebooks.txt | \
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Build docs
         env:
@@ -136,12 +136,22 @@ jobs:
           path: docs/notebooks/**/*.ipynb
           key: notebooks-${{ steps.notebook-cache-key.outputs.hash }}
 
-      - name: Execute notebooks in parallel
+      - name: Execute fast notebooks
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
           set -eo pipefail
-          cd docs/notebooks && find . -name '*.ipynb' -print0 | \
-            xargs -0 -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+          # Execute fast notebooks in parallel (4 at a time), excluding slow ones
+          cd docs/notebooks && find . -name '*.ipynb' | \
+            grep -vFf slow_notebooks.txt | \
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+
+      - name: Execute slow notebooks
+        if: steps.notebook-cache.outputs.cache-hit != 'true'
+        run: |
+          set -eo pipefail
+          # Execute slow notebooks (only on release)
+          cd docs/notebooks && cat slow_notebooks.txt | \
+            xargs -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Configure Git
         run: |
