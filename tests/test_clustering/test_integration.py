@@ -293,4 +293,5 @@ class TestClusteringModuleImports:
         # Check key attributes and methods
         assert hasattr(Clustering, 'expand_data')
         assert hasattr(Clustering, 'get_timestep_mapping')
-        assert hasattr(Clustering, '_create_reference_structure')  # Interface-compatible IO
+        assert hasattr(Clustering, 'to_reference')  # IO serialization
+        assert hasattr(Clustering, 'from_reference')  # IO deserialization

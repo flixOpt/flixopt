@@ -1,4 +1,4 @@
-"""Tests for flixopt.clustering.base module."""
+"""Tests for flixopt.clustering module."""
 
 import numpy as np
 import pandas as pd
@@ -13,13 +13,11 @@ class TestClustering:
     def test_basic_creation(self):
         """Test basic Clustering creation."""
         cluster_assignments = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([3, 2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([3, 2, 1], dims=['cluster'], coords={'cluster': [0, 1, 2]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=3,
-            timesteps_per_cluster=24,
             original_timesteps=pd.date_range('2024-01-01', periods=144, freq='h'),
         )
 
@@ -30,13 +28,11 @@ class TestClustering:
     def test_cluster_order_alias(self):
         """Test cluster_order is alias for cluster_assignments."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=24,
             original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
         )
 
@@ -45,13 +41,11 @@ class TestClustering:
     def test_cluster_occurrences_alias(self):
         """Test cluster_occurrences is alias for cluster_weights."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=24,
             original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
         )
 
@@ -66,13 +60,11 @@ class TestTimestepMapping:
         # 3 original clusters, 4 timesteps per cluster = 12 original timesteps
         # Cluster assignments: [0, 1, 0] - periods 0 and 2 map to cluster 0, period 1 maps to cluster 1
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=4,
             original_timesteps=pd.date_range('2024-01-01', periods=12, freq='h'),
         )
 
@@ -92,14 +84,12 @@ class TestExpandData:
     def test_expand_1d_data(self):
         """Test expanding 1D time series data."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
         original_timesteps = pd.date_range('2024-01-01', periods=12, freq='h')
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=4,
             original_timesteps=original_timesteps,
         )
 
@@ -120,14 +110,12 @@ class TestExpandData:
     def test_expand_flat_data(self):
         """Test expanding flat (no cluster dim) time series data."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
         original_timesteps = pd.date_range('2024-01-01', periods=12, freq='h')
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=4,
             original_timesteps=original_timesteps,
         )
 
@@ -148,50 +136,38 @@ class TestExpandData:
 class TestIOSerialization:
     """Tests for IO serialization methods."""
 
-    def test_create_reference_structure(self):
-        """Test _create_reference_structure method."""
+    def test_to_reference(self):
+        """Test to_reference method."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=24,
             original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
         )
 
-        ref, data_arrays = clustering._create_reference_structure()
+        ref, arrays = clustering.to_reference()
 
         assert ref['__class__'] == 'Clustering'
-        assert ref['n_clusters'] == 2
-        assert ref['timesteps_per_cluster'] == 24
-        assert 'cluster_assignments' in data_arrays
-        assert 'cluster_weights' in data_arrays
-        # Check :::name references are created (Interface pattern)
-        assert ref['cluster_assignments'] == ':::cluster_assignments'
-        assert ref['cluster_weights'] == ':::cluster_weights'
+        assert 'cluster_assignments' in arrays
+        assert 'cluster_weights' in arrays
+        assert 'original_timesteps' in arrays
 
-    def test_roundtrip_via_resolve_reference_structure(self):
-        """Test roundtrip serialization via _resolve_reference_structure (Interface pattern)."""
-        from flixopt import FlowSystem
-
+    def test_roundtrip_via_from_reference(self):
+        """Test roundtrip serialization via to_reference/from_reference."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=24,
             original_timesteps=original_timesteps,
         )
 
-        ref, data_arrays = clustering._create_reference_structure()
-
-        # Use _resolve_reference_structure (the standard Interface IO mechanism)
-        restored = FlowSystem._resolve_reference_structure(ref, data_arrays)
+        ref, arrays = clustering.to_reference()
+        restored = Clustering.from_reference(ref, arrays)
 
         assert restored.n_clusters == clustering.n_clusters
         assert restored.timesteps_per_cluster == clustering.timesteps_per_cluster
@@ -206,13 +182,11 @@ class TestRepr:
     def test_repr(self):
         """Test __repr__ method."""
         cluster_assignments = xr.DataArray([0, 1, 0], dims=['original_cluster'])
-        cluster_weights = xr.DataArray([2, 1], dims=['cluster'])
+        cluster_weights = xr.DataArray([2, 1], dims=['cluster'], coords={'cluster': [0, 1]})
 
-        clustering = Clustering.create(
+        clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=2,
-            timesteps_per_cluster=24,
             original_timesteps=pd.date_range('2024-01-01', periods=72, freq='h'),
         )
 

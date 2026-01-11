@@ -673,7 +673,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Serialize Clustering object for full reconstruction in from_dataset()
         if self.clustering is not None:
-            clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
+            clustering_ref, clustering_arrays = self.clustering.to_reference()
             # Add clustering arrays with prefix
             for name, arr in clustering_arrays.items():
                 ds[f'clustering|{name}'] = arr
@@ -797,23 +797,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Restore Clustering object if present
         if 'clustering' in reference_structure:
-            clustering_structure = json.loads(reference_structure['clustering'])
+            from .clustering import Clustering
+
+            clustering_ref = json.loads(reference_structure['clustering'])
             # Collect clustering arrays (prefixed with 'clustering|')
             clustering_arrays = {}
             for name, arr in ds.data_vars.items():
                 if name.startswith('clustering|'):
                     # Remove 'clustering|' prefix (11 chars) from both key and DataArray name
-                    # This ensures that if the FlowSystem is serialized again, the arrays
-                    # won't get double-prefixed (clustering|clustering|...)
                     arr_name = name[11:]
                     clustering_arrays[arr_name] = arr.rename(arr_name)
-            clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
+            clustering = Clustering.from_reference(clustering_ref, clustering_arrays)
             flow_system.clustering = clustering
 
             # Restore cluster_weight from clustering's cluster_weights
-            # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
-            if hasattr(clustering, 'cluster_weights'):
-                flow_system.cluster_weight = clustering.cluster_weights
+            flow_system.cluster_weight = clustering.cluster_weights
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()

@@ -35,7 +35,7 @@ Example usage:
 """
 
 from . import tsam_adapter
-from .interface import Clustering
+from .clustering import Clustering
 
 __all__ = [
     'Clustering',

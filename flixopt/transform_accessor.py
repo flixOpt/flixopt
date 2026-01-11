@@ -865,12 +865,10 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = None
 
-        # Build Clustering using create() for DatetimeIndex and Dataset conversion
-        reduced_fs.clustering = Clustering.create(
+        # Build Clustering dataclass
+        reduced_fs.clustering = Clustering(
             cluster_assignments=cluster_assignments,
             cluster_weights=cluster_weights,
-            n_clusters=actual_n_clusters,
-            timesteps_per_cluster=timesteps_per_cluster,
             original_timesteps=self._fs.timesteps,
             predefined=first_result.predefined,
             metrics=clustering_metrics,
