@@ -44,15 +44,6 @@ if TYPE_CHECKING:
 
 from .carrier import Carrier, CarrierContainer
 
-
-def _ensure_clustering_registered():
-    """Ensure Clustering class is registered for IO (triggers lazy import)."""
-    from .structure import CLASS_REGISTRY
-
-    if 'Clustering' not in CLASS_REGISTRY:
-        from .clustering import Clustering  # noqa: F401 - triggers registration
-
-
 logger = logging.getLogger('flixopt')
 
 
@@ -806,7 +797,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Restore Clustering object if present
         if 'clustering' in reference_structure:
-            _ensure_clustering_registered()  # Trigger lazy import to register class
             clustering_structure = json.loads(reference_structure['clustering'])
             # Collect clustering arrays (prefixed with 'clustering|')
             clustering_arrays = {}
