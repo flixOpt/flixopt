@@ -815,10 +815,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering
 
-            # Restore cluster_weight from clustering's representative_weights
+            # Restore cluster_weight from clustering's cluster_weights
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
-            if hasattr(clustering, 'result') and hasattr(clustering.result, 'representative_weights'):
-                flow_system.cluster_weight = clustering.result.representative_weights
+            if hasattr(clustering, 'cluster_weights'):
+                flow_system.cluster_weight = clustering.cluster_weights
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
