@@ -35,9 +35,17 @@ Example usage:
 """
 
 from . import tsam_adapter
-from .base import Clustering
 
 __all__ = [
     'Clustering',
     'tsam_adapter',
 ]
+
+
+# Lazy import to avoid circular imports - Clustering is only loaded when accessed
+def __getattr__(name: str):
+    if name == 'Clustering':
+        from .interface import Clustering
+
+        return Clustering
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

@@ -1,13 +1,8 @@
 """
-Minimal clustering data structure for time series aggregation.
+Clustering class that inherits from Interface for IO serialization.
 
-This module provides a single `Clustering` class that stores only the essential
-data needed for:
-- Expanding solutions back to original timesteps
-- Inter-cluster storage linking constraints
-- IO serialization
-
-All other values (timestep_mapping, etc.) are computed on demand from the core data.
+This module is kept separate to avoid circular imports - it's lazily imported
+after the core structure module is fully loaded.
 """
 
 from __future__ import annotations
@@ -18,26 +13,19 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from ..structure import Interface, register_class_for_io
+
 if TYPE_CHECKING:
     from ..flow_system import FlowSystem
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
 
-def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | None = None) -> xr.DataArray:
-    """Select from DataArray by period/scenario if those dimensions exist."""
-    result = da
-    if period is not None and 'period' in da.dims:
-        result = result.sel(period=period)
-    if scenario is not None and 'scenario' in da.dims:
-        result = result.sel(scenario=scenario)
-    return result
-
-
-class Clustering:
+@register_class_for_io
+class Clustering(Interface):
     """Minimal clustering info for expansion, inter-cluster storage, and IO.
 
-    Implements Interface-compatible IO serialization (cannot inherit due to circular imports).
+    Inherits from Interface for automatic IO serialization.
     All derived values (timestep_mapping, n_original_clusters) are computed on demand.
 
     Attributes:
@@ -110,44 +98,12 @@ class Clustering:
         pass
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for IO serialization (Interface-compatible).
+        """Override to serialize predefined via to_dict()."""
+        ref, arrays = super()._create_reference_structure()
 
-        Implements the same pattern as Interface._create_reference_structure():
-        - DataArrays are extracted and replaced with ':::name' references
-        - predefined is serialized via to_dict() if available
-        """
-        ref: dict[str, Any] = {'__class__': 'Clustering'}
-        arrays: dict[str, xr.DataArray] = {}
-
-        # Store scalar attributes
-        ref['n_clusters'] = self.n_clusters
-        ref['timesteps_per_cluster'] = self.timesteps_per_cluster
-        ref['original_timesteps_iso'] = self.original_timesteps_iso
-
-        # Store DataArrays with :::name references
-        arrays[str(self.cluster_assignments.name)] = self.cluster_assignments
-        ref['cluster_assignments'] = f':::{self.cluster_assignments.name}'
-
-        arrays[str(self.cluster_weights.name)] = self.cluster_weights
-        ref['cluster_weights'] = f':::{self.cluster_weights.name}'
-
-        # Handle predefined with proper to_dict() serialization
-        if self.predefined is not None:
-            if hasattr(self.predefined, 'to_dict'):
-                ref['predefined'] = self.predefined.to_dict()
-            else:
-                ref['predefined'] = self.predefined
-
-        # Store metric DataArrays
-        if self.metrics_rmse is not None:
-            arrays[str(self.metrics_rmse.name)] = self.metrics_rmse
-            ref['metrics_rmse'] = f':::{self.metrics_rmse.name}'
-        if self.metrics_mae is not None:
-            arrays[str(self.metrics_mae.name)] = self.metrics_mae
-            ref['metrics_mae'] = f':::{self.metrics_mae.name}'
-        if self.metrics_rmse_duration is not None:
-            arrays[str(self.metrics_rmse_duration.name)] = self.metrics_rmse_duration
-            ref['metrics_rmse_duration'] = f':::{self.metrics_rmse_duration.name}'
+        # Override predefined with proper to_dict() serialization
+        if self.predefined is not None and hasattr(self.predefined, 'to_dict'):
+            ref['predefined'] = self.predefined.to_dict()
 
         return ref, arrays
 
@@ -172,7 +128,7 @@ class Clustering:
         """
         original_timesteps_iso = [t.isoformat() for t in original_timesteps]
 
-        # Convert predefined to dict
+        # Convert predefined to dict for storage (will be converted back in __init__)
         predefined_dict = None
         if predefined is not None:
             predefined_dict = predefined.to_dict() if hasattr(predefined, 'to_dict') else predefined
@@ -325,6 +281,16 @@ class Clustering:
         return ClusteringPlotAccessor(self)
 
 
+def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | None = None) -> xr.DataArray:
+    """Select from DataArray by period/scenario if those dimensions exist."""
+    result = da
+    if period is not None and 'period' in da.dims:
+        result = result.sel(period=period)
+    if scenario is not None and 'scenario' in da.dims:
+        result = result.sel(scenario=scenario)
+    return result
+
+
 class ClusteringPlotAccessor:
     """Accessor for clustering visualization methods."""
 
@@ -388,10 +354,3 @@ class ClusteringPlotAccessor:
             plot_result.show()
 
         return plot_result
-
-
-def _register_clustering_classes():
-    """Register clustering classes for IO deserialization."""
-    from ..structure import CLASS_REGISTRY
-
-    CLASS_REGISTRY['Clustering'] = Clustering
