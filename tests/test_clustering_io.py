@@ -87,7 +87,7 @@ class TestClusteringRoundtrip:
 
         # Clustering should be restored
         assert fs_restored.clustering is not None
-        assert fs_restored.clustering.backend_name == 'tsam'
+        assert fs_restored.clustering.n_clusters == fs_clustered.clustering.n_clusters
 
     def test_clustering_roundtrip_preserves_n_clusters(self, simple_system_8_days):
         """Number of clusters should be preserved after roundtrip."""
@@ -124,12 +124,12 @@ class TestClusteringRoundtrip:
         """Timestep mapping should be preserved after roundtrip."""
         fs = simple_system_8_days
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
-        original_mapping = fs_clustered.clustering.timestep_mapping.values.copy()
+        original_mapping = fs_clustered.clustering.get_timestep_mapping().copy()
 
         ds = fs_clustered.to_dataset(include_solution=False)
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
-        np.testing.assert_array_equal(fs_restored.clustering.timestep_mapping.values, original_mapping)
+        np.testing.assert_array_equal(fs_restored.clustering.get_timestep_mapping(), original_mapping)
 
 
 class TestClusteringWithSolutionRoundtrip:
@@ -383,14 +383,16 @@ class TestClusterWeightRoundtrip:
     """Test that cluster_weight is properly preserved."""
 
     def test_cluster_weight_in_dataset(self, simple_system_8_days):
-        """cluster_weight should be present in dataset."""
+        """cluster_weight should be present in dataset (as cluster_weights DataArray)."""
         fs = simple_system_8_days
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
         ds = fs_clustered.to_dataset(include_solution=False)
 
-        # cluster_weight should be in data_vars
-        assert 'cluster_weight' in ds.data_vars
+        # cluster_weights (the DataArray) should be in data_vars
+        # cluster_weight reference (:::cluster_weights) is stored in attrs
+        assert 'cluster_weights' in ds.data_vars
+        assert ds.attrs.get('cluster_weight') == ':::cluster_weights'
 
     def test_cluster_weight_roundtrip(self, simple_system_8_days):
         """cluster_weight should be preserved after roundtrip."""
