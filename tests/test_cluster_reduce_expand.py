@@ -62,7 +62,7 @@ def test_cluster_creates_reduced_timesteps(timesteps_8_days):
     assert len(fs_reduced.clusters) == 2  # Number of clusters
     assert len(fs_reduced.timesteps) * len(fs_reduced.clusters) == 48  # Total
     assert hasattr(fs_reduced, 'clustering')
-    assert fs_reduced.clustering.result.cluster_structure.n_clusters == 2
+    assert fs_reduced.clustering.n_clusters == 2
 
 
 def test_expand_restores_full_timesteps(solver_fixture, timesteps_8_days):
@@ -122,8 +122,8 @@ def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
 
     # Get cluster_order to know mapping
     info = fs_reduced.clustering
-    cluster_order = info.result.cluster_structure.cluster_order.values
-    timesteps_per_cluster = info.result.cluster_structure.timesteps_per_cluster  # 24
+    cluster_order = info.cluster_order.values
+    timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
 
@@ -291,8 +291,7 @@ def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
     # Should have aggregation info with cluster structure
     info = fs_reduced.clustering
     assert info is not None
-    assert info.result.cluster_structure is not None
-    assert info.result.cluster_structure.n_clusters == 2
+    assert info.n_clusters == 2
     # Clustered FlowSystem preserves scenarios
     assert fs_reduced.scenarios is not None
     assert len(fs_reduced.scenarios) == 2
@@ -336,8 +335,7 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     fs_reduced.optimize(solver_fixture)
 
     info = fs_reduced.clustering
-    cluster_structure = info.result.cluster_structure
-    timesteps_per_cluster = cluster_structure.timesteps_per_cluster  # 24
+    timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
     fs_expanded = fs_reduced.transform.expand()
@@ -346,7 +344,7 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     # Check mapping for each scenario using its own cluster_order
     for scenario in scenarios_2:
         # Get the cluster_order for THIS scenario
-        cluster_order = cluster_structure.get_cluster_order_for_slice(scenario=scenario)
+        cluster_order = info.get_cluster_assignments_for_slice(scenario=scenario)
 
         reduced_scenario = reduced_flow.sel(scenario=scenario).values
         expanded_scenario = expanded_flow.sel(scenario=scenario).values
@@ -451,7 +449,7 @@ class TestStorageClusterModes:
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
-        n_original_clusters = fs_clustered.clustering.result.cluster_structure.n_original_clusters
+        n_original_clusters = fs_clustered.clustering.n_original_clusters
         assert soc_boundary.sizes['cluster_boundary'] == n_original_clusters + 1
 
     def test_storage_cluster_mode_intercluster_cyclic(self, solver_fixture, timesteps_8_days):
@@ -535,9 +533,8 @@ class TestInterclusterStorageLinking:
         # Get values needed for manual calculation
         soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         cs_clustered = fs_clustered.solution['Battery|charge_state']
-        cluster_structure = fs_clustered.clustering.result.cluster_structure
-        cluster_order = cluster_structure.cluster_order.values
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
+        cluster_order = fs_clustered.clustering.cluster_order.values
+        timesteps_per_cluster = fs_clustered.clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
         cs_expanded = fs_expanded.solution['Battery|charge_state']
@@ -767,46 +764,52 @@ def create_system_with_peak_demand(timesteps: pd.DatetimeIndex) -> fx.FlowSystem
 
 
 class TestPeakSelection:
-    """Tests for time_series_for_high_peaks and time_series_for_low_peaks parameters."""
+    """Tests for ExtremeConfig max_value and min_value parameters (tsam v3 API)."""
 
-    def test_time_series_for_high_peaks_parameter_accepted(self, timesteps_8_days):
-        """Verify time_series_for_high_peaks parameter is accepted."""
+    def test_extremes_max_value_parameter_accepted(self, timesteps_8_days):
+        """Verify ExtremeConfig with max_value parameter is accepted."""
+        import tsam
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
         # Should not raise an error
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=tsam.ExtremeConfig(max_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
 
         assert fs_clustered is not None
         assert len(fs_clustered.clusters) == 2
 
-    def test_time_series_for_low_peaks_parameter_accepted(self, timesteps_8_days):
-        """Verify time_series_for_low_peaks parameter is accepted."""
+    def test_extremes_min_value_parameter_accepted(self, timesteps_8_days):
+        """Verify ExtremeConfig with min_value parameter is accepted."""
+        import tsam
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
         # Should not raise an error
-        # Note: tsam requires n_clusters >= 3 when using low_peaks to avoid index error
+        # Note: tsam requires n_clusters >= 3 when using min_value to avoid index error
         fs_clustered = fs.transform.cluster(
             n_clusters=3,
             cluster_duration='1D',
-            time_series_for_low_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=tsam.ExtremeConfig(min_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
 
         assert fs_clustered is not None
         assert len(fs_clustered.clusters) == 3
 
-    def test_high_peaks_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
-        """Verify high peak selection captures day with maximum demand."""
+    def test_max_value_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
+        """Verify max_value selection captures day with maximum demand."""
+        import tsam
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
-        # Cluster WITH high peak selection
+        # Cluster WITH max_value selection
         fs_with_peaks = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=tsam.ExtremeConfig(max_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
         fs_with_peaks.optimize(solver_fixture)
 
@@ -818,18 +821,18 @@ class TestPeakSelection:
         max_flow = float(flow_rates.max())
         assert max_flow >= 49, f'Peak demand not captured: max_flow={max_flow}'
 
-    def test_clustering_without_peaks_may_miss_extremes(self, solver_fixture, timesteps_8_days):
-        """Show that without peak selection, extreme days might be averaged out."""
+    def test_clustering_without_extremes_may_miss_peaks(self, solver_fixture, timesteps_8_days):
+        """Show that without extreme selection, extreme days might be averaged out."""
         fs = create_system_with_peak_demand(timesteps_8_days)
 
-        # Cluster WITHOUT high peak selection (may or may not capture peak)
-        fs_no_peaks = fs.transform.cluster(
+        # Cluster WITHOUT extreme selection (may or may not capture peak)
+        fs_no_extremes = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            # No time_series_for_high_peaks
+            # No extremes config
         )
-        fs_no_peaks.optimize(solver_fixture)
+        fs_no_extremes.optimize(solver_fixture)
 
         # This test just verifies the clustering works
         # The peak may or may not be captured depending on clustering algorithm
-        assert fs_no_peaks.solution is not None
+        assert fs_no_extremes.solution is not None

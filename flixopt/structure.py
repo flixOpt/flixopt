@@ -28,7 +28,8 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import DEPRECATION_REMOVAL_VERSION
+
+# DEPRECATION_REMOVAL_VERSION imported locally where needed to avoid circular imports
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
@@ -668,6 +669,8 @@ class Interface:
             )
         """
         import warnings
+
+        from .config import DEPRECATION_REMOVAL_VERSION
 
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
