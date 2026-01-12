@@ -627,21 +627,23 @@ class TestMultiDimensionalClusteringIO:
         # cluster_order should be exactly preserved
         xr.testing.assert_equal(original_cluster_order, fs_restored.clustering.cluster_order)
 
-    def test_tsam_results_none_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """tsam_results should be None after loading (not serialized)."""
+    def test_results_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """ClusterResults should be preserved after loading (via ClusterResults.to_dict())."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Before save, tsam_results is not None
-        assert fs_clustered.clustering.tsam_results is not None
+        # Before save, results exists
+        assert fs_clustered.clustering.results is not None
 
         # Roundtrip
         nc_path = tmp_path / 'multi_dim_clustering.nc'
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # After load, tsam_results is None
-        assert fs_restored.clustering.tsam_results is None
+        # After load, results should be reconstructed
+        assert fs_restored.clustering.results is not None
+        # The restored results should have the same structure
+        assert len(fs_restored.clustering.results) == len(fs_clustered.clustering.results)
 
     def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
         """Derived properties should work correctly after loading (computed from cluster_order)."""
@@ -653,7 +655,7 @@ class TestMultiDimensionalClusteringIO:
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # These properties should be computed from cluster_order even when tsam_results is None
+        # These properties should work correctly after roundtrip
         assert fs_restored.clustering.n_clusters == 2
         assert fs_restored.clustering.timesteps_per_cluster == 24
 
@@ -678,7 +680,8 @@ class TestMultiDimensionalClusteringIO:
         # Load the full FlowSystem with clustering
         fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
         clustering_loaded = fs_loaded.clustering
-        assert clustering_loaded.tsam_results is None  # Confirm tsam_results not serialized
+        # ClusterResults should be fully preserved after load
+        assert clustering_loaded.results is not None
 
         # Create a fresh FlowSystem (copy the original, unclustered one)
         fs_fresh = fs.copy()

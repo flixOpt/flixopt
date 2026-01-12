@@ -5,51 +5,184 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.clustering import Clustering
+from flixopt.clustering import Clustering, ClusterResult, ClusterResults
+
+
+class TestClusterResult:
+    """Tests for ClusterResult wrapper class."""
+
+    @pytest.fixture
+    def mock_clustering_result(self):
+        """Create a mock tsam ClusteringResult-like object."""
+
+        class MockClusteringResult:
+            n_clusters = 3
+            n_original_periods = 6
+            cluster_assignments = (0, 1, 0, 1, 2, 0)
+            period_duration = 24.0
+
+            def to_dict(self):
+                return {
+                    'n_clusters': self.n_clusters,
+                    'n_original_periods': self.n_original_periods,
+                    'cluster_assignments': list(self.cluster_assignments),
+                    'period_duration': self.period_duration,
+                }
+
+            def apply(self, data):
+                """Mock apply method."""
+                return {'applied': True}
+
+        return MockClusteringResult()
+
+    def test_cluster_result_properties(self, mock_clustering_result):
+        """Test ClusterResult property access."""
+        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
+
+        assert result.n_clusters == 3
+        assert result.n_original_periods == 6
+        assert result.timesteps_per_cluster == 24
+        np.testing.assert_array_equal(result.cluster_order, [0, 1, 0, 1, 2, 0])
+
+    def test_cluster_occurrences(self, mock_clustering_result):
+        """Test cluster_occurrences calculation."""
+        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
+
+        occurrences = result.cluster_occurrences
+        # cluster 0: 3 occurrences (indices 0, 2, 5)
+        # cluster 1: 2 occurrences (indices 1, 3)
+        # cluster 2: 1 occurrence (index 4)
+        np.testing.assert_array_equal(occurrences, [3, 2, 1])
+
+    def test_build_timestep_mapping(self, mock_clustering_result):
+        """Test timestep mapping generation."""
+        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
+
+        mapping = result.build_timestep_mapping(n_timesteps=144)
+        assert len(mapping) == 144
+
+        # First 24 timesteps should map to cluster 0's representative (0-23)
+        np.testing.assert_array_equal(mapping[:24], np.arange(24))
+
+        # Second 24 timesteps (period 1 -> cluster 1) should map to cluster 1's representative (24-47)
+        np.testing.assert_array_equal(mapping[24:48], np.arange(24, 48))
+
+
+class TestClusterResults:
+    """Tests for ClusterResults collection class."""
+
+    @pytest.fixture
+    def mock_cluster_result_factory(self):
+        """Factory for creating mock ClusterResult objects."""
+
+        def create_result(cluster_assignments, timesteps_per_cluster=24):
+            class MockClusteringResult:
+                n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
+                n_original_periods = len(cluster_assignments)
+                period_duration = 24.0
+
+                def __init__(self, assignments):
+                    self.cluster_assignments = tuple(assignments)
+
+                def to_dict(self):
+                    return {
+                        'n_clusters': self.n_clusters,
+                        'n_original_periods': self.n_original_periods,
+                        'cluster_assignments': list(self.cluster_assignments),
+                        'period_duration': self.period_duration,
+                    }
+
+                def apply(self, data):
+                    return {'applied': True}
+
+            mock_cr = MockClusteringResult(cluster_assignments)
+            return ClusterResult(mock_cr, timesteps_per_cluster=timesteps_per_cluster)
+
+        return create_result
+
+    def test_single_result(self, mock_cluster_result_factory):
+        """Test ClusterResults with single result."""
+        result = mock_cluster_result_factory([0, 1, 0])
+        results = ClusterResults({(): result}, dim_names=[])
+
+        assert results.n_clusters == 2
+        assert results.timesteps_per_cluster == 24
+        assert len(results) == 1
+
+    def test_multi_period_results(self, mock_cluster_result_factory):
+        """Test ClusterResults with multiple periods."""
+        result_2020 = mock_cluster_result_factory([0, 1, 0])
+        result_2030 = mock_cluster_result_factory([1, 0, 1])
+
+        results = ClusterResults(
+            {(2020,): result_2020, (2030,): result_2030},
+            dim_names=['period'],
+        )
+
+        assert results.n_clusters == 2
+        assert len(results) == 2
+
+        # Access by period
+        assert results.get(period=2020) is result_2020
+        assert results.get(period=2030) is result_2030
+
+    def test_cluster_order_dataarray(self, mock_cluster_result_factory):
+        """Test cluster_order returns correct DataArray."""
+        result = mock_cluster_result_factory([0, 1, 0])
+        results = ClusterResults({(): result}, dim_names=[])
+
+        cluster_order = results.cluster_order
+        assert isinstance(cluster_order, xr.DataArray)
+        assert 'original_cluster' in cluster_order.dims
+        np.testing.assert_array_equal(cluster_order.values, [0, 1, 0])
+
+    def test_cluster_occurrences_dataarray(self, mock_cluster_result_factory):
+        """Test cluster_occurrences returns correct DataArray."""
+        result = mock_cluster_result_factory([0, 1, 0])  # 2 x cluster 0, 1 x cluster 1
+        results = ClusterResults({(): result}, dim_names=[])
+
+        occurrences = results.cluster_occurrences
+        assert isinstance(occurrences, xr.DataArray)
+        assert 'cluster' in occurrences.dims
+        np.testing.assert_array_equal(occurrences.values, [2, 1])
 
 
 class TestClustering:
     """Tests for Clustering dataclass."""
 
     @pytest.fixture
-    def mock_aggregation_result(self):
-        """Create a mock AggregationResult-like object for testing."""
+    def basic_cluster_results(self):
+        """Create basic ClusterResults for testing."""
 
-        class MockClustering:
-            period_duration = 24
-
-        class MockAccuracy:
-            rmse = {'col1': 0.1, 'col2': 0.2}
-            mae = {'col1': 0.05, 'col2': 0.1}
-            rmse_duration = {'col1': 0.15, 'col2': 0.25}
-
-        class MockAggregationResult:
+        class MockClusteringResult:
             n_clusters = 3
-            n_timesteps_per_period = 24
-            cluster_weights = {0: 2, 1: 3, 2: 1}
-            cluster_assignments = np.array([0, 1, 0, 1, 2, 0])
-            cluster_representatives = pd.DataFrame(
-                {
-                    'col1': np.arange(72),  # 3 clusters * 24 timesteps
-                    'col2': np.arange(72) * 2,
-                }
-            )
-            clustering = MockClustering()
-            accuracy = MockAccuracy()
+            n_original_periods = 6
+            cluster_assignments = (0, 1, 0, 1, 2, 0)
+            period_duration = 24.0
 
-        return MockAggregationResult()
+            def to_dict(self):
+                return {
+                    'n_clusters': self.n_clusters,
+                    'n_original_periods': self.n_original_periods,
+                    'cluster_assignments': list(self.cluster_assignments),
+                    'period_duration': self.period_duration,
+                }
+
+            def apply(self, data):
+                return {'applied': True}
+
+        mock_cr = MockClusteringResult()
+        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
+        return ClusterResults({(): result}, dim_names=[])
 
     @pytest.fixture
-    def basic_clustering(self, mock_aggregation_result):
+    def basic_clustering(self, basic_cluster_results):
         """Create a basic Clustering instance for testing."""
-        cluster_order = xr.DataArray([0, 1, 0, 1, 2, 0], dims=['original_cluster'])
         original_timesteps = pd.date_range('2024-01-01', periods=144, freq='h')
 
         return Clustering(
-            tsam_results={(): mock_aggregation_result},
-            dim_names=[],
+            results=basic_cluster_results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
         )
 
     def test_basic_creation(self, basic_clustering):
@@ -67,8 +200,9 @@ class TestClustering:
         occurrences = basic_clustering.cluster_occurrences
         assert isinstance(occurrences, xr.DataArray)
         assert 'cluster' in occurrences.dims
-        assert occurrences.sel(cluster=0).item() == 2
-        assert occurrences.sel(cluster=1).item() == 3
+        # cluster 0: 3 occurrences, cluster 1: 2 occurrences, cluster 2: 1 occurrence
+        assert occurrences.sel(cluster=0).item() == 3
+        assert occurrences.sel(cluster=1).item() == 2
         assert occurrences.sel(cluster=2).item() == 1
 
     def test_representative_weights(self, basic_clustering):
@@ -88,31 +222,21 @@ class TestClustering:
         assert len(mapping) == 144  # Original timesteps
 
     def test_metrics(self, basic_clustering):
-        """Test metrics property."""
+        """Test metrics property returns empty Dataset when no metrics."""
         metrics = basic_clustering.metrics
         assert isinstance(metrics, xr.Dataset)
-        # Should have RMSE, MAE, RMSE_duration
-        assert 'RMSE' in metrics.data_vars
-        assert 'MAE' in metrics.data_vars
-        assert 'RMSE_duration' in metrics.data_vars
+        # No metrics provided, so should be empty
+        assert len(metrics.data_vars) == 0
 
     def test_cluster_start_positions(self, basic_clustering):
         """Test cluster_start_positions property."""
         positions = basic_clustering.cluster_start_positions
         np.testing.assert_array_equal(positions, [0, 24, 48])
 
-    def test_empty_tsam_results_raises(self):
-        """Test that empty tsam_results raises ValueError."""
-        cluster_order = xr.DataArray([0, 1], dims=['original_cluster'])
-        original_timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
-
+    def test_empty_results_raises(self):
+        """Test that empty results raises ValueError."""
         with pytest.raises(ValueError, match='cannot be empty'):
-            Clustering(
-                tsam_results={},
-                dim_names=[],
-                original_timesteps=original_timesteps,
-                cluster_order=cluster_order,
-            )
+            ClusterResults({}, dim_names=[])
 
     def test_repr(self, basic_clustering):
         """Test string representation."""
@@ -126,87 +250,76 @@ class TestClusteringMultiDim:
     """Tests for Clustering with period/scenario dimensions."""
 
     @pytest.fixture
-    def mock_aggregation_result_factory(self):
-        """Factory for creating mock AggregationResult-like objects."""
+    def mock_cluster_result_factory(self):
+        """Factory for creating mock ClusterResult objects."""
 
-        def create_result(cluster_weights, cluster_assignments):
-            class MockClustering:
-                period_duration = 24
+        def create_result(cluster_assignments, timesteps_per_cluster=24):
+            class MockClusteringResult:
+                n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
+                n_original_periods = len(cluster_assignments)
+                period_duration = 24.0
 
-            class MockAccuracy:
-                rmse = {'col1': 0.1}
-                mae = {'col1': 0.05}
-                rmse_duration = {'col1': 0.15}
+                def __init__(self, assignments):
+                    self.cluster_assignments = tuple(assignments)
 
-            class MockAggregationResult:
-                n_clusters = 2
-                n_timesteps_per_period = 24
+                def to_dict(self):
+                    return {
+                        'n_clusters': self.n_clusters,
+                        'n_original_periods': self.n_original_periods,
+                        'cluster_assignments': list(self.cluster_assignments),
+                        'period_duration': self.period_duration,
+                    }
 
-            result = MockAggregationResult()
-            result.cluster_weights = cluster_weights
-            result.cluster_assignments = cluster_assignments
-            result.cluster_representatives = pd.DataFrame(
-                {
-                    'col1': np.arange(48),  # 2 clusters * 24 timesteps
-                }
-            )
-            result.clustering = MockClustering()
-            result.accuracy = MockAccuracy()
-            return result
+                def apply(self, data):
+                    return {'applied': True}
+
+            mock_cr = MockClusteringResult(cluster_assignments)
+            return ClusterResult(mock_cr, timesteps_per_cluster=timesteps_per_cluster)
 
         return create_result
 
-    def test_multi_period_clustering(self, mock_aggregation_result_factory):
+    def test_multi_period_clustering(self, mock_cluster_result_factory):
         """Test Clustering with multiple periods."""
-        result_2020 = mock_aggregation_result_factory({0: 2, 1: 1}, np.array([0, 1, 0]))
-        result_2030 = mock_aggregation_result_factory({0: 1, 1: 2}, np.array([1, 0, 1]))
+        result_2020 = mock_cluster_result_factory([0, 1, 0])
+        result_2030 = mock_cluster_result_factory([1, 0, 1])
 
-        cluster_order = xr.DataArray(
-            [[0, 1, 0], [1, 0, 1]],
-            dims=['period', 'original_cluster'],
-            coords={'period': [2020, 2030]},
+        results = ClusterResults(
+            {(2020,): result_2020, (2030,): result_2030},
+            dim_names=['period'],
         )
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
-            tsam_results={(2020,): result_2020, (2030,): result_2030},
-            dim_names=['period'],
+            results=results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
         )
 
         assert clustering.n_clusters == 2
         assert 'period' in clustering.cluster_occurrences.dims
 
-    def test_get_result(self, mock_aggregation_result_factory):
+    def test_get_result(self, mock_cluster_result_factory):
         """Test get_result method."""
-        result = mock_aggregation_result_factory({0: 2, 1: 1}, np.array([0, 1, 0]))
-
-        cluster_order = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        result = mock_cluster_result_factory([0, 1, 0])
+        results = ClusterResults({(): result}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
-            tsam_results={(): result},
-            dim_names=[],
+            results=results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
         )
 
         retrieved = clustering.get_result()
         assert retrieved is result
 
-    def test_get_result_invalid_key(self, mock_aggregation_result_factory):
+    def test_get_result_invalid_key(self, mock_cluster_result_factory):
         """Test get_result with invalid key raises KeyError."""
-        result = mock_aggregation_result_factory({0: 2, 1: 1}, np.array([0, 1, 0]))
-
-        cluster_order = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+        result = mock_cluster_result_factory([0, 1, 0])
+        results = ClusterResults({(2020,): result}, dim_names=['period'])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
-            tsam_results={(2020,): result},
-            dim_names=['period'],
+            results=results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
         )
 
         with pytest.raises(KeyError):
@@ -220,29 +333,27 @@ class TestClusteringPlotAccessor:
     def clustering_with_data(self):
         """Create Clustering with original and aggregated data."""
 
-        class MockClustering:
-            period_duration = 24
-
-        class MockAccuracy:
-            rmse = {'col1': 0.1}
-            mae = {'col1': 0.05}
-            rmse_duration = {'col1': 0.15}
-
-        class MockAggregationResult:
+        class MockClusteringResult:
             n_clusters = 2
-            n_timesteps_per_period = 24
-            cluster_weights = {0: 2, 1: 1}
-            cluster_assignments = np.array([0, 1, 0])
-            cluster_representatives = pd.DataFrame(
-                {
-                    'col1': np.arange(48),  # 2 clusters * 24 timesteps
-                }
-            )
-            clustering = MockClustering()
-            accuracy = MockAccuracy()
+            n_original_periods = 3
+            cluster_assignments = (0, 1, 0)
+            period_duration = 24.0
 
-        result = MockAggregationResult()
-        cluster_order = xr.DataArray([0, 1, 0], dims=['original_cluster'])
+            def to_dict(self):
+                return {
+                    'n_clusters': self.n_clusters,
+                    'n_original_periods': self.n_original_periods,
+                    'cluster_assignments': list(self.cluster_assignments),
+                    'period_duration': self.period_duration,
+                }
+
+            def apply(self, data):
+                return {'applied': True}
+
+        mock_cr = MockClusteringResult()
+        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
+        results = ClusterResults({(): result}, dim_names=[])
+
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         original_data = xr.Dataset(
@@ -261,10 +372,8 @@ class TestClusteringPlotAccessor:
         )
 
         return Clustering(
-            tsam_results={(): result},
-            dim_names=[],
+            results=results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
             original_data=original_data,
             aggregated_data=aggregated_data,
         )
@@ -279,32 +388,31 @@ class TestClusteringPlotAccessor:
     def test_compare_requires_data(self):
         """Test compare() raises when no data available."""
 
-        class MockClustering:
-            period_duration = 24
-
-        class MockAccuracy:
-            rmse = {}
-            mae = {}
-            rmse_duration = {}
-
-        class MockAggregationResult:
+        class MockClusteringResult:
             n_clusters = 2
-            n_timesteps_per_period = 24
-            cluster_weights = {0: 1, 1: 1}
-            cluster_assignments = np.array([0, 1])
-            cluster_representatives = pd.DataFrame({'col1': [1, 2]})
-            clustering = MockClustering()
-            accuracy = MockAccuracy()
+            n_original_periods = 2
+            cluster_assignments = (0, 1)
+            period_duration = 24.0
 
-        result = MockAggregationResult()
-        cluster_order = xr.DataArray([0, 1], dims=['original_cluster'])
+            def to_dict(self):
+                return {
+                    'n_clusters': self.n_clusters,
+                    'n_original_periods': self.n_original_periods,
+                    'cluster_assignments': list(self.cluster_assignments),
+                    'period_duration': self.period_duration,
+                }
+
+            def apply(self, data):
+                return {'applied': True}
+
+        mock_cr = MockClusteringResult()
+        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
+        results = ClusterResults({(): result}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
 
         clustering = Clustering(
-            tsam_results={(): result},
-            dim_names=[],
+            results=results,
             original_timesteps=original_timesteps,
-            cluster_order=cluster_order,
         )
 
         with pytest.raises(ValueError, match='No original/aggregated data'):

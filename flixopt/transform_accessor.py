@@ -19,7 +19,7 @@ import xarray as xr
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig
 
-    from .clustering import Clustering
+    from .clustering import Clustering, ClusterResult
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -984,16 +984,24 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Format tsam_aggregation_results keys for new Clustering
-        # Keys should be tuples matching dim_names (not (period, scenario) with None values)
-        formatted_tsam_results: dict[tuple, Any] = {}
+        # Create ClusterResult objects from each AggregationResult
+        from .clustering import ClusterResult, ClusterResults
+
+        cluster_results: dict[tuple, ClusterResult] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
             if has_periods:
                 key_parts.append(p)
             if has_scenarios:
                 key_parts.append(s)
-            formatted_tsam_results[tuple(key_parts)] = result
+            # Wrap the tsam ClusteringResult in our ClusterResult
+            cluster_results[tuple(key_parts)] = ClusterResult(
+                clustering_result=result.clustering,
+                timesteps_per_cluster=timesteps_per_cluster,
+            )
+
+        # Create ClusterResults collection
+        results = ClusterResults(cluster_results, dim_names)
 
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
@@ -1104,15 +1112,10 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = None
 
-        # Build cluster_order DataArray for storage constraints and expansion
-        cluster_order_da = self._build_cluster_order_da(cluster_orders, periods, scenarios)
-
         # Create simplified Clustering object
         reduced_fs.clustering = Clustering(
-            tsam_results=formatted_tsam_results,
-            dim_names=dim_names,
+            results=results,
             original_timesteps=self._fs.timesteps,
-            cluster_order=cluster_order_da,
             original_data=ds,
             aggregated_data=ds_new,
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
@@ -1304,25 +1307,29 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Format tsam_aggregation_results keys for new Clustering
-        formatted_tsam_results: dict[tuple, Any] = {}
+        # Create ClusterResult objects from each AggregationResult
+        from .clustering import ClusterResult, ClusterResults
+
+        cluster_results: dict[tuple, ClusterResult] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
             if has_periods:
                 key_parts.append(p)
             if has_scenarios:
                 key_parts.append(s)
-            formatted_tsam_results[tuple(key_parts)] = result
+            # Wrap the tsam ClusteringResult in our ClusterResult
+            cluster_results[tuple(key_parts)] = ClusterResult(
+                clustering_result=result.clustering,
+                timesteps_per_cluster=timesteps_per_cluster,
+            )
 
-        # Build cluster_order DataArray
-        cluster_order_da = self._build_cluster_order_da(cluster_orders, periods, scenarios)
+        # Create ClusterResults collection
+        results = ClusterResults(cluster_results, dim_names)
 
         # Create simplified Clustering object
         reduced_fs.clustering = Clustering(
-            tsam_results=formatted_tsam_results,
-            dim_names=dim_names,
+            results=results,
             original_timesteps=self._fs.timesteps,
-            cluster_order=cluster_order_da,
             original_data=ds,
             aggregated_data=ds_new,
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
