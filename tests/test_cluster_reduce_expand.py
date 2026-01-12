@@ -62,7 +62,7 @@ def test_cluster_creates_reduced_timesteps(timesteps_8_days):
     assert len(fs_reduced.clusters) == 2  # Number of clusters
     assert len(fs_reduced.timesteps) * len(fs_reduced.clusters) == 48  # Total
     assert hasattr(fs_reduced, 'clustering')
-    assert fs_reduced.clustering.result.cluster_structure.n_clusters == 2
+    assert fs_reduced.clustering.n_clusters == 2
 
 
 def test_expand_restores_full_timesteps(solver_fixture, timesteps_8_days):
@@ -122,8 +122,8 @@ def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
 
     # Get cluster_order to know mapping
     info = fs_reduced.clustering
-    cluster_order = info.result.cluster_structure.cluster_order.values
-    timesteps_per_cluster = info.result.cluster_structure.timesteps_per_cluster  # 24
+    cluster_order = info.cluster_order.values
+    timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
 
@@ -291,8 +291,7 @@ def test_cluster_with_scenarios(timesteps_8_days, scenarios_2):
     # Should have aggregation info with cluster structure
     info = fs_reduced.clustering
     assert info is not None
-    assert info.result.cluster_structure is not None
-    assert info.result.cluster_structure.n_clusters == 2
+    assert info.n_clusters == 2
     # Clustered FlowSystem preserves scenarios
     assert fs_reduced.scenarios is not None
     assert len(fs_reduced.scenarios) == 2
@@ -336,8 +335,7 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     fs_reduced.optimize(solver_fixture)
 
     info = fs_reduced.clustering
-    cluster_structure = info.result.cluster_structure
-    timesteps_per_cluster = cluster_structure.timesteps_per_cluster  # 24
+    timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
     fs_expanded = fs_reduced.transform.expand()
@@ -346,7 +344,7 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     # Check mapping for each scenario using its own cluster_order
     for scenario in scenarios_2:
         # Get the cluster_order for THIS scenario
-        cluster_order = cluster_structure.get_cluster_order_for_slice(scenario=scenario)
+        cluster_order = info.cluster_order.sel(scenario=scenario).values
 
         reduced_scenario = reduced_flow.sel(scenario=scenario).values
         expanded_scenario = expanded_flow.sel(scenario=scenario).values
@@ -451,7 +449,7 @@ class TestStorageClusterModes:
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
-        n_original_clusters = fs_clustered.clustering.result.cluster_structure.n_original_clusters
+        n_original_clusters = fs_clustered.clustering.n_original_clusters
         assert soc_boundary.sizes['cluster_boundary'] == n_original_clusters + 1
 
     def test_storage_cluster_mode_intercluster_cyclic(self, solver_fixture, timesteps_8_days):
@@ -535,9 +533,9 @@ class TestInterclusterStorageLinking:
         # Get values needed for manual calculation
         soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         cs_clustered = fs_clustered.solution['Battery|charge_state']
-        cluster_structure = fs_clustered.clustering.result.cluster_structure
-        cluster_order = cluster_structure.cluster_order.values
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
+        clustering = fs_clustered.clustering
+        cluster_order = clustering.cluster_order.values
+        timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
         cs_expanded = fs_expanded.solution['Battery|charge_state']

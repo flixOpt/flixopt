@@ -1,13 +1,10 @@
 """
 Time Series Aggregation Module for flixopt.
 
-This module provides data structures for time series clustering/aggregation.
+This module provides a thin wrapper around tsam's clustering functionality.
 
-Key classes:
-- ClusterResult: Universal result container for clustering
-- ClusterStructure: Hierarchical structure info for storage inter-cluster linking
-- Clustering: Stored on FlowSystem after clustering
-- ClusteringResultCollection: Wrapper for multi-dimensional tsam ClusteringResult objects
+Key class:
+- Clustering: Stores tsam AggregationResult objects directly on FlowSystem
 
 Example usage:
 
@@ -24,27 +21,16 @@ Example usage:
     info = fs_clustered.clustering
     print(f'Number of clusters: {info.n_clusters}')
 
-    # Save and reuse clustering
-    fs_clustered.clustering.tsam_results.to_json('clustering.json')
+    # Save clustering for reuse
+    fs_clustered.clustering.to_json('clustering.json')
 
     # Expand back to full resolution
     fs_expanded = fs_clustered.transform.expand()
 """
 
-from .base import (
-    Clustering,
-    ClusteringResultCollection,
-    ClusterResult,
-    ClusterStructure,
-    create_cluster_structure_from_mapping,
-)
+from .base import Clustering, ClusteringResultCollection
 
 __all__ = [
-    # Core classes
-    'ClusterResult',
     'Clustering',
-    'ClusteringResultCollection',
-    'ClusterStructure',
-    # Utilities
-    'create_cluster_structure_from_mapping',
+    'ClusteringResultCollection',  # Alias for backwards compat
 ]
