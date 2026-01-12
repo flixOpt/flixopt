@@ -23,6 +23,7 @@ The recommended approach: cluster for fast sizing, then validate at full resolut
 
 ```python
 import flixopt as fx
+from tsam.config import ExtremeConfig
 
 # Load or create your FlowSystem
 flow_system = fx.FlowSystem(timesteps)
@@ -32,7 +33,7 @@ flow_system.add_elements(...)
 fs_clustered = flow_system.transform.cluster(
     n_clusters=12,
     cluster_duration='1D',
-    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+    extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
 )
 fs_clustered.optimize(fx.solvers.HighsSolver())
 
@@ -50,62 +51,86 @@ flow_rates = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 |-----------|-------------|---------|
 | `n_clusters` | Number of typical periods | `12` (typical days for a year) |
 | `cluster_duration` | Duration of each cluster | `'1D'`, `'24h'`, or `24` (hours) |
-| `time_series_for_high_peaks` | Time series where peak clusters must be captured | `['HeatDemand(Q)\|fixed_relative_profile']` |
-| `time_series_for_low_peaks` | Time series where minimum clusters must be captured | `['SolarGen(P)\|fixed_relative_profile']` |
-| `cluster_method` | Clustering algorithm | `'k_means'`, `'hierarchical'`, `'k_medoids'` |
-| `representation_method` | How clusters are represented | `'meanRepresentation'`, `'medoidRepresentation'` |
-| `random_state` | Random seed for reproducibility | `42` |
-| `rescale_cluster_periods` | Rescale clusters to match original means | `True` (default) |
+| `weights` | Clustering weights per time series | `{'demand': 2.0, 'solar': 1.0}` |
+| `cluster` | tsam `ClusterConfig` for clustering options | `ClusterConfig(method='k_medoids')` |
+| `extremes` | tsam `ExtremeConfig` for peak preservation | `ExtremeConfig(method='new_cluster', max_value=[...])` |
+| `predef_cluster_assignments` | Manual cluster assignments | Array of cluster indices |
 
-### Peak Selection
+### Peak Selection with ExtremeConfig
 
-Use `time_series_for_high_peaks` to ensure extreme conditions are represented:
+Use `ExtremeConfig` to ensure extreme conditions are represented:
 
 ```python
+from tsam.config import ExtremeConfig
+
 # Ensure the peak demand day is included
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
-    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+    extremes=ExtremeConfig(
+        method='new_cluster',  # Create new cluster for extremes
+        max_value=['HeatDemand(Q)|fixed_relative_profile'],  # Capture peak demand
+    ),
 )
 ```
 
 Without peak selection, the clustering algorithm might average out extreme days, leading to undersized equipment.
 
-### Advanced Clustering Options
+**ExtremeConfig options:**
 
-Fine-tune the clustering algorithm with advanced parameters:
+| Field | Description |
+|-------|-------------|
+| `method` | How extremes are handled: `'new_cluster'`, `'append'`, `'replace_cluster_center'` |
+| `max_value` | Time series where maximum values should be preserved |
+| `min_value` | Time series where minimum values should be preserved |
+| `max_period` | Time series where period with maximum sum should be preserved |
+| `min_period` | Time series where period with minimum sum should be preserved |
+
+### Advanced Clustering Options with ClusterConfig
+
+Fine-tune the clustering algorithm with `ClusterConfig`:
 
 ```python
+from tsam.config import ClusterConfig, ExtremeConfig
+
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
-    cluster_method='hierarchical',  # Alternative to k_means
-    representation_method='medoidRepresentation',  # Use actual periods, not averages
-    rescale_cluster_periods=True,  # Match original time series means
-    random_state=42,  # Reproducible results
+    cluster=ClusterConfig(
+        method='hierarchical',  # Clustering algorithm
+        representation='medoid',  # Use actual periods, not averages
+    ),
+    extremes=ExtremeConfig(method='new_cluster', max_value=['demand']),
 )
 ```
 
-**Available clustering algorithms** (`cluster_method`):
+**Available clustering algorithms** (`ClusterConfig.method`):
 
 | Method | Description |
 |--------|-------------|
-| `'k_means'` | Fast, good for most cases (default) |
-| `'hierarchical'` | Produces consistent hierarchical groupings |
+| `'hierarchical'` | Produces consistent hierarchical groupings (default) |
+| `'k_means'` | Fast, good for most cases |
 | `'k_medoids'` | Uses actual periods as representatives |
 | `'k_maxoids'` | Maximizes representativeness |
 | `'averaging'` | Simple averaging of similar periods |
 
-For advanced tsam parameters not exposed directly, use `**kwargs`:
+**Representation methods** (`ClusterConfig.representation`):
+
+| Method | Description |
+|--------|-------------|
+| `'medoid'` | Use actual periods as representatives (default) |
+| `'mean'` | Average of all periods in cluster |
+| `'distribution'` | Preserve value distribution (duration curves) |
+
+For additional tsam parameters, pass them as keyword arguments:
 
 ```python
-# Pass any tsam.TimeSeriesAggregation parameter
+# Pass any tsam.aggregate() parameter
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
-    sameMean=True,  # Normalize all time series to same mean
-    sortValues=True,  # Cluster by duration curves instead of shape
+    normalize_column_means=True,  # Normalize all time series to same mean
+    preserve_column_means=True,  # Rescale results to match original means
 )
 ```
 

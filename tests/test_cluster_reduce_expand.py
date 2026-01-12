@@ -767,46 +767,52 @@ def create_system_with_peak_demand(timesteps: pd.DatetimeIndex) -> fx.FlowSystem
 
 
 class TestPeakSelection:
-    """Tests for time_series_for_high_peaks and time_series_for_low_peaks parameters."""
+    """Tests for extremes config with max_value and min_value parameters."""
 
-    def test_time_series_for_high_peaks_parameter_accepted(self, timesteps_8_days):
-        """Verify time_series_for_high_peaks parameter is accepted."""
+    def test_extremes_max_value_parameter_accepted(self, timesteps_8_days):
+        """Verify extremes max_value parameter is accepted."""
+        from tsam.config import ExtremeConfig
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
         # Should not raise an error
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
 
         assert fs_clustered is not None
         assert len(fs_clustered.clusters) == 2
 
-    def test_time_series_for_low_peaks_parameter_accepted(self, timesteps_8_days):
-        """Verify time_series_for_low_peaks parameter is accepted."""
+    def test_extremes_min_value_parameter_accepted(self, timesteps_8_days):
+        """Verify extremes min_value parameter is accepted."""
+        from tsam.config import ExtremeConfig
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
         # Should not raise an error
-        # Note: tsam requires n_clusters >= 3 when using low_peaks to avoid index error
+        # Note: tsam requires n_clusters >= 3 when using min_value to avoid index error
         fs_clustered = fs.transform.cluster(
             n_clusters=3,
             cluster_duration='1D',
-            time_series_for_low_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=ExtremeConfig(method='new_cluster', min_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
 
         assert fs_clustered is not None
         assert len(fs_clustered.clusters) == 3
 
-    def test_high_peaks_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
-        """Verify high peak selection captures day with maximum demand."""
+    def test_extremes_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
+        """Verify extremes config captures day with maximum demand."""
+        from tsam.config import ExtremeConfig
+
         fs = create_system_with_peak_demand(timesteps_8_days)
 
-        # Cluster WITH high peak selection
+        # Cluster WITH extremes config
         fs_with_peaks = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+            extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
         )
         fs_with_peaks.optimize(solver_fixture)
 
@@ -818,15 +824,15 @@ class TestPeakSelection:
         max_flow = float(flow_rates.max())
         assert max_flow >= 49, f'Peak demand not captured: max_flow={max_flow}'
 
-    def test_clustering_without_peaks_may_miss_extremes(self, solver_fixture, timesteps_8_days):
-        """Show that without peak selection, extreme days might be averaged out."""
+    def test_clustering_without_extremes_may_miss_peaks(self, solver_fixture, timesteps_8_days):
+        """Show that without extremes config, extreme days might be averaged out."""
         fs = create_system_with_peak_demand(timesteps_8_days)
 
-        # Cluster WITHOUT high peak selection (may or may not capture peak)
+        # Cluster WITHOUT extremes config (may or may not capture peak)
         fs_no_peaks = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            # No time_series_for_high_peaks
+            # No extremes config
         )
         fs_no_peaks.optimize(solver_fixture)
 

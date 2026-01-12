@@ -194,10 +194,12 @@ class TestClusterAdvancedOptions:
         fs.add_elements(source, sink, bus)
         return fs
 
-    def test_cluster_method_parameter(self, basic_flow_system):
-        """Test that cluster_method parameter works."""
+    def test_cluster_config_parameter(self, basic_flow_system):
+        """Test that cluster config parameter works."""
+        from tsam.config import ClusterConfig
+
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', cluster_method='hierarchical'
+            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(method='hierarchical')
         )
         assert len(fs_clustered.clusters) == 2
 
@@ -219,23 +221,27 @@ class TestClusterAdvancedOptions:
         assert len(fs_clustered.clustering.metrics.data_vars) > 0
 
     def test_representation_method_parameter(self, basic_flow_system):
-        """Test that representation_method parameter works."""
+        """Test that representation method via ClusterConfig works."""
+        from tsam.config import ClusterConfig
+
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', representation_method='medoidRepresentation'
+            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(representation='medoid')
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_rescale_cluster_periods_parameter(self, basic_flow_system):
-        """Test that rescale_cluster_periods parameter works."""
+    def test_preserve_column_means_parameter(self, basic_flow_system):
+        """Test that preserve_column_means parameter works via tsam_kwargs."""
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', rescale_cluster_periods=False
+            n_clusters=2, cluster_duration='1D', preserve_column_means=False
         )
         assert len(fs_clustered.clusters) == 2
 
     def test_tsam_kwargs_passthrough(self, basic_flow_system):
         """Test that additional kwargs are passed to tsam."""
-        # sameMean is a valid tsam parameter
-        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', sameMean=True)
+        # normalize_column_means is a valid tsam parameter
+        fs_clustered = basic_flow_system.transform.cluster(
+            n_clusters=2, cluster_duration='1D', normalize_column_means=True
+        )
         assert len(fs_clustered.clusters) == 2
 
     def test_metrics_with_periods(self):

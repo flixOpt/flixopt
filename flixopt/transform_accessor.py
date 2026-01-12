@@ -17,6 +17,8 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
+    from tsam.config import ClusterConfig, ExtremeConfig
+
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -580,15 +582,9 @@ class TransformAccessor:
         n_clusters: int,
         cluster_duration: str | float,
         weights: dict[str, float] | None = None,
-        time_series_for_high_peaks: list[str] | None = None,
-        time_series_for_low_peaks: list[str] | None = None,
-        cluster_method: Literal['k_means', 'k_medoids', 'hierarchical', 'k_maxoids', 'averaging'] = 'hierarchical',
-        representation_method: Literal[
-            'meanRepresentation', 'medoidRepresentation', 'distributionAndMinMaxRepresentation'
-        ] = 'medoidRepresentation',
-        extreme_period_method: Literal['append', 'new_cluster_center', 'replace_cluster_center'] | None = None,
-        rescale_cluster_periods: bool = True,
-        predef_cluster_order: xr.DataArray | np.ndarray | list[int] | None = None,
+        cluster: ClusterConfig | None = None,
+        extremes: ExtremeConfig | None = None,
+        predef_cluster_assignments: xr.DataArray | np.ndarray | list[int] | None = None,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
@@ -612,28 +608,21 @@ class TransformAccessor:
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
             weights: Optional clustering weights per time series. Keys are time series labels.
-            time_series_for_high_peaks: Time series labels for explicitly selecting high-value
-                clusters. **Recommended** for demand time series to capture peak demand days.
-            time_series_for_low_peaks: Time series labels for explicitly selecting low-value clusters.
-            cluster_method: Clustering algorithm to use. Options:
-                ``'hierarchical'`` (default), ``'k_means'``, ``'k_medoids'``,
-                ``'k_maxoids'``, ``'averaging'``.
-            representation_method: How cluster representatives are computed. Options:
-                ``'medoidRepresentation'`` (default), ``'meanRepresentation'``,
-                ``'distributionAndMinMaxRepresentation'``.
-            extreme_period_method: How extreme periods (peaks) are integrated. Options:
-                ``None`` (default, no special handling), ``'append'``,
-                ``'new_cluster_center'``, ``'replace_cluster_center'``.
-            rescale_cluster_periods: If True (default), rescale cluster periods so their
-                weighted mean matches the original time series mean.
-            predef_cluster_order: Predefined cluster assignments for manual clustering.
+                If None, weights are automatically calculated based on data variance.
+            cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm
+                and representation method. If None, uses default settings (hierarchical
+                clustering with medoid representation).
+            extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
+                extreme periods (peaks). Use this to ensure peak demand days are captured.
+                Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
+            predef_cluster_assignments: Predefined cluster assignments for manual clustering.
                 Array of cluster indices (0 to n_clusters-1) for each original period.
                 If provided, clustering is skipped and these assignments are used directly.
                 For multi-dimensional FlowSystems, use an xr.DataArray with dims
                 ``[original_cluster, period?, scenario?]`` to specify different assignments
                 per period/scenario combination.
-            **tsam_kwargs: Additional keyword arguments passed to
-                ``tsam.TimeSeriesAggregation``. See tsam documentation for all options.
+            **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``.
+                See tsam documentation for all options (e.g., ``preserve_column_means``).
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -646,11 +635,15 @@ class TransformAccessor:
         Examples:
             Two-stage sizing optimization:
 
+            >>> from tsam.config import ClusterConfig, ExtremeConfig
             >>> # Stage 1: Size with reduced timesteps (fast)
             >>> fs_sizing = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     time_series_for_high_peaks=['HeatDemand(Q_th)|fixed_relative_profile'],
+            ...     extremes_config=ExtremeConfig(
+            ...         method='new_cluster',
+            ...         max_value=['HeatDemand(Q_th)|fixed_relative_profile'],
+            ...     ),
             ... )
             >>> fs_sizing.optimize(solver)
             >>>
@@ -665,12 +658,12 @@ class TransformAccessor:
 
         Note:
             - This is best suited for initial sizing, not final dispatch optimization
-            - Use ``time_series_for_high_peaks`` to ensure peak demand clusters are captured
+            - Use ``extremes_config`` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - For seasonal storage (e.g., hydrogen, thermal storage), set
               ``Storage.cluster_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
-        import tsam.timeseriesaggregation as tsam
+        import tsam
 
         from .clustering import Clustering, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
@@ -704,18 +697,16 @@ class TransformAccessor:
         ds = self._fs.to_dataset(include_solution=False)
 
         # Validate tsam_kwargs doesn't override explicit parameters
+        # These are the new tsam 3.0 parameter names
         reserved_tsam_keys = {
-            'noTypicalPeriods',
-            'hoursPerPeriod',
-            'resolution',
-            'clusterMethod',
-            'extremePeriodMethod',
-            'representationMethod',
-            'rescaleClusterPeriods',
-            'predefClusterOrder',
-            'weightDict',
-            'addPeakMax',
-            'addPeakMin',
+            'n_clusters',
+            'period_duration',
+            'timestep_duration',
+            'cluster',  # ClusterConfig object
+            'extremes',  # ExtremeConfig object
+            'preserve_column_means',
+            'predef_cluster_assignments',
+            'weights',
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -724,21 +715,21 @@ class TransformAccessor:
                 f'Use the corresponding cluster() parameters instead.'
             )
 
-        # Validate predef_cluster_order dimensions if it's a DataArray
-        if isinstance(predef_cluster_order, xr.DataArray):
+        # Validate predef_cluster_assignments dimensions if it's a DataArray
+        if isinstance(predef_cluster_assignments, xr.DataArray):
             expected_dims = {'original_cluster'}
             if has_periods:
                 expected_dims.add('period')
             if has_scenarios:
                 expected_dims.add('scenario')
-            if set(predef_cluster_order.dims) != expected_dims:
+            if set(predef_cluster_assignments.dims) != expected_dims:
                 raise ValueError(
-                    f'predef_cluster_order dimensions {set(predef_cluster_order.dims)} '
+                    f'predef_cluster_assignments dimensions {set(predef_cluster_assignments.dims)} '
                     f'do not match expected {expected_dims} for this FlowSystem.'
                 )
 
         # Cluster each (period, scenario) combination using tsam directly
-        tsam_results: dict[tuple, tsam.TimeSeriesAggregation] = {}
+        tsam_results: dict[tuple, Any] = {}  # AggregationResult objects
         cluster_orders: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
 
@@ -756,46 +747,40 @@ class TransformAccessor:
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
 
-                # Handle predef_cluster_order for multi-dimensional case
-                predef_order_slice = None
-                if predef_cluster_order is not None:
-                    if isinstance(predef_cluster_order, xr.DataArray):
+                # Handle predef_cluster_assignments for multi-dimensional case
+                predef_assignments_slice = None
+                if predef_cluster_assignments is not None:
+                    if isinstance(predef_cluster_assignments, xr.DataArray):
                         # Extract slice for this (period, scenario) combination
-                        predef_order_slice = predef_cluster_order.sel(**selector, drop=True).values
+                        predef_assignments_slice = predef_cluster_assignments.sel(**selector, drop=True).values
                     else:
                         # Simple array/list - use directly
-                        predef_order_slice = predef_cluster_order
+                        predef_assignments_slice = predef_cluster_assignments
 
-                # Use tsam directly
+                # Use tsam 3.0 aggregate() API
                 clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
-                # tsam expects 'None' as a string, not Python None
-                tsam_extreme_method = 'None' if extreme_period_method is None else extreme_period_method
-                tsam_agg = tsam.TimeSeriesAggregation(
-                    df,
-                    noTypicalPeriods=n_clusters,
-                    hoursPerPeriod=hours_per_cluster,
-                    resolution=dt,
-                    clusterMethod=cluster_method,
-                    extremePeriodMethod=tsam_extreme_method,
-                    representationMethod=representation_method,
-                    rescaleClusterPeriods=rescale_cluster_periods,
-                    predefClusterOrder=predef_order_slice,
-                    weightDict={name: w for name, w in clustering_weights.items() if name in df.columns},
-                    addPeakMax=time_series_for_high_peaks or [],
-                    addPeakMin=time_series_for_low_peaks or [],
-                    **tsam_kwargs,
-                )
+
                 # Suppress tsam warning about minimal value constraints (informational, not actionable)
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
-                    tsam_agg.createTypicalPeriods()
+                    tsam_result = tsam.aggregate(
+                        df,
+                        n_clusters=n_clusters,
+                        period_duration=hours_per_cluster,
+                        timestep_duration=dt,
+                        cluster=cluster,
+                        extremes=extremes,
+                        predef_cluster_assignments=predef_assignments_slice,
+                        weights={name: w for name, w in clustering_weights.items() if name in df.columns},
+                        **tsam_kwargs,
+                    )
 
-                tsam_results[key] = tsam_agg
-                cluster_orders[key] = tsam_agg.clusterOrder
-                cluster_occurrences_all[key] = tsam_agg.clusterPeriodNoOccur
+                tsam_results[key] = tsam_result
+                cluster_orders[key] = tsam_result.cluster_assignments
+                cluster_occurrences_all[key] = tsam_result.cluster_weights
                 # Compute accuracy metrics with error handling
                 try:
-                    clustering_metrics_all[key] = tsam_agg.accuracyIndicators()
+                    clustering_metrics_all[key] = tsam_result.accuracy
                 except Exception as e:
                     logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
                     clustering_metrics_all[key] = pd.DataFrame()
@@ -854,8 +839,8 @@ class TransformAccessor:
                 data_vars[metric] = da
 
             clustering_metrics = xr.Dataset(data_vars)
-        n_reduced_timesteps = len(first_tsam.typicalPeriods)
-        actual_n_clusters = len(first_tsam.clusterPeriodNoOccur)
+        n_reduced_timesteps = len(first_tsam.cluster_representatives)
+        actual_n_clusters = len(first_tsam.cluster_weights)
 
         # ═══════════════════════════════════════════════════════════════════════
         # TRUE (cluster, time) DIMENSIONS
@@ -890,8 +875,8 @@ class TransformAccessor:
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_agg in tsam_results.items():
-            typical_df = tsam_agg.typicalPeriods
+        for key, tsam_result in tsam_results.items():
+            typical_df = tsam_result.cluster_representatives
             for col in typical_df.columns:
                 # Reshape flat data to (cluster, time)
                 flat_data = typical_df[col].values
