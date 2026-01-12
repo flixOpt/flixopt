@@ -102,11 +102,11 @@ class Boiler(LinearConverter):
         self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def thermal_efficiency(self):
+    def thermal_efficiency(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.fuel_flow.label]
 
     @thermal_efficiency.setter
-    def thermal_efficiency(self, value):
+    def thermal_efficiency(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
 
@@ -198,11 +198,11 @@ class Power2Heat(LinearConverter):
         self.thermal_efficiency = thermal_efficiency  # Uses setter
 
     @property
-    def thermal_efficiency(self):
+    def thermal_efficiency(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.electrical_flow.label]
 
     @thermal_efficiency.setter
-    def thermal_efficiency(self, value):
+    def thermal_efficiency(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
@@ -293,11 +293,11 @@ class HeatPump(LinearConverter):
         self.cop = cop  # Uses setter
 
     @property
-    def cop(self):
+    def cop(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.electrical_flow.label]
 
     @cop.setter
-    def cop(self, value):
+    def cop(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'cop', self.label_full, 1, 20)
         self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
 
@@ -388,11 +388,11 @@ class CoolingTower(LinearConverter):
         self.specific_electricity_demand = specific_electricity_demand  # Uses setter
 
     @property
-    def specific_electricity_demand(self):
+    def specific_electricity_demand(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.thermal_flow.label]
 
     @specific_electricity_demand.setter
-    def specific_electricity_demand(self, value):
+    def specific_electricity_demand(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
         self.conversion_factors = [{self.electrical_flow.label: -1, self.thermal_flow.label: value}]
 
@@ -509,20 +509,20 @@ class CHP(LinearConverter):
         )
 
     @property
-    def thermal_efficiency(self):
+    def thermal_efficiency(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.fuel_flow.label]
 
     @thermal_efficiency.setter
-    def thermal_efficiency(self, value):
+    def thermal_efficiency(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
         self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
 
     @property
-    def electrical_efficiency(self):
+    def electrical_efficiency(self) -> Numeric_TPS:
         return self.conversion_factors[1][self.fuel_flow.label]
 
     @electrical_efficiency.setter
-    def electrical_efficiency(self, value):
+    def electrical_efficiency(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
         self.conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
 
@@ -626,11 +626,11 @@ class HeatPumpWithSource(LinearConverter):
         self.cop = cop  # Uses setter
 
     @property
-    def cop(self):
+    def cop(self) -> Numeric_TPS:
         return self.conversion_factors[0][self.electrical_flow.label]
 
     @cop.setter
-    def cop(self, value):
+    def cop(self, value: Numeric_TPS) -> None:
         check_bounds(value, 'cop', self.label_full, 1, 20)
         if np.any(np.asarray(value) == 1):
             raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')

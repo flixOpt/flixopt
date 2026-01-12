@@ -847,6 +847,8 @@ def plot_network(
         try:
             import webbrowser
 
+            if not isinstance(path, pathlib.Path):
+                raise RuntimeError('path must be set when show=True')
             worked = webbrowser.open(f'file://{path.resolve()}', 2)
             if not worked:
                 logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
@@ -1083,7 +1085,7 @@ def dual_pie_with_matplotlib(
     # Create figure
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
-    def draw_pie(ax, labels, values, subtitle):
+    def draw_pie(ax: plt.Axes, labels: list[str], values: list[float], subtitle: str) -> None:
         """Draw a single pie chart."""
         if not labels:
             ax.set_title(subtitle)
@@ -1102,11 +1104,11 @@ def dual_pie_with_matplotlib(
             wedgeprops=dict(width=1 - hole) if hole > 0 else None,
         )
 
-        # Style text
+        # Style text (matplotlib Text objects - stubs are incomplete)
         for autotext in autotexts:
             autotext.set_fontsize(10)
             autotext.set_color('white')
-            autotext.set_weight('bold')
+            autotext.set_weight('bold')  # type: ignore[union-attr]
 
         ax.set_aspect('equal')
         ax.set_title(subtitle, fontsize=14, pad=20)

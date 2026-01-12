@@ -143,7 +143,8 @@ class Comparison:
         """Combined solution Dataset with 'case' dimension."""
         if self._solution is None:
             self._require_solutions()
-            datasets = [fs.solution for fs in self._systems]
+            # We know solutions exist after _require_solutions()
+            datasets = [fs.solution for fs in self._systems if fs.solution is not None]
             self._warn_mismatched_dimensions(datasets)
             self._solution = xr.concat(
                 [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
@@ -378,7 +379,7 @@ class ComparisonStatisticsPlot:
         self._stats = statistics
         self._comp = statistics._comp
 
-    def _combine_data(self, method_name: str, *args, **kwargs) -> tuple[xr.Dataset, str]:
+    def _combine_data(self, method_name: str, *args: Any, **kwargs: Any) -> tuple[xr.Dataset, str]:
         """Call plot method on each system and combine data. Returns (combined_data, title)."""
         datasets = []
         title = ''
@@ -401,7 +402,7 @@ class ComparisonStatisticsPlot:
 
         return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan')), title
 
-    def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
+    def _finalize(self, ds: xr.Dataset, fig: Any, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""
         import plotly.graph_objects as go
 
@@ -415,9 +416,9 @@ class ComparisonStatisticsPlot:
         self,
         method_name: str,
         plot_type: str,
-        *args,
+        *args: Any,
         show: bool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> PlotResult:
         """Generic plot method that delegates to underlying statistics accessor."""
         # Extract plot-specific kwargs (fxplot arguments)
@@ -440,21 +441,21 @@ class ComparisonStatisticsPlot:
             fig.update_layout(**plotly_kwargs)
         return self._finalize(ds, fig, show)
 
-    def balance(self, node: str, *, show: bool | None = None, **kwargs) -> PlotResult:
+    def balance(self, node: str, *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot node balance comparison. See StatisticsPlotAccessor.balance."""
         kwargs.setdefault('color', 'variable')
         return self._plot('balance', 'stacked_bar', node, show=show, **kwargs)
 
-    def carrier_balance(self, carrier: str, *, show: bool | None = None, **kwargs) -> PlotResult:
+    def carrier_balance(self, carrier: str, *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot carrier balance comparison. See StatisticsPlotAccessor.carrier_balance."""
         kwargs.setdefault('color', 'variable')
         return self._plot('carrier_balance', 'stacked_bar', carrier, show=show, **kwargs)
 
-    def flows(self, *, show: bool | None = None, **kwargs) -> PlotResult:
+    def flows(self, *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot flows comparison. See StatisticsPlotAccessor.flows."""
         return self._plot('flows', 'line', show=show, **kwargs)
 
-    def storage(self, storage: str, *, show: bool | None = None, **kwargs) -> PlotResult:
+    def storage(self, storage: str, *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot storage operation comparison. See StatisticsPlotAccessor.storage.
 
         Creates stacked bars for charging/discharging flows with charge state
@@ -499,16 +500,16 @@ class ComparisonStatisticsPlot:
         return self._finalize(ds, fig, show)
 
     def charge_states(
-        self, storages: str | list[str] | None = None, *, show: bool | None = None, **kwargs
+        self, storages: str | list[str] | None = None, *, show: bool | None = None, **kwargs: Any
     ) -> PlotResult:
         """Plot charge states comparison. See StatisticsPlotAccessor.charge_states."""
         return self._plot('charge_states', 'line', storages, show=show, **kwargs)
 
-    def duration_curve(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
+    def duration_curve(self, variables: str | list[str], *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot duration curves comparison. See StatisticsPlotAccessor.duration_curve."""
         return self._plot('duration_curve', 'line', variables, show=show, **kwargs)
 
-    def sizes(self, *, show: bool | None = None, **kwargs) -> PlotResult:
+    def sizes(self, *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot investment sizes comparison. See StatisticsPlotAccessor.sizes."""
         kwargs.setdefault('x', 'variable')
         kwargs.setdefault('color', 'variable')
@@ -521,7 +522,7 @@ class ComparisonStatisticsPlot:
         *,
         by: Literal['component', 'contributor', 'time'] | None = None,
         show: bool | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> PlotResult:
         """Plot effects comparison. See StatisticsPlotAccessor.effects."""
         kwargs['by'] = by
@@ -537,7 +538,7 @@ class ComparisonStatisticsPlot:
         fig.update_traces(marker_line_width=0)
         return self._finalize(ds, fig, show)
 
-    def heatmap(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
+    def heatmap(self, variables: str | list[str], *, show: bool | None = None, **kwargs: Any) -> PlotResult:
         """Plot heatmap comparison. See StatisticsPlotAccessor.heatmap."""
         plot_keys = {'colors', 'facet_col', 'animation_frame'}
         plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}

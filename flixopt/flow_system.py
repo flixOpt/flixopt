@@ -29,7 +29,7 @@ from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
-from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .structure import CompositeContainerMixin, ContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
@@ -825,7 +825,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False) -> None:
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -988,11 +988,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         ds = self.to_dataset(include_solution=False)
         return FlowSystem.from_dataset(ds.copy(deep=True))
 
-    def __copy__(self):
+    def __copy__(self) -> FlowSystem:
         """Support for copy.copy()."""
         return self.copy()
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: dict) -> FlowSystem:
         """Support for copy.deepcopy()."""
         return self.copy()
 
@@ -1011,7 +1011,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return super().get_structure(clean, stats)
 
-    def to_json(self, path: str | pathlib.Path):
+    def to_json(self, path: str | pathlib.Path) -> None:
         """
         Save the flow system to a JSON file.
         Ensures FlowSystem is connected before saving.
@@ -1082,6 +1082,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             return None
 
         effect_values_dict = self.effects.create_effect_values_dict(effect_values)
+        if effect_values_dict is None:
+            return None
 
         return {
             effect: self.fit_to_model_coords(
@@ -1092,7 +1094,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for effect, value in effect_values_dict.items()
         }
 
-    def connect_and_transform(self):
+    def connect_and_transform(self) -> None:
         """Connect the network and transform all element data to model coordinates.
 
         This method performs the following steps:
@@ -1393,9 +1395,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         self.connect_and_transform()
-        self.create_model()
+        model = self.create_model()
 
-        self.model.do_modeling()
+        model.do_modeling()
 
         return self
 
@@ -1820,7 +1822,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._flows_cache = None
             self._storages_cache = None
 
-    def _add_buses(self, *buses: Bus):
+    def _add_buses(self, *buses: Bus) -> None:
         for new_bus in list(buses):
             new_bus.link_to_flow_system(self)  # Link element to FlowSystem
             self.buses.add(new_bus)  # Add to existing buses
@@ -1829,7 +1831,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._flows_cache = None
             self._storages_cache = None
 
-    def _connect_network(self):
+    def _connect_network(self) -> None:
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
             for flow in component.inputs + component.outputs:
@@ -1891,10 +1893,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return r
 
-    def __eq__(self, other: FlowSystem):
+    def __eq__(self, other: object) -> bool:
         """Check if two FlowSystems are equal by comparing their dataset representations."""
         if not isinstance(other, FlowSystem):
-            raise NotImplementedError('Comparison with other types is not implemented for class FlowSystem')
+            return NotImplemented
 
         ds_me = self.to_dataset()
         ds_other = other.to_dataset()
@@ -1909,7 +1911,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return True
 
-    def _get_container_groups(self) -> dict[str, ElementContainer]:
+    def _get_container_groups(self) -> dict[str, ContainerMixin[Any]]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
@@ -2050,7 +2052,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def n_timesteps(self) -> int:
         """Number of timesteps (within each cluster if clustered)."""
-        if self.is_clustered:
+        if self.clustering is not None:
             return self.clustering.timesteps_per_cluster
         return len(self.timesteps)
 
@@ -2092,6 +2094,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
+        if weights is None:
+            raise RuntimeError('Failed to convert scenario_weights to DataArray')
 
         # Normalize to sum to 1
         norm = weights.sum('scenario')

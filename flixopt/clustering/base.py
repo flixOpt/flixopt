@@ -79,7 +79,7 @@ class ClusterStructure:
     n_clusters: int | xr.DataArray
     timesteps_per_cluster: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and ensure proper DataArray formatting."""
         # Ensure cluster_order is a DataArray with proper dims
         if not isinstance(self.cluster_order, xr.DataArray):
@@ -293,7 +293,7 @@ class ClusterResult:
     cluster_structure: ClusterStructure | None = None
     original_data: xr.Dataset | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and ensure proper DataArray formatting."""
         # Ensure timestep_mapping is a DataArray
         if not isinstance(self.timestep_mapping, xr.DataArray):
@@ -411,7 +411,12 @@ class ClusterResult:
 
         timestep_mapping = self.timestep_mapping
         has_cluster_dim = 'cluster' in aggregated.dims
-        timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster if has_cluster_dim else None
+        if has_cluster_dim:
+            if self.cluster_structure is None:
+                raise RuntimeError("cluster_structure is required when data has 'cluster' dimension")
+            timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster
+        else:
+            timesteps_per_cluster = None
 
         def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
             """Expand a single slice using the mapping."""
@@ -453,7 +458,7 @@ class ClusterResult:
         result_arrays = expanded_slices
         for dim in reversed(extra_dims):
             dim_vals = dim_coords[dim]
-            grouped = {}
+            grouped: dict[tuple[int, ...], list[xr.DataArray]] = {}
             for key, arr in result_arrays.items():
                 rest_key = key[:-1] if len(key) > 1 else ()
                 grouped.setdefault(rest_key, []).append(arr)
@@ -1131,7 +1136,7 @@ def create_cluster_structure_from_mapping(
     )
 
 
-def _register_clustering_classes():
+def _register_clustering_classes() -> None:
     """Register clustering classes for IO.
 
     Called from flow_system.py after all imports are complete to avoid circular imports.

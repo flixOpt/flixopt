@@ -52,12 +52,12 @@ class InvestmentModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         super()._do_modeling()
         self._create_variables_and_constraints()
         self._add_effects()
 
-    def _create_variables_and_constraints(self):
+    def _create_variables_and_constraints(self) -> None:
         size_min, size_max = (self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size)
         if self.parameters.linked_periods is not None:
             # Mask size bounds: linked_periods is a binary DataArray that zeros out non-linked periods
@@ -91,35 +91,37 @@ class InvestmentModel(Submodel):
                 short_name='linked_periods',
             )
 
-    def _add_effects(self):
+    def _add_effects(self) -> None:
         """Add investment effects"""
-        if self.parameters.effects_of_investment:
+        if self._model.effects is None:
+            raise RuntimeError('Effects model must be initialized before adding effects')
+
+        effects_of_investment = self.parameters.effects_of_investment
+        if isinstance(effects_of_investment, dict):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
                     effect: self.invested * factor if self.invested is not None else factor
-                    for effect, factor in self.parameters.effects_of_investment.items()
+                    for effect, factor in effects_of_investment.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
+        effects_of_retirement = self.parameters.effects_of_retirement
+        if isinstance(effects_of_retirement, dict) and not self.parameters.mandatory:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: -self.invested * factor + factor
-                    for effect, factor in self.parameters.effects_of_retirement.items()
+                    effect: -self.invested * factor + factor for effect, factor in effects_of_retirement.items()
                 },
                 target='periodic',
             )
 
-        if self.parameters.effects_of_investment_per_size:
+        effects_of_investment_per_size = self.parameters.effects_of_investment_per_size
+        if isinstance(effects_of_investment_per_size, dict):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={
-                    effect: self.size * factor
-                    for effect, factor in self.parameters.effects_of_investment_per_size.items()
-                },
+                expressions={effect: self.size * factor for effect, factor in effects_of_investment_per_size.items()},
                 target='periodic',
             )
 
@@ -186,7 +188,7 @@ class StatusModel(Submodel):
         self.parameters = parameters
         super().__init__(model, label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -227,7 +229,7 @@ class StatusModel(Submodel):
                 coord='time',
             )
 
-            if self.parameters.startup_limit is not None:
+            if self.parameters.startup_limit is not None and self.startup is not None:
                 count = self.add_variables(
                     lower=0,
                     upper=self.parameters.startup_limit,
@@ -269,7 +271,7 @@ class StatusModel(Submodel):
 
         self._add_effects()
 
-    def _add_cluster_cyclic_constraint(self):
+    def _add_cluster_cyclic_constraint(self) -> None:
         """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
         if self._model.flow_system.clusters is not None and self.parameters.cluster_mode == 'cyclic':
             self.add_constraints(
@@ -277,24 +279,27 @@ class StatusModel(Submodel):
                 short_name='cluster_cyclic',
             )
 
-    def _add_effects(self):
+    def _add_effects(self) -> None:
         """Add operational effects (use timestep_duration only, cluster_weight is applied when summing to total)"""
-        if self.parameters.effects_per_active_hour:
+        if self._model.effects is None:
+            raise RuntimeError('Effects model must be initialized before adding effects')
+
+        effects_per_active_hour = self.parameters.effects_per_active_hour
+        if isinstance(effects_per_active_hour, dict):
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
                     effect: self.status * factor * self._model.timestep_duration
-                    for effect, factor in self.parameters.effects_per_active_hour.items()
+                    for effect, factor in effects_per_active_hour.items()
                 },
                 target='temporal',
             )
 
-        if self.parameters.effects_per_startup:
+        effects_per_startup = self.parameters.effects_per_startup
+        if isinstance(effects_per_startup, dict) and self.startup is not None:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
-                expressions={
-                    effect: self.startup * factor for effect, factor in self.parameters.effects_per_startup.items()
-                },
+                expressions={effect: self.startup * factor for effect, factor in effects_per_startup.items()},
                 target='temporal',
             )
 
@@ -340,7 +345,7 @@ class StatusModel(Submodel):
         """Consecutive inactive hours (downtime) variable"""
         return self.get('downtime')
 
-    def _get_previous_uptime(self):
+    def _get_previous_uptime(self) -> xr.DataArray | None:
         """Get previous uptime (consecutive active hours).
 
         Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
@@ -350,7 +355,7 @@ class StatusModel(Submodel):
         hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
         return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status, hours_per_step)
 
-    def _get_previous_downtime(self):
+    def _get_previous_downtime(self) -> xr.DataArray | None:
         """Get previous downtime (consecutive inactive hours).
 
         Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
@@ -378,7 +383,7 @@ class PieceModel(Submodel):
 
         super().__init__(model, label_of_element, label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -447,7 +452,7 @@ class PiecewiseModel(Submodel):
         self.zero_point: linopy.Variable | None = None
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -537,7 +542,7 @@ class PiecewiseEffectsModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -569,6 +574,8 @@ class PiecewiseEffectsModel(Submodel):
         )
 
         # Add shares to effects
+        if self._model.effects is None:
+            raise RuntimeError('Effects model must be initialized before adding effects')
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
@@ -608,7 +615,7 @@ class ShareAllocationModel(Submodel):
 
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -643,7 +650,7 @@ class ShareAllocationModel(Submodel):
         name: str,
         expression: linopy.LinearExpression,
         dims: list[FlowSystemDimensions] | None = None,
-    ):
+    ) -> None:
         """
         Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.
         The expression is added to the right hand side (rhs) of the constraint.
@@ -679,6 +686,10 @@ class ShareAllocationModel(Submodel):
             )
 
             if 'time' not in dims:
+                if self._eq_total is None:
+                    raise RuntimeError('_eq_total constraint not initialized')
                 self._eq_total.lhs -= self.shares[name]
             else:
+                if self._eq_total_per_timestep is None:
+                    raise RuntimeError('_eq_total_per_timestep constraint not initialized')
                 self._eq_total_per_timestep.lhs -= self.shares[name]

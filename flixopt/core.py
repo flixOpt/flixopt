@@ -99,7 +99,7 @@ class TimeSeriesData(xr.DataArray):
         da: xr.DataArray,
         clustering_group: str | None = None,
         clustering_weight: float | None = None,
-    ):
+    ) -> 'TimeSeriesData':
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
         final_clustering_group = clustering_group if clustering_group is not None else da.attrs.get('clustering_group')
         final_clustering_weight = (
@@ -109,11 +109,11 @@ class TimeSeriesData(xr.DataArray):
         return cls(da, clustering_group=final_clustering_group, clustering_weight=final_clustering_weight)
 
     @classmethod
-    def is_timeseries_data(cls, obj) -> bool:
+    def is_timeseries_data(cls, obj: object) -> bool:
         """Check if an object is TimeSeriesData."""
         return isinstance(obj, xr.DataArray) and obj.attrs.get('__timeseries_data__', False)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         clustering_info = []
         if self.clustering_group:
             clustering_info.append(f"clustering_group='{self.clustering_group}'")

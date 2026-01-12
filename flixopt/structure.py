@@ -32,7 +32,7 @@ from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from collections.abc import Collection, ItemsView, Iterator
+    from collections.abc import Callable, Collection, ItemsView, Iterator, KeysView, ValuesView
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
@@ -43,7 +43,10 @@ logger = logging.getLogger('flixopt')
 CLASS_REGISTRY = {}
 
 
-def register_class_for_io(cls):
+_T = TypeVar('_T')
+
+
+def register_class_for_io(cls: type[_T]) -> type[_T]:
     """Register a class for serialization/deserialization."""
     name = cls.__name__
     if name in CLASS_REGISTRY:
@@ -98,7 +101,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
 
-    def do_modeling(self):
+    def do_modeling(self) -> None:
         # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
@@ -112,7 +115,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Populate _variable_names and _constraint_names on each Element
         self._populate_element_variable_names()
 
-    def _populate_element_variable_names(self):
+    def _populate_element_variable_names(self) -> None:
         """Populate _variable_names and _constraint_names on each Element from its submodel."""
         for element in self.flow_system.values():
             if element.submodel is not None:
@@ -123,7 +126,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self,
         parameter_type: Literal['flow_rate', 'size'],
         config: bool | list[str],
-    ):
+    ) -> None:
         """Add scenario equality constraints for a specific parameter type.
 
         Args:
@@ -156,7 +159,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 name=f'{var}|scenario_independent',
             )
 
-    def _add_scenario_equality_constraints(self):
+    def _add_scenario_equality_constraints(self) -> None:
         """Add equality constraints to equalize variables across scenarios based on FlowSystem configuration."""
         # Only proceed if we have scenarios
         if self.flow_system.scenarios is None or len(self.flow_system.scenarios) <= 1:
@@ -166,7 +169,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._add_scenario_equality_for_parameter_type('size', self.flow_system.scenario_independent_sizes)
 
     @property
-    def solution(self):
+    def solution(self) -> xr.Dataset:
         """Build solution dataset, reindexing to timesteps_extra for consistency."""
         # Suppress the linopy warning about coordinate mismatch.
         # This warning is expected when storage charge_state has one more timestep than other variables.
@@ -186,12 +189,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for comp in sorted(
                         self.flow_system.components.values(), key=lambda component: component.label_full.upper()
                     )
+                    if comp.submodel is not None
                 }
             ),
             'Buses': json.dumps(
                 {
                     bus.label_full: bus.submodel.results_structure()
                     for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                    if bus.submodel is not None
                 }
             ),
             'Effects': json.dumps(
@@ -200,12 +205,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for effect in sorted(
                         self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
                     )
+                    if effect.submodel is not None
                 }
             ),
             'Flows': json.dumps(
                 {
                     flow.label_full: flow.submodel.results_structure()
                     for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                    if flow.submodel is not None
                 }
             ),
         }
@@ -222,7 +229,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         return self.flow_system.timestep_duration
 
     @property
-    def hours_of_previous_timesteps(self):
+    def hours_of_previous_timesteps(self) -> xr.DataArray:
         return self.flow_system.hours_of_previous_timesteps
 
     @property
@@ -286,7 +293,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         Objective weights of model (period_weights × scenario_weights).
         """
-        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        objective_effect = self.flow_system.effects.objective_effect
+        if objective_effect.submodel is None:
+            raise RuntimeError('objective_effect model must be built before accessing objective_weights')
+        period_weights = objective_effect.submodel.period_weights
         scenario_weights = self.scenario_weights
 
         return period_weights * scenario_weights
@@ -508,7 +518,7 @@ class Interface:
 
         # Process all constructor parameters
         reference_structure = {'__class__': self.__class__.__name__}
-        all_extracted_arrays = {}
+        all_extracted_arrays: dict[str, xr.DataArray] = {}
 
         for name in self._cached_init_params:
             if name == 'self':  # Skip self and timesteps. Timesteps are directly stored in Datasets
@@ -543,11 +553,11 @@ class Interface:
         return reference_structure, all_extracted_arrays
 
     @staticmethod
-    def _is_empty_container(obj) -> bool:
+    def _is_empty_container(obj: object) -> bool:
         """Check if object is an empty container (dict, list, tuple, set)."""
         return isinstance(obj, (dict, list, tuple, set)) and len(obj) == 0
 
-    def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> tuple[Any, dict[str, xr.DataArray]]:
+    def _extract_dataarrays_recursive(self, obj: Any, context_name: str = '') -> tuple[Any, dict[str, xr.DataArray]]:
         """
         Recursively extract DataArrays from nested structures.
 
@@ -630,7 +640,7 @@ class Interface:
         old_name: str,
         new_name: str,
         current_value: Any = None,
-        transform: callable = None,
+        transform: Callable[..., Any] | None = None,
         check_conflict: bool = True,
         additional_warning_message: str = '',
     ) -> Any:
@@ -790,7 +800,7 @@ class Interface:
         return array
 
     @classmethod
-    def _resolve_reference_structure(cls, structure, arrays_dict: dict[str, xr.DataArray]):
+    def _resolve_reference_structure(cls, structure: Any, arrays_dict: dict[str, xr.DataArray]) -> Any:
         """
         Convert reference structure back to actual objects using provided arrays.
 
@@ -838,7 +848,7 @@ class Interface:
 
                     # Check for deferred init attributes (defined as class attribute on Element subclasses)
                     # These are serialized but set after construction, not passed to child __init__
-                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                    deferred_attr_names: set[str] = getattr(nested_class, '_deferred_init_attrs', set())
                     deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
                     constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
 
@@ -875,7 +885,7 @@ class Interface:
         else:
             return structure
 
-    def _serialize_to_basic_types(self, obj):
+    def _serialize_to_basic_types(self, obj: Any) -> Any:
         """
         Convert object to basic Python types only (no DataArrays, no custom objects).
 
@@ -936,7 +946,7 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False) -> None:
         """
         Save the object to a NetCDF file.
 
@@ -1043,7 +1053,7 @@ class Interface:
             return fx_io.remove_none_and_empty(reference_structure)
         return reference_structure
 
-    def _replace_references_with_stats(self, structure, arrays_dict: dict[str, xr.DataArray]):
+    def _replace_references_with_stats(self, structure: Any, arrays_dict: dict[str, xr.DataArray]) -> Any:
         """Replace DataArray references with statistical summaries."""
         if isinstance(structure, str) and structure.startswith(':::'):
             array_name = structure[3:]
@@ -1059,7 +1069,7 @@ class Interface:
 
         return structure
 
-    def to_json(self, path: str | pathlib.Path):
+    def to_json(self, path: str | pathlib.Path) -> None:
         """
         Save the object to a JSON file.
         This is meant for documentation and comparison, not for reloading.
@@ -1077,7 +1087,7 @@ class Interface:
         except Exception as e:
             raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return a detailed string representation for debugging."""
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'})
 
@@ -1095,11 +1105,11 @@ class Interface:
         dataset = self.to_dataset().copy(deep=True)
         return self.__class__.from_dataset(dataset)
 
-    def __copy__(self):
+    def __copy__(self) -> Interface:
         """Support for copy.copy()."""
         return self.copy()
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memo: dict) -> Interface:
         """Support for copy.deepcopy()."""
         return self.copy()
 
@@ -1211,7 +1221,7 @@ class Element(Interface):
 _NATURAL_SPLIT = re.compile(r'(\d+)')
 
 
-def _natural_sort_key(text):
+def _natural_sort_key(text: str) -> list[int | str]:
     """Sort key for natural ordering (e.g., bus1, bus2, bus10 instead of bus1, bus10, bus2)."""
     return [int(c) if c.isdigit() else c.lower() for c in _NATURAL_SPLIT.split(text)]
 
@@ -1491,7 +1501,7 @@ class CompositeContainerMixin(Generic[T_element]):
                 return container[key]
 
         # Element not found - provide helpful error
-        all_elements = {}
+        all_elements: dict[str, T_element] = {}
         for container in self._get_container_groups().values():
             all_elements.update(container)
 
@@ -1509,7 +1519,7 @@ class CompositeContainerMixin(Generic[T_element]):
 
         raise KeyError(error_msg)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate over all element labels across all containers."""
         for container in self._get_container_groups().values():
             yield from container.keys()
@@ -1528,17 +1538,17 @@ class CompositeContainerMixin(Generic[T_element]):
 
     def values(self) -> list[T_element]:
         """Return all element objects across all containers."""
-        vals = []
+        vals: list[T_element] = []
         for container in self._get_container_groups().values():
             vals.extend(container.values())
         return vals
 
     def items(self) -> list[tuple[str, T_element]]:
         """Return (label, element) pairs for all elements."""
-        items = []
+        result: list[tuple[str, T_element]] = []
         for container in self._get_container_groups().values():
-            items.extend(container.items())
-        return items
+            result.extend(container.items())
+        return result
 
     def _format_grouped_containers(self, title: str | None = None) -> str:
         """
@@ -1603,7 +1613,7 @@ class Submodel(SubmodelsMixin):
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
 
-    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
+    def add_variables(self, short_name: str | None = None, **kwargs: Any) -> linopy.Variable:
         """Create and register a variable in one step"""
         if kwargs.get('name') is None:
             if short_name is None:
@@ -1614,7 +1624,7 @@ class Submodel(SubmodelsMixin):
         self.register_variable(variable, short_name)
         return variable
 
-    def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
+    def add_constraints(self, expression: Any, short_name: str | None = None, **kwargs: Any) -> linopy.Constraint:
         """Create and register a constraint in one step"""
         if kwargs.get('name') is None:
             if short_name is None:
@@ -1655,7 +1665,7 @@ class Submodel(SubmodelsMixin):
         """Check if a variable exists in the model"""
         return name in self._variables or name in self.variables
 
-    def get(self, name: str, default=None):
+    def get(self, name: str, default: linopy.Variable | None = None) -> linopy.Variable | None:
         """Get variable by short name, returning default if not found"""
         try:
             return self[name]
@@ -1673,7 +1683,7 @@ class Submodel(SubmodelsMixin):
         self,
         filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
         length: Literal['scalar', 'time'] | None = None,
-    ):
+    ) -> linopy.Variables:
         if filter_by is None:
             all_variables = self.variables
         elif filter_by == 'binary':
@@ -1748,10 +1758,10 @@ class Submodel(SubmodelsMixin):
         return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
-    def timestep_duration(self):
+    def timestep_duration(self) -> xr.DataArray:
         return self._model.timestep_duration
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """
         Override in subclasses to create variables, constraints, and submodels.
 
@@ -1810,17 +1820,17 @@ class Submodels:
     def items(self) -> ItemsView[str, Submodel]:
         return self.data.items()
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         return self.data.keys()
 
-    def values(self):
+    def values(self) -> ValuesView[Submodel]:
         return self.data.values()
 
     def add(self, submodel: Submodel, name: str) -> None:
         """Add a submodel to the collection."""
         self.data[name] = submodel
 
-    def get(self, name: str, default=None):
+    def get(self, name: str, default: Submodel | None = None) -> Submodel | None:
         """Get submodel by name, returning default if not found."""
         return self.data.get(name, default)
 
@@ -1841,7 +1851,7 @@ class ElementModel(Submodel):
         super().__init__(model, label_of_element=element.label_full, label_of_model=element.label_full)
         self._model.add_submodels(self, short_name=self.label_of_model)
 
-    def results_structure(self):
+    def results_structure(self) -> dict[str, Any]:
         return {
             'label': self.label_full,
             'variables': list(self.variables),

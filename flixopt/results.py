@@ -18,11 +18,12 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
-from .structure import CompositeContainerMixin, ResultsContainer
+from .structure import CompositeContainerMixin, ContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
     import plotly
+    import plotly.graph_objects as go
     import pyvis
 
     from .core import FlowSystemDimensions
@@ -205,6 +206,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         Returns:
             Results: New instance containing the optimization results.
         """
+        if optimization.model is None:
+            raise RuntimeError('Optimization has no model')
         return cls(
             solution=optimization.model.solution,
             flow_system_data=optimization.flow_system.to_dataset(),
@@ -299,7 +302,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self.colors: dict[str, str] = {}
 
-    def _get_container_groups(self) -> dict[str, ResultsContainer]:
+    def _get_container_groups(self) -> dict[str, ContainerMixin[Any]]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
@@ -346,7 +349,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         return self.model.constraints
 
     @property
-    def effect_share_factors(self):
+    def effect_share_factors(self) -> dict[str, dict]:
         if self._effect_share_factors is None:
             effect_share_factors = self.flow_system.effects.calculate_effect_share_factors()
             self._effect_share_factors = {'temporal': effect_share_factors[0], 'periodic': effect_share_factors[1]}
@@ -733,7 +736,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         filters = {k: v for k, v in {'start': start, 'end': end, 'component': component}.items() if v is not None}
         return filter_dataarray_by_coord(self._sizes, **filters)
 
-    def _assign_flow_coords(self, da: xr.DataArray):
+    def _assign_flow_coords(self, da: xr.DataArray) -> xr.DataArray:
         # Add start and end coordinates
         flows_list = list(self.flows.values())
         da = da.assign_coords(
@@ -1192,7 +1195,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         document_model: bool = True,
         save_linopy_model: bool = False,
         overwrite: bool = False,
-    ):
+    ) -> None:
         """Save results to files.
 
         Args:
@@ -2024,7 +2027,10 @@ class FlowResults(_ElementResults):
         if name in self.solution:
             return self.solution[name]
         try:
-            return self._results.flow_system.flows[self.label].size.rename(name)
+            size_val = self._results.flow_system.flows[self.label].size
+            if isinstance(size_val, xr.DataArray):
+                return size_val.rename(name)
+            return xr.DataArray(size_val).rename(name)
         except _FlowSystemRestorationError:
             logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
@@ -2161,6 +2167,8 @@ class SegmentedResults:
         meta_data_path = path.with_suffix('.json')
         logger.info(f'loading segemented optimization meta data from file ("{meta_data_path}")')
         meta_data = fx_io.load_json(meta_data_path)
+        if not isinstance(meta_data, dict):
+            raise TypeError('Expected metadata to be a dict')
 
         # Handle both new 'sub_optimizations' and legacy 'sub_calculations' keys
         sub_names = meta_data.get('sub_optimizations') or meta_data.get('sub_calculations')
@@ -2201,7 +2209,7 @@ class SegmentedResults:
         self.overlap_timesteps = overlap_timesteps
         self.name = name
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
-        self._colors = {}
+        self._colors: dict[str, str] = {}
 
     @property
     def meta_data(self) -> dict[str, int | list[str]]:
@@ -2221,7 +2229,7 @@ class SegmentedResults:
         return self._colors
 
     @colors.setter
-    def colors(self, colors: dict[str, str]):
+    def colors(self, colors: dict[str, str]) -> None:
         """Applies colors to all segments"""
         self._colors = colors
         for segment in self.segment_results:
@@ -2361,7 +2369,7 @@ class SegmentedResults:
         name: str | None = None,
         compression: int = 5,
         overwrite: bool = False,
-    ):
+    ) -> None:
         """Save segmented results to files.
 
         Args:
@@ -2413,7 +2421,7 @@ def plot_heatmap(
     | None = 'auto',
     fill: Literal['ffill', 'bfill'] | None = 'ffill',
     **plot_kwargs: Any,
-):
+) -> go.Figure | tuple[plt.Figure, plt.Axes]:
     """Plot heatmap visualization with support for multi-variable, faceting, and animation.
 
     This function provides a standalone interface to the heatmap plotting capabilities,
@@ -2614,7 +2622,7 @@ def sanitize_dataset(
     if drop_suffix is not None:
         if not isinstance(drop_suffix, str):
             raise ValueError(f'Only pass str values to drop suffixes. Got {drop_suffix}')
-        unique_dict = {}
+        unique_dict: dict[str, str] = {}
         for var in ds.data_vars:
             new_name = var.split(drop_suffix)[0]
 
@@ -2746,7 +2754,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
     """
 
     # Helper function to process filters
-    def apply_filter(array, coord_name: str, coord_values: Any | list[Any]):
+    def apply_filter(array: xr.DataArray, coord_name: str, coord_values: Any | list[Any]) -> xr.DataArray:
         # Verify coord exists
         if coord_name not in array.coords:
             raise AttributeError(f"Missing required coordinate '{coord_name}'")
@@ -2789,7 +2797,7 @@ def filter_dataarray_by_coord(da: xr.DataArray, **kwargs: str | list[str] | None
 def _apply_selection_to_data(
     data: xr.DataArray | xr.Dataset,
     select: dict[str, Any] | None = None,
-    drop=False,
+    drop: bool = False,
 ) -> tuple[xr.DataArray | xr.Dataset, list[str]]:
     """
     Apply selection to data.
@@ -2802,7 +2810,7 @@ def _apply_selection_to_data(
     Returns:
         Tuple of (selected_data, selection_string)
     """
-    selection_string = []
+    selection_string: list[str] = []
 
     if select:
         data = data.sel(select, drop=drop)

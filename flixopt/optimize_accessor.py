@@ -307,6 +307,8 @@ class OptimizeAccessor:
 
         invest_elements = []
         for component in segment_fs.components.values():
+            if component.submodel is None:
+                continue
             for model in component.submodel.all_submodels:
                 if isinstance(model, InvestmentModel):
                     invest_elements.append(model.label_full)
@@ -347,6 +349,8 @@ class OptimizeAccessor:
         effect_labels = set(self._fs.effects.keys())
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
+        if first_solution is None:
+            raise RuntimeError('First segment has no solution')
 
         # Step 1: Time-dependent → concatenate; Scalars → NaN
         for var_name, first_var in first_solution.data_vars.items():

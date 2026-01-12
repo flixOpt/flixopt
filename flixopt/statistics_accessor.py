@@ -460,15 +460,15 @@ class StatisticsAccessor:
             - 'carrier': carrier type (e.g., 'heat', 'electricity', 'gas')
             - 'unit': carrier unit (e.g., 'kW')
         """
-        self._require_solution()
+        solution = self._require_solution()
         if self._flow_rates is None:
-            flow_rate_vars = [v for v in self._fs.solution.data_vars if v.endswith('|flow_rate')]
+            flow_rate_vars = [str(v) for v in solution.data_vars if str(v).endswith('|flow_rate')]
             flow_carriers = self._fs.flow_carriers  # Cached lookup
             carrier_units = self.carrier_units  # Cached lookup
             data_vars = {}
             for v in flow_rate_vars:
                 flow_label = v.replace('|flow_rate', '')
-                da = self._fs.solution[v].copy()
+                da = solution[v].copy()
                 # Add carrier and unit as attributes
                 carrier = flow_carriers.get(flow_label)
                 da.attrs['carrier'] = carrier
@@ -504,27 +504,29 @@ class StatisticsAccessor:
     @property
     def flow_sizes(self) -> xr.Dataset:
         """Flow sizes as a Dataset with flow labels as variable names."""
-        self._require_solution()
+        solution = self._require_solution()
         if self._flow_sizes is None:
             flow_labels = set(self._fs.flows.keys())
             size_vars = [
-                v for v in self._fs.solution.data_vars if v.endswith('|size') and v.replace('|size', '') in flow_labels
+                str(v)
+                for v in solution.data_vars
+                if str(v).endswith('|size') and str(v).replace('|size', '') in flow_labels
             ]
-            self._flow_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            self._flow_sizes = xr.Dataset({v.replace('|size', ''): solution[v] for v in size_vars})
         return self._flow_sizes
 
     @property
     def storage_sizes(self) -> xr.Dataset:
         """Storage capacity sizes as a Dataset with storage labels as variable names."""
-        self._require_solution()
+        solution = self._require_solution()
         if self._storage_sizes is None:
             storage_labels = set(self._fs.storages.keys())
             size_vars = [
-                v
-                for v in self._fs.solution.data_vars
-                if v.endswith('|size') and v.replace('|size', '') in storage_labels
+                str(v)
+                for v in solution.data_vars
+                if str(v).endswith('|size') and str(v).replace('|size', '') in storage_labels
             ]
-            self._storage_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            self._storage_sizes = xr.Dataset({v.replace('|size', ''): solution[v] for v in size_vars})
         return self._storage_sizes
 
     @property
@@ -537,12 +539,10 @@ class StatisticsAccessor:
     @property
     def charge_states(self) -> xr.Dataset:
         """All storage charge states as a Dataset with storage labels as variable names."""
-        self._require_solution()
+        solution = self._require_solution()
         if self._charge_states is None:
-            charge_vars = [v for v in self._fs.solution.data_vars if v.endswith('|charge_state')]
-            self._charge_states = xr.Dataset(
-                {v.replace('|charge_state', ''): self._fs.solution[v] for v in charge_vars}
-            )
+            charge_vars = [str(v) for v in solution.data_vars if str(v).endswith('|charge_state')]
+            self._charge_states = xr.Dataset({v.replace('|charge_state', ''): solution[v] for v in charge_vars})
         return self._charge_states
 
     @property
@@ -740,7 +740,7 @@ class StatisticsAccessor:
         Excludes effect-to-effect shares which are intermediate conversions.
         Provides component and component_type coordinates for flexible groupby operations.
         """
-        solution = self._fs.solution
+        solution = self._require_solution()
         template = self._create_template_for_mode(mode)
 
         # Detect contributors from solution data variables

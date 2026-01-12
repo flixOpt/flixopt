@@ -90,6 +90,10 @@ dev = [
     "dash-daq==0.6.0",
     "networkx==3.0.0",
     "werkzeug==3.1.4",
+    "mypy==1.16.0",
+    "pandas-stubs==2.2.3.250527",
+    "types-PyYAML==6.0.12.20250516",
+    "types-tqdm==4.67.0.20250417",
 ]
 
 # Documentation building
@@ -220,3 +224,52 @@ filterwarnings = [
 [tool.bandit]
 skips = ["B101", "B506"]  # assert_used and yaml_load
 exclude_dirs = ["tests/"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+files = ["flixopt"]
+exclude = ["tests/", "docs/", "build/", "dist/"]
+
+# Disable checks that produce many false positives with xarray/pandas
+# These can be enabled incrementally as the codebase improves
+disable_error_code = [
+    "arg-type",       # xarray type stubs have many mismatches
+    "return-value",   # xarray return types often inaccurate
+    "assignment",     # Type inference issues with complex unions
+    "index",          # Hashable vs str index type issues
+    "operator",       # Unsupported operand types with unions
+    "dict-item",      # Dict entry type mismatches
+    "attr-defined",   # Hashable vs str attribute issues (xarray stubs)
+    "misc",           # Various edge cases
+    "type-var",       # Type variable issues with Hashable
+    "type-arg",       # Generic type argument issues
+    "list-item",      # List item type mismatches (xarray concat)
+    "call-overload",  # Overload variant mismatches
+    "return",         # Missing return statements
+    "import-untyped", # Missing stubs for dash_daq etc.
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "linopy.*",
+    "xarray.*",
+    "tsam.*",
+    "plotly.*",
+    "dash.*",
+    "dash_cytoscape.*",
+    "dash_daq.*",
+    "networkx.*",
+    "highspy.*",
+    "gurobipy.*",
+    "colorlog.*",
+    "pyvis.*",
+    "flask.*",
+    "werkzeug.*",
+    "netCDF4.*",
+    "matplotlib.*",
+]
+ignore_missing_imports = true
