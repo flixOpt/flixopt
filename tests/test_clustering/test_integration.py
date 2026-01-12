@@ -238,9 +238,9 @@ class TestClusterAdvancedOptions:
 
     def test_tsam_kwargs_passthrough(self, basic_flow_system):
         """Test that additional kwargs are passed to tsam."""
-        # normalize_column_means is a valid tsam parameter
+        # preserve_column_means is a valid tsam.aggregate() parameter
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', normalize_column_means=True
+            n_clusters=2, cluster_duration='1D', preserve_column_means=False
         )
         assert len(fs_clustered.clusters) == 2
 

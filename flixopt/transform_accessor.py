@@ -19,6 +19,7 @@ import xarray as xr
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig
 
+    from .clustering import ClusteringResultCollection
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -581,10 +582,8 @@ class TransformAccessor:
         self,
         n_clusters: int,
         cluster_duration: str | float,
-        weights: dict[str, float] | None = None,
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
-        predef_cluster_assignments: xr.DataArray | np.ndarray | list[int] | None = None,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
@@ -603,24 +602,19 @@ class TransformAccessor:
         Use this for initial sizing optimization, then use ``fix_sizes()`` to re-optimize
         at full resolution for accurate dispatch results.
 
+        To reuse an existing clustering on different data, use ``apply_clustering()`` instead.
+
         Args:
             n_clusters: Number of clusters (typical periods) to extract (e.g., 8 typical days).
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
-            weights: Optional clustering weights per time series. Keys are time series labels.
-                If None, weights are automatically calculated based on data variance.
-            cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm
-                and representation method. If None, uses default settings (hierarchical
-                clustering with medoid representation).
+            cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm,
+                representation method, and weights. If None, uses default settings (hierarchical
+                clustering with medoid representation) and automatically calculated weights
+                based on data variance.
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
-            predef_cluster_assignments: Predefined cluster assignments for manual clustering.
-                Array of cluster indices (0 to n_clusters-1) for each original period.
-                If provided, clustering is skipped and these assignments are used directly.
-                For multi-dimensional FlowSystems, use an xr.DataArray with dims
-                ``[original_cluster, period?, scenario?]`` to specify different assignments
-                per period/scenario combination.
             **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``.
                 See tsam documentation for all options (e.g., ``preserve_column_means``).
 
@@ -633,39 +627,40 @@ class TransformAccessor:
             ValueError: If cluster_duration is not a multiple of timestep size.
 
         Examples:
-            Two-stage sizing optimization:
+            Basic clustering with peak preservation:
 
-            >>> from tsam.config import ClusterConfig, ExtremeConfig
-            >>> # Stage 1: Size with reduced timesteps (fast)
-            >>> fs_sizing = flow_system.transform.cluster(
+            >>> from tsam.config import ExtremeConfig
+            >>> fs_clustered = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     extremes_config=ExtremeConfig(
+            ...     extremes=ExtremeConfig(
             ...         method='new_cluster',
             ...         max_value=['HeatDemand(Q_th)|fixed_relative_profile'],
             ...     ),
             ... )
-            >>> fs_sizing.optimize(solver)
+            >>> fs_clustered.optimize(solver)
+
+            Save and reuse clustering:
+
+            >>> # Save clustering for later use
+            >>> fs_clustered.clustering.tsam_results.to_json('clustering.json')
             >>>
-            >>> # Apply safety margin (typical clusters may smooth peaks)
-            >>> sizes_with_margin = {
-            ...     name: float(size.item()) * 1.05 for name, size in fs_sizing.statistics.sizes.items()
-            ... }
-            >>>
-            >>> # Stage 2: Fix sizes and re-optimize at full resolution
-            >>> fs_dispatch = flow_system.transform.fix_sizes(sizes_with_margin)
-            >>> fs_dispatch.optimize(solver)
+            >>> # Apply same clustering to different data
+            >>> from flixopt.clustering import ClusteringResultCollection
+            >>> clustering = ClusteringResultCollection.from_json('clustering.json')
+            >>> fs_other = other_fs.transform.apply_clustering(clustering)
 
         Note:
             - This is best suited for initial sizing, not final dispatch optimization
-            - Use ``extremes_config`` to ensure peak demand clusters are captured
+            - Use ``extremes`` to ensure peak demand clusters are captured
             - A 5-10% safety margin on sizes is recommended for the dispatch stage
             - For seasonal storage (e.g., hydrogen, thermal storage), set
               ``Storage.cluster_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
         import tsam
+        from tsam.config import ClusterConfig
 
-        from .clustering import Clustering, ClusterResult, ClusterStructure
+        from .clustering import Clustering, ClusteringResultCollection, ClusterResult, ClusterStructure
         from .core import TimeSeriesData, drop_constant_arrays
         from .flow_system import FlowSystem
 
@@ -697,16 +692,12 @@ class TransformAccessor:
         ds = self._fs.to_dataset(include_solution=False)
 
         # Validate tsam_kwargs doesn't override explicit parameters
-        # These are the new tsam 3.0 parameter names
         reserved_tsam_keys = {
-            'n_clusters',
-            'period_duration',
-            'timestep_duration',
-            'cluster',  # ClusterConfig object
+            'n_periods',
+            'period_hours',
+            'resolution',
+            'cluster',  # ClusterConfig object (weights are passed through this)
             'extremes',  # ExtremeConfig object
-            'preserve_column_means',
-            'predef_cluster_assignments',
-            'weights',
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -715,21 +706,9 @@ class TransformAccessor:
                 f'Use the corresponding cluster() parameters instead.'
             )
 
-        # Validate predef_cluster_assignments dimensions if it's a DataArray
-        if isinstance(predef_cluster_assignments, xr.DataArray):
-            expected_dims = {'original_cluster'}
-            if has_periods:
-                expected_dims.add('period')
-            if has_scenarios:
-                expected_dims.add('scenario')
-            if set(predef_cluster_assignments.dims) != expected_dims:
-                raise ValueError(
-                    f'predef_cluster_assignments dimensions {set(predef_cluster_assignments.dims)} '
-                    f'do not match expected {expected_dims} for this FlowSystem.'
-                )
-
         # Cluster each (period, scenario) combination using tsam directly
-        tsam_results: dict[tuple, Any] = {}  # AggregationResult objects
+        tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
+        tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
         cluster_orders: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
 
@@ -747,47 +726,94 @@ class TransformAccessor:
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
 
-                # Handle predef_cluster_assignments for multi-dimensional case
-                predef_assignments_slice = None
-                if predef_cluster_assignments is not None:
-                    if isinstance(predef_cluster_assignments, xr.DataArray):
-                        # Extract slice for this (period, scenario) combination
-                        predef_assignments_slice = predef_cluster_assignments.sel(**selector, drop=True).values
-                    else:
-                        # Simple array/list - use directly
-                        predef_assignments_slice = predef_cluster_assignments
-
-                # Use tsam 3.0 aggregate() API
-                clustering_weights = weights or self._calculate_clustering_weights(temporaly_changing_ds)
-
                 # Suppress tsam warning about minimal value constraints (informational, not actionable)
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+
+                    # Build ClusterConfig with auto-calculated weights if user didn't provide any
+                    if cluster is not None and cluster.weights is not None:
+                        # User provided ClusterConfig with weights - use as-is
+                        cluster_config = cluster
+                    else:
+                        # Calculate weights automatically
+                        clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds)
+                        filtered_weights = {name: w for name, w in clustering_weights.items() if name in df.columns}
+
+                        if cluster is not None:
+                            # User provided ClusterConfig without weights - add auto-calculated weights
+                            cluster_config = ClusterConfig(
+                                method=cluster.method,
+                                representation=cluster.representation,
+                                weights=filtered_weights,
+                                normalize_column_means=cluster.normalize_column_means,
+                                use_duration_curves=cluster.use_duration_curves,
+                                include_period_sums=cluster.include_period_sums,
+                                solver=cluster.solver,
+                            )
+                        else:
+                            # No ClusterConfig provided - use defaults with auto-calculated weights
+                            cluster_config = ClusterConfig(weights=filtered_weights)
+
                     tsam_result = tsam.aggregate(
                         df,
                         n_clusters=n_clusters,
                         period_duration=hours_per_cluster,
                         timestep_duration=dt,
-                        cluster=cluster,
+                        cluster=cluster_config,
                         extremes=extremes,
-                        predef_cluster_assignments=predef_assignments_slice,
-                        weights={name: w for name, w in clustering_weights.items() if name in df.columns},
                         **tsam_kwargs,
                     )
 
-                tsam_results[key] = tsam_result
+                tsam_aggregation_results[key] = tsam_result
+                tsam_clustering_results[key] = tsam_result.clustering
                 cluster_orders[key] = tsam_result.cluster_assignments
                 cluster_occurrences_all[key] = tsam_result.cluster_weights
-                # Compute accuracy metrics with error handling
+                # Convert AccuracyMetrics to DataFrame with error handling
                 try:
-                    clustering_metrics_all[key] = tsam_result.accuracy
+                    accuracy = tsam_result.accuracy
+                    clustering_metrics_all[key] = pd.DataFrame(
+                        {
+                            'RMSE': accuracy.rmse,
+                            'MAE': accuracy.mae,
+                            'RMSE_duration': accuracy.rmse_duration,
+                        }
+                    )
                 except Exception as e:
                     logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
                     clustering_metrics_all[key] = pd.DataFrame()
 
+        # Build ClusteringResultCollection for persistence
+        dim_names = []
+        if has_periods:
+            dim_names.append('period')
+        if has_scenarios:
+            dim_names.append('scenario')
+
+        # Convert keys to proper format for ClusteringResultCollection
+        if not dim_names:
+            # Simple case: single result with empty tuple key
+            tsam_result_collection = ClusteringResultCollection(
+                results={(): tsam_clustering_results[(None, None)]},
+                dim_names=[],
+            )
+        else:
+            # Multi-dimensional case: filter None values from keys
+            formatted_results = {}
+            for (p, s), result in tsam_clustering_results.items():
+                key_parts = []
+                if has_periods:
+                    key_parts.append(p)
+                if has_scenarios:
+                    key_parts.append(s)
+                formatted_results[tuple(key_parts)] = result
+            tsam_result_collection = ClusteringResultCollection(
+                results=formatted_results,
+                dim_names=dim_names,
+            )
+
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
-        first_tsam = tsam_results[first_key]
+        first_tsam = tsam_aggregation_results[first_key]
 
         # Convert metrics to xr.Dataset with period/scenario dims if multi-dimensional
         # Filter out empty DataFrames (from failed accuracyIndicators calls)
@@ -875,7 +901,7 @@ class TransformAccessor:
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_result in tsam_results.items():
+        for key, tsam_result in tsam_aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
             for col in typical_df.columns:
                 # Reshape flat data to (cluster, time)
@@ -1048,6 +1074,335 @@ class TransformAccessor:
             result=aggregation_result,
             backend_name='tsam',
             metrics=clustering_metrics,
+            tsam_results=tsam_result_collection,
+        )
+
+        return reduced_fs
+
+    def apply_clustering(
+        self,
+        clustering_result: ClusteringResultCollection,
+    ) -> FlowSystem:
+        """
+        Apply an existing clustering to this FlowSystem.
+
+        This method applies a previously computed clustering (from another FlowSystem
+        or loaded from JSON) to the current FlowSystem's data. The clustering structure
+        (cluster assignments, number of clusters, etc.) is preserved while the time
+        series data is aggregated according to the existing cluster assignments.
+
+        Use this to:
+        - Compare different scenarios with identical cluster assignments
+        - Apply a reference clustering to new data
+        - Reproduce clustering results from a saved configuration
+
+        Args:
+            clustering_result: A ``ClusteringResultCollection`` containing the clustering
+                to apply. Obtain this from a previous clustering via
+                ``fs.clustering.tsam_results``, or load from JSON via
+                ``ClusteringResultCollection.from_json()``.
+
+        Returns:
+            A new FlowSystem with reduced timesteps (only typical clusters).
+            The FlowSystem has metadata stored in ``clustering`` for expansion.
+
+        Raises:
+            ValueError: If the clustering dimensions don't match this FlowSystem's
+                periods/scenarios.
+
+        Examples:
+            Apply clustering from one FlowSystem to another:
+
+            >>> fs_reference = fs_base.transform.cluster(n_clusters=8, cluster_duration='1D')
+            >>> fs_other = fs_high.transform.apply_clustering(fs_reference.clustering.tsam_results)
+
+            Load and apply saved clustering:
+
+            >>> from flixopt.clustering import ClusteringResultCollection
+            >>> clustering = ClusteringResultCollection.from_json('clustering.json')
+            >>> fs_clustered = flow_system.transform.apply_clustering(clustering)
+        """
+
+        from .clustering import Clustering, ClusterResult, ClusterStructure
+        from .core import TimeSeriesData, drop_constant_arrays
+        from .flow_system import FlowSystem
+
+        # Get hours_per_cluster from the first clustering result
+        first_result = next(iter(clustering_result.results.values()))
+        hours_per_cluster = first_result.period_duration
+
+        # Validation
+        dt = float(self._fs.timestep_duration.min().item())
+        if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
+            raise ValueError(
+                f'apply_clustering() requires uniform timestep sizes, got min={dt}h, '
+                f'max={float(self._fs.timestep_duration.max().item())}h.'
+            )
+        if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
+            raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
+
+        timesteps_per_cluster = int(round(hours_per_cluster / dt))
+        has_periods = self._fs.periods is not None
+        has_scenarios = self._fs.scenarios is not None
+
+        # Determine iteration dimensions
+        periods = list(self._fs.periods) if has_periods else [None]
+        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
+
+        ds = self._fs.to_dataset(include_solution=False)
+
+        # Apply existing clustering to each (period, scenario) combination
+        tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
+        tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
+        cluster_orders: dict[tuple, np.ndarray] = {}
+        cluster_occurrences_all: dict[tuple, dict] = {}
+        clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
+
+        for period_label in periods:
+            for scenario_label in scenarios:
+                key = (period_label, scenario_label)
+                selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
+                ds_slice = ds.sel(**selector, drop=True) if selector else ds
+                temporaly_changing_ds = drop_constant_arrays(ds_slice, dim='time')
+                df = temporaly_changing_ds.to_dataframe()
+
+                if selector:
+                    logger.info(f'Applying clustering to {", ".join(f"{k}={v}" for k, v in selector.items())}...')
+
+                # Apply existing clustering
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+                    tsam_result = clustering_result.apply(df, period=period_label, scenario=scenario_label)
+
+                tsam_aggregation_results[key] = tsam_result
+                tsam_clustering_results[key] = tsam_result.clustering
+                cluster_orders[key] = tsam_result.cluster_assignments
+                cluster_occurrences_all[key] = tsam_result.cluster_weights
+                try:
+                    clustering_metrics_all[key] = tsam_result.accuracy
+                except Exception as e:
+                    logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
+                    clustering_metrics_all[key] = pd.DataFrame()
+
+        # Reuse the clustering_result collection (it's the same clustering)
+        tsam_result_collection = clustering_result
+
+        # Use first result for structure
+        first_key = (periods[0], scenarios[0])
+        first_tsam = tsam_aggregation_results[first_key]
+
+        # The rest is identical to cluster() - build the reduced FlowSystem
+        # Convert metrics to xr.Dataset
+        non_empty_metrics = {k: v for k, v in clustering_metrics_all.items() if not v.empty}
+        if not non_empty_metrics:
+            clustering_metrics = xr.Dataset()
+        elif len(non_empty_metrics) == 1 or len(clustering_metrics_all) == 1:
+            metrics_df = non_empty_metrics.get(first_key)
+            if metrics_df is None:
+                metrics_df = next(iter(non_empty_metrics.values()))
+            clustering_metrics = xr.Dataset(
+                {
+                    col: xr.DataArray(
+                        metrics_df[col].values, dims=['time_series'], coords={'time_series': metrics_df.index}
+                    )
+                    for col in metrics_df.columns
+                }
+            )
+        else:
+            sample_df = next(iter(non_empty_metrics.values()))
+            metric_names = list(sample_df.columns)
+            data_vars = {}
+            for metric in metric_names:
+                slices = {}
+                for (p, s), df in clustering_metrics_all.items():
+                    if df.empty:
+                        slices[(p, s)] = xr.DataArray(
+                            np.full(len(sample_df.index), np.nan),
+                            dims=['time_series'],
+                            coords={'time_series': list(sample_df.index)},
+                        )
+                    else:
+                        slices[(p, s)] = xr.DataArray(
+                            df[metric].values, dims=['time_series'], coords={'time_series': list(df.index)}
+                        )
+                da = self._combine_slices_to_dataarray_generic(slices, ['time_series'], periods, scenarios, metric)
+                data_vars[metric] = da
+            clustering_metrics = xr.Dataset(data_vars)
+
+        n_reduced_timesteps = len(first_tsam.cluster_representatives)
+        actual_n_clusters = len(first_tsam.cluster_weights)
+
+        # Create coordinates
+        cluster_coords = np.arange(actual_n_clusters)
+        time_coords = pd.date_range(
+            start='2000-01-01',
+            periods=timesteps_per_cluster,
+            freq=pd.Timedelta(hours=dt),
+            name='time',
+        )
+
+        # Build cluster_weight
+        def _build_cluster_weight_for_key(key: tuple) -> xr.DataArray:
+            occurrences = cluster_occurrences_all[key]
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
+
+        weight_slices = {key: _build_cluster_weight_for_key(key) for key in cluster_occurrences_all}
+        cluster_weight = self._combine_slices_to_dataarray_generic(
+            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
+        )
+
+        logger.info(f'Applied clustering: {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps')
+
+        # Build typical periods DataArrays
+        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
+        for key, tsam_result in tsam_aggregation_results.items():
+            typical_df = tsam_result.cluster_representatives
+            for col in typical_df.columns:
+                flat_data = typical_df[col].values
+                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
+                typical_das.setdefault(col, {})[key] = xr.DataArray(
+                    reshaped,
+                    dims=['cluster', 'time'],
+                    coords={'cluster': cluster_coords, 'time': time_coords},
+                )
+
+        # Build reduced dataset
+        all_keys = {(p, s) for p in periods for s in scenarios}
+        ds_new_vars = {}
+        for name, original_da in ds.data_vars.items():
+            if 'time' not in original_da.dims:
+                ds_new_vars[name] = original_da.copy()
+            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
+                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
+                other_dims = [d for d in sliced.dims if d != 'time']
+                other_shape = [sliced.sizes[d] for d in other_dims]
+                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
+                reshaped = sliced.values.reshape(new_shape)
+                new_coords = {'cluster': cluster_coords, 'time': time_coords}
+                for dim in other_dims:
+                    new_coords[dim] = sliced.coords[dim].values
+                ds_new_vars[name] = xr.DataArray(
+                    reshaped,
+                    dims=['cluster', 'time'] + other_dims,
+                    coords=new_coords,
+                    attrs=original_da.attrs,
+                )
+            else:
+                da = self._combine_slices_to_dataarray_2d(
+                    slices=typical_das[name],
+                    original_da=original_da,
+                    periods=periods,
+                    scenarios=scenarios,
+                )
+                if TimeSeriesData.is_timeseries_data(original_da):
+                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
+                ds_new_vars[name] = da
+
+        new_attrs = dict(ds.attrs)
+        new_attrs.pop('cluster_weight', None)
+        ds_new = xr.Dataset(ds_new_vars, attrs=new_attrs)
+
+        reduced_fs = FlowSystem.from_dataset(ds_new)
+        reduced_fs.cluster_weight = cluster_weight
+
+        for storage in reduced_fs.storages.values():
+            ics = storage.initial_charge_state
+            if isinstance(ics, str) and ics == 'equals_final':
+                storage.initial_charge_state = None
+
+        # Build Clustering object
+        n_original_timesteps = len(self._fs.timesteps)
+
+        def _build_timestep_mapping_for_key(key: tuple) -> np.ndarray:
+            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+            for period_idx, cluster_id in enumerate(cluster_orders[key]):
+                for pos in range(timesteps_per_cluster):
+                    original_idx = period_idx * timesteps_per_cluster + pos
+                    if original_idx < n_original_timesteps:
+                        representative_idx = cluster_id * timesteps_per_cluster + pos
+                        mapping[original_idx] = representative_idx
+            return mapping
+
+        def _build_cluster_occurrences_for_key(key: tuple) -> np.ndarray:
+            occurrences = cluster_occurrences_all[key]
+            return np.array([occurrences.get(c, 0) for c in range(actual_n_clusters)])
+
+        if has_periods or has_scenarios:
+            cluster_order_slices = {}
+            timestep_mapping_slices = {}
+            cluster_occurrences_slices = {}
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
+
+            for p in periods:
+                for s in scenarios:
+                    key = (p, s)
+                    cluster_order_slices[key] = xr.DataArray(
+                        cluster_orders[key], dims=['original_cluster'], name='cluster_order'
+                    )
+                    timestep_mapping_slices[key] = xr.DataArray(
+                        _build_timestep_mapping_for_key(key),
+                        dims=['original_time'],
+                        coords={'original_time': original_timesteps_coord},
+                        name='timestep_mapping',
+                    )
+                    cluster_occurrences_slices[key] = xr.DataArray(
+                        _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
+                    )
+
+            cluster_order_da = self._combine_slices_to_dataarray_generic(
+                cluster_order_slices, ['original_cluster'], periods, scenarios, 'cluster_order'
+            )
+            timestep_mapping_da = self._combine_slices_to_dataarray_generic(
+                timestep_mapping_slices, ['original_time'], periods, scenarios, 'timestep_mapping'
+            )
+            cluster_occurrences_da = self._combine_slices_to_dataarray_generic(
+                cluster_occurrences_slices, ['cluster'], periods, scenarios, 'cluster_occurrences'
+            )
+        else:
+            cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_cluster'], name='cluster_order')
+            original_timesteps_coord = self._fs.timesteps.rename('original_time')
+            timestep_mapping_da = xr.DataArray(
+                _build_timestep_mapping_for_key(first_key),
+                dims=['original_time'],
+                coords={'original_time': original_timesteps_coord},
+                name='timestep_mapping',
+            )
+            cluster_occurrences_da = xr.DataArray(
+                _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
+            )
+
+        cluster_structure = ClusterStructure(
+            cluster_order=cluster_order_da,
+            cluster_occurrences=cluster_occurrences_da,
+            n_clusters=actual_n_clusters,
+            timesteps_per_cluster=timesteps_per_cluster,
+        )
+
+        def _build_cluster_weights_for_key(key: tuple) -> xr.DataArray:
+            occurrences = cluster_occurrences_all[key]
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
+
+        weights_slices = {key: _build_cluster_weights_for_key(key) for key in cluster_occurrences_all}
+        representative_weights = self._combine_slices_to_dataarray_generic(
+            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
+        )
+
+        aggregation_result = ClusterResult(
+            timestep_mapping=timestep_mapping_da,
+            n_representatives=n_reduced_timesteps,
+            representative_weights=representative_weights,
+            cluster_structure=cluster_structure,
+            original_data=ds,
+            aggregated_data=ds_new,
+        )
+
+        reduced_fs.clustering = Clustering(
+            result=aggregation_result,
+            backend_name='tsam',
+            metrics=clustering_metrics,
+            tsam_results=tsam_result_collection,
         )
 
         return reduced_fs

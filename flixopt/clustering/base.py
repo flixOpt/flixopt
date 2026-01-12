@@ -26,6 +26,8 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
+    from tsam.config import ClusteringResult as TsamClusteringResult
+
     from ..color_processing import ColorType
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
@@ -38,6 +40,192 @@ def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | No
     if 'scenario' in da.dims and scenario is not None:
         da = da.sel(scenario=scenario)
     return da
+
+
+@dataclass
+class ClusteringResultCollection:
+    """Collection of tsam ClusteringResult objects for multi-dimensional clustering.
+
+    This class manages multiple tsam ``ClusteringResult`` objects, one per
+    (period, scenario) combination. It provides IO and apply functionality
+    for reusing clustering across different data.
+
+    Attributes:
+        results: Dictionary mapping (period, scenario) tuples to ClusteringResult objects.
+            For simple cases without periods/scenarios, use ``{(): config}``.
+        dim_names: Names of the dimensions, e.g., ``['period', 'scenario']``.
+            Empty list for simple cases.
+
+    Example:
+        Simple case (no periods/scenarios):
+
+        >>> collection = ClusteringResultCollection.from_single(result.predefined)
+        >>> collection.to_json('clustering.json')
+
+        Multi-dimensional case:
+
+        >>> collection = ClusteringResultCollection(
+        ...     results={
+        ...         ('2030', 'low'): result_2030_low.predefined,
+        ...         ('2030', 'high'): result_2030_high.predefined,
+        ...     },
+        ...     dim_names=['period', 'scenario'],
+        ... )
+        >>> collection.to_json('clustering.json')
+
+        Applying to new data:
+
+        >>> collection = ClusteringResultCollection.from_json('clustering.json')
+        >>> new_fs = other_flow_system.transform.apply_clustering(collection)
+    """
+
+    results: dict[tuple, TsamClusteringResult]
+    dim_names: list[str]
+
+    def __post_init__(self):
+        """Validate the collection."""
+        if not self.results:
+            raise ValueError('results cannot be empty')
+
+        # Ensure all keys are tuples with correct length
+        expected_len = len(self.dim_names)
+        for key in self.results:
+            if not isinstance(key, tuple):
+                raise TypeError(f'Keys must be tuples, got {type(key).__name__}')
+            if len(key) != expected_len:
+                raise ValueError(
+                    f'Key {key} has {len(key)} elements, expected {expected_len} (dim_names={self.dim_names})'
+                )
+
+    @classmethod
+    def from_single(cls, result: TsamClusteringResult) -> ClusteringResultCollection:
+        """Create a collection from a single ClusteringResult.
+
+        Use this for simple cases without periods/scenarios.
+
+        Args:
+            result: A single tsam ClusteringResult object (from ``result.predefined``).
+
+        Returns:
+            A ClusteringResultCollection with no dimensions.
+        """
+        return cls(results={(): result}, dim_names=[])
+
+    def get(self, period: str | None = None, scenario: str | None = None) -> TsamClusteringResult:
+        """Get the ClusteringResult for a specific (period, scenario) combination.
+
+        Args:
+            period: Period label (if applicable).
+            scenario: Scenario label (if applicable).
+
+        Returns:
+            The ClusteringResult for the specified combination.
+
+        Raises:
+            KeyError: If the combination is not found.
+        """
+        key = self._make_key(period, scenario)
+        if key not in self.results:
+            raise KeyError(f'No ClusteringResult found for {dict(zip(self.dim_names, key, strict=False))}')
+        return self.results[key]
+
+    def apply(
+        self,
+        data: pd.DataFrame,
+        period: str | None = None,
+        scenario: str | None = None,
+    ) -> Any:  # Returns AggregationResult
+        """Apply the clustering to new data.
+
+        Args:
+            data: DataFrame with time series data to cluster.
+            period: Period label (if applicable).
+            scenario: Scenario label (if applicable).
+
+        Returns:
+            tsam AggregationResult with the clustering applied.
+        """
+        clustering_result = self.get(period, scenario)
+        return clustering_result.apply(data)
+
+    def _make_key(self, period: str | None, scenario: str | None) -> tuple:
+        """Create a key tuple from period and scenario values."""
+        key_parts = []
+        for dim in self.dim_names:
+            if dim == 'period':
+                key_parts.append(period)
+            elif dim == 'scenario':
+                key_parts.append(scenario)
+            else:
+                raise ValueError(f'Unknown dimension: {dim}')
+        return tuple(key_parts)
+
+    def to_json(self, path: str) -> None:
+        """Save the collection to a JSON file.
+
+        Each ClusteringResult is saved using its own to_json method,
+        with the results combined into a single file.
+
+        Args:
+            path: Path to save the JSON file.
+        """
+        import json
+
+        data = {
+            'dim_names': self.dim_names,
+            'results': {},
+        }
+
+        for key, result in self.results.items():
+            # Convert tuple key to string for JSON
+            key_str = '|'.join(str(k) for k in key) if key else '__single__'
+            # Get the dict representation from ClusteringResult
+            data['results'][key_str] = result.to_dict()
+
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    @classmethod
+    def from_json(cls, path: str) -> ClusteringResultCollection:
+        """Load a collection from a JSON file.
+
+        Args:
+            path: Path to the JSON file.
+
+        Returns:
+            A ClusteringResultCollection loaded from the file.
+        """
+        import json
+
+        from tsam.config import ClusteringResult
+
+        with open(path) as f:
+            data = json.load(f)
+
+        dim_names = data['dim_names']
+        results = {}
+
+        for key_str, result_dict in data['results'].items():
+            # Convert string key back to tuple
+            if key_str == '__single__':
+                key = ()
+            else:
+                key = tuple(key_str.split('|'))
+            results[key] = ClusteringResult.from_dict(result_dict)
+
+        return cls(results=results, dim_names=dim_names)
+
+    def __repr__(self) -> str:
+        n_results = len(self.results)
+        if not self.dim_names:
+            return 'ClusteringResultCollection(single result)'
+        return f'ClusteringResultCollection({n_results} results, dims={self.dim_names})'
+
+    def __len__(self) -> int:
+        return len(self.results)
+
+    def __iter__(self):
+        return iter(self.results.items())
 
 
 @dataclass
@@ -931,6 +1119,7 @@ class Clustering:
     - Statistics to properly weight results
     - Inter-cluster storage linking
     - Serialization/deserialization of aggregated models
+    - Reusing clustering via ``tsam_results``
 
     Attributes:
         result: The ClusterResult from the aggregation backend.
@@ -938,18 +1127,24 @@ class Clustering:
         metrics: Clustering quality metrics (RMSE, MAE, etc.) as xr.Dataset.
             Each metric (e.g., 'RMSE', 'MAE') is a DataArray with dims
             ``[time_series, period?, scenario?]``.
+        tsam_results: Collection of tsam ClusteringResult objects for reusing
+            the clustering on different data. Use ``tsam_results.to_json()``
+            to save and ``ClusteringResultCollection.from_json()`` to load.
 
     Example:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
         >>> fs_clustered.clustering.n_clusters
         8
         >>> fs_clustered.clustering.plot.compare()
-        >>> fs_clustered.clustering.plot.heatmap()
+        >>>
+        >>> # Save clustering for reuse
+        >>> fs_clustered.clustering.tsam_results.to_json('clustering.json')
     """
 
     result: ClusterResult
     backend_name: str = 'unknown'
     metrics: xr.Dataset | None = None
+    tsam_results: ClusteringResultCollection | None = None
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create reference structure for serialization."""
