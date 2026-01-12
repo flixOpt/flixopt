@@ -173,7 +173,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def __init__(
         self,
-        timesteps: pd.DatetimeIndex,
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
         periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
         clusters: pd.Index | None = None,
@@ -185,6 +185,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
+        timestep_duration: xr.DataArray | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -193,14 +194,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.timesteps_extra,
             self.hours_of_last_timestep,
             self.hours_of_previous_timesteps,
-            timestep_duration,
+            computed_timestep_duration,
         ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
         self.clusters = clusters  # Cluster dimension for clustered FlowSystems
 
-        self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
+        # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
+        # For RangeIndex (segmented systems), computed_timestep_duration is None
+        if timestep_duration is not None:
+            self.timestep_duration = timestep_duration
+        elif computed_timestep_duration is not None:
+            self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
+        else:
+            self.timestep_duration = None
 
         # Cluster weight for cluster() optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
@@ -264,14 +272,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.name = name
 
     @staticmethod
-    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
-        """Validate timesteps format and rename if needed."""
-        if not isinstance(timesteps, pd.DatetimeIndex):
-            raise TypeError('timesteps must be a pandas DatetimeIndex')
+    def _validate_timesteps(
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
+    ) -> pd.DatetimeIndex | pd.RangeIndex:
+        """Validate timesteps format and rename if needed.
+
+        Accepts either DatetimeIndex (standard) or RangeIndex (for segmented systems).
+        """
+        if not isinstance(timesteps, (pd.DatetimeIndex, pd.RangeIndex)):
+            raise TypeError('timesteps must be a pandas DatetimeIndex or RangeIndex')
         if len(timesteps) < 2:
             raise ValueError('timesteps must contain at least 2 timestamps')
         if timesteps.name != 'time':
-            timesteps.name = 'time'
+            timesteps = timesteps.rename('time')
         if not timesteps.is_monotonic_increasing:
             raise ValueError('timesteps must be sorted')
         return timesteps
@@ -317,9 +330,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @staticmethod
     def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: float | None
-    ) -> pd.DatetimeIndex:
-        """Create timesteps with an extra step at the end."""
+        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_last_timestep: float | None
+    ) -> pd.DatetimeIndex | pd.RangeIndex:
+        """Create timesteps with an extra step at the end.
+
+        For DatetimeIndex, adds an extra timestep using hours_of_last_timestep.
+        For RangeIndex (segmented systems), simply appends the next integer.
+        """
+        if isinstance(timesteps, pd.RangeIndex):
+            # For RangeIndex, just add one more integer
+            return pd.RangeIndex(len(timesteps) + 1, name='time')
+
         if hours_of_last_timestep is None:
             hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
 
@@ -327,8 +348,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def calculate_timestep_duration(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
-        """Calculate duration of each timestep in hours as a 1D DataArray."""
+    def calculate_timestep_duration(
+        timesteps_extra: pd.DatetimeIndex | pd.RangeIndex,
+    ) -> xr.DataArray | None:
+        """Calculate duration of each timestep in hours as a 1D DataArray.
+
+        For RangeIndex (segmented systems), returns None since duration cannot be
+        computed from the index. Use timestep_duration parameter instead.
+        """
+        if isinstance(timesteps_extra, pd.RangeIndex):
+            # Cannot compute duration from RangeIndex - must be provided externally
+            return None
+
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='timestep_duration'
@@ -336,11 +367,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
-    ) -> float | np.ndarray:
-        """Calculate duration of regular timesteps."""
+        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_previous_timesteps: float | np.ndarray | None
+    ) -> float | np.ndarray | None:
+        """Calculate duration of regular timesteps.
+
+        For RangeIndex (segmented systems), returns None if not provided.
+        """
         if hours_of_previous_timesteps is not None:
             return hours_of_previous_timesteps
+        if isinstance(timesteps, pd.RangeIndex):
+            # Cannot compute from RangeIndex
+            return None
         # Calculate from the first interval
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
@@ -385,33 +422,42 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @classmethod
     def _compute_time_metadata(
         cls,
-        timesteps: pd.DatetimeIndex,
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> tuple[pd.DatetimeIndex, float, float | np.ndarray, xr.DataArray]:
+    ) -> tuple[
+        pd.DatetimeIndex | pd.RangeIndex,
+        float | None,
+        float | np.ndarray | None,
+        xr.DataArray | None,
+    ]:
         """
         Compute all time-related metadata from timesteps.
 
         This is the single source of truth for time metadata computation, used by both
         __init__ and dataset operations (sel/isel/resample) to ensure consistency.
 
+        For RangeIndex (segmented systems), timestep_duration cannot be calculated from
+        the index and must be provided externally after FlowSystem creation.
+
         Args:
-            timesteps: The time index to compute metadata from
+            timesteps: The time index to compute metadata from (DatetimeIndex or RangeIndex)
             hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
             hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
                 Can be a scalar or array.
 
         Returns:
             Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration)
+            For RangeIndex, hours_of_last_timestep and timestep_duration may be None.
         """
         # Create timesteps with extra step at the end
         timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
 
-        # Calculate timestep duration
+        # Calculate timestep duration (returns None for RangeIndex)
         timestep_duration = cls.calculate_timestep_duration(timesteps_extra)
 
         # Extract hours_of_last_timestep if not provided
-        if hours_of_last_timestep is None:
+        if hours_of_last_timestep is None and timestep_duration is not None:
             hours_of_last_timestep = timestep_duration.isel(time=-1).item()
 
         # Compute hours_of_previous_timesteps (handles both None and provided cases)
@@ -745,9 +791,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
+        # Resolve timestep_duration if present as DataArray reference (for segmented systems with variable durations)
+        timestep_duration = None
+        if 'timestep_duration' in reference_structure:
+            ref_value = reference_structure['timestep_duration']
+            # Only resolve if it's a DataArray reference (starts with ":::")
+            # For non-segmented systems, it may be stored as a simple list/scalar
+            if isinstance(ref_value, str) and ref_value.startswith(':::'):
+                timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
+
+        # Get timesteps - convert integer index to RangeIndex for segmented systems
+        time_index = ds.indexes['time']
+        if not isinstance(time_index, pd.DatetimeIndex):
+            # Segmented systems use RangeIndex (stored as integer array in NetCDF)
+            time_index = pd.RangeIndex(len(time_index), name='time')
+
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=ds.indexes['time'],
+            timesteps=time_index,
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             clusters=clusters,
@@ -759,6 +820,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
             scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
             name=reference_structure.get('name'),
+            timestep_duration=timestep_duration,
         )
 
         # Restore components
@@ -1859,10 +1921,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Return a detailed string representation showing all containers."""
         r = fx_io.format_title_with_underline('FlowSystem', '=')
 
-        # Timestep info
-        time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
-        freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
-        r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+        # Timestep info - handle both DatetimeIndex and RangeIndex (segmented)
+        if self.is_segmented:
+            r += f'Timesteps: {len(self.timesteps)} segments (segmented)\n'
+        else:
+            time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+            freq_str = (
+                str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
+            )
+            r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+
+        # Add clusters if present
+        if self.clusters is not None:
+            r += f'Clusters: {len(self.clusters)}\n'
 
         # Add periods if present
         if self.periods is not None:
@@ -2043,9 +2114,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return len(self.timesteps) if self.clusters is not None else None
 
     @property
-    def _cluster_time_coords(self) -> pd.DatetimeIndex | None:
+    def _cluster_time_coords(self) -> pd.DatetimeIndex | pd.RangeIndex | None:
         """Get time coordinates for clustered system (same as timesteps)."""
         return self.timesteps if self.clusters is not None else None
+
+    @property
+    def is_segmented(self) -> bool:
+        """Check if this FlowSystem uses segmented time (RangeIndex instead of DatetimeIndex).
+
+        Segmented systems have variable timestep durations stored in timestep_duration,
+        and use a RangeIndex for time coordinates instead of DatetimeIndex.
+        """
+        return isinstance(self.timesteps, pd.RangeIndex)
 
     @property
     def n_timesteps(self) -> int:

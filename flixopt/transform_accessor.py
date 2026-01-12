@@ -170,18 +170,20 @@ class TransformAccessor:
         self,
         tsam_aggregation_results: dict[tuple, Any],
         actual_n_clusters: int,
-        timesteps_per_cluster: int,
+        n_time_points: int,
         cluster_coords: np.ndarray,
-        time_coords: pd.DatetimeIndex,
+        time_coords: pd.DatetimeIndex | pd.RangeIndex,
+        is_segmented: bool = False,
     ) -> dict[str, dict[tuple, xr.DataArray]]:
         """Build typical periods DataArrays with (cluster, time) shape.
 
         Args:
             tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
             actual_n_clusters: Number of clusters.
-            timesteps_per_cluster: Timesteps per cluster.
+            n_time_points: Number of time points per cluster (timesteps or segments).
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values.
+            is_segmented: Whether segmentation was used.
 
         Returns:
             Nested dict: {column_name: {(period, scenario): DataArray}}.
@@ -189,15 +191,85 @@ class TransformAccessor:
         typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
         for key, tsam_result in tsam_aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
-            for col in typical_df.columns:
-                flat_data = typical_df[col].values
-                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
-                typical_das.setdefault(col, {})[key] = xr.DataArray(
-                    reshaped,
-                    dims=['cluster', 'time'],
-                    coords={'cluster': cluster_coords, 'time': time_coords},
-                )
+            if is_segmented:
+                # Segmented data: MultiIndex (Segment Step, Segment Duration)
+                # Need to extract by cluster (first level of index)
+                for col in typical_df.columns:
+                    data = np.zeros((actual_n_clusters, n_time_points))
+                    for cluster_id in range(actual_n_clusters):
+                        cluster_data = typical_df.loc[cluster_id, col]
+                        data[cluster_id, :] = cluster_data.values[:n_time_points]
+                    typical_das.setdefault(col, {})[key] = xr.DataArray(
+                        data,
+                        dims=['cluster', 'time'],
+                        coords={'cluster': cluster_coords, 'time': time_coords},
+                    )
+            else:
+                # Non-segmented: flat data that can be reshaped
+                for col in typical_df.columns:
+                    flat_data = typical_df[col].values
+                    reshaped = flat_data.reshape(actual_n_clusters, n_time_points)
+                    typical_das.setdefault(col, {})[key] = xr.DataArray(
+                        reshaped,
+                        dims=['cluster', 'time'],
+                        coords={'cluster': cluster_coords, 'time': time_coords},
+                    )
         return typical_das
+
+    def _build_segment_durations_da(
+        self,
+        tsam_aggregation_results: dict[tuple, Any],
+        actual_n_clusters: int,
+        n_segments: int,
+        cluster_coords: np.ndarray,
+        time_coords: pd.RangeIndex,
+        dt: float,
+        periods: list,
+        scenarios: list,
+    ) -> xr.DataArray:
+        """Build timestep_duration DataArray from segment durations.
+
+        For segmented systems, each segment represents multiple original timesteps.
+        The duration is segment_duration_in_original_timesteps * dt (hours per original timestep).
+
+        Args:
+            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
+            actual_n_clusters: Number of clusters.
+            n_segments: Number of segments per cluster.
+            cluster_coords: Cluster coordinate values.
+            time_coords: Time coordinate values (RangeIndex for segments).
+            dt: Hours per original timestep.
+            periods: List of period labels ([None] if no periods dimension).
+            scenarios: List of scenario labels ([None] if no scenarios dimension).
+
+        Returns:
+            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?]
+            containing duration in hours for each segment.
+        """
+        segment_duration_slices: dict[tuple, xr.DataArray] = {}
+
+        for key, tsam_result in tsam_aggregation_results.items():
+            # segment_durations is tuple of tuples: ((dur1, dur2, ...), (dur1, dur2, ...), ...)
+            # Each inner tuple is durations for one cluster
+            seg_durs = tsam_result.segment_durations
+
+            # Build 2D array (cluster, segment) of durations in hours
+            data = np.zeros((actual_n_clusters, n_segments))
+            for cluster_id in range(actual_n_clusters):
+                cluster_seg_durs = seg_durs[cluster_id]
+                for seg_id in range(n_segments):
+                    # Duration in hours = number of original timesteps * dt
+                    data[cluster_id, seg_id] = cluster_seg_durs[seg_id] * dt
+
+            segment_duration_slices[key] = xr.DataArray(
+                data,
+                dims=['cluster', 'time'],
+                coords={'cluster': cluster_coords, 'time': time_coords},
+            )
+
+        return self._combine_slices_to_dataarray_generic(
+            segment_duration_slices, ['cluster', 'time'], periods, scenarios, 'timestep_duration'
+        )
 
     def _build_reduced_dataset(
         self,
@@ -205,9 +277,9 @@ class TransformAccessor:
         typical_das: dict[str, dict[tuple, xr.DataArray]],
         actual_n_clusters: int,
         n_reduced_timesteps: int,
-        timesteps_per_cluster: int,
+        n_time_points: int,
         cluster_coords: np.ndarray,
-        time_coords: pd.DatetimeIndex,
+        time_coords: pd.DatetimeIndex | pd.RangeIndex,
         periods: list,
         scenarios: list,
     ) -> xr.Dataset:
@@ -217,8 +289,8 @@ class TransformAccessor:
             ds: Original dataset.
             typical_das: Typical periods DataArrays from _build_typical_das().
             actual_n_clusters: Number of clusters.
-            n_reduced_timesteps: Total reduced timesteps (n_clusters * timesteps_per_cluster).
-            timesteps_per_cluster: Timesteps per cluster.
+            n_reduced_timesteps: Total reduced timesteps (n_clusters * n_time_points).
+            n_time_points: Number of time points per cluster (timesteps or segments).
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values.
             periods: List of period labels.
@@ -240,7 +312,7 @@ class TransformAccessor:
                 sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
                 other_dims = [d for d in sliced.dims if d != 'time']
                 other_shape = [sliced.sizes[d] for d in other_dims]
-                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
+                new_shape = [actual_n_clusters, n_time_points] + other_shape
                 reshaped = sliced.values.reshape(new_shape)
                 new_coords = {'cluster': cluster_coords, 'time': time_coords}
                 for dim in other_dims:
@@ -907,12 +979,6 @@ class TransformAccessor:
         if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
             raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
 
-        if segments is not None:
-            raise NotImplementedError(
-                'Intra-period segmentation (segments parameter) is not yet supported. '
-                'The segment properties on ClusteringResults are available for future use.'
-            )
-
         timesteps_per_cluster = int(round(hours_per_cluster / dt))
         has_periods = self._fs.periods is not None
         has_scenarios = self._fs.scenarios is not None
@@ -1072,27 +1138,44 @@ class TransformAccessor:
         # ═══════════════════════════════════════════════════════════════════════
         # Create coordinates for the 2D cluster structure
         cluster_coords = np.arange(actual_n_clusters)
-        # Use DatetimeIndex for time within cluster (e.g., 00:00-23:00 for daily clustering)
-        time_coords = pd.date_range(
-            start='2000-01-01',
-            periods=timesteps_per_cluster,
-            freq=pd.Timedelta(hours=dt),
-            name='time',
-        )
+
+        # Detect if segmentation was used
+        is_segmented = first_tsam.n_segments is not None
+        n_segments = first_tsam.n_segments if is_segmented else None
+
+        # Determine time dimension based on segmentation
+        if is_segmented:
+            # For segmented data: time dimension = n_segments
+            n_time_points = n_segments
+            time_coords = pd.RangeIndex(n_time_points, name='time')
+        else:
+            # Non-segmented: use DatetimeIndex for time within cluster (e.g., 00:00-23:00 for daily clustering)
+            n_time_points = timesteps_per_cluster
+            time_coords = pd.date_range(
+                start='2000-01-01',
+                periods=timesteps_per_cluster,
+                freq=pd.Timedelta(hours=dt),
+                name='time',
+            )
 
         # Build cluster_weight: shape (cluster,) - one weight per cluster
         cluster_weight = self._build_cluster_weight_da(
             cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
         )
 
-        logger.info(
-            f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
-        )
+        if is_segmented:
+            logger.info(
+                f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {n_segments} segments'
+            )
+        else:
+            logger.info(
+                f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
+            )
         logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das = self._build_typical_das(
-            tsam_aggregation_results, actual_n_clusters, timesteps_per_cluster, cluster_coords, time_coords
+            tsam_aggregation_results, actual_n_clusters, n_time_points, cluster_coords, time_coords, is_segmented
         )
 
         # Build reduced dataset with (cluster, time) dimensions
@@ -1101,12 +1184,27 @@ class TransformAccessor:
             typical_das,
             actual_n_clusters,
             n_reduced_timesteps,
-            timesteps_per_cluster,
+            n_time_points,
             cluster_coords,
             time_coords,
             periods,
             scenarios,
         )
+
+        # For segmented systems, build timestep_duration from segment_durations
+        # Each segment has a duration in hours based on how many original timesteps it represents
+        if is_segmented:
+            segment_durations = self._build_segment_durations_da(
+                tsam_aggregation_results,
+                actual_n_clusters,
+                n_segments,
+                cluster_coords,
+                time_coords,
+                dt,
+                periods,
+                scenarios,
+            )
+            ds_new['timestep_duration'] = segment_durations
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
         # Set cluster_weight - shape (cluster,) possibly with period/scenario dimensions

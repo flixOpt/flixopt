@@ -1469,11 +1469,11 @@ class InterclusterStorageModel(StorageModel):
         delta_soc_ordered = delta_soc.isel(cluster=cluster_assignments)
 
         # Apply self-discharge decay factor (1-loss)^hours to soc_before per Eq. 5
-        # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
-        # Use mean over time (linking operates at period level, not timestep)
+        # relative_loss_per_hour is per-hour, so we need total hours per cluster
+        # Use sum over time to handle both regular and segmented systems
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = self.element.relative_loss_per_hour.mean('time')
-        hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
+        hours_per_cluster = self._model.timestep_duration.sum('time')
         decay_n = (1 - rel_loss) ** hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
@@ -1520,7 +1520,9 @@ class InterclusterStorageModel(StorageModel):
         rel_loss = self.element.relative_loss_per_hour.mean('time')
         mean_timestep_duration = self._model.timestep_duration.mean('time')
 
-        sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
+        # Use actual time dimension size (may be smaller than timesteps_per_cluster for segmented systems)
+        actual_time_size = charge_state.sizes['time']
+        sample_offsets = [0, actual_time_size // 2, actual_time_size - 1]
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
             # With 2D structure: select time offset, then reorder by cluster_assignments
