@@ -223,6 +223,11 @@ class ClusteringResults:
         """Number of original periods (same for all results)."""
         return self._first_result.n_original_periods
 
+    @property
+    def n_segments(self) -> int | None:
+        """Number of segments per cluster, or None if not segmented."""
+        return self._first_result.n_segments
+
     # === Multi-dim DataArrays ===
 
     @property
@@ -566,6 +571,20 @@ class Clustering:
     def dim_names(self) -> list[str]:
         """Names of extra dimensions, e.g., ['period', 'scenario']."""
         return self.results.dim_names
+
+    @property
+    def is_segmented(self) -> bool:
+        """Whether intra-period segmentation was used.
+
+        Segmented systems have variable timestep durations within each cluster,
+        where each segment represents a different number of original timesteps.
+        """
+        return self.results.n_segments is not None
+
+    @property
+    def n_segments(self) -> int | None:
+        """Number of segments per cluster, or None if not segmented."""
+        return self.results.n_segments
 
     @property
     def cluster_assignments(self) -> xr.DataArray:

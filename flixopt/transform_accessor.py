@@ -1794,6 +1794,15 @@ class TransformAccessor:
         # Validate and extract clustering info
         clustering = self._validate_for_expansion()
 
+        # Check for segmented systems (not yet supported)
+        if clustering.is_segmented:
+            raise NotImplementedError(
+                'expand() is not yet supported for segmented systems. '
+                'Segmented clustering uses variable timestep durations that require '
+                'special handling for expansion. Use fix_sizes() and re-optimize at '
+                'full resolution instead.'
+            )
+
         timesteps_per_cluster = clustering.timesteps_per_cluster
         n_clusters = clustering.n_clusters
         n_original_clusters = clustering.n_original_clusters
