@@ -5,7 +5,7 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import xarray as xr
@@ -26,6 +26,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
+    from .flow_system import FlowSystem
     from .types import (
         Effect_TPS,
         Numeric_PS,
@@ -110,7 +111,7 @@ class Component(Element):
         self.submodel = ComponentModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects and flows.
 
         Elements use their label_full as prefix by default, ignoring the passed prefix.
@@ -128,7 +129,7 @@ class Component(Element):
         for flow in self.inputs + self.outputs:
             flow.transform_data()
 
-    def _check_unique_flow_labels(self):
+    def _check_unique_flow_labels(self) -> None:
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
 
         if len(set(all_flow_labels)) != len(all_flow_labels):
@@ -149,7 +150,7 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
-    def _connect_flows(self):
+    def _connect_flows(self) -> None:
         # Inputs
         for flow in self.inputs:
             if flow.component not in ('UnknownComponent', self.label_full):
@@ -172,10 +173,13 @@ class Component(Element):
         # Validate prevent_simultaneous_flows: only allow local flows
         if self.prevent_simultaneous_flows:
             # Deduplicate while preserving order
-            seen = set()
-            self.prevent_simultaneous_flows = [
-                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
-            ]
+            seen: set[int] = set()
+            deduped: list[Flow] = []
+            for f in self.prevent_simultaneous_flows:
+                if id(f) not in seen:
+                    seen.add(id(f))
+                    deduped.append(f)
+            self.prevent_simultaneous_flows = deduped
             local = set(self.inputs + self.outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
@@ -264,7 +268,7 @@ class Bus(Element):
         carrier: str | None = None,
         imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__(label, meta_data=meta_data)
         imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
@@ -281,7 +285,7 @@ class Bus(Element):
         self.submodel = BusModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested flows.
 
         Elements use their label_full as prefix by default, ignoring the passed prefix.
@@ -322,7 +326,7 @@ class Connection:
     # -> wäre cool, damit Komponenten auch auch ohne Knoten verbindbar
     # input wären wie Flow,aber statt bus: connectsTo -> hier andere Connection oder aber Bus (dort keine Connection, weil nicht notwendig)
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         This class is not yet implemented!
         """
@@ -520,7 +524,7 @@ class Flow(Element):
         self.submodel = FlowModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects.
 
         Elements use their label_full as prefix by default, ignoring the passed prefix.
@@ -662,7 +666,7 @@ class FlowModel(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -725,7 +729,7 @@ class FlowModel(ElementModel):
         # Effects
         self._create_shares()
 
-    def _create_status_model(self):
+    def _create_status_model(self) -> None:
         status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
         self.add_submodels(
             StatusModel(
@@ -739,7 +743,7 @@ class FlowModel(ElementModel):
             short_name='status',
         )
 
-    def _create_investment_model(self):
+    def _create_investment_model(self) -> None:
         self.add_submodels(
             InvestmentModel(
                 model=self._model,
@@ -750,7 +754,7 @@ class FlowModel(ElementModel):
             'investment',
         )
 
-    def _constraint_flow_rate(self):
+    def _constraint_flow_rate(self) -> None:
         """Create bounding constraints for flow_rate (models already created in _create_variables)"""
         if not self.with_investment and not self.with_status:
             # Most basic case. Already covered by direct variable bounds
@@ -759,6 +763,8 @@ class FlowModel(ElementModel):
         elif self.with_status and not self.with_investment:
             # Status, but no Investment
             self._create_status_model()
+            if self.status is None:
+                raise RuntimeError('Status model must be initialized')
             bounds = self.relative_flow_rate_bounds
             BoundingPatterns.bounds_with_state(
                 self,
@@ -770,6 +776,8 @@ class FlowModel(ElementModel):
         elif self.with_investment and not self.with_status:
             # Investment, but no Status
             self._create_investment_model()
+            if self.investment is None:
+                raise RuntimeError('Investment model must be initialized')
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.flow_rate,
@@ -782,6 +790,10 @@ class FlowModel(ElementModel):
             self._create_investment_model()
             self._create_status_model()
 
+            if self._investment is None or self.status is None:
+                raise RuntimeError('Investment and status models must be initialized')
+            if not isinstance(self.element.size, InvestParameters):
+                raise RuntimeError('Size must be InvestParameters when with_investment is True')
             BoundingPatterns.scaled_bounds_with_state(
                 model=self,
                 variable=self.flow_rate,
@@ -812,7 +824,7 @@ class FlowModel(ElementModel):
         """Total flow hours variable"""
         return self['total_flow_hours']
 
-    def results_structure(self):
+    def results_structure(self) -> dict[str, Any]:
         return {
             **super().results_structure(),
             'start': self.element.bus if self.element.is_input_in_component else self.element.component,
@@ -820,9 +832,13 @@ class FlowModel(ElementModel):
             'component': self.element.component,
         }
 
-    def _create_shares(self):
+    def _create_shares(self) -> None:
         # Effects per flow hour (use timestep_duration only, cluster_weight is applied when summing to total)
         if self.element.effects_per_flow_hour:
+            if self._model.effects is None:
+                raise RuntimeError('Effects model must be initialized')
+            if not isinstance(self.element.effects_per_flow_hour, dict):
+                raise RuntimeError('effects_per_flow_hour must be a dict after transform')
             self._model.effects.add_share_to_effects(
                 name=self.label_full,
                 expressions={
@@ -832,10 +848,15 @@ class FlowModel(ElementModel):
                 target='temporal',
             )
 
-    def _create_bounds_for_load_factor(self):
+    def _create_bounds_for_load_factor(self) -> None:
         """Create load factor constraints using current approach"""
         # Get the size (either from element or investment)
-        size = self.investment.size if self.with_investment else self.element.size
+        if self.with_investment:
+            if self.investment is None:
+                raise RuntimeError('Investment model must be initialized')
+            size = self.investment.size
+        else:
+            size = self.element.size
 
         # Total hours in the period (sum of temporal weights)
         total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
@@ -947,14 +968,16 @@ class BusModel(ElementModel):
         self.virtual_demand: linopy.Variable | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
+            if flow.submodel is None:
+                raise RuntimeError(f'Flow {flow.label} submodel must be initialized')
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
-        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs])
-        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
+        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs if flow.submodel is not None])
+        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs if flow.submodel is not None])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
         # Add virtual supply/demand to balance and penalty if needed
@@ -975,6 +998,8 @@ class BusModel(ElementModel):
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
 
+            if self._model.effects is None:
+                raise RuntimeError('Effects model must be initialized')
             total_imbalance_penalty = (self.virtual_supply + self.virtual_demand) * imbalance_penalty
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
@@ -982,9 +1007,9 @@ class BusModel(ElementModel):
                 target='temporal',
             )
 
-    def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+    def results_structure(self) -> dict[str, Any]:
+        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs if flow.submodel is not None]
+        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs if flow.submodel is not None]
         if self.virtual_supply is not None:
             inputs.append(self.virtual_supply.name)
         if self.virtual_demand is not None:
@@ -1004,7 +1029,7 @@ class ComponentModel(ElementModel):
         self.status: StatusModel | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
@@ -1034,10 +1059,17 @@ class ComponentModel(ElementModel):
         # Create component status variable and StatusModel if needed
         if self.element.status_parameters:
             status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+            first_flow = all_flows[0]
+            if first_flow.submodel is None or first_flow.submodel.status is None:
+                raise RuntimeError('Flow submodel and status must be initialized')
             if len(all_flows) == 1:
-                self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')
+                self.add_constraints(status == first_flow.submodel.status.status, short_name='status')
             else:
-                flow_statuses = [flow.submodel.status.status for flow in all_flows]
+                flow_statuses = []
+                for flow in all_flows:
+                    if flow.submodel is None or flow.submodel.status is None:
+                        raise RuntimeError(f'Flow {flow.label} submodel and status must be initialized')
+                    flow_statuses.append(flow.submodel.status.status)
                 # TODO: Is the EPSILON even necessary?
                 self.add_constraints(status <= sum(flow_statuses) + CONFIG.Modeling.epsilon, short_name='status|ub')
                 self.add_constraints(
@@ -1059,17 +1091,22 @@ class ComponentModel(ElementModel):
 
         if self.element.prevent_simultaneous_flows:
             # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
+            binary_variables = []
+            for flow in self.element.prevent_simultaneous_flows:
+                if flow.submodel is None or flow.submodel.status is None:
+                    raise RuntimeError(f'Flow {flow.label} submodel and status must be initialized')
+                binary_variables.append(flow.submodel.status.status)
             ModelingPrimitives.mutual_exclusivity_constraint(
                 self,
-                binary_variables=[flow.submodel.status.status for flow in self.element.prevent_simultaneous_flows],
+                binary_variables=binary_variables,
                 short_name='prevent_simultaneous_use',
             )
 
-    def results_structure(self):
+    def results_structure(self) -> dict[str, Any]:
         return {
             **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
+            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs if flow.submodel is not None],
+            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs if flow.submodel is not None],
             'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }
 

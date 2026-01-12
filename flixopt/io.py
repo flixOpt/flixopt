@@ -18,6 +18,8 @@ import xarray as xr
 import yaml
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     import linopy
 
     from .types import Numeric_TPS
@@ -25,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
-def remove_none_and_empty(obj):
+def remove_none_and_empty(obj: Any) -> Any:
     """Recursively removes None and empty dicts and lists values from a dictionary or list."""
 
     if isinstance(obj, dict):
@@ -173,7 +175,7 @@ def _load_yaml_unsafe(path: str | pathlib.Path) -> dict | list:
         return yaml.unsafe_load(f) or {}
 
 
-def _create_compact_dumper():
+def _create_compact_dumper() -> type[yaml.SafeDumper]:
     """
     Create a YAML dumper class with custom representer for compact numeric lists.
 
@@ -181,7 +183,7 @@ def _create_compact_dumper():
         A yaml.SafeDumper subclass configured to format numeric lists inline.
     """
 
-    def represent_list(dumper, data):
+    def represent_list(dumper: yaml.SafeDumper, data: list[Any]) -> yaml.Node:
         """
         Custom representer for lists to format them inline (flow style)
         but only if they contain only numbers or nested numeric lists.
@@ -366,7 +368,7 @@ def load_config_file(path: str | pathlib.Path) -> dict:
                 raise ValueError(f'Failed to parse {path} as YAML or JSON') from e
 
 
-def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
+def _save_yaml_multiline(data: dict[str, Any], output_file: str = 'formatted_output.yaml') -> None:
     """
     Save dictionary data to YAML with proper multi-line string formatting.
     Handles complex string patterns including backticks, special characters,
@@ -380,7 +382,7 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
     processed_data = _normalize_complex_data(data)
 
     # Define a custom representer for strings
-    def represent_str(dumper, data):
+    def represent_str(dumper: yaml.SafeDumper, data: str) -> yaml.Node:
         # Use literal block style (|) for multi-line strings
         if '\n' in data:
             # Clean up formatting for literal block style
@@ -396,7 +398,7 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
 
     # Configure dumper options for better formatting
     class CustomDumper(yaml.SafeDumper):
-        def increase_indent(self, flow=False, indentless=False):
+        def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
             return super().increase_indent(flow, False)
 
     # Bind representer locally to CustomDumper to avoid global side effects
@@ -416,7 +418,7 @@ def _save_yaml_multiline(data, output_file='formatted_output.yaml'):
         )
 
 
-def _normalize_complex_data(data):
+def _normalize_complex_data(data: Any) -> Any:
     """
     Recursively normalize strings in complex data structures.
 
@@ -442,7 +444,7 @@ def _normalize_complex_data(data):
         return data
 
 
-def _normalize_string_content(text):
+def _normalize_string_content(text: str) -> str:
     """
     Apply comprehensive string normalization rules.
 
@@ -842,11 +844,11 @@ class ResultsPaths:
     folder: pathlib.Path
     name: str
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize all path attributes."""
         self._update_paths()
 
-    def _update_paths(self):
+    def _update_paths(self) -> None:
         """Update all path attributes based on current folder and name."""
         self.linopy_model = self.folder / f'{self.name}--linopy_model.nc4'
         self.solution = self.folder / f'{self.name}--solution.nc4'
@@ -971,7 +973,7 @@ def numeric_to_str_for_repr(
     return f'{min_str}-{max_str}'
 
 
-def _format_value_for_repr(value) -> str:
+def _format_value_for_repr(value: Any) -> str:
     """Format a single value for display in repr.
 
     Args:
@@ -1242,7 +1244,7 @@ def build_metadata_info(parts: list[str], prefix: str = ' | ') -> str:
 
 
 @contextmanager
-def suppress_output():
+def suppress_output() -> Generator[None, None, None]:
     """
     Suppress all console output including C-level output from solvers.
 

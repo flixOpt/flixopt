@@ -127,7 +127,7 @@ def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
     nodes = list(flow_system.components.values()) + list(flow_system.buses.values())
     edges = list(flow_system.flows.values())
 
-    def get_element_type(element):
+    def get_element_type(element: Any) -> str:
         """Determine element type for coloring"""
         if isinstance(element, Bus):
             return 'Bus'
@@ -142,7 +142,7 @@ def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
         else:
             return 'Other'
 
-    def get_shape(element):
+    def get_shape(element: Any) -> str:
         """Determine node shape"""
         if isinstance(element, Bus):
             return 'ellipse'
@@ -218,7 +218,7 @@ def make_cytoscape_elements(graph: nx.DiGraph) -> list[dict[str, Any]]:
     return elements
 
 
-def create_color_picker_input(label: str, input_id: str, default_color: str):
+def create_color_picker_input(label: str, input_id: str, default_color: str) -> html.Div:
     """Create a compact color picker with DAQ ColorPicker"""
     return html.Div(
         [
@@ -237,7 +237,7 @@ def create_color_picker_input(label: str, input_id: str, default_color: str):
     )
 
 
-def create_style_section(title: str, children: list):
+def create_style_section(title: str, children: list[Any]) -> html.Div:
     """Create a collapsible section for organizing controls"""
     return html.Div(
         [
@@ -255,7 +255,7 @@ def create_style_section(title: str, children: list):
     )
 
 
-def create_sidebar():
+def create_sidebar() -> html.Div:
     """Create the main sidebar with improved organization"""
     return html.Div(
         [
@@ -390,7 +390,7 @@ def create_sidebar():
     )
 
 
-def shownetwork(graph: nx.DiGraph):
+def shownetwork(graph: nx.DiGraph) -> Dash:
     """Main function to create and run the network visualization"""
     if not DASH_CYTOSCAPE_AVAILABLE:
         raise ImportError(f'Required packages not available: {VISUALIZATION_ERROR}')
@@ -517,7 +517,7 @@ def shownetwork(graph: nx.DiGraph):
     @app.callback(
         [Output('sidebar-content', 'style'), Output('main-content', 'style')], [Input('toggle-sidebar', 'n_clicks')]
     )
-    def toggle_sidebar(n_clicks):
+    def toggle_sidebar(n_clicks: int | None) -> tuple[dict[str, Any], dict[str, Any]]:
         is_open = (n_clicks or 0) % 2 == 1
         sidebar_transform = 'translateX(0)' if is_open else 'translateX(-100%)'
         main_margin = '280px' if is_open else '0'
@@ -558,7 +558,9 @@ def shownetwork(graph: nx.DiGraph):
         ],
         [Input('color-scheme-dropdown', 'value'), Input('reset-btn', 'n_clicks')],
     )
-    def update_color_pickers(color_scheme, reset_clicks):
+    def update_color_pickers(
+        color_scheme: str | None, reset_clicks: int | None
+    ) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
         """Update color pickers when color scheme changes or reset is clicked"""
         ctx = callback_context
 
@@ -599,16 +601,16 @@ def shownetwork(graph: nx.DiGraph):
         [State('elements-store', 'data')],
     )
     def update_visualization(
-        bus_color,
-        source_color,
-        sink_color,
-        storage_color,
-        converter_color,
-        edge_color,
-        node_size,
-        font_size,
-        stored_elements,
-    ):
+        bus_color: dict[str, str] | None,
+        source_color: dict[str, str] | None,
+        sink_color: dict[str, str] | None,
+        storage_color: dict[str, str] | None,
+        converter_color: dict[str, str] | None,
+        edge_color: dict[str, str] | None,
+        node_size: int | None,
+        font_size: int | None,
+        stored_elements: list[dict[str, Any]] | None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Update visualization based on current color picker values"""
         if not stored_elements:
             return no_update, no_update
@@ -688,7 +690,7 @@ def shownetwork(graph: nx.DiGraph):
     @app.callback(
         Output('info-panel', 'children'), [Input('cytoscape', 'tapNodeData'), Input('cytoscape', 'tapEdgeData')]
     )
-    def display_element_info(node_data, edge_data):
+    def display_element_info(node_data: dict[str, Any] | None, edge_data: dict[str, Any] | None) -> list[Any]:
         ctx = callback_context
         if not ctx.triggered:
             return [
@@ -722,7 +724,7 @@ def shownetwork(graph: nx.DiGraph):
         return [html.P('Click on a node or edge to see details.', style={'color': '#95A5A6', 'font-style': 'italic'})]
 
     @app.callback(Output('cytoscape', 'layout'), Input('layout-dropdown', 'value'))
-    def update_layout(selected_layout):
+    def update_layout(selected_layout: str) -> dict[str, str]:
         return {'name': selected_layout}
 
     # Reset callback for non-color-picker controls
@@ -736,7 +738,7 @@ def shownetwork(graph: nx.DiGraph):
         ],
         [Input('reset-btn', 'n_clicks')],
     )
-    def reset_controls(n_clicks):
+    def reset_controls(n_clicks: int | None) -> tuple[str, dict[str, str], int, int, str]:
         """Reset all controls to defaults (color pickers handled separately)"""
         if n_clicks and n_clicks > 0:
             return (
@@ -767,7 +769,7 @@ def shownetwork(graph: nx.DiGraph):
     )
 
     # Start server
-    def find_free_port(start_port=8050, end_port=8100):
+    def find_free_port(start_port: int = 8050, end_port: int = 8100) -> int:
         for port in range(start_port, end_port):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 if s.connect_ex(('localhost', port)) != 0:

@@ -22,6 +22,7 @@ from .structure import FlowSystemModel, register_class_for_io
 if TYPE_CHECKING:
     import linopy
 
+    from .flow_system import FlowSystem
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
@@ -181,7 +182,7 @@ class LinearConverter(Component):
         self.submodel = LinearConverterModel(model, self)
         return self.submodel
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
         super().link_to_flow_system(flow_system, prefix)
         if self.piecewise_conversion is not None:
@@ -240,7 +241,7 @@ class LinearConverter(Component):
         return list_of_conversion_factors
 
     @property
-    def degrees_of_freedom(self):
+    def degrees_of_freedom(self) -> int:
         return len(self.inputs + self.outputs) - len(self.conversion_factors)
 
 
@@ -475,7 +476,7 @@ class Storage(Component):
 
         return self.submodel
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
         super().link_to_flow_system(flow_system, prefix)
         if isinstance(self.capacity_in_flow_hours, InvestParameters):
@@ -762,7 +763,7 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
         self.balanced = balanced
 
-    def _plausibility_checks(self):
+    def _plausibility_checks(self) -> None:
         super()._plausibility_checks()
         # check buses:
         if self.in2 is not None:
@@ -779,16 +780,16 @@ class Transmission(Component):
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
             if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
+            if np.any(self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size) or np.any(
                 self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
-            ).any():
+            ):
                 raise ValueError(
                     f'Balanced Transmission needs compatible minimum and maximum sizes.'
                     f'Got: {self.in1.size.minimum_or_fixed_size=}, {self.in1.size.maximum_or_fixed_size=} and '
                     f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
                 )
 
-    def create_model(self, model) -> TransmissionModel:
+    def create_model(self, model: FlowSystemModel) -> TransmissionModel:
         self._plausibility_checks()
         self.submodel = TransmissionModel(model, self)
         return self.submodel
@@ -813,7 +814,7 @@ class TransmissionModel(ComponentModel):
 
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
         super()._do_modeling()
 
@@ -827,8 +828,14 @@ class TransmissionModel(ComponentModel):
         # equate size of both directions
         if self.element.balanced:
             # eq: in1.size = in2.size
+            in1_submodel = self.element.in1.submodel
+            in2 = self.element.in2
+            if in1_submodel is None or in1_submodel._investment is None:
+                raise RuntimeError('in1 flow submodel and investment must be initialized')
+            if in2 is None or in2.submodel is None or in2.submodel._investment is None:
+                raise RuntimeError('in2 flow submodel and investment must be initialized')
             self.add_constraints(
-                self.element.in1.submodel._investment.size == self.element.in2.submodel._investment.size,
+                in1_submodel._investment.size == in2.submodel._investment.size,
                 short_name='same_size',
             )
 
@@ -870,7 +877,7 @@ class LinearConverterModel(ComponentModel):
         self.piecewise_conversion: PiecewiseConversion | None = None
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
 
@@ -885,18 +892,27 @@ class LinearConverterModel(ComponentModel):
                 used_inputs: set[Flow] = all_input_flows & used_flows
                 used_outputs: set[Flow] = all_output_flows & used_flows
 
+                def get_flow_rate(flow: Flow) -> linopy.Variable:
+                    if flow.submodel is None:
+                        raise RuntimeError(f'Flow {flow.label} submodel must be initialized')
+                    return flow.submodel.flow_rate
+
                 self.add_constraints(
-                    sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_inputs])
-                    == sum([flow.submodel.flow_rate * conv_factors[flow.label] for flow in used_outputs]),
+                    sum([get_flow_rate(flow) * conv_factors[flow.label] for flow in used_inputs])
+                    == sum([get_flow_rate(flow) * conv_factors[flow.label] for flow in used_outputs]),
                     short_name=f'conversion_{i}',
                 )
 
         else:
             # TODO: Improve Inclusion of StatusParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
-            piecewise_conversion = {
-                self.element.flows[flow].submodel.flow_rate.name: piecewise
-                for flow, piecewise in self.element.piecewise_conversion.items()
-            }
+            if self.element.piecewise_conversion is None:
+                raise RuntimeError('piecewise_conversion must be defined when conversion_factors is not')
+            piecewise_conversion = {}
+            for flow, piecewise in self.element.piecewise_conversion.items():
+                flow_obj = self.element.flows[flow]
+                if flow_obj.submodel is None:
+                    raise RuntimeError(f'Flow {flow} submodel must be initialized')
+                piecewise_conversion[flow_obj.submodel.flow_rate.name] = piecewise
 
             self.piecewise_conversion = self.add_submodels(
                 PiecewiseModel(
@@ -930,7 +946,7 @@ class StorageModel(ComponentModel):
     def __init__(self, model: FlowSystemModel, element: Storage):
         super().__init__(model, element)
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create charge state variables, energy balance equations, and optional investment submodels."""
         super()._do_modeling()
         self._create_storage_variables()
@@ -941,7 +957,7 @@ class StorageModel(ComponentModel):
         self._add_initial_final_constraints()
         self._add_balanced_sizes_constraint()
 
-    def _create_storage_variables(self):
+    def _create_storage_variables(self) -> None:
         """Create charge_state and netto_discharge variables."""
         lb, ub = self._absolute_charge_state_bounds
         self.add_variables(
@@ -952,19 +968,21 @@ class StorageModel(ComponentModel):
         )
         self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
 
-    def _add_netto_discharge_constraint(self):
+    def _add_netto_discharge_constraint(self) -> None:
         """Add constraint: netto_discharge = discharging - charging."""
+        if self.element.discharging.submodel is None or self.element.charging.submodel is None:
+            raise RuntimeError('Charging and discharging flow submodels must be initialized')
         self.add_constraints(
             self.netto_discharge
             == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
             short_name='netto_discharge',
         )
 
-    def _add_energy_balance_constraint(self):
+    def _add_energy_balance_constraint(self) -> None:
         """Add energy balance constraint linking charge states across timesteps."""
         self.add_constraints(self._build_energy_balance_lhs() == 0, short_name='charge_state')
 
-    def _add_cluster_cyclic_constraint(self):
+    def _add_cluster_cyclic_constraint(self) -> None:
         """For 'cyclic' cluster mode: each cluster's start equals its end."""
         if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
             self.add_constraints(
@@ -972,7 +990,7 @@ class StorageModel(ComponentModel):
                 short_name='cluster_cyclic',
             )
 
-    def _add_investment_model(self):
+    def _add_investment_model(self) -> None:
         """Create InvestmentModel and add capacity-scaled bounds if using investment sizing."""
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
@@ -984,6 +1002,8 @@ class StorageModel(ComponentModel):
                 ),
                 short_name='investment',
             )
+            if self.investment is None:
+                raise RuntimeError('Investment model must be initialized')
             BoundingPatterns.scaled_bounds(
                 self,
                 variable=self.charge_state,
@@ -991,7 +1011,7 @@ class StorageModel(ComponentModel):
                 relative_bounds=self._relative_charge_state_bounds,
             )
 
-    def _add_initial_final_constraints(self):
+    def _add_initial_final_constraints(self) -> None:
         """Add initial and final charge state constraints.
 
         For clustered systems with 'independent' or 'cyclic' mode, these constraints
@@ -1032,16 +1052,21 @@ class StorageModel(ComponentModel):
                 short_name='final_charge_min',
             )
 
-    def _add_balanced_sizes_constraint(self):
+    def _add_balanced_sizes_constraint(self) -> None:
         """Add constraint ensuring charging and discharging capacities are equal."""
         if self.element.balanced:
+            charging_submodel = self.element.charging.submodel
+            discharging_submodel = self.element.discharging.submodel
+            if charging_submodel is None or charging_submodel._investment is None:
+                raise RuntimeError('Charging flow submodel and investment must be initialized')
+            if discharging_submodel is None or discharging_submodel._investment is None:
+                raise RuntimeError('Discharging flow submodel and investment must be initialized')
             self.add_constraints(
-                self.element.charging.submodel._investment.size - self.element.discharging.submodel._investment.size
-                == 0,
+                charging_submodel._investment.size - discharging_submodel._investment.size == 0,
                 short_name='balanced_sizes',
             )
 
-    def _build_energy_balance_lhs(self):
+    def _build_energy_balance_lhs(self) -> linopy.LinearExpression:
         """Build the left-hand side of the energy balance constraint.
 
         The energy balance equation is:
@@ -1057,6 +1082,8 @@ class StorageModel(ComponentModel):
         Returns:
             The LHS expression (should equal 0).
         """
+        if self.element.charging.submodel is None or self.element.discharging.submodel is None:
+            raise RuntimeError('Charging and discharging flow submodels must be initialized')
         charge_state = self.charge_state
         rel_loss = self.element.relative_loss_per_hour
         timestep_duration = self._model.timestep_duration
@@ -1277,7 +1304,7 @@ class InterclusterStorageModel(StorageModel):
             # Adding 0.0 converts -0.0 to 0.0 (linopy LP writer bug workaround)
             return -cap + 0.0, cap + 0.0
 
-    def _do_modeling(self):
+    def _do_modeling(self) -> None:
         """Create storage model with inter-cluster linking constraints.
 
         Uses template method pattern: calls parent's _do_modeling, then adds
@@ -1286,11 +1313,11 @@ class InterclusterStorageModel(StorageModel):
         super()._do_modeling()
         self._add_intercluster_linking()
 
-    def _add_cluster_cyclic_constraint(self):
+    def _add_cluster_cyclic_constraint(self) -> None:
         """Skip cluster cyclic constraint - handled by inter-cluster linking."""
         pass
 
-    def _add_investment_model(self):
+    def _add_investment_model(self) -> None:
         """Create InvestmentModel with symmetric bounds for ΔE."""
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
@@ -1302,6 +1329,8 @@ class InterclusterStorageModel(StorageModel):
                 ),
                 short_name='investment',
             )
+            if self.investment is None:
+                raise RuntimeError('Investment model must be initialized')
             # Symmetric bounds: -size <= charge_state <= size
             self.add_constraints(
                 self.charge_state >= -self.investment.size,
@@ -1312,7 +1341,7 @@ class InterclusterStorageModel(StorageModel):
                 short_name='charge_state|ub',
             )
 
-    def _add_initial_final_constraints(self):
+    def _add_initial_final_constraints(self) -> None:
         """Skip initial/final constraints - handled by SOC_boundary in inter-cluster linking."""
         pass
 
