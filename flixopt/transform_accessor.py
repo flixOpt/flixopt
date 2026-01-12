@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
-    from tsam.config import ClusterConfig, ExtremeConfig
+    from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
 
     from .clustering import Clustering
     from .flow_system import FlowSystem
@@ -807,6 +807,7 @@ class TransformAccessor:
         cluster_duration: str | float,
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
+        segments: SegmentConfig | None = None,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
@@ -838,6 +839,9 @@ class TransformAccessor:
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
+            segments: Optional tsam ``SegmentConfig`` object specifying intra-period
+                segmentation. Segments divide each cluster period into variable-duration
+                sub-segments. Example: ``SegmentConfig(n_segments=4)``.
             **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``.
                 See tsam documentation for all options (e.g., ``preserve_column_means``).
 
@@ -903,6 +907,12 @@ class TransformAccessor:
         if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
             raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
 
+        if segments is not None:
+            raise NotImplementedError(
+                'Intra-period segmentation (segments parameter) is not yet supported. '
+                'The segment properties on ClusteringResults are available for future use.'
+            )
+
         timesteps_per_cluster = int(round(hours_per_cluster / dt))
         has_periods = self._fs.periods is not None
         has_scenarios = self._fs.scenarios is not None
@@ -964,6 +974,7 @@ class TransformAccessor:
                         timestep_duration=dt,
                         cluster=cluster_config,
                         extremes=extremes,
+                        segments=segments,
                         **tsam_kwargs,
                     )
 
