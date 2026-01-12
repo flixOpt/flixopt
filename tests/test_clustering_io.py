@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 
 import flixopt as fx
 
@@ -537,3 +538,182 @@ class TestClusteringEdgeCases:
         # Component labels should be preserved
         assert 'demand' in fs_expanded.components
         assert 'source' in fs_expanded.components
+
+
+class TestMultiDimensionalClusteringIO:
+    """Test IO for clustering with both periods and scenarios (multi-dimensional)."""
+
+    @pytest.fixture
+    def system_with_periods_and_scenarios(self):
+        """Create a flow system with both periods and scenarios, with different demand patterns."""
+        n_days = 3
+        hours = 24 * n_days
+        timesteps = pd.date_range('2024-01-01', periods=hours, freq='h')
+        periods = pd.Index([2024, 2025], name='period')
+        scenarios = pd.Index(['high', 'low'], name='scenario')
+
+        # Create DIFFERENT demand patterns per period/scenario to get different cluster assignments
+        # Pattern structure: (base_mean, amplitude) for each day
+        patterns = {
+            (2024, 'high'): [(100, 40), (100, 40), (50, 20)],  # Days 0&1 similar
+            (2024, 'low'): [(50, 20), (100, 40), (100, 40)],  # Days 1&2 similar
+            (2025, 'high'): [(100, 40), (50, 20), (100, 40)],  # Days 0&2 similar
+            (2025, 'low'): [(50, 20), (50, 20), (100, 40)],  # Days 0&1 similar
+        }
+
+        demand_values = np.zeros((hours, len(periods), len(scenarios)))
+        for pi, period in enumerate(periods):
+            for si, scenario in enumerate(scenarios):
+                base = np.zeros(hours)
+                for d, (mean, amp) in enumerate(patterns[(period, scenario)]):
+                    start = d * 24
+                    base[start : start + 24] = mean + amp * np.sin(np.linspace(0, 2 * np.pi, 24))
+                demand_values[:, pi, si] = base
+
+        demand = xr.DataArray(
+            demand_values,
+            dims=['time', 'period', 'scenario'],
+            coords={'time': timesteps, 'period': periods, 'scenario': scenarios},
+        )
+
+        fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=1)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=200, effects_per_flow_hour={'costs': 0.05})]),
+        )
+        return fs
+
+    def test_cluster_order_has_correct_dimensions(self, system_with_periods_and_scenarios):
+        """cluster_order should have dimensions for original_cluster, period, and scenario."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        cluster_order = fs_clustered.clustering.cluster_order
+        assert 'original_cluster' in cluster_order.dims
+        assert 'period' in cluster_order.dims
+        assert 'scenario' in cluster_order.dims
+        assert cluster_order.shape == (3, 2, 2)  # 3 days, 2 periods, 2 scenarios
+
+    def test_different_assignments_per_period_scenario(self, system_with_periods_and_scenarios):
+        """Different period/scenario combinations should have different cluster assignments."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Collect all unique assignment patterns
+        assignments = set()
+        for period in fs_clustered.periods:
+            for scenario in fs_clustered.scenarios:
+                order = tuple(fs_clustered.clustering.cluster_order.sel(period=period, scenario=scenario).values)
+                assignments.add(order)
+
+        # We expect at least 2 different patterns (the demand was designed to create different patterns)
+        assert len(assignments) >= 2, f'Expected at least 2 unique patterns, got {len(assignments)}'
+
+    def test_cluster_order_preserved_after_roundtrip(self, system_with_periods_and_scenarios, tmp_path):
+        """cluster_order should be exactly preserved after netcdf roundtrip."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Store original cluster_order
+        original_cluster_order = fs_clustered.clustering.cluster_order.copy()
+
+        # Roundtrip via netcdf
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # cluster_order should be exactly preserved
+        xr.testing.assert_equal(original_cluster_order, fs_restored.clustering.cluster_order)
+
+    def test_tsam_results_none_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """tsam_results should be None after loading (not serialized)."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Before save, tsam_results is not None
+        assert fs_clustered.clustering.tsam_results is not None
+
+        # Roundtrip
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # After load, tsam_results is None
+        assert fs_restored.clustering.tsam_results is None
+
+    def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """Derived properties should work correctly after loading (computed from cluster_order)."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Roundtrip
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # These properties should be computed from cluster_order even when tsam_results is None
+        assert fs_restored.clustering.n_clusters == 2
+        assert fs_restored.clustering.timesteps_per_cluster == 24
+
+        # cluster_occurrences should be derived from cluster_order
+        occurrences = fs_restored.clustering.cluster_occurrences
+        assert occurrences is not None
+        # For each period/scenario, occurrences should sum to n_original_clusters (3 days)
+        for period in fs_restored.periods:
+            for scenario in fs_restored.scenarios:
+                occ = occurrences.sel(period=period, scenario=scenario)
+                assert occ.sum().item() == 3
+
+    def test_apply_clustering_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """apply_clustering should work with a clustering loaded from netcdf."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Save clustered system
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+
+        # Load the full FlowSystem with clustering
+        fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
+        clustering_loaded = fs_loaded.clustering
+        assert clustering_loaded.tsam_results is None  # Confirm tsam_results not serialized
+
+        # Create a fresh FlowSystem (copy the original, unclustered one)
+        fs_fresh = fs.copy()
+
+        # Apply the loaded clustering to the fresh FlowSystem
+        fs_new_clustered = fs_fresh.transform.apply_clustering(clustering_loaded)
+
+        # Should have same cluster structure
+        assert fs_new_clustered.clustering.n_clusters == 2
+        # Clustered FlowSystem has 'cluster' and 'time' dimensions
+        # timesteps gives time dimension (24 hours per cluster), cluster is separate
+        assert len(fs_new_clustered.timesteps) == 24  # 24 hours per typical period
+        assert 'cluster' in fs_new_clustered.dims
+        assert len(fs_new_clustered.indexes['cluster']) == 2  # 2 clusters
+
+        # cluster_order should match
+        xr.testing.assert_equal(fs_clustered.clustering.cluster_order, fs_new_clustered.clustering.cluster_order)
+
+    def test_expand_after_load_and_optimize(self, system_with_periods_and_scenarios, tmp_path, solver_fixture):
+        """expand() should work correctly after loading a solved clustered system."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Roundtrip
+        nc_path = tmp_path / 'multi_dim_clustering_solved.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+
+        # Should have original number of timesteps
+        assert len(fs_expanded.timesteps) == 24 * 3  # 3 days × 24 hours
+
+        # Solution should be expanded
+        assert fs_expanded.solution is not None
+        assert 'source(out)|flow_rate' in fs_expanded.solution
