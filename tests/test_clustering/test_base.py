@@ -22,6 +22,8 @@ class TestHelperFunctions:
             n_timesteps_per_period = 24
             cluster_assignments = (0, 1, 0, 1, 2, 0)
             period_duration = 24.0
+            n_segments = None  # None indicates non-segmented
+            segment_assignments = None  # None indicates non-segmented
 
             def to_dict(self):
                 return {
@@ -70,6 +72,8 @@ class TestClusteringResults:
                 n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
                 n_original_periods = len(cluster_assignments)
                 period_duration = 24.0
+                n_segments = None  # None indicates non-segmented
+                segment_assignments = None  # None indicates non-segmented
 
                 def __init__(self, assignments, n_timesteps):
                     self.cluster_assignments = tuple(assignments)
@@ -213,6 +217,8 @@ class TestClustering:
             n_timesteps_per_period = 24
             cluster_assignments = (0, 1, 0, 1, 2, 0)
             period_duration = 24.0
+            n_segments = None  # None indicates non-segmented
+            segment_assignments = None  # None indicates non-segmented
 
             def to_dict(self):
                 return {
@@ -312,6 +318,8 @@ class TestClusteringMultiDim:
                 n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
                 n_original_periods = len(cluster_assignments)
                 period_duration = 24.0
+                n_segments = None  # None indicates non-segmented
+                segment_assignments = None  # None indicates non-segmented
 
                 def __init__(self, assignments, n_timesteps):
                     self.cluster_assignments = tuple(assignments)

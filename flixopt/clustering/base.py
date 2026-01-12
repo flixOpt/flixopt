@@ -43,14 +43,35 @@ def _cluster_occurrences(cr: TsamClusteringResult) -> np.ndarray:
 
 
 def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.ndarray:
-    """Build mapping from original timesteps to representative timestep indices."""
+    """Build mapping from original timesteps to representative timestep indices.
+
+    For segmented systems, the mapping uses segment_assignments from tsam to map
+    each original timestep position to its corresponding segment index.
+    """
     timesteps_per_cluster = cr.n_timesteps_per_period
+    # For segmented systems, representative time dimension has n_segments entries
+    # For non-segmented, it has timesteps_per_cluster entries
+    n_segments = cr.n_segments
+    is_segmented = n_segments is not None
+    time_dim_size = n_segments if is_segmented else timesteps_per_cluster
+
+    # For segmented systems, tsam provides segment_assignments which maps
+    # each position within a period to its segment index
+    segment_assignments = cr.segment_assignments if is_segmented else None
+
     mapping = np.zeros(n_timesteps, dtype=np.int32)
     for period_idx, cluster_id in enumerate(cr.cluster_assignments):
         for pos in range(timesteps_per_cluster):
             orig_idx = period_idx * timesteps_per_cluster + pos
             if orig_idx < n_timesteps:
-                mapping[orig_idx] = int(cluster_id) * timesteps_per_cluster + pos
+                if is_segmented and segment_assignments is not None:
+                    # For segmented: use tsam's segment_assignments to get segment index
+                    # segment_assignments[cluster_id][pos] gives the segment index
+                    segment_idx = segment_assignments[cluster_id][pos]
+                    mapping[orig_idx] = int(cluster_id) * time_dim_size + segment_idx
+                else:
+                    # Non-segmented: direct position mapping
+                    mapping[orig_idx] = int(cluster_id) * time_dim_size + pos
     return mapping
 
 
@@ -720,13 +741,21 @@ class Clustering:
 
         timestep_mapping = self.timestep_mapping
         has_cluster_dim = 'cluster' in aggregated.dims
-        timesteps_per_cluster = self.timesteps_per_cluster
+
+        # For segmented systems, the time dimension size is n_segments, not timesteps_per_cluster.
+        # The timestep_mapping uses timesteps_per_cluster for creating indices, but when
+        # indexing into aggregated data with (cluster, time) shape, we need the actual
+        # time dimension size.
+        if has_cluster_dim and self.is_segmented and self.n_segments is not None:
+            time_dim_size = self.n_segments
+        else:
+            time_dim_size = self.timesteps_per_cluster
 
         def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
             """Expand a single slice using the mapping."""
             if has_cluster_dim:
-                cluster_ids = mapping // timesteps_per_cluster
-                time_within = mapping % timesteps_per_cluster
+                cluster_ids = mapping // time_dim_size
+                time_within = mapping % time_dim_size
                 return data.values[cluster_ids, time_within]
             return data.values[mapping]
 

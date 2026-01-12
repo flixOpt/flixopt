@@ -1794,16 +1794,10 @@ class TransformAccessor:
         # Validate and extract clustering info
         clustering = self._validate_for_expansion()
 
-        # Check for segmented systems (not yet supported)
-        if clustering.is_segmented:
-            raise NotImplementedError(
-                'expand() is not yet supported for segmented systems. '
-                'Segmented clustering uses variable timestep durations that require '
-                'special handling for expansion. Use fix_sizes() and re-optimize at '
-                'full resolution instead.'
-            )
-
         timesteps_per_cluster = clustering.timesteps_per_cluster
+        # For segmented systems, the time dimension has n_segments entries
+        n_segments = clustering.n_segments
+        time_dim_size = n_segments if n_segments is not None else timesteps_per_cluster
         n_clusters = clustering.n_clusters
         n_original_clusters = clustering.n_original_clusters
 
@@ -1880,10 +1874,11 @@ class TransformAccessor:
         n_combinations = (len(self._fs.periods) if has_periods else 1) * (
             len(self._fs.scenarios) if has_scenarios else 1
         )
-        n_reduced_timesteps = n_clusters * timesteps_per_cluster
+        n_reduced_timesteps = n_clusters * time_dim_size
+        segmented_info = f' ({n_segments} segments)' if n_segments else ''
         logger.info(
             f'Expanded FlowSystem from {n_reduced_timesteps} to {n_original_timesteps} timesteps '
-            f'({n_clusters} clusters'
+            f'({n_clusters} clusters{segmented_info}'
             + (
                 f', {n_combinations} period/scenario combinations)'
                 if n_combinations > 1
