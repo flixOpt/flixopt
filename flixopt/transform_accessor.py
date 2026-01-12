@@ -701,6 +701,21 @@ class TransformAccessor:
                     f'do not match expected {expected_dims} for this FlowSystem.'
                 )
 
+        # Infer n_clusters from predefined config if provided
+        if predefined is not None:
+            if isinstance(predefined, xr.DataArray):
+                inferred_n_clusters = len(np.unique(predefined.values))
+            else:
+                # PredefinedConfig: n_clusters = number of unique cluster assignments
+                inferred_n_clusters = len(set(predefined.cluster_assignments))
+
+            if n_clusters != inferred_n_clusters:
+                logger.warning(
+                    f'n_clusters={n_clusters} does not match predefined config '
+                    f'({inferred_n_clusters} clusters). Using {inferred_n_clusters} from predefined.'
+                )
+                n_clusters = inferred_n_clusters
+
         # Cluster each (period, scenario) combination using tsam.aggregate()
         tsam_results: dict[tuple, tsam.AggregationResult] = {}
 
