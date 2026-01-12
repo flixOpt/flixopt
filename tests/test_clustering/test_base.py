@@ -5,11 +5,12 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.clustering import Clustering, ClusterResult, ClusterResults
+from flixopt.clustering import Clustering, ClusterResults
+from flixopt.clustering.base import _build_timestep_mapping, _cluster_occurrences
 
 
-class TestClusterResult:
-    """Tests for ClusterResult wrapper class."""
+class TestHelperFunctions:
+    """Tests for helper functions."""
 
     @pytest.fixture
     def mock_clustering_result(self):
@@ -18,6 +19,7 @@ class TestClusterResult:
         class MockClusteringResult:
             n_clusters = 3
             n_original_periods = 6
+            n_timesteps_per_period = 24
             cluster_assignments = (0, 1, 0, 1, 2, 0)
             period_duration = 24.0
 
@@ -25,6 +27,7 @@ class TestClusterResult:
                 return {
                     'n_clusters': self.n_clusters,
                     'n_original_periods': self.n_original_periods,
+                    'n_timesteps_per_period': self.n_timesteps_per_period,
                     'cluster_assignments': list(self.cluster_assignments),
                     'period_duration': self.period_duration,
                 }
@@ -35,30 +38,17 @@ class TestClusterResult:
 
         return MockClusteringResult()
 
-    def test_cluster_result_properties(self, mock_clustering_result):
-        """Test ClusterResult property access."""
-        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
-
-        assert result.n_clusters == 3
-        assert result.n_original_periods == 6
-        assert result.timesteps_per_cluster == 24
-        np.testing.assert_array_equal(result.cluster_order, [0, 1, 0, 1, 2, 0])
-
     def test_cluster_occurrences(self, mock_clustering_result):
-        """Test cluster_occurrences calculation."""
-        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
-
-        occurrences = result.cluster_occurrences
+        """Test _cluster_occurrences helper."""
+        occurrences = _cluster_occurrences(mock_clustering_result)
         # cluster 0: 3 occurrences (indices 0, 2, 5)
         # cluster 1: 2 occurrences (indices 1, 3)
         # cluster 2: 1 occurrence (index 4)
         np.testing.assert_array_equal(occurrences, [3, 2, 1])
 
     def test_build_timestep_mapping(self, mock_clustering_result):
-        """Test timestep mapping generation."""
-        result = ClusterResult(mock_clustering_result, timesteps_per_cluster=24)
-
-        mapping = result.build_timestep_mapping(n_timesteps=144)
+        """Test _build_timestep_mapping helper."""
+        mapping = _build_timestep_mapping(mock_clustering_result, n_timesteps=144)
         assert len(mapping) == 144
 
         # First 24 timesteps should map to cluster 0's representative (0-23)
@@ -72,22 +62,24 @@ class TestClusterResults:
     """Tests for ClusterResults collection class."""
 
     @pytest.fixture
-    def mock_cluster_result_factory(self):
-        """Factory for creating mock ClusterResult objects."""
+    def mock_clustering_result_factory(self):
+        """Factory for creating mock ClusteringResult objects."""
 
-        def create_result(cluster_assignments, timesteps_per_cluster=24):
+        def create_result(cluster_assignments, n_timesteps_per_period=24):
             class MockClusteringResult:
                 n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
                 n_original_periods = len(cluster_assignments)
                 period_duration = 24.0
 
-                def __init__(self, assignments):
+                def __init__(self, assignments, n_timesteps):
                     self.cluster_assignments = tuple(assignments)
+                    self.n_timesteps_per_period = n_timesteps
 
                 def to_dict(self):
                     return {
                         'n_clusters': self.n_clusters,
                         'n_original_periods': self.n_original_periods,
+                        'n_timesteps_per_period': self.n_timesteps_per_period,
                         'cluster_assignments': list(self.cluster_assignments),
                         'period_duration': self.period_duration,
                     }
@@ -95,27 +87,26 @@ class TestClusterResults:
                 def apply(self, data):
                     return {'applied': True}
 
-            mock_cr = MockClusteringResult(cluster_assignments)
-            return ClusterResult(mock_cr, timesteps_per_cluster=timesteps_per_cluster)
+            return MockClusteringResult(cluster_assignments, n_timesteps_per_period)
 
         return create_result
 
-    def test_single_result(self, mock_cluster_result_factory):
+    def test_single_result(self, mock_clustering_result_factory):
         """Test ClusterResults with single result."""
-        result = mock_cluster_result_factory([0, 1, 0])
-        results = ClusterResults({(): result}, dim_names=[])
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusterResults({(): cr}, dim_names=[])
 
         assert results.n_clusters == 2
         assert results.timesteps_per_cluster == 24
         assert len(results) == 1
 
-    def test_multi_period_results(self, mock_cluster_result_factory):
+    def test_multi_period_results(self, mock_clustering_result_factory):
         """Test ClusterResults with multiple periods."""
-        result_2020 = mock_cluster_result_factory([0, 1, 0])
-        result_2030 = mock_cluster_result_factory([1, 0, 1])
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
 
         results = ClusterResults(
-            {(2020,): result_2020, (2030,): result_2030},
+            {(2020,): cr_2020, (2030,): cr_2030},
             dim_names=['period'],
         )
 
@@ -123,23 +114,23 @@ class TestClusterResults:
         assert len(results) == 2
 
         # Access by period
-        assert results.get(period=2020) is result_2020
-        assert results.get(period=2030) is result_2030
+        assert results.get(period=2020) is cr_2020
+        assert results.get(period=2030) is cr_2030
 
-    def test_cluster_order_dataarray(self, mock_cluster_result_factory):
+    def test_cluster_order_dataarray(self, mock_clustering_result_factory):
         """Test cluster_order returns correct DataArray."""
-        result = mock_cluster_result_factory([0, 1, 0])
-        results = ClusterResults({(): result}, dim_names=[])
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusterResults({(): cr}, dim_names=[])
 
         cluster_order = results.cluster_order
         assert isinstance(cluster_order, xr.DataArray)
         assert 'original_cluster' in cluster_order.dims
         np.testing.assert_array_equal(cluster_order.values, [0, 1, 0])
 
-    def test_cluster_occurrences_dataarray(self, mock_cluster_result_factory):
+    def test_cluster_occurrences_dataarray(self, mock_clustering_result_factory):
         """Test cluster_occurrences returns correct DataArray."""
-        result = mock_cluster_result_factory([0, 1, 0])  # 2 x cluster 0, 1 x cluster 1
-        results = ClusterResults({(): result}, dim_names=[])
+        cr = mock_clustering_result_factory([0, 1, 0])  # 2 x cluster 0, 1 x cluster 1
+        results = ClusterResults({(): cr}, dim_names=[])
 
         occurrences = results.cluster_occurrences
         assert isinstance(occurrences, xr.DataArray)
@@ -157,6 +148,7 @@ class TestClustering:
         class MockClusteringResult:
             n_clusters = 3
             n_original_periods = 6
+            n_timesteps_per_period = 24
             cluster_assignments = (0, 1, 0, 1, 2, 0)
             period_duration = 24.0
 
@@ -164,6 +156,7 @@ class TestClustering:
                 return {
                     'n_clusters': self.n_clusters,
                     'n_original_periods': self.n_original_periods,
+                    'n_timesteps_per_period': self.n_timesteps_per_period,
                     'cluster_assignments': list(self.cluster_assignments),
                     'period_duration': self.period_duration,
                 }
@@ -172,8 +165,7 @@ class TestClustering:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
-        return ClusterResults({(): result}, dim_names=[])
+        return ClusterResults({(): mock_cr}, dim_names=[])
 
     @pytest.fixture
     def basic_clustering(self, basic_cluster_results):
@@ -250,22 +242,24 @@ class TestClusteringMultiDim:
     """Tests for Clustering with period/scenario dimensions."""
 
     @pytest.fixture
-    def mock_cluster_result_factory(self):
-        """Factory for creating mock ClusterResult objects."""
+    def mock_clustering_result_factory(self):
+        """Factory for creating mock ClusteringResult objects."""
 
-        def create_result(cluster_assignments, timesteps_per_cluster=24):
+        def create_result(cluster_assignments, n_timesteps_per_period=24):
             class MockClusteringResult:
                 n_clusters = max(cluster_assignments) + 1 if cluster_assignments else 0
                 n_original_periods = len(cluster_assignments)
                 period_duration = 24.0
 
-                def __init__(self, assignments):
+                def __init__(self, assignments, n_timesteps):
                     self.cluster_assignments = tuple(assignments)
+                    self.n_timesteps_per_period = n_timesteps
 
                 def to_dict(self):
                     return {
                         'n_clusters': self.n_clusters,
                         'n_original_periods': self.n_original_periods,
+                        'n_timesteps_per_period': self.n_timesteps_per_period,
                         'cluster_assignments': list(self.cluster_assignments),
                         'period_duration': self.period_duration,
                     }
@@ -273,18 +267,17 @@ class TestClusteringMultiDim:
                 def apply(self, data):
                     return {'applied': True}
 
-            mock_cr = MockClusteringResult(cluster_assignments)
-            return ClusterResult(mock_cr, timesteps_per_cluster=timesteps_per_cluster)
+            return MockClusteringResult(cluster_assignments, n_timesteps_per_period)
 
         return create_result
 
-    def test_multi_period_clustering(self, mock_cluster_result_factory):
+    def test_multi_period_clustering(self, mock_clustering_result_factory):
         """Test Clustering with multiple periods."""
-        result_2020 = mock_cluster_result_factory([0, 1, 0])
-        result_2030 = mock_cluster_result_factory([1, 0, 1])
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
 
         results = ClusterResults(
-            {(2020,): result_2020, (2030,): result_2030},
+            {(2020,): cr_2020, (2030,): cr_2030},
             dim_names=['period'],
         )
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
@@ -297,10 +290,10 @@ class TestClusteringMultiDim:
         assert clustering.n_clusters == 2
         assert 'period' in clustering.cluster_occurrences.dims
 
-    def test_get_result(self, mock_cluster_result_factory):
+    def test_get_result(self, mock_clustering_result_factory):
         """Test get_result method."""
-        result = mock_cluster_result_factory([0, 1, 0])
-        results = ClusterResults({(): result}, dim_names=[])
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusterResults({(): cr}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
@@ -309,12 +302,12 @@ class TestClusteringMultiDim:
         )
 
         retrieved = clustering.get_result()
-        assert retrieved is result
+        assert retrieved is cr
 
-    def test_get_result_invalid_key(self, mock_cluster_result_factory):
+    def test_get_result_invalid_key(self, mock_clustering_result_factory):
         """Test get_result with invalid key raises KeyError."""
-        result = mock_cluster_result_factory([0, 1, 0])
-        results = ClusterResults({(2020,): result}, dim_names=['period'])
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusterResults({(2020,): cr}, dim_names=['period'])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
@@ -336,6 +329,7 @@ class TestClusteringPlotAccessor:
         class MockClusteringResult:
             n_clusters = 2
             n_original_periods = 3
+            n_timesteps_per_period = 24
             cluster_assignments = (0, 1, 0)
             period_duration = 24.0
 
@@ -343,6 +337,7 @@ class TestClusteringPlotAccessor:
                 return {
                     'n_clusters': self.n_clusters,
                     'n_original_periods': self.n_original_periods,
+                    'n_timesteps_per_period': self.n_timesteps_per_period,
                     'cluster_assignments': list(self.cluster_assignments),
                     'period_duration': self.period_duration,
                 }
@@ -351,8 +346,7 @@ class TestClusteringPlotAccessor:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
-        results = ClusterResults({(): result}, dim_names=[])
+        results = ClusterResults({(): mock_cr}, dim_names=[])
 
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
@@ -391,6 +385,7 @@ class TestClusteringPlotAccessor:
         class MockClusteringResult:
             n_clusters = 2
             n_original_periods = 2
+            n_timesteps_per_period = 24
             cluster_assignments = (0, 1)
             period_duration = 24.0
 
@@ -398,6 +393,7 @@ class TestClusteringPlotAccessor:
                 return {
                     'n_clusters': self.n_clusters,
                     'n_original_periods': self.n_original_periods,
+                    'n_timesteps_per_period': self.n_timesteps_per_period,
                     'cluster_assignments': list(self.cluster_assignments),
                     'period_duration': self.period_duration,
                 }
@@ -406,8 +402,7 @@ class TestClusteringPlotAccessor:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        result = ClusterResult(mock_cr, timesteps_per_cluster=24)
-        results = ClusterResults({(): result}, dim_names=[])
+        results = ClusterResults({(): mock_cr}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
 
         clustering = Clustering(

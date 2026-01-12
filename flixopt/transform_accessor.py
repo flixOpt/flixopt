@@ -19,7 +19,7 @@ import xarray as xr
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig
 
-    from .clustering import Clustering, ClusterResult
+    from .clustering import Clustering
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
@@ -984,23 +984,19 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Create ClusterResult objects from each AggregationResult
-        from .clustering import ClusterResult, ClusterResults
+        # Build ClusterResults from tsam ClusteringResult objects
+        from .clustering import ClusterResults
 
-        cluster_results: dict[tuple, ClusterResult] = {}
+        cluster_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
             if has_periods:
                 key_parts.append(p)
             if has_scenarios:
                 key_parts.append(s)
-            # Wrap the tsam ClusteringResult in our ClusterResult
-            cluster_results[tuple(key_parts)] = ClusterResult(
-                clustering_result=result.clustering,
-                timesteps_per_cluster=timesteps_per_cluster,
-            )
+            # Use tsam's ClusteringResult directly
+            cluster_results[tuple(key_parts)] = result.clustering
 
-        # Create ClusterResults collection
         results = ClusterResults(cluster_results, dim_names)
 
         # Use first result for structure
@@ -1307,23 +1303,19 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Create ClusterResult objects from each AggregationResult
-        from .clustering import ClusterResult, ClusterResults
+        # Build ClusterResults from tsam ClusteringResult objects
+        from .clustering import ClusterResults
 
-        cluster_results: dict[tuple, ClusterResult] = {}
+        cluster_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
             if has_periods:
                 key_parts.append(p)
             if has_scenarios:
                 key_parts.append(s)
-            # Wrap the tsam ClusteringResult in our ClusterResult
-            cluster_results[tuple(key_parts)] = ClusterResult(
-                clustering_result=result.clustering,
-                timesteps_per_cluster=timesteps_per_cluster,
-            )
+            # Use tsam's ClusteringResult directly
+            cluster_results[tuple(key_parts)] = result.clustering
 
-        # Create ClusterResults collection
         results = ClusterResults(cluster_results, dim_names)
 
         # Create simplified Clustering object

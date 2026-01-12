@@ -31,10 +31,9 @@ Example usage:
     fs_expanded = fs_clustered.transform.expand()
 """
 
-from .base import Clustering, ClusteringResultCollection, ClusterResult, ClusterResults
+from .base import Clustering, ClusteringResultCollection, ClusterResults
 
 __all__ = [
-    'ClusterResult',
     'ClusterResults',
     'Clustering',
     'ClusteringResultCollection',  # Alias for backwards compat

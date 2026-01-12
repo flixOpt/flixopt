@@ -2,8 +2,7 @@
 Clustering classes for time series aggregation.
 
 This module provides wrapper classes around tsam's clustering functionality:
-- `ClusterResult`: Wrapper around a single tsam ClusteringResult
-- `ClusterResults`: Collection of ClusterResult objects for multi-dim (period, scenario) data
+- `ClusterResults`: Collection of tsam ClusteringResult objects for multi-dim (period, scenario) data
 - `Clustering`: Top-level class stored on FlowSystem after clustering
 """
 
@@ -37,182 +36,55 @@ def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> 
     return da
 
 
-class ClusterResult:
-    """Wrapper around a single tsam ClusteringResult.
+def _cluster_occurrences(cr: TsamClusteringResult) -> np.ndarray:
+    """Compute cluster occurrences from ClusteringResult."""
+    counts = Counter(cr.cluster_assignments)
+    return np.array([counts.get(i, 0) for i in range(cr.n_clusters)])
 
-    Provides convenient property access and serialization for one
-    (period, scenario) combination's clustering result.
 
-    Attributes:
-        cluster_order: Array mapping original periods to cluster IDs.
-        n_clusters: Number of clusters.
-        n_original_periods: Number of original periods before clustering.
-        timesteps_per_cluster: Number of timesteps in each cluster.
-        cluster_occurrences: Count of original periods per cluster.
-
-    Example:
-        >>> result = ClusterResult(tsam_clustering_result, timesteps_per_cluster=24)
-        >>> result.cluster_order
-        array([0, 0, 1])  # Days 0&1 -> cluster 0, Day 2 -> cluster 1
-        >>> result.cluster_occurrences
-        array([2, 1])  # Cluster 0 has 2 days, cluster 1 has 1 day
-    """
-
-    def __init__(
-        self,
-        clustering_result: TsamClusteringResult,
-        timesteps_per_cluster: int,
-    ):
-        """Initialize ClusterResult.
-
-        Args:
-            clustering_result: The tsam ClusteringResult to wrap.
-            timesteps_per_cluster: Number of timesteps in each cluster period.
-        """
-        self._cr = clustering_result
-        self._timesteps_per_cluster = timesteps_per_cluster
-
-    # === Properties (delegate to tsam) ===
-
-    @property
-    def cluster_order(self) -> np.ndarray:
-        """Array mapping original periods to cluster IDs.
-
-        Shape: (n_original_periods,)
-        Values: integers in range [0, n_clusters)
-        """
-        return np.array(self._cr.cluster_assignments)
-
-    @property
-    def n_clusters(self) -> int:
-        """Number of clusters (typical periods)."""
-        return self._cr.n_clusters
-
-    @property
-    def n_original_periods(self) -> int:
-        """Number of original periods before clustering."""
-        return self._cr.n_original_periods
-
-    @property
-    def timesteps_per_cluster(self) -> int:
-        """Number of timesteps in each cluster period."""
-        return self._timesteps_per_cluster
-
-    @property
-    def period_duration(self) -> float:
-        """Duration of each period in hours."""
-        return self._cr.period_duration
-
-    @property
-    def cluster_occurrences(self) -> np.ndarray:
-        """Count of how many original periods each cluster represents.
-
-        Shape: (n_clusters,)
-        """
-        counts = Counter(self._cr.cluster_assignments)
-        return np.array([counts.get(i, 0) for i in range(self.n_clusters)])
-
-    @property
-    def cluster_weights(self) -> np.ndarray:
-        """Alias for cluster_occurrences."""
-        return self.cluster_occurrences
-
-    # === Methods ===
-
-    def apply(self, data: pd.DataFrame) -> AggregationResult:
-        """Apply this clustering to new data.
-
-        Args:
-            data: DataFrame with time series data to cluster.
-
-        Returns:
-            tsam AggregationResult with the clustering applied.
-        """
-        return self._cr.apply(data)
-
-    def build_timestep_mapping(self, n_timesteps: int) -> np.ndarray:
-        """Build mapping from original timesteps to representative timestep indices.
-
-        Args:
-            n_timesteps: Total number of original timesteps.
-
-        Returns:
-            Array of shape (n_timesteps,) where each value is the index
-            into the representative timesteps (0 to n_representatives-1).
-        """
-        mapping = np.zeros(n_timesteps, dtype=np.int32)
-        for period_idx, cluster_id in enumerate(self.cluster_order):
-            for pos in range(self._timesteps_per_cluster):
-                orig_idx = period_idx * self._timesteps_per_cluster + pos
-                if orig_idx < n_timesteps:
-                    mapping[orig_idx] = int(cluster_id) * self._timesteps_per_cluster + pos
-        return mapping
-
-    # === Serialization ===
-
-    def to_dict(self) -> dict:
-        """Serialize to dict.
-
-        The dict can be used to reconstruct this ClusterResult via from_dict().
-        """
-        d = self._cr.to_dict()
-        d['timesteps_per_cluster'] = self._timesteps_per_cluster
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict) -> ClusterResult:
-        """Reconstruct ClusterResult from dict.
-
-        Args:
-            d: Dict from to_dict().
-
-        Returns:
-            Reconstructed ClusterResult.
-        """
-        from tsam import ClusteringResult
-
-        timesteps_per_cluster = d.pop('timesteps_per_cluster')
-        cr = ClusteringResult.from_dict(d)
-        return cls(cr, timesteps_per_cluster)
-
-    def __repr__(self) -> str:
-        return (
-            f'ClusterResult({self.n_original_periods} periods → {self.n_clusters} clusters, '
-            f'occurrences={list(self.cluster_occurrences)})'
-        )
+def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.ndarray:
+    """Build mapping from original timesteps to representative timestep indices."""
+    timesteps_per_cluster = cr.n_timesteps_per_period
+    mapping = np.zeros(n_timesteps, dtype=np.int32)
+    for period_idx, cluster_id in enumerate(cr.cluster_assignments):
+        for pos in range(timesteps_per_cluster):
+            orig_idx = period_idx * timesteps_per_cluster + pos
+            if orig_idx < n_timesteps:
+                mapping[orig_idx] = int(cluster_id) * timesteps_per_cluster + pos
+    return mapping
 
 
 class ClusterResults:
-    """Collection of ClusterResult objects for multi-dimensional data.
+    """Collection of tsam ClusteringResult objects for multi-dimensional data.
 
-    Manages multiple ClusterResult objects keyed by (period, scenario) tuples
+    Manages multiple ClusteringResult objects keyed by (period, scenario) tuples
     and provides convenient access and multi-dimensional DataArray building.
 
     Attributes:
         dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
 
     Example:
-        >>> results = ClusterResults({(): result}, dim_names=[])
+        >>> results = ClusterResults({(): cr}, dim_names=[])
         >>> results.n_clusters
         2
         >>> results.cluster_order  # Returns DataArray
         <xarray.DataArray (original_cluster: 3)>
 
         >>> # Multi-dimensional case
-        >>> results = ClusterResults({(2024, 'high'): r1, (2024, 'low'): r2}, dim_names=['period', 'scenario'])
+        >>> results = ClusterResults({(2024, 'high'): cr1, (2024, 'low'): cr2}, dim_names=['period', 'scenario'])
         >>> results.get(period=2024, scenario='high')
-        ClusterResult(...)
+        <tsam ClusteringResult>
     """
 
     def __init__(
         self,
-        results: dict[tuple, ClusterResult],
+        results: dict[tuple, TsamClusteringResult],
         dim_names: list[str],
     ):
         """Initialize ClusterResults.
 
         Args:
-            results: Dict mapping (period, scenario) tuples to ClusterResult objects.
+            results: Dict mapping (period, scenario) tuples to tsam ClusteringResult objects.
                 For simple cases without periods/scenarios, use {(): result}.
             dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
         """
@@ -223,11 +95,11 @@ class ClusterResults:
 
     # === Access single results ===
 
-    def __getitem__(self, key: tuple) -> ClusterResult:
+    def __getitem__(self, key: tuple) -> TsamClusteringResult:
         """Get result by key tuple."""
         return self._results[key]
 
-    def get(self, period: Any = None, scenario: Any = None) -> ClusterResult:
+    def get(self, period: Any = None, scenario: Any = None) -> TsamClusteringResult:
         """Get result for specific period/scenario.
 
         Args:
@@ -235,7 +107,7 @@ class ClusterResults:
             scenario: Scenario label (if applicable).
 
         Returns:
-            The ClusterResult for the specified combination.
+            The tsam ClusteringResult for the specified combination.
         """
         key = self._make_key(period, scenario)
         if key not in self._results:
@@ -245,15 +117,15 @@ class ClusterResults:
     # === Iteration ===
 
     def __iter__(self):
-        """Iterate over ClusterResult objects."""
+        """Iterate over ClusteringResult objects."""
         return iter(self._results.values())
 
     def __len__(self) -> int:
-        """Number of ClusterResult objects."""
+        """Number of ClusteringResult objects."""
         return len(self._results)
 
     def items(self):
-        """Iterate over (key, ClusterResult) pairs."""
+        """Iterate over (key, ClusteringResult) pairs."""
         return self._results.items()
 
     def keys(self):
@@ -261,14 +133,14 @@ class ClusterResults:
         return self._results.keys()
 
     def values(self):
-        """Iterate over ClusterResult objects."""
+        """Iterate over ClusteringResult objects."""
         return self._results.values()
 
     # === Properties from first result ===
 
     @property
-    def _first_result(self) -> ClusterResult:
-        """Get the first ClusterResult (for structure info)."""
+    def _first_result(self) -> TsamClusteringResult:
+        """Get the first ClusteringResult (for structure info)."""
         return next(iter(self._results.values()))
 
     @property
@@ -279,7 +151,7 @@ class ClusterResults:
     @property
     def timesteps_per_cluster(self) -> int:
         """Number of timesteps per cluster (same for all results)."""
-        return self._first_result.timesteps_per_cluster
+        return self._first_result.n_timesteps_per_period
 
     @property
     def n_original_periods(self) -> int:
@@ -299,7 +171,7 @@ class ClusterResults:
             # Simple case: no extra dimensions
             # Note: Don't include coords - they cause issues when used as isel() indexer
             return xr.DataArray(
-                self._results[()].cluster_order,
+                np.array(self._results[()].cluster_assignments),
                 dims=['original_cluster'],
                 name='cluster_order',
             )
@@ -310,7 +182,7 @@ class ClusterResults:
         scenarios = self._get_dim_values('scenario')
 
         return self._build_multi_dim_array(
-            lambda r: r.cluster_order,
+            lambda cr: np.array(cr.cluster_assignments),
             base_dims=['original_cluster'],
             base_coords={},  # No coords on original_cluster
             periods=periods,
@@ -327,7 +199,7 @@ class ClusterResults:
         """
         if not self.dim_names:
             return xr.DataArray(
-                self._results[()].cluster_occurrences,
+                _cluster_occurrences(self._results[()]),
                 dims=['cluster'],
                 coords={'cluster': range(self.n_clusters)},
                 name='cluster_occurrences',
@@ -337,7 +209,7 @@ class ClusterResults:
         scenarios = self._get_dim_values('scenario')
 
         return self._build_multi_dim_array(
-            lambda r: r.cluster_occurrences,
+            _cluster_occurrences,
             base_dims=['cluster'],
             base_coords={'cluster': range(self.n_clusters)},
             periods=periods,
@@ -367,11 +239,13 @@ class ClusterResults:
         Returns:
             Reconstructed ClusterResults.
         """
+        from tsam import ClusteringResult
+
         dim_names = d['dim_names']
         results = {}
         for key_str, result_dict in d['results'].items():
             key = cls._str_to_key(key_str, dim_names)
-            results[key] = ClusterResult.from_dict(result_dict.copy())
+            results[key] = ClusteringResult.from_dict(result_dict)
         return cls(results, dim_names)
 
     # === Private helpers ===
@@ -674,15 +548,15 @@ class Clustering:
         self,
         period: Any = None,
         scenario: Any = None,
-    ) -> ClusterResult:
-        """Get the ClusterResult for a specific (period, scenario).
+    ) -> TsamClusteringResult:
+        """Get the tsam ClusteringResult for a specific (period, scenario).
 
         Args:
             period: Period label (if applicable).
             scenario: Scenario label (if applicable).
 
         Returns:
-            The ClusterResult for the specified combination.
+            The tsam ClusteringResult for the specified combination.
         """
         return self.results.get(period, scenario)
 
@@ -772,13 +646,13 @@ class Clustering:
     # ==========================================================================
 
     def _build_timestep_mapping(self) -> xr.DataArray:
-        """Build timestep_mapping DataArray using ClusterResult.build_timestep_mapping()."""
+        """Build timestep_mapping DataArray."""
         n_original = len(self.original_timesteps)
         original_time_coord = self.original_timesteps.rename('original_time')
 
         if not self.dim_names:
             # Simple case: no extra dimensions
-            mapping = self.results[()].build_timestep_mapping(n_original)
+            mapping = _build_timestep_mapping(self.results[()], n_original)
             return xr.DataArray(
                 mapping,
                 dims=['original_time'],
@@ -786,18 +660,9 @@ class Clustering:
                 name='timestep_mapping',
             )
 
-        # Multi-dimensional case: build mapping for each (period, scenario)
-        slices = {}
-        for key, result in self.results.items():
-            slices[key] = xr.DataArray(
-                result.build_timestep_mapping(n_original),
-                dims=['original_time'],
-                coords={'original_time': original_time_coord},
-            )
-
-        # Combine slices into multi-dim array
+        # Multi-dimensional case: combine slices into multi-dim array
         return self.results._build_multi_dim_array(
-            lambda r: r.build_timestep_mapping(n_original),
+            lambda cr: _build_timestep_mapping(cr, n_original),
             base_dims=['original_time'],
             base_coords={'original_time': original_time_coord},
             periods=self.results._get_dim_values('period'),
