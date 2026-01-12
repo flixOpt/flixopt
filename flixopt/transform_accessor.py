@@ -1158,10 +1158,6 @@ class TransformAccessor:
         from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
-        # Get hours_per_cluster from the first tsam result
-        first_result = clustering._first_result
-        hours_per_cluster = first_result.clustering.period_duration
-
         # Validation
         dt = float(self._fs.timestep_duration.min().item())
         if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
@@ -1169,10 +1165,9 @@ class TransformAccessor:
                 f'apply_clustering() requires uniform timestep sizes, got min={dt}h, '
                 f'max={float(self._fs.timestep_duration.max().item())}h.'
             )
-        if not np.isclose(hours_per_cluster / dt, round(hours_per_cluster / dt), atol=1e-9):
-            raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
 
-        timesteps_per_cluster = int(round(hours_per_cluster / dt))
+        # Get timesteps_per_cluster from the clustering object (survives serialization)
+        timesteps_per_cluster = clustering.timesteps_per_cluster
         has_periods = self._fs.periods is not None
         has_scenarios = self._fs.scenarios is not None
 

@@ -275,8 +275,40 @@ class Clustering:
         Returns:
             tsam AggregationResult with the clustering applied.
         """
-        result = self.get_result(period, scenario)
-        return result.clustering.apply(data)
+        from tsam import ClusteringResult
+
+        if self.tsam_results is not None:
+            # Use stored tsam results
+            result = self.get_result(period, scenario)
+            return result.clustering.apply(data)
+
+        # Recreate ClusteringResult from stored data (after deserialization)
+        # Get cluster assignments for this period/scenario
+        kwargs = {}
+        if period is not None:
+            kwargs['period'] = period
+        if scenario is not None:
+            kwargs['scenario'] = scenario
+
+        cluster_order = _select_dims(self.cluster_order, **kwargs) if kwargs else self.cluster_order
+        cluster_assignments = tuple(int(x) for x in cluster_order.values)
+
+        # Infer timestep duration from data
+        if hasattr(data.index, 'freq') and data.index.freq is not None:
+            timestep_duration = pd.Timedelta(data.index.freq).total_seconds() / 3600
+        else:
+            timestep_duration = (data.index[1] - data.index[0]).total_seconds() / 3600
+
+        period_duration = self.timesteps_per_cluster * timestep_duration
+
+        # Create ClusteringResult with the stored assignments
+        clustering_result = ClusteringResult(
+            period_duration=period_duration,
+            cluster_assignments=cluster_assignments,
+            timestep_duration=timestep_duration,
+        )
+
+        return clustering_result.apply(data)
 
     def to_json(self, path: str | Path) -> None:
         """Save the clustering for reuse.
