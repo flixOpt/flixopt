@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from flixopt.clustering import Clustering, ClusterResults
+from flixopt.clustering import Clustering, ClusteringResults
 from flixopt.clustering.base import _build_timestep_mapping, _cluster_occurrences
 
 
@@ -58,8 +58,8 @@ class TestHelperFunctions:
         np.testing.assert_array_equal(mapping[24:48], np.arange(24, 48))
 
 
-class TestClusterResults:
-    """Tests for ClusterResults collection class."""
+class TestClusteringResults:
+    """Tests for ClusteringResults collection class."""
 
     @pytest.fixture
     def mock_clustering_result_factory(self):
@@ -92,20 +92,20 @@ class TestClusterResults:
         return create_result
 
     def test_single_result(self, mock_clustering_result_factory):
-        """Test ClusterResults with single result."""
+        """Test ClusteringResults with single result."""
         cr = mock_clustering_result_factory([0, 1, 0])
-        results = ClusterResults({(): cr}, dim_names=[])
+        results = ClusteringResults({(): cr}, dim_names=[])
 
         assert results.n_clusters == 2
         assert results.timesteps_per_cluster == 24
         assert len(results) == 1
 
     def test_multi_period_results(self, mock_clustering_result_factory):
-        """Test ClusterResults with multiple periods."""
+        """Test ClusteringResults with multiple periods."""
         cr_2020 = mock_clustering_result_factory([0, 1, 0])
         cr_2030 = mock_clustering_result_factory([1, 0, 1])
 
-        results = ClusterResults(
+        results = ClusteringResults(
             {(2020,): cr_2020, (2030,): cr_2030},
             dim_names=['period'],
         )
@@ -120,7 +120,7 @@ class TestClusterResults:
     def test_cluster_order_dataarray(self, mock_clustering_result_factory):
         """Test cluster_order returns correct DataArray."""
         cr = mock_clustering_result_factory([0, 1, 0])
-        results = ClusterResults({(): cr}, dim_names=[])
+        results = ClusteringResults({(): cr}, dim_names=[])
 
         cluster_order = results.cluster_order
         assert isinstance(cluster_order, xr.DataArray)
@@ -130,7 +130,7 @@ class TestClusterResults:
     def test_cluster_occurrences_dataarray(self, mock_clustering_result_factory):
         """Test cluster_occurrences returns correct DataArray."""
         cr = mock_clustering_result_factory([0, 1, 0])  # 2 x cluster 0, 1 x cluster 1
-        results = ClusterResults({(): cr}, dim_names=[])
+        results = ClusteringResults({(): cr}, dim_names=[])
 
         occurrences = results.cluster_occurrences
         assert isinstance(occurrences, xr.DataArray)
@@ -143,7 +143,7 @@ class TestClustering:
 
     @pytest.fixture
     def basic_cluster_results(self):
-        """Create basic ClusterResults for testing."""
+        """Create basic ClusteringResults for testing."""
 
         class MockClusteringResult:
             n_clusters = 3
@@ -165,7 +165,7 @@ class TestClustering:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        return ClusterResults({(): mock_cr}, dim_names=[])
+        return ClusteringResults({(): mock_cr}, dim_names=[])
 
     @pytest.fixture
     def basic_clustering(self, basic_cluster_results):
@@ -228,7 +228,7 @@ class TestClustering:
     def test_empty_results_raises(self):
         """Test that empty results raises ValueError."""
         with pytest.raises(ValueError, match='cannot be empty'):
-            ClusterResults({}, dim_names=[])
+            ClusteringResults({}, dim_names=[])
 
     def test_repr(self, basic_clustering):
         """Test string representation."""
@@ -276,7 +276,7 @@ class TestClusteringMultiDim:
         cr_2020 = mock_clustering_result_factory([0, 1, 0])
         cr_2030 = mock_clustering_result_factory([1, 0, 1])
 
-        results = ClusterResults(
+        results = ClusteringResults(
             {(2020,): cr_2020, (2030,): cr_2030},
             dim_names=['period'],
         )
@@ -293,7 +293,7 @@ class TestClusteringMultiDim:
     def test_get_result(self, mock_clustering_result_factory):
         """Test get_result method."""
         cr = mock_clustering_result_factory([0, 1, 0])
-        results = ClusterResults({(): cr}, dim_names=[])
+        results = ClusteringResults({(): cr}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
@@ -307,7 +307,7 @@ class TestClusteringMultiDim:
     def test_get_result_invalid_key(self, mock_clustering_result_factory):
         """Test get_result with invalid key raises KeyError."""
         cr = mock_clustering_result_factory([0, 1, 0])
-        results = ClusterResults({(2020,): cr}, dim_names=['period'])
+        results = ClusteringResults({(2020,): cr}, dim_names=['period'])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         clustering = Clustering(
@@ -346,7 +346,7 @@ class TestClusteringPlotAccessor:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        results = ClusterResults({(): mock_cr}, dim_names=[])
+        results = ClusteringResults({(): mock_cr}, dim_names=[])
 
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
@@ -402,7 +402,7 @@ class TestClusteringPlotAccessor:
                 return {'applied': True}
 
         mock_cr = MockClusteringResult()
-        results = ClusterResults({(): mock_cr}, dim_names=[])
+        results = ClusteringResults({(): mock_cr}, dim_names=[])
         original_timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
 
         clustering = Clustering(

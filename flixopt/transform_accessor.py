@@ -984,8 +984,8 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Build ClusterResults from tsam ClusteringResult objects
-        from .clustering import ClusterResults
+        # Build ClusteringResults from tsam ClusteringResult objects
+        from .clustering import ClusteringResults
 
         cluster_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
@@ -997,7 +997,7 @@ class TransformAccessor:
             # Use tsam's ClusteringResult directly
             cluster_results[tuple(key_parts)] = result.clustering
 
-        results = ClusterResults(cluster_results, dim_names)
+        results = ClusteringResults(cluster_results, dim_names)
 
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
@@ -1303,8 +1303,8 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Build ClusterResults from tsam ClusteringResult objects
-        from .clustering import ClusterResults
+        # Build ClusteringResults from tsam ClusteringResult objects
+        from .clustering import ClusteringResults
 
         cluster_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
@@ -1316,7 +1316,7 @@ class TransformAccessor:
             # Use tsam's ClusteringResult directly
             cluster_results[tuple(key_parts)] = result.clustering
 
-        results = ClusterResults(cluster_results, dim_names)
+        results = ClusteringResults(cluster_results, dim_names)
 
         # Create simplified Clustering object
         reduced_fs.clustering = Clustering(

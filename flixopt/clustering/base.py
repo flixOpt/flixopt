@@ -2,7 +2,7 @@
 Clustering classes for time series aggregation.
 
 This module provides wrapper classes around tsam's clustering functionality:
-- `ClusterResults`: Collection of tsam ClusteringResult objects for multi-dim (period, scenario) data
+- `ClusteringResults`: Collection of tsam ClusteringResult objects for multi-dim (period, scenario) data
 - `Clustering`: Top-level class stored on FlowSystem after clustering
 """
 
@@ -54,7 +54,7 @@ def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.nd
     return mapping
 
 
-class ClusterResults:
+class ClusteringResults:
     """Collection of tsam ClusteringResult objects for multi-dimensional data.
 
     Manages multiple ClusteringResult objects keyed by (period, scenario) tuples
@@ -64,14 +64,14 @@ class ClusterResults:
         dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
 
     Example:
-        >>> results = ClusterResults({(): cr}, dim_names=[])
+        >>> results = ClusteringResults({(): cr}, dim_names=[])
         >>> results.n_clusters
         2
         >>> results.cluster_order  # Returns DataArray
         <xarray.DataArray (original_cluster: 3)>
 
         >>> # Multi-dimensional case
-        >>> results = ClusterResults({(2024, 'high'): cr1, (2024, 'low'): cr2}, dim_names=['period', 'scenario'])
+        >>> results = ClusteringResults({(2024, 'high'): cr1, (2024, 'low'): cr2}, dim_names=['period', 'scenario'])
         >>> results.get(period=2024, scenario='high')
         <tsam ClusteringResult>
     """
@@ -81,7 +81,7 @@ class ClusterResults:
         results: dict[tuple, TsamClusteringResult],
         dim_names: list[str],
     ):
-        """Initialize ClusterResults.
+        """Initialize ClusteringResults.
 
         Args:
             results: Dict mapping (period, scenario) tuples to tsam ClusteringResult objects.
@@ -230,14 +230,14 @@ class ClusterResults:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> ClusterResults:
+    def from_dict(cls, d: dict) -> ClusteringResults:
         """Reconstruct from dict.
 
         Args:
             d: Dict from to_dict().
 
         Returns:
-            Reconstructed ClusterResults.
+            Reconstructed ClusteringResults.
         """
         from tsam import ClusteringResult
 
@@ -344,24 +344,24 @@ class ClusterResults:
 
     def __repr__(self) -> str:
         if not self.dim_names:
-            return f'ClusterResults(1 result, {self.n_clusters} clusters)'
-        return f'ClusterResults({len(self._results)} results, dims={self.dim_names}, {self.n_clusters} clusters)'
+            return f'ClusteringResults(1 result, {self.n_clusters} clusters)'
+        return f'ClusteringResults({len(self._results)} results, dims={self.dim_names}, {self.n_clusters} clusters)'
 
 
 class Clustering:
     """Clustering information for a FlowSystem.
 
-    Uses ClusterResults to manage tsam ClusteringResult objects and provides
+    Uses ClusteringResults to manage tsam ClusteringResult objects and provides
     convenience accessors for common operations.
 
     This is a thin wrapper around tsam 3.0's API. The actual clustering
     logic is delegated to tsam, and this class only:
-    1. Manages results for multiple (period, scenario) dimensions via ClusterResults
+    1. Manages results for multiple (period, scenario) dimensions via ClusteringResults
     2. Provides xarray-based convenience properties
-    3. Handles JSON persistence via ClusterResults.to_dict()/from_dict()
+    3. Handles JSON persistence via ClusteringResults.to_dict()/from_dict()
 
     Attributes:
-        results: ClusterResults managing ClusteringResult objects for all (period, scenario) combinations.
+        results: ClusteringResults managing ClusteringResult objects for all (period, scenario) combinations.
         original_timesteps: Original timesteps before clustering.
         original_data: Original dataset before clustering (for expand/plotting).
         aggregated_data: Aggregated dataset after clustering (for plotting).
@@ -376,7 +376,7 @@ class Clustering:
     """
 
     # ==========================================================================
-    # Core properties (delegated to ClusterResults)
+    # Core properties (delegated to ClusteringResults)
     # ==========================================================================
 
     @property
@@ -581,7 +581,7 @@ class Clustering:
     def to_json(self, path: str | Path) -> None:
         """Save the clustering for reuse.
 
-        Uses ClusterResults.to_dict() which preserves full tsam ClusteringResult.
+        Uses ClusteringResults.to_dict() which preserves full tsam ClusteringResult.
         Can be loaded later with Clustering.from_json() and used with
         flow_system.transform.apply_clustering().
 
@@ -618,7 +618,7 @@ class Clustering:
         with open(path) as f:
             data = json.load(f)
 
-        results = ClusterResults.from_dict(data['results'])
+        results = ClusteringResults.from_dict(data['results'])
 
         if original_timesteps is None:
             original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in data['original_timesteps']])
@@ -707,7 +707,7 @@ class Clustering:
 
         reference = {
             '__class__': 'Clustering',
-            'results': self.results.to_dict(),  # Full ClusterResults serialization
+            'results': self.results.to_dict(),  # Full ClusteringResults serialization
             'original_timesteps': [ts.isoformat() for ts in self.original_timesteps],
             '_original_data_refs': original_data_refs,
             '_aggregated_data_refs': aggregated_data_refs,
@@ -718,7 +718,7 @@ class Clustering:
 
     def __init__(
         self,
-        results: ClusterResults | dict,
+        results: ClusteringResults | dict,
         original_timesteps: pd.DatetimeIndex | list[str],
         original_data: xr.Dataset | None = None,
         aggregated_data: xr.Dataset | None = None,
@@ -731,7 +731,7 @@ class Clustering:
         """Initialize Clustering object.
 
         Args:
-            results: ClusterResults instance, or dict from to_dict() (for deserialization).
+            results: ClusteringResults instance, or dict from to_dict() (for deserialization).
             original_timesteps: Original timesteps before clustering.
             original_data: Original dataset before clustering (for expand/plotting).
             aggregated_data: Aggregated dataset after clustering (for plotting).
@@ -750,7 +750,7 @@ class Clustering:
 
         # Handle results as dict (from deserialization)
         if isinstance(results, dict):
-            results = ClusterResults.from_dict(results)
+            results = ClusteringResults.from_dict(results)
 
         self.results = results
         self.original_timesteps = original_timesteps

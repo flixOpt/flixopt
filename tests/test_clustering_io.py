@@ -628,7 +628,7 @@ class TestMultiDimensionalClusteringIO:
         xr.testing.assert_equal(original_cluster_order, fs_restored.clustering.cluster_order)
 
     def test_results_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """ClusterResults should be preserved after loading (via ClusterResults.to_dict())."""
+        """ClusteringResults should be preserved after loading (via ClusteringResults.to_dict())."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
@@ -680,7 +680,7 @@ class TestMultiDimensionalClusteringIO:
         # Load the full FlowSystem with clustering
         fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
         clustering_loaded = fs_loaded.clustering
-        # ClusterResults should be fully preserved after load
+        # ClusteringResults should be fully preserved after load
         assert clustering_loaded.results is not None
 
         # Create a fresh FlowSystem (copy the original, unclustered one)
