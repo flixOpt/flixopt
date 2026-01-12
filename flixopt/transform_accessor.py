@@ -81,6 +81,323 @@ class TransformAccessor:
 
         return weights
 
+    @staticmethod
+    def _build_cluster_config_with_weights(
+        cluster: ClusterConfig | None,
+        auto_weights: dict[str, float],
+    ) -> ClusterConfig:
+        """Merge auto-calculated weights into ClusterConfig.
+
+        Args:
+            cluster: Optional user-provided ClusterConfig.
+            auto_weights: Automatically calculated weights based on data variance.
+
+        Returns:
+            ClusterConfig with weights set (either user-provided or auto-calculated).
+        """
+        from tsam.config import ClusterConfig
+
+        # User provided ClusterConfig with weights - use as-is
+        if cluster is not None and cluster.weights is not None:
+            return cluster
+
+        # No ClusterConfig provided - use defaults with auto-calculated weights
+        if cluster is None:
+            return ClusterConfig(weights=auto_weights)
+
+        # ClusterConfig provided without weights - add auto-calculated weights
+        return ClusterConfig(
+            method=cluster.method,
+            representation=cluster.representation,
+            weights=auto_weights,
+            normalize_column_means=cluster.normalize_column_means,
+            use_duration_curves=cluster.use_duration_curves,
+            include_period_sums=cluster.include_period_sums,
+            solver=cluster.solver,
+        )
+
+    @staticmethod
+    def _accuracy_to_dataframe(accuracy) -> pd.DataFrame:
+        """Convert tsam AccuracyMetrics to DataFrame.
+
+        Args:
+            accuracy: tsam AccuracyMetrics object.
+
+        Returns:
+            DataFrame with RMSE, MAE, and RMSE_duration columns.
+        """
+        return pd.DataFrame(
+            {
+                'RMSE': accuracy.rmse,
+                'MAE': accuracy.mae,
+                'RMSE_duration': accuracy.rmse_duration,
+            }
+        )
+
+    def _build_cluster_weight_da(
+        self,
+        cluster_occurrences_all: dict[tuple, dict],
+        n_clusters: int,
+        cluster_coords: np.ndarray,
+        periods: list,
+        scenarios: list,
+    ) -> xr.DataArray:
+        """Build cluster_weight DataArray from occurrence counts.
+
+        Args:
+            cluster_occurrences_all: Dict mapping (period, scenario) tuples to
+                dicts of {cluster_id: occurrence_count}.
+            n_clusters: Number of clusters.
+            cluster_coords: Cluster coordinate values.
+            periods: List of period labels ([None] if no periods dimension).
+            scenarios: List of scenario labels ([None] if no scenarios dimension).
+
+        Returns:
+            DataArray with dims [cluster] or [cluster, period?, scenario?].
+        """
+
+        def _weight_for_key(key: tuple) -> xr.DataArray:
+            occurrences = cluster_occurrences_all[key]
+            weights = np.array([occurrences.get(c, 1) for c in range(n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
+
+        weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}
+        return self._combine_slices_to_dataarray_generic(
+            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
+        )
+
+    def _build_typical_das(
+        self,
+        tsam_aggregation_results: dict[tuple, Any],
+        actual_n_clusters: int,
+        timesteps_per_cluster: int,
+        cluster_coords: np.ndarray,
+        time_coords: pd.DatetimeIndex,
+    ) -> dict[str, dict[tuple, xr.DataArray]]:
+        """Build typical periods DataArrays with (cluster, time) shape.
+
+        Args:
+            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
+            actual_n_clusters: Number of clusters.
+            timesteps_per_cluster: Timesteps per cluster.
+            cluster_coords: Cluster coordinate values.
+            time_coords: Time coordinate values.
+
+        Returns:
+            Nested dict: {column_name: {(period, scenario): DataArray}}.
+        """
+        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
+        for key, tsam_result in tsam_aggregation_results.items():
+            typical_df = tsam_result.cluster_representatives
+            for col in typical_df.columns:
+                flat_data = typical_df[col].values
+                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
+                typical_das.setdefault(col, {})[key] = xr.DataArray(
+                    reshaped,
+                    dims=['cluster', 'time'],
+                    coords={'cluster': cluster_coords, 'time': time_coords},
+                )
+        return typical_das
+
+    def _build_reduced_dataset(
+        self,
+        ds: xr.Dataset,
+        typical_das: dict[str, dict[tuple, xr.DataArray]],
+        actual_n_clusters: int,
+        n_reduced_timesteps: int,
+        timesteps_per_cluster: int,
+        cluster_coords: np.ndarray,
+        time_coords: pd.DatetimeIndex,
+        periods: list,
+        scenarios: list,
+    ) -> xr.Dataset:
+        """Build the reduced dataset with (cluster, time) structure.
+
+        Args:
+            ds: Original dataset.
+            typical_das: Typical periods DataArrays from _build_typical_das().
+            actual_n_clusters: Number of clusters.
+            n_reduced_timesteps: Total reduced timesteps (n_clusters * timesteps_per_cluster).
+            timesteps_per_cluster: Timesteps per cluster.
+            cluster_coords: Cluster coordinate values.
+            time_coords: Time coordinate values.
+            periods: List of period labels.
+            scenarios: List of scenario labels.
+
+        Returns:
+            Dataset with reduced timesteps and (cluster, time) structure.
+        """
+        from .core import TimeSeriesData
+
+        all_keys = {(p, s) for p in periods for s in scenarios}
+        ds_new_vars = {}
+
+        for name, original_da in ds.data_vars.items():
+            if 'time' not in original_da.dims:
+                ds_new_vars[name] = original_da.copy()
+            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
+                # Time-dependent but constant: reshape to (cluster, time, ...)
+                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
+                other_dims = [d for d in sliced.dims if d != 'time']
+                other_shape = [sliced.sizes[d] for d in other_dims]
+                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
+                reshaped = sliced.values.reshape(new_shape)
+                new_coords = {'cluster': cluster_coords, 'time': time_coords}
+                for dim in other_dims:
+                    new_coords[dim] = sliced.coords[dim].values
+                ds_new_vars[name] = xr.DataArray(
+                    reshaped,
+                    dims=['cluster', 'time'] + other_dims,
+                    coords=new_coords,
+                    attrs=original_da.attrs,
+                )
+            else:
+                # Time-varying: combine per-(period, scenario) slices
+                da = self._combine_slices_to_dataarray_2d(
+                    slices=typical_das[name],
+                    original_da=original_da,
+                    periods=periods,
+                    scenarios=scenarios,
+                )
+                if TimeSeriesData.is_timeseries_data(original_da):
+                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
+                ds_new_vars[name] = da
+
+        # Copy attrs but remove cluster_weight
+        new_attrs = dict(ds.attrs)
+        new_attrs.pop('cluster_weight', None)
+        return xr.Dataset(ds_new_vars, attrs=new_attrs)
+
+    def _build_clustering_metadata(
+        self,
+        cluster_orders: dict[tuple, np.ndarray],
+        cluster_occurrences_all: dict[tuple, dict],
+        original_timesteps: pd.DatetimeIndex,
+        actual_n_clusters: int,
+        timesteps_per_cluster: int,
+        cluster_coords: np.ndarray,
+        periods: list,
+        scenarios: list,
+    ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+        """Build cluster_order_da, timestep_mapping_da, cluster_occurrences_da.
+
+        Args:
+            cluster_orders: Dict mapping (period, scenario) to cluster assignment arrays.
+            cluster_occurrences_all: Dict mapping (period, scenario) to occurrence dicts.
+            original_timesteps: Original timesteps before clustering.
+            actual_n_clusters: Number of clusters.
+            timesteps_per_cluster: Timesteps per cluster.
+            cluster_coords: Cluster coordinate values.
+            periods: List of period labels.
+            scenarios: List of scenario labels.
+
+        Returns:
+            Tuple of (cluster_order_da, timestep_mapping_da, cluster_occurrences_da).
+        """
+        n_original_timesteps = len(original_timesteps)
+        has_periods = periods != [None]
+        has_scenarios = scenarios != [None]
+
+        def _build_timestep_mapping_for_key(key: tuple) -> np.ndarray:
+            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
+            for period_idx, cluster_id in enumerate(cluster_orders[key]):
+                for pos in range(timesteps_per_cluster):
+                    original_idx = period_idx * timesteps_per_cluster + pos
+                    if original_idx < n_original_timesteps:
+                        representative_idx = cluster_id * timesteps_per_cluster + pos
+                        mapping[original_idx] = representative_idx
+            return mapping
+
+        def _build_cluster_occurrences_for_key(key: tuple) -> np.ndarray:
+            occurrences = cluster_occurrences_all[key]
+            return np.array([occurrences.get(c, 0) for c in range(actual_n_clusters)])
+
+        if has_periods or has_scenarios:
+            # Multi-dimensional case
+            cluster_order_slices = {}
+            timestep_mapping_slices = {}
+            cluster_occurrences_slices = {}
+            original_timesteps_coord = original_timesteps.rename('original_time')
+
+            for p in periods:
+                for s in scenarios:
+                    key = (p, s)
+                    cluster_order_slices[key] = xr.DataArray(
+                        cluster_orders[key], dims=['original_cluster'], name='cluster_order'
+                    )
+                    timestep_mapping_slices[key] = xr.DataArray(
+                        _build_timestep_mapping_for_key(key),
+                        dims=['original_time'],
+                        coords={'original_time': original_timesteps_coord},
+                        name='timestep_mapping',
+                    )
+                    cluster_occurrences_slices[key] = xr.DataArray(
+                        _build_cluster_occurrences_for_key(key),
+                        dims=['cluster'],
+                        coords={'cluster': cluster_coords},
+                        name='cluster_occurrences',
+                    )
+
+            cluster_order_da = self._combine_slices_to_dataarray_generic(
+                cluster_order_slices, ['original_cluster'], periods, scenarios, 'cluster_order'
+            )
+            timestep_mapping_da = self._combine_slices_to_dataarray_generic(
+                timestep_mapping_slices, ['original_time'], periods, scenarios, 'timestep_mapping'
+            )
+            cluster_occurrences_da = self._combine_slices_to_dataarray_generic(
+                cluster_occurrences_slices, ['cluster'], periods, scenarios, 'cluster_occurrences'
+            )
+        else:
+            # Simple case
+            first_key = (periods[0], scenarios[0])
+            cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_cluster'], name='cluster_order')
+            original_timesteps_coord = original_timesteps.rename('original_time')
+            timestep_mapping_da = xr.DataArray(
+                _build_timestep_mapping_for_key(first_key),
+                dims=['original_time'],
+                coords={'original_time': original_timesteps_coord},
+                name='timestep_mapping',
+            )
+            cluster_occurrences_da = xr.DataArray(
+                _build_cluster_occurrences_for_key(first_key),
+                dims=['cluster'],
+                coords={'cluster': cluster_coords},
+                name='cluster_occurrences',
+            )
+
+        return cluster_order_da, timestep_mapping_da, cluster_occurrences_da
+
+    def _build_representative_weights(
+        self,
+        cluster_occurrences_all: dict[tuple, dict],
+        actual_n_clusters: int,
+        cluster_coords: np.ndarray,
+        periods: list,
+        scenarios: list,
+    ) -> xr.DataArray:
+        """Build representative_weights DataArray.
+
+        Args:
+            cluster_occurrences_all: Dict mapping (period, scenario) to occurrence dicts.
+            actual_n_clusters: Number of clusters.
+            cluster_coords: Cluster coordinate values.
+            periods: List of period labels.
+            scenarios: List of scenario labels.
+
+        Returns:
+            DataArray with dims [cluster] or [cluster, period?, scenario?].
+        """
+
+        def _weights_for_key(key: tuple) -> xr.DataArray:
+            occurrences = cluster_occurrences_all[key]
+            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
+            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
+
+        weights_slices = {key: _weights_for_key(key) for key in cluster_occurrences_all}
+        return self._combine_slices_to_dataarray_generic(
+            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
+        )
+
     def sel(
         self,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
@@ -658,10 +975,9 @@ class TransformAccessor:
               ``Storage.cluster_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
         import tsam
-        from tsam.config import ClusterConfig
 
         from .clustering import Clustering, ClusteringResultCollection, ClusterResult, ClusterStructure
-        from .core import TimeSeriesData, drop_constant_arrays
+        from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
         # Parse cluster_duration to hours
@@ -730,29 +1046,10 @@ class TransformAccessor:
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
-                    # Build ClusterConfig with auto-calculated weights if user didn't provide any
-                    if cluster is not None and cluster.weights is not None:
-                        # User provided ClusterConfig with weights - use as-is
-                        cluster_config = cluster
-                    else:
-                        # Calculate weights automatically
-                        clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds)
-                        filtered_weights = {name: w for name, w in clustering_weights.items() if name in df.columns}
-
-                        if cluster is not None:
-                            # User provided ClusterConfig without weights - add auto-calculated weights
-                            cluster_config = ClusterConfig(
-                                method=cluster.method,
-                                representation=cluster.representation,
-                                weights=filtered_weights,
-                                normalize_column_means=cluster.normalize_column_means,
-                                use_duration_curves=cluster.use_duration_curves,
-                                include_period_sums=cluster.include_period_sums,
-                                solver=cluster.solver,
-                            )
-                        else:
-                            # No ClusterConfig provided - use defaults with auto-calculated weights
-                            cluster_config = ClusterConfig(weights=filtered_weights)
+                    # Build ClusterConfig with auto-calculated weights
+                    clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds)
+                    filtered_weights = {name: w for name, w in clustering_weights.items() if name in df.columns}
+                    cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
 
                     tsam_result = tsam.aggregate(
                         df,
@@ -768,16 +1065,8 @@ class TransformAccessor:
                 tsam_clustering_results[key] = tsam_result.clustering
                 cluster_orders[key] = tsam_result.cluster_assignments
                 cluster_occurrences_all[key] = tsam_result.cluster_weights
-                # Convert AccuracyMetrics to DataFrame with error handling
                 try:
-                    accuracy = tsam_result.accuracy
-                    clustering_metrics_all[key] = pd.DataFrame(
-                        {
-                            'RMSE': accuracy.rmse,
-                            'MAE': accuracy.mae,
-                            'RMSE_duration': accuracy.rmse_duration,
-                        }
-                    )
+                    clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
                 except Exception as e:
                     logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
                     clustering_metrics_all[key] = pd.DataFrame()
@@ -881,17 +1170,9 @@ class TransformAccessor:
             name='time',
         )
 
-        # Create cluster_weight: shape (cluster,) - one weight per cluster
-        # This is the number of original periods each cluster represents
-        def _build_cluster_weight_for_key(key: tuple) -> xr.DataArray:
-            occurrences = cluster_occurrences_all[key]
-            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
-            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
-
-        # Build cluster_weight - use _combine_slices_to_dataarray_generic for multi-dim handling
-        weight_slices = {key: _build_cluster_weight_for_key(key) for key in cluster_occurrences_all}
-        cluster_weight = self._combine_slices_to_dataarray_generic(
-            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
+        # Build cluster_weight: shape (cluster,) - one weight per cluster
+        cluster_weight = self._build_cluster_weight_da(
+            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
         )
 
         logger.info(
@@ -900,61 +1181,22 @@ class TransformAccessor:
         logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters})')
 
         # Build typical periods DataArrays with (cluster, time) shape
-        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_result in tsam_aggregation_results.items():
-            typical_df = tsam_result.cluster_representatives
-            for col in typical_df.columns:
-                # Reshape flat data to (cluster, time)
-                flat_data = typical_df[col].values
-                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
-                typical_das.setdefault(col, {})[key] = xr.DataArray(
-                    reshaped,
-                    dims=['cluster', 'time'],
-                    coords={'cluster': cluster_coords, 'time': time_coords},
-                )
+        typical_das = self._build_typical_das(
+            tsam_aggregation_results, actual_n_clusters, timesteps_per_cluster, cluster_coords, time_coords
+        )
 
         # Build reduced dataset with (cluster, time) dimensions
-        all_keys = {(p, s) for p in periods for s in scenarios}
-        ds_new_vars = {}
-        for name, original_da in ds.data_vars.items():
-            if 'time' not in original_da.dims:
-                ds_new_vars[name] = original_da.copy()
-            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
-                # Time-dependent but constant: reshape to (cluster, time, ...)
-                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
-                # Get the shape - time is first, other dims follow
-                other_dims = [d for d in sliced.dims if d != 'time']
-                other_shape = [sliced.sizes[d] for d in other_dims]
-                # Reshape: (n_reduced_timesteps, ...) -> (n_clusters, timesteps_per_cluster, ...)
-                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
-                reshaped = sliced.values.reshape(new_shape)
-                # Build coords
-                new_coords = {'cluster': cluster_coords, 'time': time_coords}
-                for dim in other_dims:
-                    new_coords[dim] = sliced.coords[dim].values
-                ds_new_vars[name] = xr.DataArray(
-                    reshaped,
-                    dims=['cluster', 'time'] + other_dims,
-                    coords=new_coords,
-                    attrs=original_da.attrs,
-                )
-            else:
-                # Time-varying: combine per-(period, scenario) slices with (cluster, time) dims
-                da = self._combine_slices_to_dataarray_2d(
-                    slices=typical_das[name],
-                    original_da=original_da,
-                    periods=periods,
-                    scenarios=scenarios,
-                )
-                if TimeSeriesData.is_timeseries_data(original_da):
-                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
-                ds_new_vars[name] = da
-
-        # Copy attrs but remove cluster_weight - the clustered FlowSystem gets its own
-        # cluster_weight set after from_dataset (original reference has wrong shape)
-        new_attrs = dict(ds.attrs)
-        new_attrs.pop('cluster_weight', None)
-        ds_new = xr.Dataset(ds_new_vars, attrs=new_attrs)
+        ds_new = self._build_reduced_dataset(
+            ds,
+            typical_das,
+            actual_n_clusters,
+            n_reduced_timesteps,
+            timesteps_per_cluster,
+            cluster_coords,
+            time_coords,
+            periods,
+            scenarios,
+        )
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
         # Set cluster_weight - shape (cluster,) possibly with period/scenario dimensions
@@ -968,78 +1210,16 @@ class TransformAccessor:
                 storage.initial_charge_state = None
 
         # Build Clustering for inter-cluster linking and solution expansion
-        n_original_timesteps = len(self._fs.timesteps)
-
-        # Build per-slice cluster_order and timestep_mapping as multi-dimensional DataArrays
-        # This is needed because each (period, scenario) combination may have different clustering
-
-        def _build_timestep_mapping_for_key(key: tuple) -> np.ndarray:
-            """Build timestep_mapping for a single (period, scenario) slice."""
-            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
-            for period_idx, cluster_id in enumerate(cluster_orders[key]):
-                for pos in range(timesteps_per_cluster):
-                    original_idx = period_idx * timesteps_per_cluster + pos
-                    if original_idx < n_original_timesteps:
-                        representative_idx = cluster_id * timesteps_per_cluster + pos
-                        mapping[original_idx] = representative_idx
-            return mapping
-
-        def _build_cluster_occurrences_for_key(key: tuple) -> np.ndarray:
-            """Build cluster_occurrences array for a single (period, scenario) slice."""
-            occurrences = cluster_occurrences_all[key]
-            return np.array([occurrences.get(c, 0) for c in range(actual_n_clusters)])
-
-        # Build multi-dimensional arrays
-        if has_periods or has_scenarios:
-            # Multi-dimensional case: build arrays for each (period, scenario) combination
-            # cluster_order: dims [original_cluster, period?, scenario?]
-            cluster_order_slices = {}
-            timestep_mapping_slices = {}
-            cluster_occurrences_slices = {}
-
-            # Use renamed timesteps as coordinates for multi-dimensional case
-            original_timesteps_coord = self._fs.timesteps.rename('original_time')
-
-            for p in periods:
-                for s in scenarios:
-                    key = (p, s)
-                    cluster_order_slices[key] = xr.DataArray(
-                        cluster_orders[key], dims=['original_cluster'], name='cluster_order'
-                    )
-                    timestep_mapping_slices[key] = xr.DataArray(
-                        _build_timestep_mapping_for_key(key),
-                        dims=['original_time'],
-                        coords={'original_time': original_timesteps_coord},
-                        name='timestep_mapping',
-                    )
-                    cluster_occurrences_slices[key] = xr.DataArray(
-                        _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
-                    )
-
-            # Combine slices into multi-dimensional DataArrays
-            cluster_order_da = self._combine_slices_to_dataarray_generic(
-                cluster_order_slices, ['original_cluster'], periods, scenarios, 'cluster_order'
-            )
-            timestep_mapping_da = self._combine_slices_to_dataarray_generic(
-                timestep_mapping_slices, ['original_time'], periods, scenarios, 'timestep_mapping'
-            )
-            cluster_occurrences_da = self._combine_slices_to_dataarray_generic(
-                cluster_occurrences_slices, ['cluster'], periods, scenarios, 'cluster_occurrences'
-            )
-        else:
-            # Simple case: single (None, None) slice
-            cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_cluster'], name='cluster_order')
-            # Use renamed timesteps as coordinates
-            original_timesteps_coord = self._fs.timesteps.rename('original_time')
-            timestep_mapping_da = xr.DataArray(
-                _build_timestep_mapping_for_key(first_key),
-                dims=['original_time'],
-                coords={'original_time': original_timesteps_coord},
-                name='timestep_mapping',
-            )
-            cluster_occurrences_da = xr.DataArray(
-                _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
-            )
+        cluster_order_da, timestep_mapping_da, cluster_occurrences_da = self._build_clustering_metadata(
+            cluster_orders,
+            cluster_occurrences_all,
+            self._fs.timesteps,
+            actual_n_clusters,
+            timesteps_per_cluster,
+            cluster_coords,
+            periods,
+            scenarios,
+        )
 
         cluster_structure = ClusterStructure(
             cluster_order=cluster_order_da,
@@ -1048,17 +1228,8 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
-        # Create representative_weights with (cluster,) dimension only
-        # Each cluster has one weight (same for all timesteps within it)
-        def _build_cluster_weights_for_key(key: tuple) -> xr.DataArray:
-            occurrences = cluster_occurrences_all[key]
-            # Shape: (n_clusters,) - one weight per cluster
-            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
-            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
-
-        weights_slices = {key: _build_cluster_weights_for_key(key) for key in cluster_occurrences_all}
-        representative_weights = self._combine_slices_to_dataarray_generic(
-            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
+        representative_weights = self._build_representative_weights(
+            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
         )
 
         aggregation_result = ClusterResult(
@@ -1124,7 +1295,7 @@ class TransformAccessor:
         """
 
         from .clustering import Clustering, ClusterResult, ClusterStructure
-        from .core import TimeSeriesData, drop_constant_arrays
+        from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
         # Get hours_per_cluster from the first clustering result
@@ -1179,7 +1350,7 @@ class TransformAccessor:
                 cluster_orders[key] = tsam_result.cluster_assignments
                 cluster_occurrences_all[key] = tsam_result.cluster_weights
                 try:
-                    clustering_metrics_all[key] = tsam_result.accuracy
+                    clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
                 except Exception as e:
                     logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
                     clustering_metrics_all[key] = pd.DataFrame()
@@ -1242,66 +1413,29 @@ class TransformAccessor:
         )
 
         # Build cluster_weight
-        def _build_cluster_weight_for_key(key: tuple) -> xr.DataArray:
-            occurrences = cluster_occurrences_all[key]
-            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
-            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
-
-        weight_slices = {key: _build_cluster_weight_for_key(key) for key in cluster_occurrences_all}
-        cluster_weight = self._combine_slices_to_dataarray_generic(
-            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
+        cluster_weight = self._build_cluster_weight_da(
+            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
         )
 
         logger.info(f'Applied clustering: {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps')
 
         # Build typical periods DataArrays
-        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_result in tsam_aggregation_results.items():
-            typical_df = tsam_result.cluster_representatives
-            for col in typical_df.columns:
-                flat_data = typical_df[col].values
-                reshaped = flat_data.reshape(actual_n_clusters, timesteps_per_cluster)
-                typical_das.setdefault(col, {})[key] = xr.DataArray(
-                    reshaped,
-                    dims=['cluster', 'time'],
-                    coords={'cluster': cluster_coords, 'time': time_coords},
-                )
+        typical_das = self._build_typical_das(
+            tsam_aggregation_results, actual_n_clusters, timesteps_per_cluster, cluster_coords, time_coords
+        )
 
         # Build reduced dataset
-        all_keys = {(p, s) for p in periods for s in scenarios}
-        ds_new_vars = {}
-        for name, original_da in ds.data_vars.items():
-            if 'time' not in original_da.dims:
-                ds_new_vars[name] = original_da.copy()
-            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
-                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
-                other_dims = [d for d in sliced.dims if d != 'time']
-                other_shape = [sliced.sizes[d] for d in other_dims]
-                new_shape = [actual_n_clusters, timesteps_per_cluster] + other_shape
-                reshaped = sliced.values.reshape(new_shape)
-                new_coords = {'cluster': cluster_coords, 'time': time_coords}
-                for dim in other_dims:
-                    new_coords[dim] = sliced.coords[dim].values
-                ds_new_vars[name] = xr.DataArray(
-                    reshaped,
-                    dims=['cluster', 'time'] + other_dims,
-                    coords=new_coords,
-                    attrs=original_da.attrs,
-                )
-            else:
-                da = self._combine_slices_to_dataarray_2d(
-                    slices=typical_das[name],
-                    original_da=original_da,
-                    periods=periods,
-                    scenarios=scenarios,
-                )
-                if TimeSeriesData.is_timeseries_data(original_da):
-                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
-                ds_new_vars[name] = da
-
-        new_attrs = dict(ds.attrs)
-        new_attrs.pop('cluster_weight', None)
-        ds_new = xr.Dataset(ds_new_vars, attrs=new_attrs)
+        ds_new = self._build_reduced_dataset(
+            ds,
+            typical_das,
+            actual_n_clusters,
+            n_reduced_timesteps,
+            timesteps_per_cluster,
+            cluster_coords,
+            time_coords,
+            periods,
+            scenarios,
+        )
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
         reduced_fs.cluster_weight = cluster_weight
@@ -1312,65 +1446,16 @@ class TransformAccessor:
                 storage.initial_charge_state = None
 
         # Build Clustering object
-        n_original_timesteps = len(self._fs.timesteps)
-
-        def _build_timestep_mapping_for_key(key: tuple) -> np.ndarray:
-            mapping = np.zeros(n_original_timesteps, dtype=np.int32)
-            for period_idx, cluster_id in enumerate(cluster_orders[key]):
-                for pos in range(timesteps_per_cluster):
-                    original_idx = period_idx * timesteps_per_cluster + pos
-                    if original_idx < n_original_timesteps:
-                        representative_idx = cluster_id * timesteps_per_cluster + pos
-                        mapping[original_idx] = representative_idx
-            return mapping
-
-        def _build_cluster_occurrences_for_key(key: tuple) -> np.ndarray:
-            occurrences = cluster_occurrences_all[key]
-            return np.array([occurrences.get(c, 0) for c in range(actual_n_clusters)])
-
-        if has_periods or has_scenarios:
-            cluster_order_slices = {}
-            timestep_mapping_slices = {}
-            cluster_occurrences_slices = {}
-            original_timesteps_coord = self._fs.timesteps.rename('original_time')
-
-            for p in periods:
-                for s in scenarios:
-                    key = (p, s)
-                    cluster_order_slices[key] = xr.DataArray(
-                        cluster_orders[key], dims=['original_cluster'], name='cluster_order'
-                    )
-                    timestep_mapping_slices[key] = xr.DataArray(
-                        _build_timestep_mapping_for_key(key),
-                        dims=['original_time'],
-                        coords={'original_time': original_timesteps_coord},
-                        name='timestep_mapping',
-                    )
-                    cluster_occurrences_slices[key] = xr.DataArray(
-                        _build_cluster_occurrences_for_key(key), dims=['cluster'], name='cluster_occurrences'
-                    )
-
-            cluster_order_da = self._combine_slices_to_dataarray_generic(
-                cluster_order_slices, ['original_cluster'], periods, scenarios, 'cluster_order'
-            )
-            timestep_mapping_da = self._combine_slices_to_dataarray_generic(
-                timestep_mapping_slices, ['original_time'], periods, scenarios, 'timestep_mapping'
-            )
-            cluster_occurrences_da = self._combine_slices_to_dataarray_generic(
-                cluster_occurrences_slices, ['cluster'], periods, scenarios, 'cluster_occurrences'
-            )
-        else:
-            cluster_order_da = xr.DataArray(cluster_orders[first_key], dims=['original_cluster'], name='cluster_order')
-            original_timesteps_coord = self._fs.timesteps.rename('original_time')
-            timestep_mapping_da = xr.DataArray(
-                _build_timestep_mapping_for_key(first_key),
-                dims=['original_time'],
-                coords={'original_time': original_timesteps_coord},
-                name='timestep_mapping',
-            )
-            cluster_occurrences_da = xr.DataArray(
-                _build_cluster_occurrences_for_key(first_key), dims=['cluster'], name='cluster_occurrences'
-            )
+        cluster_order_da, timestep_mapping_da, cluster_occurrences_da = self._build_clustering_metadata(
+            cluster_orders,
+            cluster_occurrences_all,
+            self._fs.timesteps,
+            actual_n_clusters,
+            timesteps_per_cluster,
+            cluster_coords,
+            periods,
+            scenarios,
+        )
 
         cluster_structure = ClusterStructure(
             cluster_order=cluster_order_da,
@@ -1379,14 +1464,8 @@ class TransformAccessor:
             timesteps_per_cluster=timesteps_per_cluster,
         )
 
-        def _build_cluster_weights_for_key(key: tuple) -> xr.DataArray:
-            occurrences = cluster_occurrences_all[key]
-            weights = np.array([occurrences.get(c, 1) for c in range(actual_n_clusters)])
-            return xr.DataArray(weights, dims=['cluster'], name='representative_weights')
-
-        weights_slices = {key: _build_cluster_weights_for_key(key) for key in cluster_occurrences_all}
-        representative_weights = self._combine_slices_to_dataarray_generic(
-            weights_slices, ['cluster'], periods, scenarios, 'representative_weights'
+        representative_weights = self._build_representative_weights(
+            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
         )
 
         aggregation_result = ClusterResult(
