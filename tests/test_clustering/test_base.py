@@ -113,9 +113,9 @@ class TestClusteringResults:
         assert results.n_clusters == 2
         assert len(results) == 2
 
-        # Access by period (backwards compatibility)
-        assert results.get(period=2020) is cr_2020
-        assert results.get(period=2030) is cr_2030
+        # Access by period
+        assert results.sel(period=2020) is cr_2020
+        assert results.sel(period=2030) is cr_2030
 
     def test_dims_property(self, mock_clustering_result_factory):
         """Test dims property returns tuple (xarray-like)."""
@@ -159,6 +159,25 @@ class TestClusteringResults:
 
         with pytest.raises(KeyError):
             results.sel(period=2030)
+
+    def test_isel_method(self, mock_clustering_result_factory):
+        """Test isel() method (xarray-like integer selection)."""
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
+        results = ClusteringResults(
+            {(2020,): cr_2020, (2030,): cr_2030},
+            dim_names=['period'],
+        )
+        assert results.isel(period=0) is cr_2020
+        assert results.isel(period=1) is cr_2030
+
+    def test_isel_invalid_index_raises(self, mock_clustering_result_factory):
+        """Test isel() raises IndexError for out-of-range index."""
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusteringResults({(2020,): cr}, dim_names=['period'])
+
+        with pytest.raises(IndexError):
+            results.isel(period=5)
 
     def test_cluster_order_dataarray(self, mock_clustering_result_factory):
         """Test cluster_order returns correct DataArray."""

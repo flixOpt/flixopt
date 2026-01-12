@@ -60,7 +60,7 @@ class ClusteringResults:
     Manages multiple ClusteringResult objects keyed by (period, scenario) tuples
     and provides convenient access and multi-dimensional DataArray building.
 
-    Follows xarray-like patterns with `.dims`, `.coords`, and `.sel()`.
+    Follows xarray-like patterns with `.dims`, `.coords`, `.sel()`, and `.isel()`.
 
     Attributes:
         dims: Tuple of dimension names, e.g., ('period', 'scenario').
@@ -74,12 +74,17 @@ class ClusteringResults:
         <xarray.DataArray (original_cluster: 3)>
 
         >>> # Multi-dimensional case
-        >>> results = ClusteringResults({(2024, 'high'): cr1, (2024, 'low'): cr2}, dim_names=['period', 'scenario'])
+        >>> results = ClusteringResults(
+        ...     {(2024, 'high'): cr1, (2024, 'low'): cr2},
+        ...     dim_names=['period', 'scenario'],
+        ... )
         >>> results.dims
         ('period', 'scenario')
         >>> results.coords
         {'period': [2024], 'scenario': ['high', 'low']}
-        >>> results.sel(period=2024, scenario='high')
+        >>> results.sel(period=2024, scenario='high')  # Label-based
+        <tsam ClusteringResult>
+        >>> results.isel(period=0, scenario=1)  # Index-based
         <tsam ClusteringResult>
     """
 
@@ -144,14 +149,35 @@ class ClusteringResults:
             raise KeyError(f'No result found for {kwargs}')
         return self._results[key]
 
+    def isel(self, **kwargs: int) -> TsamClusteringResult:
+        """Select result by dimension indices (xarray-like).
+
+        Args:
+            **kwargs: Dimension name=index pairs, e.g., period=0, scenario=1.
+
+        Returns:
+            The tsam ClusteringResult for the specified combination.
+
+        Raises:
+            IndexError: If index is out of range for a dimension.
+
+        Example:
+            >>> results.isel(period=0, scenario=1)
+            <tsam ClusteringResult>
+        """
+        label_kwargs = {}
+        for dim, idx in kwargs.items():
+            coord_values = self._get_dim_values(dim)
+            if coord_values is None:
+                raise KeyError(f"Dimension '{dim}' not found in dims {self.dims}")
+            if idx < 0 or idx >= len(coord_values):
+                raise IndexError(f"Index {idx} out of range for dimension '{dim}' with {len(coord_values)} values")
+            label_kwargs[dim] = coord_values[idx]
+        return self.sel(**label_kwargs)
+
     def __getitem__(self, key: tuple) -> TsamClusteringResult:
         """Get result by key tuple."""
         return self._results[key]
-
-    # Keep get() as alias for backwards compatibility
-    def get(self, period: Any = None, scenario: Any = None) -> TsamClusteringResult:
-        """Get result for specific period/scenario. Alias for sel()."""
-        return self.sel(period=period, scenario=scenario)
 
     # === Iteration ===
 
@@ -596,7 +622,7 @@ class Clustering:
         Returns:
             The tsam ClusteringResult for the specified combination.
         """
-        return self.results.get(period, scenario)
+        return self.results.sel(period=period, scenario=scenario)
 
     def apply(
         self,
@@ -614,7 +640,7 @@ class Clustering:
         Returns:
             tsam AggregationResult with the clustering applied.
         """
-        return self.results.get(period, scenario).apply(data)
+        return self.results.sel(period=period, scenario=scenario).apply(data)
 
     def to_json(self, path: str | Path) -> None:
         """Save the clustering for reuse.

@@ -2,8 +2,7 @@
 Time Series Aggregation Module for flixopt.
 
 This module provides wrapper classes around tsam's clustering functionality:
-- ClusterResult: Wraps a single tsam ClusteringResult
-- ClusteringResults: Manages collection of ClusterResult objects for multi-dim data
+- ClusteringResults: Manages collection of tsam ClusteringResult objects for multi-dim data
 - Clustering: Top-level class stored on FlowSystem after clustering
 
 Example usage:
