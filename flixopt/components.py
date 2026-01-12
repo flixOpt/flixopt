@@ -1181,7 +1181,7 @@ class InterclusterStorageModel(StorageModel):
     1. **Cluster start constraint**: ``ΔE(cluster_start) = 0``
        Each representative cluster starts with zero relative charge.
 
-    2. **Linking constraint**: ``SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]``
+    2. **Linking constraint**: ``SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_assignments[d]]``
        The boundary SOC after period d equals the boundary before plus the net
        charge/discharge of the representative cluster for that period.
 
@@ -1326,7 +1326,7 @@ class InterclusterStorageModel(StorageModel):
         n_clusters = clustering.n_clusters
         timesteps_per_cluster = clustering.timesteps_per_cluster
         n_original_clusters = clustering.n_original_clusters
-        cluster_order = clustering.cluster_order
+        cluster_assignments = clustering.cluster_assignments
 
         # 1. Constrain ΔE = 0 at cluster starts
         self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)
@@ -1356,7 +1356,7 @@ class InterclusterStorageModel(StorageModel):
 
         # 5. Add linking constraints
         self._add_linking_constraints(
-            soc_boundary, delta_soc, cluster_order, n_original_clusters, timesteps_per_cluster
+            soc_boundary, delta_soc, cluster_assignments, n_original_clusters, timesteps_per_cluster
         )
 
         # 6. Add cyclic or initial constraint
@@ -1385,7 +1385,7 @@ class InterclusterStorageModel(StorageModel):
         # 7. Add combined bound constraints
         self._add_combined_bound_constraints(
             soc_boundary,
-            cluster_order,
+            cluster_assignments,
             capacity_bounds.has_investment,
             n_original_clusters,
             timesteps_per_cluster,
@@ -1435,14 +1435,14 @@ class InterclusterStorageModel(StorageModel):
         self,
         soc_boundary: xr.DataArray,
         delta_soc: xr.DataArray,
-        cluster_order: xr.DataArray,
+        cluster_assignments: xr.DataArray,
         n_original_clusters: int,
         timesteps_per_cluster: int,
     ) -> None:
         """Add constraints linking consecutive SOC_boundary values.
 
         Per Blanke et al. (2022) Eq. 5, implements:
-            SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC[cluster_order[d]]
+            SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC[cluster_assignments[d]]
 
         where N is timesteps_per_cluster and loss is self-discharge rate per timestep.
 
@@ -1452,7 +1452,7 @@ class InterclusterStorageModel(StorageModel):
         Args:
             soc_boundary: SOC_boundary variable.
             delta_soc: Net SOC change per cluster.
-            cluster_order: Mapping from original periods to representative clusters.
+            cluster_assignments: Mapping from original periods to representative clusters.
             n_original_clusters: Number of original (non-clustered) periods.
             timesteps_per_cluster: Number of timesteps in each cluster period.
         """
@@ -1465,8 +1465,8 @@ class InterclusterStorageModel(StorageModel):
         soc_before = soc_before.rename({'cluster_boundary': 'original_cluster'})
         soc_before = soc_before.assign_coords(original_cluster=np.arange(n_original_clusters))
 
-        # Get delta_soc for each original period using cluster_order
-        delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
+        # Get delta_soc for each original period using cluster_assignments
+        delta_soc_ordered = delta_soc.isel(cluster=cluster_assignments)
 
         # Apply self-discharge decay factor (1-loss)^hours to soc_before per Eq. 5
         # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
@@ -1482,7 +1482,7 @@ class InterclusterStorageModel(StorageModel):
     def _add_combined_bound_constraints(
         self,
         soc_boundary: xr.DataArray,
-        cluster_order: xr.DataArray,
+        cluster_assignments: xr.DataArray,
         has_investment: bool,
         n_original_clusters: int,
         timesteps_per_cluster: int,
@@ -1498,11 +1498,11 @@ class InterclusterStorageModel(StorageModel):
         middle, and end of each cluster.
 
         With 2D (cluster, time) structure, we simply select charge_state at a
-        given time offset, then reorder by cluster_order to get original_cluster order.
+        given time offset, then reorder by cluster_assignments to get original_cluster order.
 
         Args:
             soc_boundary: SOC_boundary variable.
-            cluster_order: Mapping from original periods to clusters.
+            cluster_assignments: Mapping from original periods to clusters.
             has_investment: Whether the storage has investment sizing.
             n_original_clusters: Number of original periods.
             timesteps_per_cluster: Timesteps in each cluster.
@@ -1523,10 +1523,10 @@ class InterclusterStorageModel(StorageModel):
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
-            # With 2D structure: select time offset, then reorder by cluster_order
+            # With 2D structure: select time offset, then reorder by cluster_assignments
             cs_at_offset = charge_state.isel(time=offset)  # Shape: (cluster, ...)
-            # Reorder to original_cluster order using cluster_order indexer
-            cs_t = cs_at_offset.isel(cluster=cluster_order)
+            # Reorder to original_cluster order using cluster_assignments indexer
+            cs_t = cs_at_offset.isel(cluster=cluster_assignments)
             # Suppress xarray warning about index loss - we immediately assign new coords anyway
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', message='.*does not create an index anymore.*')

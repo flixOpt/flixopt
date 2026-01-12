@@ -120,9 +120,9 @@ def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
     )
     fs_reduced.optimize(solver_fixture)
 
-    # Get cluster_order to know mapping
+    # Get cluster_assignments to know mapping
     info = fs_reduced.clustering
-    cluster_order = info.cluster_order.values
+    cluster_assignments = info.cluster_assignments.values
     timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
     reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
@@ -132,7 +132,7 @@ def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
 
     # Check that values are correctly mapped
     # For each original segment, values should match the corresponding typical cluster
-    for orig_segment_idx, cluster_id in enumerate(cluster_order):
+    for orig_segment_idx, cluster_id in enumerate(cluster_assignments):
         orig_start = orig_segment_idx * timesteps_per_cluster
         orig_end = orig_start + timesteps_per_cluster
 
@@ -341,16 +341,16 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     fs_expanded = fs_reduced.transform.expand()
     expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 
-    # Check mapping for each scenario using its own cluster_order
+    # Check mapping for each scenario using its own cluster_assignments
     for scenario in scenarios_2:
-        # Get the cluster_order for THIS scenario
-        cluster_order = info.cluster_order.sel(scenario=scenario).values
+        # Get the cluster_assignments for THIS scenario
+        cluster_assignments = info.cluster_assignments.sel(scenario=scenario).values
 
         reduced_scenario = reduced_flow.sel(scenario=scenario).values
         expanded_scenario = expanded_flow.sel(scenario=scenario).values
 
-        # Verify mapping is correct for this scenario using its own cluster_order
-        for orig_segment_idx, cluster_id in enumerate(cluster_order):
+        # Verify mapping is correct for this scenario using its own cluster_assignments
+        for orig_segment_idx, cluster_id in enumerate(cluster_assignments):
             orig_start = orig_segment_idx * timesteps_per_cluster
             orig_end = orig_start + timesteps_per_cluster
 
@@ -534,7 +534,7 @@ class TestInterclusterStorageLinking:
         soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         cs_clustered = fs_clustered.solution['Battery|charge_state']
         clustering = fs_clustered.clustering
-        cluster_order = clustering.cluster_order.values
+        cluster_assignments = clustering.cluster_assignments.values
         timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
@@ -542,7 +542,7 @@ class TestInterclusterStorageLinking:
 
         # Manual verification for first few timesteps of first period
         p = 0  # First period
-        cluster = int(cluster_order[p])
+        cluster = int(cluster_assignments[p])
         soc_b = soc_boundary.isel(cluster_boundary=p).item()
 
         for t in [0, 5, 12, 23]:

@@ -585,16 +585,16 @@ class TestMultiDimensionalClusteringIO:
         )
         return fs
 
-    def test_cluster_order_has_correct_dimensions(self, system_with_periods_and_scenarios):
-        """cluster_order should have dimensions for original_cluster, period, and scenario."""
+    def test_cluster_assignments_has_correct_dimensions(self, system_with_periods_and_scenarios):
+        """cluster_assignments should have dimensions for original_cluster, period, and scenario."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        cluster_order = fs_clustered.clustering.cluster_order
-        assert 'original_cluster' in cluster_order.dims
-        assert 'period' in cluster_order.dims
-        assert 'scenario' in cluster_order.dims
-        assert cluster_order.shape == (3, 2, 2)  # 3 days, 2 periods, 2 scenarios
+        cluster_assignments = fs_clustered.clustering.cluster_assignments
+        assert 'original_cluster' in cluster_assignments.dims
+        assert 'period' in cluster_assignments.dims
+        assert 'scenario' in cluster_assignments.dims
+        assert cluster_assignments.shape == (3, 2, 2)  # 3 days, 2 periods, 2 scenarios
 
     def test_different_assignments_per_period_scenario(self, system_with_periods_and_scenarios):
         """Different period/scenario combinations should have different cluster assignments."""
@@ -605,27 +605,27 @@ class TestMultiDimensionalClusteringIO:
         assignments = set()
         for period in fs_clustered.periods:
             for scenario in fs_clustered.scenarios:
-                order = tuple(fs_clustered.clustering.cluster_order.sel(period=period, scenario=scenario).values)
+                order = tuple(fs_clustered.clustering.cluster_assignments.sel(period=period, scenario=scenario).values)
                 assignments.add(order)
 
         # We expect at least 2 different patterns (the demand was designed to create different patterns)
         assert len(assignments) >= 2, f'Expected at least 2 unique patterns, got {len(assignments)}'
 
-    def test_cluster_order_preserved_after_roundtrip(self, system_with_periods_and_scenarios, tmp_path):
-        """cluster_order should be exactly preserved after netcdf roundtrip."""
+    def test_cluster_assignments_preserved_after_roundtrip(self, system_with_periods_and_scenarios, tmp_path):
+        """cluster_assignments should be exactly preserved after netcdf roundtrip."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Store original cluster_order
-        original_cluster_order = fs_clustered.clustering.cluster_order.copy()
+        # Store original cluster_assignments
+        original_cluster_assignments = fs_clustered.clustering.cluster_assignments.copy()
 
         # Roundtrip via netcdf
         nc_path = tmp_path / 'multi_dim_clustering.nc'
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # cluster_order should be exactly preserved
-        xr.testing.assert_equal(original_cluster_order, fs_restored.clustering.cluster_order)
+        # cluster_assignments should be exactly preserved
+        xr.testing.assert_equal(original_cluster_assignments, fs_restored.clustering.cluster_assignments)
 
     def test_results_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
         """ClusteringResults should be preserved after loading (via ClusteringResults.to_dict())."""
@@ -646,7 +646,7 @@ class TestMultiDimensionalClusteringIO:
         assert len(fs_restored.clustering.results) == len(fs_clustered.clustering.results)
 
     def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """Derived properties should work correctly after loading (computed from cluster_order)."""
+        """Derived properties should work correctly after loading (computed from cluster_assignments)."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
@@ -659,7 +659,7 @@ class TestMultiDimensionalClusteringIO:
         assert fs_restored.clustering.n_clusters == 2
         assert fs_restored.clustering.timesteps_per_cluster == 24
 
-        # cluster_occurrences should be derived from cluster_order
+        # cluster_occurrences should be derived from cluster_assignments
         occurrences = fs_restored.clustering.cluster_occurrences
         assert occurrences is not None
         # For each period/scenario, occurrences should sum to n_original_clusters (3 days)
@@ -697,8 +697,10 @@ class TestMultiDimensionalClusteringIO:
         assert 'cluster' in fs_new_clustered.dims
         assert len(fs_new_clustered.indexes['cluster']) == 2  # 2 clusters
 
-        # cluster_order should match
-        xr.testing.assert_equal(fs_clustered.clustering.cluster_order, fs_new_clustered.clustering.cluster_order)
+        # cluster_assignments should match
+        xr.testing.assert_equal(
+            fs_clustered.clustering.cluster_assignments, fs_new_clustered.clustering.cluster_assignments
+        )
 
     def test_expand_after_load_and_optimize(self, system_with_periods_and_scenarios, tmp_path, solver_fixture):
         """expand() should work correctly after loading a solved clustered system."""

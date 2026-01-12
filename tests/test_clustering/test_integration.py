@@ -209,7 +209,7 @@ class TestClusterAdvancedOptions:
         fs2 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
 
         # Hierarchical clustering should produce identical cluster orders
-        xr.testing.assert_equal(fs1.clustering.cluster_order, fs2.clustering.cluster_order)
+        xr.testing.assert_equal(fs1.clustering.cluster_assignments, fs2.clustering.cluster_assignments)
 
     def test_metrics_available(self, basic_flow_system):
         """Test that clustering metrics are available after clustering."""

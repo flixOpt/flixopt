@@ -11,7 +11,7 @@ behavior needs special handling. The S-N linking model introduces:
 - **SOC_boundary**: Absolute state-of-charge at the boundary between original periods.
   With N original periods, there are N+1 boundary points.
 
-- **Linking**: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]
+- **Linking**: SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_assignments[d]]
   Each boundary is connected to the next via the net charge change of the
   representative cluster for that period.
 

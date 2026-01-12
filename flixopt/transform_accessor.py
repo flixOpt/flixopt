@@ -268,16 +268,16 @@ class TransformAccessor:
         new_attrs.pop('cluster_weight', None)
         return xr.Dataset(ds_new_vars, attrs=new_attrs)
 
-    def _build_cluster_order_da(
+    def _build_cluster_assignments_da(
         self,
-        cluster_orders: dict[tuple, np.ndarray],
+        cluster_assignmentss: dict[tuple, np.ndarray],
         periods: list,
         scenarios: list,
     ) -> xr.DataArray:
-        """Build cluster_order DataArray from cluster assignments.
+        """Build cluster_assignments DataArray from cluster assignments.
 
         Args:
-            cluster_orders: Dict mapping (period, scenario) to cluster assignment arrays.
+            cluster_assignmentss: Dict mapping (period, scenario) to cluster assignment arrays.
             periods: List of period labels ([None] if no periods dimension).
             scenarios: List of scenario labels ([None] if no scenarios dimension).
 
@@ -289,20 +289,20 @@ class TransformAccessor:
 
         if has_periods or has_scenarios:
             # Multi-dimensional case
-            cluster_order_slices = {}
+            cluster_assignments_slices = {}
             for p in periods:
                 for s in scenarios:
                     key = (p, s)
-                    cluster_order_slices[key] = xr.DataArray(
-                        cluster_orders[key], dims=['original_cluster'], name='cluster_order'
+                    cluster_assignments_slices[key] = xr.DataArray(
+                        cluster_assignmentss[key], dims=['original_cluster'], name='cluster_assignments'
                     )
             return self._combine_slices_to_dataarray_generic(
-                cluster_order_slices, ['original_cluster'], periods, scenarios, 'cluster_order'
+                cluster_assignments_slices, ['original_cluster'], periods, scenarios, 'cluster_assignments'
             )
         else:
             # Simple case
             first_key = (periods[0], scenarios[0])
-            return xr.DataArray(cluster_orders[first_key], dims=['original_cluster'], name='cluster_order')
+            return xr.DataArray(cluster_assignmentss[first_key], dims=['original_cluster'], name='cluster_assignments')
 
     def sel(
         self,
@@ -931,7 +931,7 @@ class TransformAccessor:
         # Cluster each (period, scenario) combination using tsam directly
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
         tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
-        cluster_orders: dict[tuple, np.ndarray] = {}
+        cluster_assignmentss: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
 
         # Collect metrics per (period, scenario) slice
@@ -969,7 +969,7 @@ class TransformAccessor:
 
                 tsam_aggregation_results[key] = tsam_result
                 tsam_clustering_results[key] = tsam_result.clustering
-                cluster_orders[key] = tsam_result.cluster_assignments
+                cluster_assignmentss[key] = tsam_result.cluster_assignments
                 cluster_occurrences_all[key] = tsam_result.cluster_weights
                 try:
                     clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
@@ -1179,7 +1179,7 @@ class TransformAccessor:
         # Apply existing clustering to each (period, scenario) combination
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
         tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
-        cluster_orders: dict[tuple, np.ndarray] = {}
+        cluster_assignmentss: dict[tuple, np.ndarray] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
         clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
 
@@ -1201,7 +1201,7 @@ class TransformAccessor:
 
                 tsam_aggregation_results[key] = tsam_result
                 tsam_clustering_results[key] = tsam_result.clustering
-                cluster_orders[key] = tsam_result.cluster_assignments
+                cluster_assignmentss[key] = tsam_result.cluster_assignments
                 cluster_occurrences_all[key] = tsam_result.cluster_weights
                 try:
                     clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
@@ -1614,15 +1614,15 @@ class TransformAccessor:
 
         # Handle cluster dimension if present
         if 'cluster' in decay_da.dims:
-            cluster_order = clustering.cluster_order
-            if cluster_order.ndim == 1:
+            cluster_assignments = clustering.cluster_assignments
+            if cluster_assignments.ndim == 1:
                 cluster_per_timestep = xr.DataArray(
-                    cluster_order.values[original_cluster_indices],
+                    cluster_assignments.values[original_cluster_indices],
                     dims=['time'],
                     coords={'time': original_timesteps_extra},
                 )
             else:
-                cluster_per_timestep = cluster_order.isel(
+                cluster_per_timestep = cluster_assignments.isel(
                     original_cluster=xr.DataArray(original_cluster_indices, dims=['time'])
                 ).assign_coords(time=original_timesteps_extra)
             decay_da = decay_da.isel(cluster=cluster_per_timestep).drop_vars('cluster', errors='ignore')
@@ -1708,12 +1708,12 @@ class TransformAccessor:
 
             # For charge_state with cluster dim, append the extra timestep value
             if var_name.endswith('|charge_state') and 'cluster' in da.dims:
-                cluster_order = clustering.cluster_order
-                if cluster_order.ndim == 1:
-                    last_cluster = int(cluster_order[last_original_cluster_idx])
+                cluster_assignments = clustering.cluster_assignments
+                if cluster_assignments.ndim == 1:
+                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
                     extra_val = da.isel(cluster=last_cluster, time=-1)
                 else:
-                    last_clusters = cluster_order.isel(original_cluster=last_original_cluster_idx)
+                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
                     extra_val = da.isel(cluster=last_clusters, time=-1)
                 extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
                 extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])

@@ -70,7 +70,7 @@ class ClusteringResults:
         >>> results = ClusteringResults({(): cr}, dim_names=[])
         >>> results.n_clusters
         2
-        >>> results.cluster_order  # Returns DataArray
+        >>> results.cluster_assignments  # Returns DataArray
         <xarray.DataArray (original_cluster: 3)>
 
         >>> # Multi-dimensional case
@@ -226,8 +226,8 @@ class ClusteringResults:
     # === Multi-dim DataArrays ===
 
     @property
-    def cluster_order(self) -> xr.DataArray:
-        """Build multi-dimensional cluster_order DataArray.
+    def cluster_assignments(self) -> xr.DataArray:
+        """Build multi-dimensional cluster_assignments DataArray.
 
         Returns:
             DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
@@ -238,7 +238,7 @@ class ClusteringResults:
             return xr.DataArray(
                 np.array(self._results[()].cluster_assignments),
                 dims=['original_cluster'],
-                name='cluster_order',
+                name='cluster_assignments',
             )
 
         # Multi-dimensional case
@@ -252,7 +252,7 @@ class ClusteringResults:
             base_coords={},  # No coords on original_cluster
             periods=periods,
             scenarios=scenarios,
-            name='cluster_order',
+            name='cluster_assignments',
         )
 
     @property
@@ -281,6 +281,105 @@ class ClusteringResults:
             scenarios=scenarios,
             name='cluster_occurrences',
         )
+
+    @property
+    def cluster_centers(self) -> xr.DataArray:
+        """Which original period is the representative (center) for each cluster.
+
+        Returns:
+            DataArray with dims [cluster] containing original period indices.
+        """
+        if not self.dim_names:
+            return xr.DataArray(
+                np.array(self._results[()].cluster_centers),
+                dims=['cluster'],
+                coords={'cluster': range(self.n_clusters)},
+                name='cluster_centers',
+            )
+
+        periods = self._get_dim_values('period')
+        scenarios = self._get_dim_values('scenario')
+
+        return self._build_multi_dim_array(
+            lambda cr: np.array(cr.cluster_centers),
+            base_dims=['cluster'],
+            base_coords={'cluster': range(self.n_clusters)},
+            periods=periods,
+            scenarios=scenarios,
+            name='cluster_centers',
+        )
+
+    @property
+    def segment_assignments(self) -> xr.DataArray | None:
+        """For each timestep within a cluster, which intra-period segment it belongs to.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, time] or None if no segmentation.
+        """
+        first = self._first_result
+        if first.segment_assignments is None:
+            return None
+
+        if not self.dim_names:
+            # segment_assignments is tuple of tuples: (cluster0_assignments, cluster1_assignments, ...)
+            data = np.array(first.segment_assignments)
+            return xr.DataArray(
+                data,
+                dims=['cluster', 'time'],
+                coords={'cluster': range(self.n_clusters)},
+                name='segment_assignments',
+            )
+
+        # Multi-dim case would need more complex handling
+        # For now, return None for multi-dim
+        return None
+
+    @property
+    def segment_durations(self) -> xr.DataArray | None:
+        """Duration of each intra-period segment in hours.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, segment] or None if no segmentation.
+        """
+        first = self._first_result
+        if first.segment_durations is None:
+            return None
+
+        if not self.dim_names:
+            # segment_durations is tuple of tuples: (cluster0_durations, cluster1_durations, ...)
+            # Each cluster may have different segment counts, so we need to handle ragged arrays
+            durations = first.segment_durations
+            n_segments = first.n_segments
+            data = np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in durations])
+            return xr.DataArray(
+                data,
+                dims=['cluster', 'segment'],
+                coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
+                name='segment_durations',
+                attrs={'units': 'hours'},
+            )
+
+        return None
+
+    @property
+    def segment_centers(self) -> xr.DataArray | None:
+        """Center of each intra-period segment.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray or None if no segmentation.
+        """
+        first = self._first_result
+        if first.segment_centers is None:
+            return None
+
+        # tsam's segment_centers may be None even with segments configured
+        return None
 
     # === Serialization ===
 
@@ -434,7 +533,7 @@ class Clustering:
         >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
         >>> fs_clustered.clustering.n_clusters
         8
-        >>> fs_clustered.clustering.cluster_order
+        >>> fs_clustered.clustering.cluster_assignments
         <xarray.DataArray (original_cluster: 365)>
         >>> fs_clustered.clustering.plot.compare()
     """
@@ -469,13 +568,13 @@ class Clustering:
         return self.results.dim_names
 
     @property
-    def cluster_order(self) -> xr.DataArray:
+    def cluster_assignments(self) -> xr.DataArray:
         """Mapping from original periods to cluster IDs.
 
         Returns:
             DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
         """
-        return self.results.cluster_order
+        return self.results.cluster_assignments
 
     @property
     def n_representatives(self) -> int:
@@ -533,6 +632,48 @@ class Clustering:
         """
         n_timesteps = self.n_clusters * self.timesteps_per_cluster
         return np.arange(0, n_timesteps, self.timesteps_per_cluster)
+
+    @property
+    def cluster_centers(self) -> xr.DataArray:
+        """Which original period is the representative (center) for each cluster.
+
+        Returns:
+            DataArray with dims [cluster] containing original period indices.
+        """
+        return self.results.cluster_centers
+
+    @property
+    def segment_assignments(self) -> xr.DataArray | None:
+        """For each timestep within a cluster, which intra-period segment it belongs to.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, time] or None if no segmentation.
+        """
+        return self.results.segment_assignments
+
+    @property
+    def segment_durations(self) -> xr.DataArray | None:
+        """Duration of each intra-period segment in hours.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, segment] or None if no segmentation.
+        """
+        return self.results.segment_durations
+
+    @property
+    def segment_centers(self) -> xr.DataArray | None:
+        """Center of each intra-period segment.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, segment] or None if no segmentation.
+        """
+        return self.results.segment_centers
 
     # ==========================================================================
     # Methods
@@ -1020,19 +1161,19 @@ class ClusteringPlotAccessor:
         from ..statistics_accessor import _apply_selection
 
         clustering = self._clustering
-        cluster_order = clustering.cluster_order
+        cluster_assignments = clustering.cluster_assignments
         timesteps_per_cluster = clustering.timesteps_per_cluster
         original_time = clustering.original_timesteps
 
         if select:
-            cluster_order = _apply_selection(cluster_order.to_dataset(name='cluster'), select)['cluster']
+            cluster_assignments = _apply_selection(cluster_assignments.to_dataset(name='cluster'), select)['cluster']
 
-        # Expand cluster_order to per-timestep
-        extra_dims = [d for d in cluster_order.dims if d != 'original_cluster']
-        expanded_values = np.repeat(cluster_order.values, timesteps_per_cluster, axis=0)
+        # Expand cluster_assignments to per-timestep
+        extra_dims = [d for d in cluster_assignments.dims if d != 'original_cluster']
+        expanded_values = np.repeat(cluster_assignments.values, timesteps_per_cluster, axis=0)
 
         coords = {'time': original_time}
-        coords.update({d: cluster_order.coords[d].values for d in extra_dims})
+        coords.update({d: cluster_assignments.coords[d].values for d in extra_dims})
         cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)
 
         heatmap_da = cluster_da.expand_dims('y', axis=-1).assign_coords(y=['Cluster'])

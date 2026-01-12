@@ -179,15 +179,15 @@ class TestClusteringResults:
         with pytest.raises(IndexError):
             results.isel(period=5)
 
-    def test_cluster_order_dataarray(self, mock_clustering_result_factory):
-        """Test cluster_order returns correct DataArray."""
+    def test_cluster_assignments_dataarray(self, mock_clustering_result_factory):
+        """Test cluster_assignments returns correct DataArray."""
         cr = mock_clustering_result_factory([0, 1, 0])
         results = ClusteringResults({(): cr}, dim_names=[])
 
-        cluster_order = results.cluster_order
-        assert isinstance(cluster_order, xr.DataArray)
-        assert 'original_cluster' in cluster_order.dims
-        np.testing.assert_array_equal(cluster_order.values, [0, 1, 0])
+        cluster_assignments = results.cluster_assignments
+        assert isinstance(cluster_assignments, xr.DataArray)
+        assert 'original_cluster' in cluster_assignments.dims
+        np.testing.assert_array_equal(cluster_assignments.values, [0, 1, 0])
 
     def test_cluster_occurrences_dataarray(self, mock_clustering_result_factory):
         """Test cluster_occurrences returns correct DataArray."""
