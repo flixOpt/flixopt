@@ -113,9 +113,52 @@ class TestClusteringResults:
         assert results.n_clusters == 2
         assert len(results) == 2
 
-        # Access by period
+        # Access by period (backwards compatibility)
         assert results.get(period=2020) is cr_2020
         assert results.get(period=2030) is cr_2030
+
+    def test_dims_property(self, mock_clustering_result_factory):
+        """Test dims property returns tuple (xarray-like)."""
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusteringResults({(): cr}, dim_names=[])
+        assert results.dims == ()
+
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
+        results = ClusteringResults(
+            {(2020,): cr_2020, (2030,): cr_2030},
+            dim_names=['period'],
+        )
+        assert results.dims == ('period',)
+
+    def test_coords_property(self, mock_clustering_result_factory):
+        """Test coords property returns dict (xarray-like)."""
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
+        results = ClusteringResults(
+            {(2020,): cr_2020, (2030,): cr_2030},
+            dim_names=['period'],
+        )
+        assert results.coords == {'period': [2020, 2030]}
+
+    def test_sel_method(self, mock_clustering_result_factory):
+        """Test sel() method (xarray-like selection)."""
+        cr_2020 = mock_clustering_result_factory([0, 1, 0])
+        cr_2030 = mock_clustering_result_factory([1, 0, 1])
+        results = ClusteringResults(
+            {(2020,): cr_2020, (2030,): cr_2030},
+            dim_names=['period'],
+        )
+        assert results.sel(period=2020) is cr_2020
+        assert results.sel(period=2030) is cr_2030
+
+    def test_sel_invalid_key_raises(self, mock_clustering_result_factory):
+        """Test sel() raises KeyError for invalid key."""
+        cr = mock_clustering_result_factory([0, 1, 0])
+        results = ClusteringResults({(2020,): cr}, dim_names=['period'])
+
+        with pytest.raises(KeyError):
+            results.sel(period=2030)
 
     def test_cluster_order_dataarray(self, mock_clustering_result_factory):
         """Test cluster_order returns correct DataArray."""

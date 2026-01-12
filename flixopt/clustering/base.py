@@ -60,8 +60,11 @@ class ClusteringResults:
     Manages multiple ClusteringResult objects keyed by (period, scenario) tuples
     and provides convenient access and multi-dimensional DataArray building.
 
+    Follows xarray-like patterns with `.dims`, `.coords`, and `.sel()`.
+
     Attributes:
-        dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
+        dims: Tuple of dimension names, e.g., ('period', 'scenario').
+        coords: Dict mapping dimension names to their coordinate values.
 
     Example:
         >>> results = ClusteringResults({(): cr}, dim_names=[])
@@ -72,7 +75,11 @@ class ClusteringResults:
 
         >>> # Multi-dimensional case
         >>> results = ClusteringResults({(2024, 'high'): cr1, (2024, 'low'): cr2}, dim_names=['period', 'scenario'])
-        >>> results.get(period=2024, scenario='high')
+        >>> results.dims
+        ('period', 'scenario')
+        >>> results.coords
+        {'period': [2024], 'scenario': ['high', 'low']}
+        >>> results.sel(period=2024, scenario='high')
         <tsam ClusteringResult>
     """
 
@@ -91,28 +98,60 @@ class ClusteringResults:
         if not results:
             raise ValueError('results cannot be empty')
         self._results = results
-        self.dim_names = dim_names
+        self._dim_names = dim_names
 
-    # === Access single results ===
+    # ==========================================================================
+    # xarray-like interface
+    # ==========================================================================
+
+    @property
+    def dims(self) -> tuple[str, ...]:
+        """Dimension names as tuple (xarray-like)."""
+        return tuple(self._dim_names)
+
+    @property
+    def dim_names(self) -> list[str]:
+        """Dimension names as list (backwards compatibility)."""
+        return list(self._dim_names)
+
+    @property
+    def coords(self) -> dict[str, list]:
+        """Coordinate values for each dimension (xarray-like).
+
+        Returns:
+            Dict mapping dimension names to lists of coordinate values.
+        """
+        return {dim: self._get_dim_values(dim) for dim in self._dim_names}
+
+    def sel(self, **kwargs: Any) -> TsamClusteringResult:
+        """Select result by dimension labels (xarray-like).
+
+        Args:
+            **kwargs: Dimension name=value pairs, e.g., period=2024, scenario='high'.
+
+        Returns:
+            The tsam ClusteringResult for the specified combination.
+
+        Raises:
+            KeyError: If no result found for the specified combination.
+
+        Example:
+            >>> results.sel(period=2024, scenario='high')
+            <tsam ClusteringResult>
+        """
+        key = self._make_key(**kwargs)
+        if key not in self._results:
+            raise KeyError(f'No result found for {kwargs}')
+        return self._results[key]
 
     def __getitem__(self, key: tuple) -> TsamClusteringResult:
         """Get result by key tuple."""
         return self._results[key]
 
+    # Keep get() as alias for backwards compatibility
     def get(self, period: Any = None, scenario: Any = None) -> TsamClusteringResult:
-        """Get result for specific period/scenario.
-
-        Args:
-            period: Period label (if applicable).
-            scenario: Scenario label (if applicable).
-
-        Returns:
-            The tsam ClusteringResult for the specified combination.
-        """
-        key = self._make_key(period, scenario)
-        if key not in self._results:
-            raise KeyError(f'No result found for period={period}, scenario={scenario}')
-        return self._results[key]
+        """Get result for specific period/scenario. Alias for sel()."""
+        return self.sel(period=period, scenario=scenario)
 
     # === Iteration ===
 
@@ -225,7 +264,7 @@ class ClusteringResults:
         The dict can be used to reconstruct via from_dict().
         """
         return {
-            'dim_names': self.dim_names,
+            'dim_names': list(self._dim_names),
             'results': {self._key_to_str(key): result.to_dict() for key, result in self._results.items()},
         }
 
@@ -250,21 +289,19 @@ class ClusteringResults:
 
     # === Private helpers ===
 
-    def _make_key(self, period: Any, scenario: Any) -> tuple:
-        """Create a key tuple from period and scenario values."""
+    def _make_key(self, **kwargs: Any) -> tuple:
+        """Create a key tuple from dimension keyword arguments."""
         key_parts = []
-        for dim in self.dim_names:
-            if dim == 'period':
-                key_parts.append(period)
-            elif dim == 'scenario':
-                key_parts.append(scenario)
+        for dim in self._dim_names:
+            if dim in kwargs:
+                key_parts.append(kwargs[dim])
         return tuple(key_parts)
 
     def _get_dim_values(self, dim: str) -> list | None:
         """Get unique values for a dimension, or None if dimension not present."""
-        if dim not in self.dim_names:
+        if dim not in self._dim_names:
             return None
-        idx = self.dim_names.index(dim)
+        idx = self._dim_names.index(dim)
         return sorted(set(k[idx] for k in self._results.keys()))
 
     def _build_multi_dim_array(
@@ -343,9 +380,10 @@ class ClusteringResults:
         return tuple(result)
 
     def __repr__(self) -> str:
-        if not self.dim_names:
-            return f'ClusteringResults(1 result, {self.n_clusters} clusters)'
-        return f'ClusteringResults({len(self._results)} results, dims={self.dim_names}, {self.n_clusters} clusters)'
+        if not self.dims:
+            return f'ClusteringResults(n_clusters={self.n_clusters})'
+        coords_str = ', '.join(f'{k}: {len(v)}' for k, v in self.coords.items())
+        return f'ClusteringResults(dims={self.dims}, coords=({coords_str}), n_clusters={self.n_clusters})'
 
 
 class Clustering:
