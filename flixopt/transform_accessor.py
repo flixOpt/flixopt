@@ -378,15 +378,18 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Build ClusteringResults from tsam ClusteringResult objects
+        # Build dicts keyed by (period?, scenario?) tuples (without None)
         cluster_results: dict[tuple, Any] = {}
+        aggregation_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
             if has_periods:
                 key_parts.append(p)
             if has_scenarios:
                 key_parts.append(s)
-            cluster_results[tuple(key_parts)] = result.clustering
+            key = tuple(key_parts)
+            cluster_results[key] = result.clustering
+            aggregation_results[key] = result
 
         results = ClusteringResults(cluster_results, dim_names)
 
@@ -478,13 +481,14 @@ class TransformAccessor:
             if isinstance(ics, str) and ics == 'equals_final':
                 storage.initial_charge_state = None
 
-        # Create Clustering object
+        # Create Clustering object with full AggregationResult access
         reduced_fs.clustering = Clustering(
             results=results,
             original_timesteps=self._fs.timesteps,
             original_data=ds,
             aggregated_data=ds_new,
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
+            _aggregation_results=aggregation_results,
         )
 
         return reduced_fs

@@ -570,109 +570,7 @@ class ClusteringResults:
             # Apply clustering
             results[key] = cr.apply(df)
 
-        return AggregationResults(results, self._dim_names)
-
-
-class AggregationResults:
-    """Collection of tsam AggregationResult objects for multi-dimensional data.
-
-    Wraps multiple AggregationResult objects keyed by (period, scenario) tuples.
-    Provides access to aggregated data and a `.clustering` property for IO.
-
-    Attributes:
-        dims: Tuple of dimension names, e.g., ('period', 'scenario').
-
-    Example:
-        >>> agg_results = clustering_results.apply(dataset)
-        >>> agg_results.clustering  # Returns ClusteringResults for IO
-        >>> for key, result in agg_results:
-        ...     print(result.cluster_representatives)
-    """
-
-    def __init__(
-        self,
-        results: dict[tuple, AggregationResult],
-        dim_names: list[str],
-    ):
-        """Initialize AggregationResults.
-
-        Args:
-            results: Dict mapping (period, scenario) tuples to tsam AggregationResult objects.
-            dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
-        """
-        self._results = results
-        self._dim_names = dim_names
-
-    @property
-    def dims(self) -> tuple[str, ...]:
-        """Dimension names as tuple."""
-        return tuple(self._dim_names)
-
-    @property
-    def dim_names(self) -> list[str]:
-        """Dimension names as list."""
-        return list(self._dim_names)
-
-    @property
-    def clustering(self) -> ClusteringResults:
-        """Extract ClusteringResults for IO/persistence.
-
-        Returns:
-            ClusteringResults containing the ClusteringResult from each AggregationResult.
-        """
-        return ClusteringResults(
-            {k: r.clustering for k, r in self._results.items()},
-            self._dim_names,
-        )
-
-    # === Iteration ===
-
-    def __iter__(self):
-        """Iterate over (key, AggregationResult) pairs."""
-        return iter(self._results.items())
-
-    def __len__(self) -> int:
-        """Number of AggregationResult objects."""
-        return len(self._results)
-
-    def __getitem__(self, key: tuple) -> AggregationResult:
-        """Get AggregationResult by key tuple."""
-        return self._results[key]
-
-    def items(self):
-        """Iterate over (key, AggregationResult) pairs."""
-        return self._results.items()
-
-    def keys(self):
-        """Iterate over keys."""
-        return self._results.keys()
-
-    def values(self):
-        """Iterate over AggregationResult objects."""
-        return self._results.values()
-
-    # === Properties from first result ===
-
-    @property
-    def _first_result(self) -> AggregationResult:
-        """Get the first AggregationResult (for structure info)."""
-        return next(iter(self._results.values()))
-
-    @property
-    def n_clusters(self) -> int:
-        """Number of clusters."""
-        return self._first_result.n_clusters
-
-    @property
-    def n_segments(self) -> int | None:
-        """Number of segments, or None if not segmented."""
-        return self._first_result.n_segments
-
-    def __repr__(self) -> str:
-        n = len(self._results)
-        if not self.dims:
-            return f'AggregationResults(n_results=1, n_clusters={self.n_clusters})'
-        return f'AggregationResults(dims={self.dims}, n_results={n}, n_clusters={self.n_clusters})'
+        return Clustering._from_aggregation_results(results, self._dim_names)
 
 
 class Clustering:
@@ -1118,6 +1016,8 @@ class Clustering:
         _original_data_refs: list[str] | None = None,
         _aggregated_data_refs: list[str] | None = None,
         _metrics_refs: list[str] | None = None,
+        # Internal: AggregationResult dict for full data access
+        _aggregation_results: dict[tuple, AggregationResult] | None = None,
     ):
         """Initialize Clustering object.
 
@@ -1130,6 +1030,7 @@ class Clustering:
             _original_data_refs: Internal: resolved DataArrays from serialization.
             _aggregated_data_refs: Internal: resolved DataArrays from serialization.
             _metrics_refs: Internal: resolved DataArrays from serialization.
+            _aggregation_results: Internal: dict of AggregationResult for full data access.
         """
         # Handle ISO timestamp strings from serialization
         if (
@@ -1146,6 +1047,10 @@ class Clustering:
         self.results = results
         self.original_timesteps = original_timesteps
         self._metrics = _metrics
+        self._aggregation_results = _aggregation_results
+
+        # Flag indicating this was loaded from serialization (missing full AggregationResult data)
+        self._from_serialization = _aggregation_results is None
 
         # Handle reconstructed data from refs (list of DataArrays)
         if _original_data_refs is not None and isinstance(_original_data_refs, list):
@@ -1168,6 +1073,102 @@ class Clustering:
         if _metrics_refs is not None and isinstance(_metrics_refs, list):
             if all(isinstance(da, xr.DataArray) for da in _metrics_refs):
                 self._metrics = xr.Dataset({da.name: da for da in _metrics_refs})
+
+    @classmethod
+    def _from_aggregation_results(
+        cls,
+        aggregation_results: dict[tuple, AggregationResult],
+        dim_names: list[str],
+        original_timesteps: pd.DatetimeIndex | None = None,
+        original_data: xr.Dataset | None = None,
+    ) -> Clustering:
+        """Create Clustering from AggregationResult dict.
+
+        This is the primary way to create a Clustering with full data access.
+        Called by ClusteringResults.apply() and TransformAccessor.
+
+        Args:
+            aggregation_results: Dict mapping (period, scenario) tuples to AggregationResult.
+            dim_names: Dimension names, e.g., ['period', 'scenario'].
+            original_timesteps: Original timesteps (optional, for expand).
+            original_data: Original dataset (optional, for plotting).
+
+        Returns:
+            Clustering with full AggregationResult access.
+        """
+        # Build ClusteringResults from the AggregationResults
+        clustering_results = ClusteringResults(
+            {k: r.clustering for k, r in aggregation_results.items()},
+            dim_names,
+        )
+
+        return cls(
+            results=clustering_results,
+            original_timesteps=original_timesteps or pd.DatetimeIndex([]),
+            original_data=original_data,
+            _aggregation_results=aggregation_results,
+        )
+
+    # ==========================================================================
+    # Iteration over AggregationResults (for direct access to tsam results)
+    # ==========================================================================
+
+    def __iter__(self):
+        """Iterate over (key, AggregationResult) pairs.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('iteration')
+        return iter(self._aggregation_results.items())
+
+    def __len__(self) -> int:
+        """Number of (period, scenario) combinations."""
+        if self._aggregation_results is not None:
+            return len(self._aggregation_results)
+        return len(list(self.results.keys()))
+
+    def __getitem__(self, key: tuple) -> AggregationResult:
+        """Get AggregationResult by (period, scenario) key.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('item access')
+        return self._aggregation_results[key]
+
+    def items(self):
+        """Iterate over (key, AggregationResult) pairs.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('items()')
+        return self._aggregation_results.items()
+
+    def keys(self):
+        """Iterate over (period, scenario) keys."""
+        if self._aggregation_results is not None:
+            return self._aggregation_results.keys()
+        return self.results.keys()
+
+    def values(self):
+        """Iterate over AggregationResult objects.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('values()')
+        return self._aggregation_results.values()
+
+    def _require_full_data(self, operation: str) -> None:
+        """Raise error if full AggregationResult data is not available."""
+        if self._from_serialization:
+            raise ValueError(
+                f'{operation} requires full AggregationResult data, '
+                f'but this Clustering was loaded from JSON. '
+                f'Use apply_clustering() to get full results.'
+            )
 
     def __repr__(self) -> str:
         return (
@@ -1463,6 +1464,10 @@ class ClusteringPlotAccessor:
             plot_result.show()
 
         return plot_result
+
+
+# Backwards compatibility alias
+AggregationResults = Clustering
 
 
 def _register_clustering_classes():
