@@ -563,13 +563,16 @@ def get_dataarray_stats(arr: xr.DataArray) -> dict:
     return stats
 
 
-def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True) -> xr.Dataset:
+def drop_constant_arrays(
+    ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True, atol: float = 1e-10
+) -> xr.Dataset:
     """Drop variables with constant values along a dimension.
 
     Args:
         ds: Input dataset to filter.
         dim: Dimension along which to check for constant values.
         drop_arrays_without_dim: If True, also drop variables that don't have the specified dimension.
+        atol: Absolute tolerance for considering values as constant (based on max - min).
 
     Returns:
         Dataset with constant variables removed.
@@ -583,8 +586,9 @@ def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_
                 drop_vars.append(name)
             continue
 
-        # Check if variable is constant along the dimension
-        if (da.max(dim, skipna=True) == da.min(dim, skipna=True)).all().item():
+        # Check if variable is constant along the dimension (ptp < atol)
+        ptp = da.max(dim, skipna=True) - da.min(dim, skipna=True)
+        if (ptp < atol).all().item():
             drop_vars.append(name)
 
     if drop_vars:
