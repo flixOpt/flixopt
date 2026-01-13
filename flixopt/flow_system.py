@@ -883,6 +883,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering
 
+            # Reconstruct aggregated_data from FlowSystem's main data arrays
+            # (aggregated_data is not serialized to avoid redundant storage)
+            if clustering.aggregated_data is None:
+                # Get all time-varying variables from the dataset (excluding clustering-prefixed ones)
+                time_vars = {
+                    name: arr
+                    for name, arr in ds.data_vars.items()
+                    if 'time' in arr.dims and not name.startswith('clustering|')
+                }
+                if time_vars:
+                    clustering.aggregated_data = xr.Dataset(time_vars)
+
             # Restore cluster_weight from clustering's representative_weights
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
             if hasattr(clustering, 'representative_weights'):

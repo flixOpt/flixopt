@@ -1056,14 +1056,9 @@ class Clustering:
                 arrays[ref_name] = da
                 original_data_refs.append(f':::{ref_name}')
 
-        # Collect aggregated_data arrays
-        aggregated_data_refs = None
-        if self.aggregated_data is not None:
-            aggregated_data_refs = []
-            for name, da in self.aggregated_data.data_vars.items():
-                ref_name = f'aggregated_data|{name}'
-                arrays[ref_name] = da
-                aggregated_data_refs.append(f':::{ref_name}')
+        # NOTE: aggregated_data is NOT serialized - it's identical to the FlowSystem's
+        # main data arrays and would be redundant. After loading, aggregated_data is
+        # reconstructed from the FlowSystem's dataset.
 
         # Collect metrics arrays
         metrics_refs = None
@@ -1079,7 +1074,6 @@ class Clustering:
             'results': self.results.to_dict(),  # Full ClusteringResults serialization
             'original_timesteps': [ts.isoformat() for ts in self.original_timesteps],
             '_original_data_refs': original_data_refs,
-            '_aggregated_data_refs': aggregated_data_refs,
             '_metrics_refs': metrics_refs,
         }
 
@@ -1094,7 +1088,6 @@ class Clustering:
         _metrics: xr.Dataset | None = None,
         # These are for reconstruction from serialization
         _original_data_refs: list[str] | None = None,
-        _aggregated_data_refs: list[str] | None = None,
         _metrics_refs: list[str] | None = None,
         # Internal: AggregationResult dict for full data access
         _aggregation_results: dict[tuple, AggregationResult] | None = None,
@@ -1108,9 +1101,9 @@ class Clustering:
             original_timesteps: Original timesteps before clustering.
             original_data: Original dataset before clustering (for expand/plotting).
             aggregated_data: Aggregated dataset after clustering (for plotting).
+                After loading from file, this is reconstructed from FlowSystem data.
             _metrics: Pre-computed metrics dataset.
             _original_data_refs: Internal: resolved DataArrays from serialization.
-            _aggregated_data_refs: Internal: resolved DataArrays from serialization.
             _metrics_refs: Internal: resolved DataArrays from serialization.
             _aggregation_results: Internal: dict of AggregationResult for full data access.
             _dim_names: Internal: dimension names when using _aggregation_results.
@@ -1145,29 +1138,34 @@ class Clustering:
         if _original_data_refs is not None and isinstance(_original_data_refs, list):
             # These are resolved DataArrays from the structure resolver
             if all(isinstance(da, xr.DataArray) for da in _original_data_refs):
-                # Rename 'original_time' back to 'time' (was renamed during serialization)
-                renamed = []
+                # Rename 'original_time' back to 'time' and strip 'original_data|' prefix
+                data_vars = {}
                 for da in _original_data_refs:
                     if 'original_time' in da.dims:
                         da = da.rename({'original_time': 'time'})
-                    renamed.append(da)
-                self.original_data = xr.Dataset({da.name: da for da in renamed})
+                    # Strip 'original_data|' prefix from name (added during serialization)
+                    name = da.name
+                    if name.startswith('original_data|'):
+                        name = name[14:]  # len('original_data|') = 14
+                    data_vars[name] = da.rename(name)
+                self.original_data = xr.Dataset(data_vars)
             else:
                 self.original_data = original_data
         else:
             self.original_data = original_data
 
-        if _aggregated_data_refs is not None and isinstance(_aggregated_data_refs, list):
-            if all(isinstance(da, xr.DataArray) for da in _aggregated_data_refs):
-                self.aggregated_data = xr.Dataset({da.name: da for da in _aggregated_data_refs})
-            else:
-                self.aggregated_data = aggregated_data
-        else:
-            self.aggregated_data = aggregated_data
+        self.aggregated_data = aggregated_data
 
         if _metrics_refs is not None and isinstance(_metrics_refs, list):
             if all(isinstance(da, xr.DataArray) for da in _metrics_refs):
-                self._metrics = xr.Dataset({da.name: da for da in _metrics_refs})
+                # Strip 'metrics|' prefix from name (added during serialization)
+                data_vars = {}
+                for da in _metrics_refs:
+                    name = da.name
+                    if name.startswith('metrics|'):
+                        name = name[8:]  # len('metrics|') = 8
+                    data_vars[name] = da.rename(name)
+                self._metrics = xr.Dataset(data_vars)
 
     @property
     def results(self) -> ClusteringResults:
