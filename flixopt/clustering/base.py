@@ -30,6 +30,19 @@ if TYPE_CHECKING:
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
+from ..statistics_accessor import _build_color_kwargs
+
+
+def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
+    """Apply default slot assignments to plotly kwargs.
+
+    Args:
+        plotly_kwargs: The kwargs dict to update (modified in place).
+        defaults: Default slot assignments. None values block slots.
+    """
+    for slot, value in defaults.items():
+        plotly_kwargs.setdefault(slot, value)
+
 
 def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | None = None) -> xr.DataArray:
     """Select from DataArray by period/scenario if those dimensions exist."""
@@ -196,7 +209,7 @@ class ClusterStructure:
 
         Args:
             colors: Colorscale name (str) or list of colors.
-                Defaults to CONFIG.Plotting.default_sequential_colorscale.
+                Defaults to plotly template's sequential colorscale.
             show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
 
         Returns:
@@ -208,7 +221,6 @@ class ClusterStructure:
         n_clusters = (
             int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
         )
-        colorscale = colors or CONFIG.Plotting.default_sequential_colorscale
 
         # Build DataArray with 1-based original_cluster coords
         cluster_da = self.cluster_order.assign_coords(
@@ -234,10 +246,10 @@ class ClusterStructure:
         else:
             plot_ds = ds
 
-        fig = plot_ds.fxplot.heatmap(
-            colors=colorscale,
-            title=f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)',
-        )
+        imshow_kwargs = {'title': f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)'}
+        if colors is not None:
+            imshow_kwargs['color_continuous_scale'] = colors
+        fig = plot_ds.plotly.imshow(**imshow_kwargs)
 
         fig.update_coloraxes(colorbar_title='Cluster')
         if not has_period and not has_scenario:
@@ -544,11 +556,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        color: str | None = 'auto',
-        line_dash: str | None = 'representation',
-        facet_col: str | None = 'auto',
-        facet_row: str | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Compare original vs aggregated data.
@@ -561,22 +570,18 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
-                Use 'representation' to color by Original/Clustered instead of line_dash.
-            line_dash: Dimension for line dash styles. Defaults to 'representation'.
-                Set to None to disable line dash differentiation.
-            facet_col: Dimension for subplot columns. 'auto' uses CONFIG priority.
-                Use 'variable' to create separate columns per variable.
-            facet_row: Dimension for subplot rows. 'auto' uses CONFIG priority.
-                Use 'variable' to create separate rows per variable.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
-            **plotly_kwargs: Additional arguments passed to plotly.
+            data_only: If True, skip figure creation and return only data.
+            **plotly_kwargs: Additional arguments passed to plotly (e.g., color, line_dash,
+                facet_col, facet_row). Defaults: x='time'/'duration', color='variable',
+                line_dash='representation', symbol=None.
 
         Returns:
             PlotResult containing the comparison figure and underlying data.
         """
         import pandas as pd
+        import plotly.graph_objects as go
 
         from ..config import CONFIG
         from ..plot_result import PlotResult
@@ -610,7 +615,8 @@ class ClusteringPlotAccessor:
                 for rep in ds.coords['representation'].values:
                     values = np.sort(ds[var].sel(representation=rep).values.flatten())[::-1]
                     sorted_vars[(var, rep)] = values
-            n = len(values)
+            # Get length from first sorted array
+            n = len(next(iter(sorted_vars.values())))
             ds = xr.Dataset(
                 {
                     var: xr.DataArray(
@@ -632,20 +638,24 @@ class ClusteringPlotAccessor:
         else:
             title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
 
-        # Use fxplot for smart defaults
-        line_kwargs = {}
-        if line_dash is not None:
-            line_kwargs['line_dash'] = line_dash
-            if line_dash == 'representation':
-                line_kwargs['line_dash_map'] = {'Original': 'dot', 'Clustered': 'solid'}
+        # Early return for data_only mode
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
-        fig = ds.fxplot.line(
-            colors=colors,
-            color=color,
+        # Apply slot defaults
+        defaults = {
+            'x': 'duration' if kind == 'duration_curve' else 'time',
+            'color': 'variable',
+            'line_dash': 'representation',
+            'line_dash_map': {'Original': 'dot', 'Clustered': 'solid'},
+            'symbol': None,  # Block symbol slot
+        }
+        _apply_slot_defaults(plotly_kwargs, defaults)
+
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.line(
             title=title,
-            facet_col=facet_col,
-            facet_row=facet_row,
-            **line_kwargs,
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_yaxes(matches=None)
@@ -695,9 +705,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: str | list[str] | None = None,
-        facet_col: str | None = 'auto',
-        animation_frame: str | None = 'auto',
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot cluster assignments over time as a heatmap timeline.
@@ -713,17 +722,18 @@ class ClusteringPlotAccessor:
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps.
-                Defaults to CONFIG.Plotting.default_sequential_colorscale.
-            facet_col: Dimension to facet on columns. 'auto' uses CONFIG priority.
-            animation_frame: Dimension for animation slider. 'auto' uses CONFIG priority.
+                Defaults to plotly template's sequential colorscale.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
-            **plotly_kwargs: Additional arguments passed to plotly.
+            data_only: If True, skip figure creation and return only data.
+            **plotly_kwargs: Additional arguments passed to plotly (e.g., facet_col, animation_frame).
 
         Returns:
             PlotResult containing the heatmap figure and cluster assignment data.
             The data has 'cluster' variable with time dimension, matching original timesteps.
         """
+        import plotly.graph_objects as go
+
         from ..config import CONFIG
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
@@ -758,18 +768,23 @@ class ClusteringPlotAccessor:
         coords = {'time': original_time} if original_time is not None else {}
         coords.update({d: cluster_order_da.coords[d].values for d in extra_dims})
         cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)
+        cluster_da.name = 'cluster'
+
+        # Early return for data_only mode
+        if data_only:
+            return PlotResult(data=xr.Dataset({'cluster': cluster_da}), figure=go.Figure())
 
         # Add dummy y dimension for heatmap visualization (single row)
         heatmap_da = cluster_da.expand_dims('y', axis=-1).assign_coords(y=['Cluster'])
         heatmap_da.name = 'cluster_assignment'
         heatmap_da = heatmap_da.transpose('time', 'y', ...)
 
-        # Use fxplot.heatmap for smart defaults
-        fig = heatmap_da.fxplot.heatmap(
-            colors=colors,
+        # Use plotly.imshow for heatmap
+        # Only pass color_continuous_scale if explicitly provided (template handles default)
+        if colors is not None:
+            plotly_kwargs.setdefault('color_continuous_scale', colors)
+        fig = heatmap_da.plotly.imshow(
             title='Cluster Assignments',
-            facet_col=facet_col,
-            animation_frame=animation_frame,
             aspect='auto',
             **plotly_kwargs,
         )
@@ -779,7 +794,6 @@ class ClusteringPlotAccessor:
         fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
         # Data is exactly what we plotted (without dummy y dimension)
-        cluster_da.name = 'cluster'
         data = xr.Dataset({'cluster': cluster_da})
         plot_result = PlotResult(data=data, figure=fig)
 
@@ -796,10 +810,8 @@ class ClusteringPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
-        color: str | None = 'auto',
-        facet_col: str | None = 'cluster',
-        facet_cols: int | None = None,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot each cluster's typical period profile.
@@ -812,19 +824,17 @@ class ClusteringPlotAccessor:
                 or None to plot all time-varying variables.
             select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
-            color: Dimension for line colors. 'auto' uses CONFIG priority (typically 'variable').
-                Use 'cluster' to color by cluster instead of faceting.
-            facet_col: Dimension for subplot columns. Defaults to 'cluster'.
-                Use 'variable' to facet by variable instead.
-            facet_cols: Max columns before wrapping facets.
-                Defaults to CONFIG.Plotting.default_facet_cols.
             show: Whether to display the figure.
                 Defaults to CONFIG.Plotting.default_show.
-            **plotly_kwargs: Additional arguments passed to plotly.
+            data_only: If True, skip figure creation and return only data.
+            **plotly_kwargs: Additional arguments passed to plotly (e.g., color, facet_col,
+                facet_col_wrap). Defaults: x='time', color='variable', symbol=None.
 
         Returns:
             PlotResult containing the figure and underlying data.
         """
+        import plotly.graph_objects as go
+
         from ..config import CONFIG
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
@@ -895,15 +905,26 @@ class ClusteringPlotAccessor:
             )
 
         ds = xr.Dataset(data_vars)
+
+        # Early return for data_only mode (include occurrences in result)
+        if data_only:
+            data_vars['occurrences'] = cs.cluster_occurrences
+            return PlotResult(data=xr.Dataset(data_vars), figure=go.Figure())
+
         title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
 
-        # Use fxplot for smart defaults
-        fig = ds.fxplot.line(
-            colors=colors,
-            color=color,
+        # Apply slot defaults
+        defaults = {
+            'x': 'time',
+            'color': 'variable',
+            'symbol': None,  # Block symbol slot
+        }
+        _apply_slot_defaults(plotly_kwargs, defaults)
+
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.line(
             title=title,
-            facet_col=facet_col,
-            facet_cols=facet_cols,
+            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_yaxes(matches=None)

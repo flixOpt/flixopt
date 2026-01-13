@@ -6,20 +6,41 @@ import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
 import xarray as xr
+from xarray_plotly import SLOT_ORDERS
 
 from .config import CONFIG
 from .plot_result import PlotResult
-from .statistics_accessor import add_line_overlay
+from .statistics_accessor import (
+    ColorType,
+    SelectType,
+    _build_color_kwargs,
+    add_line_overlay,
+)
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 __all__ = ['Comparison']
 
-# Type aliases (matching statistics_accessor.py)
-SelectType = dict[str, Any]
-FilterType = str | list[str]
-ColorType = str | list[str] | dict[str, str] | None
+# Extract all unique slot names from xarray_plotly
+_CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
+
+
+def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
+    """Apply default slot assignments to plotly kwargs.
+
+    Args:
+        plotly_kwargs: The kwargs dict to update (modified in place).
+        defaults: Default slot assignments. None values block slots.
+    """
+    # Check if 'case' is already assigned by user to any slot
+    case_already_assigned = any(plotly_kwargs.get(s) == 'case' for s in _CASE_SLOTS)
+
+    for slot, value in defaults.items():
+        if value == 'case' and case_already_assigned:
+            # Skip case assignment if user already assigned 'case' to another slot
+            continue
+        plotly_kwargs.setdefault(slot, value)
 
 
 class Comparison:
@@ -51,7 +72,7 @@ class Comparison:
 
         # Side-by-side plots (auto-facets by 'case')
         comp.statistics.plot.balance('Heat')
-        comp.statistics.flow_rates.fxplot.line()
+        comp.statistics.flow_rates.plotly.line()
 
         # Access combined data
         comp.solution  # xr.Dataset with 'case' dimension
@@ -411,66 +432,159 @@ class ComparisonStatisticsPlot:
             fig.show()
         return PlotResult(data=ds, figure=fig or go.Figure())
 
-    def _plot(
+    def balance(
         self,
-        method_name: str,
-        plot_type: str,
-        *args,
+        node: str,
+        *,
+        select: SelectType | None = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
         show: bool | None = None,
-        **kwargs,
+        **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Generic plot method that delegates to underlying statistics accessor."""
-        # Extract plot-specific kwargs (fxplot arguments)
-        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color', 'ylabel'}
-        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+        """Plot node balance comparison across cases.
 
-        # Known data kwargs that should be passed to _combine_data
-        data_keys = {'unit', 'include', 'exclude', 'normalized', 'time', 'effects', 'freq', 'period', 'by'}
-        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
-        # Remaining kwargs are plotly layout kwargs (height, width, etc.)
-        plotly_kwargs = kwargs
+        Args:
+            node: Bus or component label to plot balance for.
+            select: xarray-style selection.
+            include: Filter to include only matching flow labels.
+            exclude: Filter to exclude matching flow labels.
+            unit: 'flow_rate' or 'flow_hours'.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
 
-        ds, title = self._combine_data(method_name, *args, **data_kwargs)
+        Returns:
+            PlotResult with combined balance data and figure.
+        """
+        ds, _ = self._combine_data('balance', node, select=select, include=include, exclude=exclude, unit=unit)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plot_fn = getattr(ds.fxplot, plot_type)
-        fig = plot_fn(title=title, **plot_kwargs)
-        if plotly_kwargs:
-            fig.update_layout(**plotly_kwargs)
+        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.bar(
+            title=f'{node} Balance Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
         return self._finalize(ds, fig, show)
 
-    def balance(self, node: str, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot node balance comparison. See StatisticsPlotAccessor.balance."""
-        kwargs.setdefault('color', 'variable')
-        return self._plot('balance', 'stacked_bar', node, show=show, **kwargs)
+    def carrier_balance(
+        self,
+        carrier: str,
+        *,
+        select: SelectType | None = None,
+        include: str | list[str] | None = None,
+        exclude: str | list[str] | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot carrier balance comparison across cases.
 
-    def carrier_balance(self, carrier: str, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot carrier balance comparison. See StatisticsPlotAccessor.carrier_balance."""
-        kwargs.setdefault('color', 'variable')
-        return self._plot('carrier_balance', 'stacked_bar', carrier, show=show, **kwargs)
+        Args:
+            carrier: Carrier name to plot balance for.
+            select: xarray-style selection.
+            include: Filter to include only matching flow labels.
+            exclude: Filter to exclude matching flow labels.
+            unit: 'flow_rate' or 'flow_hours'.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
 
-    def flows(self, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot flows comparison. See StatisticsPlotAccessor.flows."""
-        return self._plot('flows', 'line', show=show, **kwargs)
-
-    def storage(self, storage: str, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot storage operation comparison. See StatisticsPlotAccessor.storage.
-
-        Creates stacked bars for charging/discharging flows with charge state
-        as a line overlay on secondary y-axis.
+        Returns:
+            PlotResult with combined carrier balance data and figure.
         """
-        # Extract plot kwargs
-        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame'}
-        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
-        kwargs.pop('charge_state_color', None)  # Not used in comparison (lines colored by case)
-        # Data kwargs for _combine_data
-        data_keys = {'unit', 'select'}
-        data_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in data_keys}
-        # Remaining are plotly layout kwargs
-        plotly_kwargs = kwargs
+        ds, _ = self._combine_data(
+            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit
+        )
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
 
-        ds, _ = self._combine_data('storage', storage, **data_kwargs)
+        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.bar(
+            title=f'{carrier.capitalize()} Balance Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
+        return self._finalize(ds, fig, show)
+
+    def flows(
+        self,
+        *,
+        start: str | list[str] | None = None,
+        end: str | list[str] | None = None,
+        component: str | list[str] | None = None,
+        select: SelectType | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot flows comparison across cases.
+
+        Args:
+            start: Filter by source node(s).
+            end: Filter by destination node(s).
+            component: Filter by parent component(s).
+            select: xarray-style selection.
+            unit: 'flow_rate' or 'flow_hours'.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined flows data and figure.
+        """
+        ds, _ = self._combine_data('flows', start=start, end=end, component=component, select=select, unit=unit)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.line(
+            title='Flows Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        return self._finalize(ds, fig, show)
+
+    def storage(
+        self,
+        storage: str,
+        *,
+        select: SelectType | None = None,
+        unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot storage operation comparison across cases.
+
+        Args:
+            storage: Storage component label.
+            select: xarray-style selection.
+            unit: 'flow_rate' or 'flow_hours'.
+            colors: Color specification for flow bars.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined storage operation data and figure.
+        """
+        ds, _ = self._combine_data('storage', storage, select=select, unit=unit)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
@@ -478,73 +592,228 @@ class ComparisonStatisticsPlot:
         flow_vars = [v for v in ds.data_vars if v != 'charge_state']
         flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
 
-        # Create stacked bar for flows
-        fig = flow_ds.fxplot.stacked_bar(title=f'{storage} Operation', **plot_kwargs)
+        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, flow_vars)
+        fig = flow_ds.plotly.bar(
+            title=f'{storage} Operation Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
+        fig.update_traces(marker_line_width=0)
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
+            # Only pass faceting kwargs that add_line_overlay accepts
+            overlay_kwargs = {
+                k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
+            }
             add_line_overlay(
                 fig,
                 ds['charge_state'],
-                color='case',  # One line per case
+                color='case',
                 name='charge_state',
                 secondary_y=True,
                 y_title='Charge State',
-                **plot_kwargs,
+                **overlay_kwargs,
             )
-
-        if plotly_kwargs:
-            fig.update_layout(**plotly_kwargs)
 
         return self._finalize(ds, fig, show)
 
     def charge_states(
-        self, storages: str | list[str] | None = None, *, show: bool | None = None, **kwargs
+        self,
+        storages: str | list[str] | None = None,
+        *,
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot charge states comparison. See StatisticsPlotAccessor.charge_states."""
-        return self._plot('charge_states', 'line', storages, show=show, **kwargs)
+        """Plot charge states comparison across cases.
 
-    def duration_curve(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot duration curves comparison. See StatisticsPlotAccessor.duration_curve."""
-        return self._plot('duration_curve', 'line', variables, show=show, **kwargs)
+        Args:
+            storages: Storage label(s) to plot. If None, plots all.
+            select: xarray-style selection.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
 
-    def sizes(self, *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot investment sizes comparison. See StatisticsPlotAccessor.sizes."""
-        kwargs.setdefault('x', 'variable')
-        kwargs.setdefault('color', 'variable')
-        kwargs.setdefault('ylabel', 'Size')
-        return self._plot('sizes', 'bar', show=show, **kwargs)
+        Returns:
+            PlotResult with combined charge state data and figure.
+        """
+        ds, _ = self._combine_data('charge_states', storages, select=select)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.line(
+            title='Charge States Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        return self._finalize(ds, fig, show)
+
+    def duration_curve(
+        self,
+        variables: str | list[str],
+        *,
+        select: SelectType | None = None,
+        normalize: bool = False,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot duration curves comparison across cases.
+
+        Args:
+            variables: Flow label(s) or variable name(s) to plot.
+            select: xarray-style selection.
+            normalize: If True, normalize x-axis to 0-100%.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined duration curve data and figure.
+        """
+        ds, _ = self._combine_data('duration_curve', variables, select=select, normalize=normalize)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        defaults = {
+            'x': 'duration_pct' if normalize else 'duration',
+            'color': 'variable',
+            'symbol': None,
+            'line_dash': 'case',
+        }
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.line(
+            title='Duration Curve Comparison',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        return self._finalize(ds, fig, show)
+
+    def sizes(
+        self,
+        *,
+        max_size: float | None = 1e6,
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot investment sizes comparison across cases.
+
+        Args:
+            max_size: Maximum size to include (filters defaults).
+            select: xarray-style selection.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined sizes data and figure.
+        """
+        ds, _ = self._combine_data('sizes', max_size=max_size, select=select)
+        if not ds.data_vars:
+            return self._finalize(ds, None, show)
+
+        defaults = {'x': 'variable', 'color': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.bar(
+            title='Investment Sizes Comparison',
+            labels={'value': 'Size'},
+            barmode='group',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
+        return self._finalize(ds, fig, show)
 
     def effects(
         self,
         aspect: Literal['total', 'temporal', 'periodic'] = 'total',
         *,
+        effect: str | None = None,
         by: Literal['component', 'contributor', 'time'] | None = None,
+        select: SelectType | None = None,
+        colors: ColorType | None = None,
         show: bool | None = None,
-        **kwargs,
+        **plotly_kwargs: Any,
     ) -> PlotResult:
-        """Plot effects comparison. See StatisticsPlotAccessor.effects."""
-        kwargs['by'] = by
-        kwargs.setdefault('x', by if by else 'variable')
-        ds, title = self._combine_data('effects', aspect, **kwargs)
+        """Plot effects comparison across cases.
+
+        Args:
+            aspect: Which aspect to plot - 'total', 'temporal', or 'periodic'.
+            effect: Specific effect name to plot. If None, plots all.
+            by: Group by 'component', 'contributor', or 'time'.
+            select: xarray-style selection.
+            colors: Color specification (dict, list, or colorscale name).
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined effects data and figure.
+        """
+        ds, _ = self._combine_data('effects', aspect, effect=effect, by=by, select=select)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
 
-        plot_keys = {'colors', 'facet_col', 'facet_row', 'animation_frame', 'x', 'color'}
-        plot_kwargs = {k: kwargs[k] for k in list(kwargs) if k in plot_keys}
-        fig = ds.fxplot.bar(title=title, **plot_kwargs)
+        defaults = {'x': by if by else 'variable', 'color': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        fig = ds.plotly.bar(
+            title=f'Effects Comparison ({aspect})',
+            barmode='group',
+            **color_kwargs,
+            **plotly_kwargs,
+        )
         fig.update_layout(bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
         return self._finalize(ds, fig, show)
 
-    def heatmap(self, variables: str | list[str], *, show: bool | None = None, **kwargs) -> PlotResult:
-        """Plot heatmap comparison. See StatisticsPlotAccessor.heatmap."""
-        plot_keys = {'colors', 'facet_col', 'animation_frame'}
-        plot_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in plot_keys}
+    def heatmap(
+        self,
+        variables: str | list[str],
+        *,
+        select: SelectType | None = None,
+        reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
+        colors: str | list[str] | None = None,
+        show: bool | None = None,
+        **plotly_kwargs: Any,
+    ) -> PlotResult:
+        """Plot heatmap comparison across cases.
 
-        ds, _ = self._combine_data('heatmap', variables, **kwargs)
+        Args:
+            variables: Flow label(s) or variable name(s) to plot.
+            select: xarray-style selection.
+            reshape: Time reshape frequencies, 'auto', or None.
+            colors: Colorscale name or list of colors.
+            show: Whether to display the figure.
+            **plotly_kwargs: Additional arguments passed to plotly.
+
+        Returns:
+            PlotResult with combined heatmap data and figure.
+        """
+        ds, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape)
         if not ds.data_vars:
             return self._finalize(ds, None, show)
+
         da = ds[next(iter(ds.data_vars))]
-        fig = da.fxplot.heatmap(**plot_kwargs)
+
+        defaults = {'facet_col': 'case'}
+        _apply_slot_defaults(plotly_kwargs, defaults)
+        # Handle colorscale
+        if colors is not None and 'color_continuous_scale' not in plotly_kwargs:
+            plotly_kwargs['color_continuous_scale'] = colors
+
+        fig = da.plotly.imshow(
+            title='Heatmap Comparison',
+            **plotly_kwargs,
+        )
         return self._finalize(ds, fig, show)

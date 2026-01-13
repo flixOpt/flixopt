@@ -53,7 +53,7 @@ Until here -->
 
 ## [6.0.0] - Upcoming
 
-**Summary**: Major release featuring a complete rewrite of the clustering/aggregation system with tsam integration, new `fxplot` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
+**Summary**: Major release featuring a complete rewrite of the clustering/aggregation system with tsam integration, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
 
 !!! warning "Breaking Changes"
     This release removes `ClusteredOptimization` and `ClusteringParameters` which were deprecated in v5.0.0. Use `flow_system.transform.cluster()` instead. See [Migration](#migration-from-clusteredoptimization) below.
@@ -61,7 +61,7 @@ Until here -->
 ### Key Features
 
 - **Clustering/Aggregation Rework** (#549, #552) - Complete rewrite with tsam integration, inter-cluster storage linking, and 4 storage modes
-- **fxplot Plotting Accessor** (#548) - Universal xarray plotting with automatic faceting
+- **plotly Plotting Accessor** (#548) - Universal xarray plotting with automatic faceting
 - **Comparison Module** (#550) - Compare multiple FlowSystems side-by-side
 - **Improved Notebooks** (#542, #551) - Better tutorial data and faster CI execution
 
@@ -142,7 +142,7 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
 
-#### FXPlot Accessor (#548)
+#### Plotly Accessor (#548)
 
 New global xarray accessors for universal plotting with automatic faceting and smart dimension handling. Works on any xarray Dataset, not just flixopt results.
 
@@ -150,13 +150,13 @@ New global xarray accessors for universal plotting with automatic faceting and s
 import flixopt as fx  # Registers accessors automatically
 
 # Plot any xarray Dataset with automatic faceting
-dataset.fxplot.bar(x='component')
-dataset.fxplot.area(x='time')
-dataset.fxplot.heatmap(x='time', y='component')
-dataset.fxplot.line(x='time', facet_col='scenario')
+dataset.plotly.bar(x='component')
+dataset.plotly.area(x='time')
+dataset.plotly.imshow(x='time', y='component')
+dataset.plotly.line(x='time', facet_col='scenario')
 
 # DataArray support
-data_array.fxplot.line()
+data_array.plotly.line()
 
 # Statistics transformations
 dataset.fxstats.to_duration_curve()
@@ -166,13 +166,12 @@ dataset.fxstats.to_duration_curve()
 
 | Method | Description |
 |--------|-------------|
-| `.fxplot.bar()` | Grouped bar charts |
-| `.fxplot.stacked_bar()` | Stacked bar charts |
-| `.fxplot.line()` | Line charts with faceting |
-| `.fxplot.area()` | Stacked area charts |
-| `.fxplot.heatmap()` | Heatmap visualizations |
-| `.fxplot.scatter()` | Scatter plots |
-| `.fxplot.pie()` | Pie charts with faceting |
+| `.plotly.bar()` | Bar charts (use `barmode='group'` or `'relative'` for stacked) |
+| `.plotly.line()` | Line charts with faceting |
+| `.plotly.area()` | Stacked area charts |
+| `.plotly.imshow()` | Heatmap visualizations |
+| `.plotly.scatter()` | Scatter plots |
+| `.plotly.pie()` | Pie charts with faceting |
 | `.fxstats.to_duration_curve()` | Transform to duration curve format |
 
 **Key Features**:
@@ -195,7 +194,7 @@ comp = fx.Comparison([fs1, fs2, fs3], names=['baseline', 'low_cost', 'high_eff']
 
 # Side-by-side plots (auto-facets by 'case' dimension)
 comp.statistics.plot.balance('Heat')
-comp.statistics.flow_rates.fxplot.line()
+comp.statistics.flow_rates.plotly.line()
 
 # Access combined data with 'case' dimension
 comp.solution  # xr.Dataset
@@ -310,7 +309,6 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 - **08c2-clustering-storage-modes.ipynb** - Comparison of all 4 storage cluster modes
 - **08d-clustering-multiperiod.ipynb** - Clustering with periods and scenarios
 - **08e-clustering-internals.ipynb** - Understanding clustering internals
-- **fxplot_accessor_demo.ipynb** - Demo of the new fxplot accessor
 
 **Improved Tutorials:**
 
