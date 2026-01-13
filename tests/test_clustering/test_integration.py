@@ -373,4 +373,3 @@ class TestClusteringModuleImports:
         from flixopt import clustering
 
         assert hasattr(clustering, 'Clustering')
-        assert hasattr(clustering, 'ClusteringResultCollection')  # Alias for backwards compat

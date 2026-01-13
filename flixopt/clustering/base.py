@@ -536,6 +536,144 @@ class ClusteringResults:
         coords_str = ', '.join(f'{k}: {len(v)}' for k, v in self.coords.items())
         return f'ClusteringResults(dims={self.dims}, coords=({coords_str}), n_clusters={self.n_clusters})'
 
+    def apply(self, data: xr.Dataset) -> AggregationResults:
+        """Apply clustering to dataset for all (period, scenario) combinations.
+
+        Args:
+            data: Dataset with time-varying data. Must have 'time' dimension.
+                May have 'period' and/or 'scenario' dimensions matching this object.
+
+        Returns:
+            AggregationResults with full access to aggregated data.
+            Use `.clustering` on the result to get ClusteringResults for IO.
+
+        Example:
+            >>> agg_results = clustering_results.apply(dataset)
+            >>> agg_results.clustering  # Get ClusteringResults for IO
+            >>> for key, result in agg_results:
+            ...     print(result.cluster_representatives)
+        """
+        from ..core import drop_constant_arrays
+
+        results = {}
+        for key, cr in self._results.items():
+            # Build selector for this key
+            selector = dict(zip(self._dim_names, key, strict=False))
+
+            # Select the slice for this (period, scenario)
+            data_slice = data.sel(**selector, drop=True) if selector else data
+
+            # Drop constant arrays and convert to DataFrame
+            time_varying = drop_constant_arrays(data_slice, dim='time')
+            df = time_varying.to_dataframe()
+
+            # Apply clustering
+            results[key] = cr.apply(df)
+
+        return AggregationResults(results, self._dim_names)
+
+
+class AggregationResults:
+    """Collection of tsam AggregationResult objects for multi-dimensional data.
+
+    Wraps multiple AggregationResult objects keyed by (period, scenario) tuples.
+    Provides access to aggregated data and a `.clustering` property for IO.
+
+    Attributes:
+        dims: Tuple of dimension names, e.g., ('period', 'scenario').
+
+    Example:
+        >>> agg_results = clustering_results.apply(dataset)
+        >>> agg_results.clustering  # Returns ClusteringResults for IO
+        >>> for key, result in agg_results:
+        ...     print(result.cluster_representatives)
+    """
+
+    def __init__(
+        self,
+        results: dict[tuple, AggregationResult],
+        dim_names: list[str],
+    ):
+        """Initialize AggregationResults.
+
+        Args:
+            results: Dict mapping (period, scenario) tuples to tsam AggregationResult objects.
+            dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
+        """
+        self._results = results
+        self._dim_names = dim_names
+
+    @property
+    def dims(self) -> tuple[str, ...]:
+        """Dimension names as tuple."""
+        return tuple(self._dim_names)
+
+    @property
+    def dim_names(self) -> list[str]:
+        """Dimension names as list."""
+        return list(self._dim_names)
+
+    @property
+    def clustering(self) -> ClusteringResults:
+        """Extract ClusteringResults for IO/persistence.
+
+        Returns:
+            ClusteringResults containing the ClusteringResult from each AggregationResult.
+        """
+        return ClusteringResults(
+            {k: r.clustering for k, r in self._results.items()},
+            self._dim_names,
+        )
+
+    # === Iteration ===
+
+    def __iter__(self):
+        """Iterate over (key, AggregationResult) pairs."""
+        return iter(self._results.items())
+
+    def __len__(self) -> int:
+        """Number of AggregationResult objects."""
+        return len(self._results)
+
+    def __getitem__(self, key: tuple) -> AggregationResult:
+        """Get AggregationResult by key tuple."""
+        return self._results[key]
+
+    def items(self):
+        """Iterate over (key, AggregationResult) pairs."""
+        return self._results.items()
+
+    def keys(self):
+        """Iterate over keys."""
+        return self._results.keys()
+
+    def values(self):
+        """Iterate over AggregationResult objects."""
+        return self._results.values()
+
+    # === Properties from first result ===
+
+    @property
+    def _first_result(self) -> AggregationResult:
+        """Get the first AggregationResult (for structure info)."""
+        return next(iter(self._results.values()))
+
+    @property
+    def n_clusters(self) -> int:
+        """Number of clusters."""
+        return self._first_result.n_clusters
+
+    @property
+    def n_segments(self) -> int | None:
+        """Number of segments, or None if not segmented."""
+        return self._first_result.n_segments
+
+    def __repr__(self) -> str:
+        n = len(self._results)
+        if not self.dims:
+            return f'AggregationResults(n_results=1, n_clusters={self.n_clusters})'
+        return f'AggregationResults(dims={self.dims}, n_results={n}, n_clusters={self.n_clusters})'
+
 
 class Clustering:
     """Clustering information for a FlowSystem.
@@ -1325,11 +1463,6 @@ class ClusteringPlotAccessor:
             plot_result.show()
 
         return plot_result
-
-
-# Backwards compatibility - keep these names for existing code
-# TODO: Remove after migration
-ClusteringResultCollection = Clustering  # Alias for backwards compat
 
 
 def _register_clustering_classes():

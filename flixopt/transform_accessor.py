@@ -1256,6 +1256,7 @@ class TransformAccessor:
         """
         import tsam
 
+        from .clustering import ClusteringResults
         from .core import drop_constant_arrays
 
         # Parse cluster_duration to hours
@@ -1347,7 +1348,7 @@ class TransformAccessor:
                     }
                     cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
 
-                    # Step 1: Determine clustering based on selected data_vars (or all if not specified)
+                    # Perform clustering based on selected data_vars (or all if not specified)
                     tsam_result = tsam.aggregate(
                         df_for_clustering,
                         n_clusters=n_clusters,
@@ -1359,14 +1360,6 @@ class TransformAccessor:
                         **tsam_kwargs,
                     )
 
-                    # Step 2: If data_vars was specified, apply clustering to FULL data
-                    if data_vars is not None:
-                        ds_slice_full = ds.sel(**selector, drop=True) if selector else ds
-                        temporaly_changing_ds_full = drop_constant_arrays(ds_slice_full, dim='time')
-                        df_full = temporaly_changing_ds_full.to_dataframe()
-                        # Apply the determined clustering to get representatives for all variables
-                        tsam_result = tsam_result.clustering.apply(df_full)
-
                 tsam_aggregation_results[key] = tsam_result
                 tsam_clustering_results[key] = tsam_result.clustering
                 cluster_assignmentss[key] = tsam_result.cluster_assignments
@@ -1376,6 +1369,47 @@ class TransformAccessor:
                 except Exception as e:
                     logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
                     clustering_metrics_all[key] = pd.DataFrame()
+
+        # If data_vars was specified, apply clustering to FULL data
+        if data_vars is not None:
+            # Build dim_names for ClusteringResults
+            dim_names = []
+            if has_periods:
+                dim_names.append('period')
+            if has_scenarios:
+                dim_names.append('scenario')
+
+            # Convert (period, scenario) keys to ClusteringResults format
+            def to_cr_key(p, s):
+                key_parts = []
+                if has_periods:
+                    key_parts.append(p)
+                if has_scenarios:
+                    key_parts.append(s)
+                return tuple(key_parts)
+
+            # Build ClusteringResults from subset clustering
+            clustering_results = ClusteringResults(
+                {to_cr_key(p, s): cr for (p, s), cr in tsam_clustering_results.items()},
+                dim_names,
+            )
+
+            # Apply to full data - this returns AggregationResults
+            agg_results = clustering_results.apply(ds)
+
+            # Update tsam_aggregation_results with full data results
+            for cr_key, result in agg_results:
+                # Convert back to (period, scenario) format
+                if has_periods and has_scenarios:
+                    full_key = (cr_key[0], cr_key[1])
+                elif has_periods:
+                    full_key = (cr_key[0], None)
+                elif has_scenarios:
+                    full_key = (None, cr_key[0])
+                else:
+                    full_key = (None, None)
+                tsam_aggregation_results[full_key] = result
+                cluster_occurrences_all[full_key] = result.cluster_weights
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
@@ -1424,8 +1458,6 @@ class TransformAccessor:
             >>> fs_reference = fs_base.transform.cluster(n_clusters=8, cluster_duration='1D')
             >>> fs_other = fs_high.transform.apply_clustering(fs_reference.clustering)
         """
-        from .core import drop_constant_arrays
-
         # Validation
         dt = float(self._fs.timestep_duration.min().item())
         if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
@@ -1445,38 +1477,35 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
-        # Apply existing clustering to each (period, scenario) combination
-        tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
-        tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
-        cluster_assignmentss: dict[tuple, np.ndarray] = {}
+        # Apply existing clustering to all (period, scenario) combinations at once
+        logger.info('Applying clustering...')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+            agg_results = clustering.results.apply(ds)
+
+        # Convert AggregationResults to the dict format expected by _build_reduced_flow_system
+        tsam_aggregation_results: dict[tuple, Any] = {}
         cluster_occurrences_all: dict[tuple, dict] = {}
         clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
 
-        for period_label in periods:
-            for scenario_label in scenarios:
-                key = (period_label, scenario_label)
-                selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
-                ds_slice = ds.sel(**selector, drop=True) if selector else ds
-                temporaly_changing_ds = drop_constant_arrays(ds_slice, dim='time')
-                df = temporaly_changing_ds.to_dataframe()
+        for cr_key, result in agg_results:
+            # Convert ClusteringResults key to (period, scenario) format
+            if has_periods and has_scenarios:
+                full_key = (cr_key[0], cr_key[1])
+            elif has_periods:
+                full_key = (cr_key[0], None)
+            elif has_scenarios:
+                full_key = (None, cr_key[0])
+            else:
+                full_key = (None, None)
 
-                if selector:
-                    logger.info(f'Applying clustering to {", ".join(f"{k}={v}" for k, v in selector.items())}...')
-
-                # Apply existing clustering
-                with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
-                    tsam_result = clustering.apply(df, period=period_label, scenario=scenario_label)
-
-                tsam_aggregation_results[key] = tsam_result
-                tsam_clustering_results[key] = tsam_result.clustering
-                cluster_assignmentss[key] = tsam_result.cluster_assignments
-                cluster_occurrences_all[key] = tsam_result.cluster_weights
-                try:
-                    clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
-                except Exception as e:
-                    logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
-                    clustering_metrics_all[key] = pd.DataFrame()
+            tsam_aggregation_results[full_key] = result
+            cluster_occurrences_all[full_key] = result.cluster_weights
+            try:
+                clustering_metrics_all[full_key] = self._accuracy_to_dataframe(result.accuracy)
+            except Exception as e:
+                logger.warning(f'Failed to compute clustering metrics for {full_key}: {e}')
+                clustering_metrics_all[full_key] = pd.DataFrame()
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
