@@ -873,10 +873,82 @@ class TransformAccessor:
 
         return new_fs
 
+    def clustering_data(
+        self,
+        period: Any | None = None,
+        scenario: Any | None = None,
+    ) -> xr.Dataset:
+        """
+        Get the time-varying data that would be used for clustering.
+
+        This method extracts only the data arrays that vary over time, which is
+        the data that clustering algorithms use to identify typical periods.
+        Constant arrays (same value for all timesteps) are excluded since they
+        don't contribute to pattern identification.
+
+        Use this to inspect or pre-process the data before clustering, or to
+        understand which variables influence the clustering result.
+
+        Args:
+            period: Optional period label to select. If None and the FlowSystem
+                has multiple periods, returns data for all periods.
+            scenario: Optional scenario label to select. If None and the FlowSystem
+                has multiple scenarios, returns data for all scenarios.
+
+        Returns:
+            xr.Dataset containing only time-varying data arrays. The dataset
+            includes arrays like demand profiles, price profiles, and other
+            time series that vary over the time dimension.
+
+        Examples:
+            Inspect clustering input data:
+
+            >>> data = flow_system.transform.clustering_data()
+            >>> print(f'Variables used for clustering: {list(data.data_vars)}')
+            >>> data['HeatDemand(Q)|fixed_relative_profile'].plot()
+
+            Get data for a specific period/scenario:
+
+            >>> data_2024 = flow_system.transform.clustering_data(period=2024)
+            >>> data_high = flow_system.transform.clustering_data(scenario='high')
+
+            Convert to DataFrame for external tools:
+
+            >>> df = flow_system.transform.clustering_data().to_dataframe()
+        """
+        from .core import drop_constant_arrays
+
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        ds = self._fs.to_dataset(include_solution=False)
+
+        # Build selector for period/scenario
+        selector = {}
+        if period is not None:
+            selector['period'] = period
+        if scenario is not None:
+            selector['scenario'] = scenario
+
+        # Apply selection if specified
+        if selector:
+            ds = ds.sel(**selector, drop=True)
+
+        # Filter to only time-varying arrays
+        result = drop_constant_arrays(ds, dim='time')
+
+        # Remove attrs for cleaner output
+        result.attrs = {}
+        for var in result.data_vars:
+            result[var].attrs = {}
+
+        return result
+
     def cluster(
         self,
         n_clusters: int,
         cluster_duration: str | float,
+        data_vars: list[str] | None = None,
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
@@ -904,6 +976,12 @@ class TransformAccessor:
             n_clusters: Number of clusters (typical periods) to extract (e.g., 8 typical days).
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
+            data_vars: Optional list of variable names to use for clustering. If specified,
+                only these variables are used to determine cluster assignments, but the
+                clustering is then applied to ALL time-varying data in the FlowSystem.
+                Use ``transform.clustering_data()`` to see available variables.
+                Example: ``data_vars=['HeatDemand(Q)|fixed_relative_profile']`` to cluster
+                based only on heat demand patterns.
             cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm,
                 representation method, and weights. If None, uses default settings (hierarchical
                 clustering with medoid representation) and automatically calculated weights
@@ -939,15 +1017,17 @@ class TransformAccessor:
             ... )
             >>> fs_clustered.optimize(solver)
 
-            Save and reuse clustering:
+            Clustering based on specific variables only:
 
-            >>> # Save clustering for later use
-            >>> fs_clustered.clustering.tsam_results.to_json('clustering.json')
+            >>> # See available variables for clustering
+            >>> print(flow_system.transform.clustering_data().data_vars)
             >>>
-            >>> # Apply same clustering to different data
-            >>> from flixopt.clustering import ClusteringResultCollection
-            >>> clustering = ClusteringResultCollection.from_json('clustering.json')
-            >>> fs_other = other_fs.transform.apply_clustering(clustering)
+            >>> # Cluster based only on demand profile
+            >>> fs_clustered = flow_system.transform.cluster(
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
+            ...     data_vars=['HeatDemand(Q)|fixed_relative_profile'],
+            ... )
 
         Note:
             - This is best suited for initial sizing, not final dispatch optimization
@@ -989,6 +1069,18 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
+        # Validate and prepare data_vars for clustering
+        if data_vars is not None:
+            missing = set(data_vars) - set(ds.data_vars)
+            if missing:
+                raise ValueError(
+                    f'data_vars not found in FlowSystem: {missing}. '
+                    f'Available time-varying variables can be found via transform.clustering_data().'
+                )
+            ds_for_clustering = ds[list(data_vars)]
+        else:
+            ds_for_clustering = ds
+
         # Validate tsam_kwargs doesn't override explicit parameters
         reserved_tsam_keys = {
             'n_periods',
@@ -1017,9 +1109,13 @@ class TransformAccessor:
             for scenario_label in scenarios:
                 key = (period_label, scenario_label)
                 selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
-                ds_slice = ds.sel(**selector, drop=True) if selector else ds
-                temporaly_changing_ds = drop_constant_arrays(ds_slice, dim='time')
-                df = temporaly_changing_ds.to_dataframe()
+
+                # Select data for clustering (may be subset if data_vars specified)
+                ds_slice_for_clustering = (
+                    ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
+                )
+                temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
+                df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
 
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
@@ -1029,12 +1125,15 @@ class TransformAccessor:
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
                     # Build ClusterConfig with auto-calculated weights
-                    clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds)
-                    filtered_weights = {name: w for name, w in clustering_weights.items() if name in df.columns}
+                    clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds_for_clustering)
+                    filtered_weights = {
+                        name: w for name, w in clustering_weights.items() if name in df_for_clustering.columns
+                    }
                     cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
 
+                    # Step 1: Determine clustering based on selected data_vars (or all if not specified)
                     tsam_result = tsam.aggregate(
-                        df,
+                        df_for_clustering,
                         n_clusters=n_clusters,
                         period_duration=hours_per_cluster,
                         timestep_duration=dt,
@@ -1043,6 +1142,14 @@ class TransformAccessor:
                         segments=segments,
                         **tsam_kwargs,
                     )
+
+                    # Step 2: If data_vars was specified, apply clustering to FULL data
+                    if data_vars is not None:
+                        ds_slice_full = ds.sel(**selector, drop=True) if selector else ds
+                        temporaly_changing_ds_full = drop_constant_arrays(ds_slice_full, dim='time')
+                        df_full = temporaly_changing_ds_full.to_dataframe()
+                        # Apply the determined clustering to get representatives for all variables
+                        tsam_result = tsam_result.clustering.apply(df_full)
 
                 tsam_aggregation_results[key] = tsam_result
                 tsam_clustering_results[key] = tsam_result.clustering
