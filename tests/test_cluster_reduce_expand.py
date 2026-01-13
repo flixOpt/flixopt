@@ -837,3 +837,408 @@ class TestPeakSelection:
         # This test just verifies the clustering works
         # The peak may or may not be captured depending on clustering algorithm
         assert fs_no_peaks.solution is not None
+
+
+# ==================== Segmentation Tests ====================
+
+
+class TestSegmentation:
+    """Tests for intra-period segmentation (variable timestep durations within clusters)."""
+
+    def test_segment_config_creates_segmented_system(self, timesteps_8_days):
+        """Test that SegmentConfig creates a segmented FlowSystem."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        # Cluster with 6 segments per day (instead of 24 hourly timesteps)
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Verify segmentation properties
+        assert fs_segmented.clustering.is_segmented is True
+        assert fs_segmented.clustering.n_segments == 6
+        assert fs_segmented.clustering.timesteps_per_cluster == 24  # Original period length
+
+        # Time dimension should have n_segments entries (not timesteps_per_cluster)
+        assert len(fs_segmented.timesteps) == 6  # 6 segments
+
+        # Verify RangeIndex for segmented time
+        assert isinstance(fs_segmented.timesteps, pd.RangeIndex)
+
+    def test_segmented_system_has_variable_timestep_durations(self, timesteps_8_days):
+        """Test that segmented systems have variable timestep durations."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Timestep duration should be a DataArray with cluster dimension
+        timestep_duration = fs_segmented.timestep_duration
+        assert 'cluster' in timestep_duration.dims
+        assert 'time' in timestep_duration.dims
+
+        # Sum of durations per cluster should equal original period length (24 hours)
+        for cluster in fs_segmented.clusters:
+            cluster_duration_sum = timestep_duration.sel(cluster=cluster).sum().item()
+            assert_allclose(cluster_duration_sum, 24.0, rtol=1e-6)
+
+    def test_segmented_system_optimizes(self, solver_fixture, timesteps_8_days):
+        """Test that segmented systems can be optimized."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Optimize
+        fs_segmented.optimize(solver_fixture)
+
+        # Should have solution
+        assert fs_segmented.solution is not None
+        assert 'objective' in fs_segmented.solution
+
+        # Flow rates should have (cluster, time) structure with 6 time points
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        assert flow_var in fs_segmented.solution
+        # time dimension has n_segments + 1 (for previous_flow_rate pattern)
+        assert fs_segmented.solution[flow_var].sizes['time'] == 7  # 6 + 1
+
+    def test_segmented_expand_restores_original_timesteps(self, solver_fixture, timesteps_8_days):
+        """Test that expand() restores the original timestep count for segmented systems."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        # Cluster with segments
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Optimize and expand
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Should have original timesteps restored
+        assert len(fs_expanded.timesteps) == 192  # 8 days * 24 hours
+        assert fs_expanded.clusters is None  # No cluster dimension after expansion
+
+        # Should have DatetimeIndex after expansion (not RangeIndex)
+        assert isinstance(fs_expanded.timesteps, pd.DatetimeIndex)
+
+    def test_segmented_expand_preserves_objective(self, solver_fixture, timesteps_8_days):
+        """Test that expand() preserves the objective value for segmented systems."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+        segmented_objective = fs_segmented.solution['objective'].item()
+
+        fs_expanded = fs_segmented.transform.expand()
+        expanded_objective = fs_expanded.solution['objective'].item()
+
+        # Objectives should be equal (expand preserves solution)
+        assert_allclose(segmented_objective, expanded_objective, rtol=1e-6)
+
+    def test_segmented_expand_has_correct_flow_rates(self, solver_fixture, timesteps_8_days):
+        """Test that expanded flow rates have correct timestep count."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Check flow rates dimension
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_rates = fs_expanded.solution[flow_var]
+
+        # Should have original time dimension
+        assert flow_rates.sizes['time'] == 193  # 192 + 1 (previous_flow_rate)
+
+    def test_segmented_statistics_after_expand(self, solver_fixture, timesteps_8_days):
+        """Test that statistics accessor works after expanding segmented system."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Statistics should work
+        stats = fs_expanded.statistics
+        assert hasattr(stats, 'flow_rates')
+        assert hasattr(stats, 'total_effects')
+
+        # Flow rates should have correct dimensions
+        flow_rates = stats.flow_rates
+        assert 'time' in flow_rates.dims
+
+    def test_segmented_timestep_mapping_uses_segment_assignments(self, timesteps_8_days):
+        """Test that timestep_mapping correctly maps original timesteps to segments."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        mapping = fs_segmented.clustering.timestep_mapping
+
+        # Mapping should have original timestep count
+        assert len(mapping.values) == 192
+
+        # Each mapped value should be in valid range: [0, n_clusters * n_segments)
+        max_valid_idx = 2 * 6 - 1  # n_clusters * n_segments - 1
+        assert mapping.min() >= 0
+        assert mapping.max() <= max_valid_idx
+
+
+class TestSegmentationWithStorage:
+    """Tests for segmentation combined with storage components."""
+
+    def test_segmented_storage_optimizes(self, solver_fixture, timesteps_8_days):
+        """Test that segmented systems with storage can be optimized."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+
+        # Should have solution with charge_state
+        assert fs_segmented.solution is not None
+        assert 'Battery|charge_state' in fs_segmented.solution
+
+    def test_segmented_storage_expand(self, solver_fixture, timesteps_8_days):
+        """Test that segmented storage systems can be expanded."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Charge state should be expanded to original timesteps
+        charge_state = fs_expanded.solution['Battery|charge_state']
+        # charge_state has time dimension = n_original_timesteps + 1
+        assert charge_state.sizes['time'] == 193
+
+
+class TestSegmentationWithPeriods:
+    """Tests for segmentation combined with multi-period systems."""
+
+    def test_segmented_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test segmentation with multiple periods."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Verify structure
+        assert fs_segmented.clustering.is_segmented is True
+        assert fs_segmented.periods is not None
+        assert len(fs_segmented.periods) == 2
+
+        # Optimize
+        fs_segmented.optimize(solver_fixture)
+        assert fs_segmented.solution is not None
+
+    def test_segmented_with_periods_expand(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test expansion of segmented multi-period systems."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Should have original timesteps and periods preserved
+        assert len(fs_expanded.timesteps) == 192
+        assert fs_expanded.periods is not None
+        assert len(fs_expanded.periods) == 2
+
+        # Solution should have period dimension
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        assert 'period' in fs_expanded.solution[flow_var].dims
+
+    def test_segmented_different_clustering_per_period(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test that different periods can have different cluster assignments."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # Verify cluster_assignments has period dimension
+        cluster_assignments = fs_segmented.clustering.cluster_assignments
+        assert 'period' in cluster_assignments.dims
+
+        # Each period should have independent cluster assignments
+        # (may or may not be different depending on data)
+        assert cluster_assignments.sizes['period'] == 2
+
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        # Expanded solution should preserve period dimension
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        assert 'period' in fs_expanded.solution[flow_var].dims
+        assert fs_expanded.solution[flow_var].sizes['period'] == 2
+
+    def test_segmented_expand_maps_correctly_per_period(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test that expand maps values correctly for each period independently."""
+        from tsam.config import SegmentConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+
+        # Get the timestep_mapping which should be multi-dimensional
+        mapping = fs_segmented.clustering.timestep_mapping
+
+        # Mapping should have period dimension
+        assert 'period' in mapping.dims
+        assert mapping.sizes['period'] == 2
+
+        # Expand and verify each period has correct number of timesteps
+        fs_expanded = fs_segmented.transform.expand()
+        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_rates = fs_expanded.solution[flow_var]
+
+        # Each period should have the original time dimension
+        # time = 193 (192 + 1 for previous_flow_rate pattern)
+        assert flow_rates.sizes['time'] == 193
+        assert flow_rates.sizes['period'] == 2
+
+
+class TestSegmentationIO:
+    """Tests for IO round-trip of segmented systems."""
+
+    def test_segmented_roundtrip(self, solver_fixture, timesteps_8_days, tmp_path):
+        """Test that segmented systems survive IO round-trip."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+
+        # Save and load
+        path = tmp_path / 'segmented.nc4'
+        fs_segmented.to_netcdf(path)
+        fs_loaded = fx.FlowSystem.from_netcdf(path)
+
+        # Verify segmentation preserved
+        assert fs_loaded.clustering.is_segmented is True
+        assert fs_loaded.clustering.n_segments == 6
+
+        # Verify solution preserved
+        assert_allclose(
+            fs_loaded.solution['objective'].item(),
+            fs_segmented.solution['objective'].item(),
+            rtol=1e-6,
+        )
+
+    def test_segmented_expand_after_load(self, solver_fixture, timesteps_8_days, tmp_path):
+        """Test that expand works after loading segmented system."""
+        from tsam.config import SegmentConfig
+
+        fs = create_simple_system(timesteps_8_days)
+
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        fs_segmented.optimize(solver_fixture)
+
+        # Save, load, and expand
+        path = tmp_path / 'segmented.nc4'
+        fs_segmented.to_netcdf(path)
+        fs_loaded = fx.FlowSystem.from_netcdf(path)
+        fs_expanded = fs_loaded.transform.expand()
+
+        # Should have original timesteps
+        assert len(fs_expanded.timesteps) == 192
+
+        # Objective should be preserved
+        assert_allclose(
+            fs_expanded.solution['objective'].item(),
+            fs_segmented.solution['objective'].item(),
+            rtol=1e-6,
+        )
