@@ -576,28 +576,32 @@ class ClusteringResults:
 class Clustering:
     """Clustering information for a FlowSystem.
 
-    Uses ClusteringResults to manage tsam ClusteringResult objects and provides
-    convenience accessors for common operations.
+    Thin wrapper around tsam 3.0's AggregationResult objects, providing:
+    1. Multi-dimensional access for (period, scenario) combinations
+    2. Structure properties (n_clusters, dims, coords, cluster_assignments)
+    3. JSON persistence via ClusteringResults
 
-    This is a thin wrapper around tsam 3.0's API. The actual clustering
-    logic is delegated to tsam, and this class only:
-    1. Manages results for multiple (period, scenario) dimensions via ClusteringResults
-    2. Provides xarray-based convenience properties
-    3. Handles JSON persistence via ClusteringResults.to_dict()/from_dict()
+    Use ``sel()`` to access individual tsam AggregationResult objects for
+    detailed analysis (cluster_representatives, accuracy, plotting).
 
     Attributes:
-        results: ClusteringResults managing ClusteringResult objects for all (period, scenario) combinations.
+        results: ClusteringResults for structure access (works after JSON load).
         original_timesteps: Original timesteps before clustering.
-        original_data: Original dataset before clustering (for expand/plotting).
-        aggregated_data: Aggregated dataset after clustering (for plotting).
+        dims: Dimension names, e.g., ('period', 'scenario').
+        coords: Coordinate values, e.g., {'period': [2024, 2025]}.
 
     Example:
-        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-        >>> fs_clustered.clustering.n_clusters
+        >>> clustering = fs_clustered.clustering
+        >>> clustering.n_clusters
         8
-        >>> fs_clustered.clustering.cluster_assignments
-        <xarray.DataArray (original_cluster: 365)>
-        >>> fs_clustered.clustering.plot.compare()
+        >>> clustering.dims
+        ('period',)
+
+        # Access tsam AggregationResult for detailed analysis
+        >>> result = clustering.sel(period=2024)
+        >>> result.cluster_representatives  # DataFrame
+        >>> result.accuracy  # AccuracyMetrics
+        >>> result.plot.compare()  # tsam's built-in plotting
     """
 
     # ==========================================================================
@@ -647,16 +651,22 @@ class Clustering:
         """
         return self.results.coords
 
-    def sel(self, **kwargs: Any) -> AggregationResult:
-        """Select AggregationResult by dimension labels (xarray-like).
+    def sel(
+        self,
+        period: int | str | None = None,
+        scenario: str | None = None,
+    ) -> AggregationResult:
+        """Select AggregationResult by period and/or scenario.
 
-        Convenience method for accessing individual (period, scenario) results.
+        Access individual tsam AggregationResult objects for detailed analysis.
 
         Args:
-            **kwargs: Dimension name=value pairs, e.g., period=2024, scenario='high'.
+            period: Period value (e.g., 2024). Required if clustering has periods.
+            scenario: Scenario name (e.g., 'high'). Required if clustering has scenarios.
 
         Returns:
             The tsam AggregationResult for the specified combination.
+            Access its properties like `cluster_representatives`, `accuracy`, etc.
 
         Raises:
             KeyError: If no result found for the specified combination.
@@ -665,16 +675,23 @@ class Clustering:
         Example:
             >>> result = clustering.sel(period=2024, scenario='high')
             >>> result.cluster_representatives  # DataFrame with aggregated data
+            >>> result.accuracy  # AccuracyMetrics
+            >>> result.plot.compare()  # tsam's built-in comparison plot
         """
         self._require_full_data('sel()')
-        # Build key from kwargs in dim order
+        # Build key from provided args in dim order
         key_parts = []
-        for dim in self._dim_names:
-            if dim in kwargs:
-                key_parts.append(kwargs[dim])
+        if 'period' in self._dim_names:
+            if period is None:
+                raise KeyError(f"'period' is required. Available: {self.coords.get('period', [])}")
+            key_parts.append(period)
+        if 'scenario' in self._dim_names:
+            if scenario is None:
+                raise KeyError(f"'scenario' is required. Available: {self.coords.get('scenario', [])}")
+            key_parts.append(scenario)
         key = tuple(key_parts)
         if key not in self._aggregation_results:
-            raise KeyError(f'No result found for {kwargs}')
+            raise KeyError(f'No result found for period={period}, scenario={scenario}')
         return self._aggregation_results[key]
 
     @property
