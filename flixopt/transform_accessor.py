@@ -365,7 +365,7 @@ class TransformAccessor:
         Returns:
             Reduced FlowSystem with clustering metadata attached.
         """
-        from .clustering import Clustering, ClusteringResults
+        from .clustering import Clustering
         from .flow_system import FlowSystem
 
         has_periods = periods != [None]
@@ -378,8 +378,7 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Build dicts keyed by (period?, scenario?) tuples (without None)
-        cluster_results: dict[tuple, Any] = {}
+        # Build dict keyed by (period?, scenario?) tuples (without None)
         aggregation_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
             key_parts = []
@@ -388,10 +387,7 @@ class TransformAccessor:
             if has_scenarios:
                 key_parts.append(s)
             key = tuple(key_parts)
-            cluster_results[key] = result.clustering
             aggregation_results[key] = result
-
-        results = ClusteringResults(cluster_results, dim_names)
 
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
@@ -483,12 +479,12 @@ class TransformAccessor:
 
         # Create Clustering object with full AggregationResult access
         reduced_fs.clustering = Clustering(
-            results=results,
             original_timesteps=self._fs.timesteps,
             original_data=ds,
             aggregated_data=ds_new,
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
             _aggregation_results=aggregation_results,
+            _dim_names=dim_names,
         )
 
         return reduced_fs

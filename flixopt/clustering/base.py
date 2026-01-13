@@ -1007,8 +1007,8 @@ class Clustering:
 
     def __init__(
         self,
-        results: ClusteringResults | dict,
-        original_timesteps: pd.DatetimeIndex | list[str],
+        results: ClusteringResults | dict | None = None,
+        original_timesteps: pd.DatetimeIndex | list[str] | None = None,
         original_data: xr.Dataset | None = None,
         aggregated_data: xr.Dataset | None = None,
         _metrics: xr.Dataset | None = None,
@@ -1018,11 +1018,13 @@ class Clustering:
         _metrics_refs: list[str] | None = None,
         # Internal: AggregationResult dict for full data access
         _aggregation_results: dict[tuple, AggregationResult] | None = None,
+        _dim_names: list[str] | None = None,
     ):
         """Initialize Clustering object.
 
         Args:
             results: ClusteringResults instance, or dict from to_dict() (for deserialization).
+                Not needed if _aggregation_results is provided.
             original_timesteps: Original timesteps before clustering.
             original_data: Original dataset before clustering (for expand/plotting).
             aggregated_data: Aggregated dataset after clustering (for plotting).
@@ -1031,6 +1033,7 @@ class Clustering:
             _aggregated_data_refs: Internal: resolved DataArrays from serialization.
             _metrics_refs: Internal: resolved DataArrays from serialization.
             _aggregation_results: Internal: dict of AggregationResult for full data access.
+            _dim_names: Internal: dimension names when using _aggregation_results.
         """
         # Handle ISO timestamp strings from serialization
         if (
@@ -1040,17 +1043,23 @@ class Clustering:
         ):
             original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in original_timesteps])
 
-        # Handle results as dict (from deserialization)
-        if isinstance(results, dict):
-            results = ClusteringResults.from_dict(results)
-
-        self.results = results
-        self.original_timesteps = original_timesteps
-        self._metrics = _metrics
+        # Store AggregationResults if provided (full data access)
         self._aggregation_results = _aggregation_results
+        self._dim_names = _dim_names or []
+
+        # Handle results - only needed for serialization path
+        if results is not None:
+            if isinstance(results, dict):
+                results = ClusteringResults.from_dict(results)
+            self._results_cache = results
+        else:
+            self._results_cache = None
 
         # Flag indicating this was loaded from serialization (missing full AggregationResult data)
-        self._from_serialization = _aggregation_results is None
+        self._from_serialization = _aggregation_results is None and results is not None
+
+        self.original_timesteps = original_timesteps if original_timesteps is not None else pd.DatetimeIndex([])
+        self._metrics = _metrics
 
         # Handle reconstructed data from refs (list of DataArrays)
         if _original_data_refs is not None and isinstance(_original_data_refs, list):
@@ -1074,6 +1083,20 @@ class Clustering:
             if all(isinstance(da, xr.DataArray) for da in _metrics_refs):
                 self._metrics = xr.Dataset({da.name: da for da in _metrics_refs})
 
+    @property
+    def results(self) -> ClusteringResults:
+        """ClusteringResults for structure access (derived from AggregationResults or cached)."""
+        if self._results_cache is not None:
+            return self._results_cache
+        if self._aggregation_results is not None:
+            # Derive from AggregationResults (cached on first access)
+            self._results_cache = ClusteringResults(
+                {k: r.clustering for k, r in self._aggregation_results.items()},
+                self._dim_names,
+            )
+            return self._results_cache
+        raise ValueError('No results available - neither AggregationResults nor ClusteringResults set')
+
     @classmethod
     def _from_aggregation_results(
         cls,
@@ -1096,17 +1119,11 @@ class Clustering:
         Returns:
             Clustering with full AggregationResult access.
         """
-        # Build ClusteringResults from the AggregationResults
-        clustering_results = ClusteringResults(
-            {k: r.clustering for k, r in aggregation_results.items()},
-            dim_names,
-        )
-
         return cls(
-            results=clustering_results,
-            original_timesteps=original_timesteps or pd.DatetimeIndex([]),
+            original_timesteps=original_timesteps,
             original_data=original_data,
             _aggregation_results=aggregation_results,
+            _dim_names=dim_names,
         )
 
     # ==========================================================================
