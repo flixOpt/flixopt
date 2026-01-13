@@ -817,6 +817,8 @@ class CONFIG:
         """
         import plotly.io as pio
 
+        # Re-register template to pick up any config changes made after import
+        _register_flixopt_template()
         pio.templates.default = 'plotly_white+flixopt'
         return cls
 
@@ -942,6 +944,8 @@ def _register_flixopt_template() -> None:
     but does NOT set it as the default. Users must call CONFIG.use_theme()
     to activate it globally, or use it per-figure via template='flixopt'.
     """
+    import logging
+
     import plotly.graph_objects as go
     import plotly.io as pio
     from plotly.express import colors
@@ -953,6 +957,11 @@ def _register_flixopt_template() -> None:
 
     # Fall back to Plotly default if colorscale not found
     if colorway is None:
+        logging.getLogger(__name__).warning(
+            f"Colorscale '{CONFIG.Plotting.default_qualitative_colorscale}' not found in "
+            f"plotly.express.colors.qualitative, falling back to 'Plotly'. "
+            f'Available: {[n for n in dir(colors.qualitative) if not n.startswith("_")]}'
+        )
         colorway = colors.qualitative.Plotly
 
     pio.templates['flixopt'] = go.layout.Template(

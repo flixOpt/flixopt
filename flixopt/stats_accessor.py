@@ -64,7 +64,9 @@ class DatasetStatsAccessor:
             )
             sorted_vars[var] = sorted_da
 
-        sorted_ds = xr.Dataset(sorted_vars, attrs=self._ds.attrs)
+        # Preserve non-time coordinates from the original dataset
+        non_time_coords = {k: v for k, v in self._ds.coords.items() if k != 'time'}
+        sorted_ds = xr.Dataset(sorted_vars, coords=non_time_coords, attrs=self._ds.attrs)
 
         # Replace time coordinate with duration
         n_timesteps = sorted_ds.sizes['time']
