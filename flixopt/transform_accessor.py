@@ -366,6 +366,7 @@ class TransformAccessor:
             Reduced FlowSystem with clustering metadata attached.
         """
         from .clustering import Clustering
+        from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
         has_periods = periods != [None]
@@ -478,10 +479,11 @@ class TransformAccessor:
                 storage.initial_charge_state = None
 
         # Create Clustering object with full AggregationResult access
+        # Only store time-varying data (constant arrays are clutter for plotting)
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
-            original_data=ds,
-            aggregated_data=ds_new,
+            original_data=drop_constant_arrays(ds, dim='time'),
+            aggregated_data=drop_constant_arrays(ds_new, dim='time'),
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
             _aggregation_results=aggregation_results,
             _dim_names=dim_names,

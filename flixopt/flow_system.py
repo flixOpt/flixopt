@@ -886,14 +886,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Reconstruct aggregated_data from FlowSystem's main data arrays
             # (aggregated_data is not serialized to avoid redundant storage)
             if clustering.aggregated_data is None:
-                # Get all time-varying variables from the dataset (excluding clustering-prefixed ones)
-                time_vars = {
-                    name: arr
-                    for name, arr in ds.data_vars.items()
-                    if 'time' in arr.dims and not name.startswith('clustering|')
-                }
-                if time_vars:
-                    clustering.aggregated_data = xr.Dataset(time_vars)
+                from .core import drop_constant_arrays
+
+                # Get non-clustering variables and filter to time-varying only
+                main_vars = {name: arr for name, arr in ds.data_vars.items() if not name.startswith('clustering|')}
+                if main_vars:
+                    clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
 
             # Restore cluster_weight from clustering's representative_weights
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
