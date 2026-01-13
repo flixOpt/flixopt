@@ -2,10 +2,14 @@
 
 While the plot accessor (`flow_system.statistics.plot`) is designed for optimization results, you often need to plot custom xarray data. The `.plotly` accessor provides the same convenience for any `xr.Dataset` or `xr.DataArray`.
 
+!!! note "Accessor Registration"
+    The `.plotly` and `.fxstats` accessors are automatically registered when you import flixopt.
+    Just `import flixopt` and they become available on all xarray objects.
+
 ## Quick Example
 
 ```python
-import flixopt as fx
+import flixopt as fx  # Registers .plotly and .fxstats accessors
 import xarray as xr
 
 ds = xr.Dataset({

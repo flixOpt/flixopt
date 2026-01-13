@@ -40,17 +40,31 @@ class DatasetStatsAccessor:
         if 'time' not in self._ds.dims:
             raise ValueError("Duration curve requires a 'time' dimension.")
 
-        # Sort each variable along time dimension (descending)
-        sorted_ds = self._ds.copy()
-        for var in sorted_ds.data_vars:
-            da = sorted_ds[var]
+        def _sort_descending(data: np.ndarray, axis: int) -> np.ndarray:
+            """Sort array in descending order along axis."""
+            return np.flip(np.sort(data, axis=axis), axis=axis)
+
+        # Sort each variable along time dimension (descending) using apply_ufunc
+        # This preserves dask laziness and DataArray attributes
+        sorted_vars = {}
+        for var in self._ds.data_vars:
+            da = self._ds[var]
             if 'time' not in da.dims:
-                # Skip variables without time dimension (e.g., scalar metadata)
+                # Keep variables without time dimension unchanged
+                sorted_vars[var] = da
                 continue
-            time_axis = da.dims.index('time')
-            # Sort along time axis (descending) - use flip for correct axis
-            sorted_values = np.flip(np.sort(da.values, axis=time_axis), axis=time_axis)
-            sorted_ds[var] = (da.dims, sorted_values)
+            sorted_da = xr.apply_ufunc(
+                _sort_descending,
+                da,
+                input_core_dims=[['time']],
+                output_core_dims=[['time']],
+                kwargs={'axis': -1},  # Core dim is moved to last position
+                dask='parallelized',
+                output_dtypes=[da.dtype],
+            )
+            sorted_vars[var] = sorted_da
+
+        sorted_ds = xr.Dataset(sorted_vars, attrs=self._ds.attrs)
 
         # Replace time coordinate with duration
         n_timesteps = sorted_ds.sizes['time']

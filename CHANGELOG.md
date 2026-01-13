@@ -142,7 +142,7 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
 
-#### FXPlot Accessor (#548)
+#### Plotly Accessor (#548)
 
 New global xarray accessors for universal plotting with automatic faceting and smart dimension handling. Works on any xarray Dataset, not just flixopt results.
 
@@ -166,8 +166,7 @@ dataset.fxstats.to_duration_curve()
 
 | Method | Description |
 |--------|-------------|
-| `.plotly.bar()` | Grouped bar charts |
-| `.plotly.bar()` | Stacked bar charts |
+| `.plotly.bar()` | Bar charts (use `barmode='group'` or `'relative'` for stacked) |
 | `.plotly.line()` | Line charts with faceting |
 | `.plotly.area()` | Stacked area charts |
 | `.plotly.imshow()` | Heatmap visualizations |
