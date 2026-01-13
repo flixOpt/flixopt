@@ -630,6 +630,54 @@ class Clustering:
         return self.results.dim_names
 
     @property
+    def dims(self) -> tuple[str, ...]:
+        """Dimension names as tuple (xarray-like)."""
+        return self.results.dims
+
+    @property
+    def coords(self) -> dict[str, list]:
+        """Coordinate values for each dimension (xarray-like).
+
+        Returns:
+            Dict mapping dimension names to lists of coordinate values.
+
+        Example:
+            >>> clustering.coords
+            {'period': [2024, 2025], 'scenario': ['low', 'high']}
+        """
+        return self.results.coords
+
+    def sel(self, **kwargs: Any) -> AggregationResult:
+        """Select AggregationResult by dimension labels (xarray-like).
+
+        Convenience method for accessing individual (period, scenario) results.
+
+        Args:
+            **kwargs: Dimension name=value pairs, e.g., period=2024, scenario='high'.
+
+        Returns:
+            The tsam AggregationResult for the specified combination.
+
+        Raises:
+            KeyError: If no result found for the specified combination.
+            ValueError: If accessed on a Clustering loaded from JSON.
+
+        Example:
+            >>> result = clustering.sel(period=2024, scenario='high')
+            >>> result.cluster_representatives  # DataFrame with aggregated data
+        """
+        self._require_full_data('sel()')
+        # Build key from kwargs in dim order
+        key_parts = []
+        for dim in self._dim_names:
+            if dim in kwargs:
+                key_parts.append(kwargs[dim])
+        key = tuple(key_parts)
+        if key not in self._aggregation_results:
+            raise KeyError(f'No result found for {kwargs}')
+        return self._aggregation_results[key]
+
+    @property
     def is_segmented(self) -> bool:
         """Whether intra-period segmentation was used.
 
@@ -1186,6 +1234,177 @@ class Clustering:
                 f'but this Clustering was loaded from JSON. '
                 f'Use apply_clustering() to get full results.'
             )
+
+    # ==========================================================================
+    # Aggregation data as xarray Dataset (requires full data)
+    # ==========================================================================
+
+    @property
+    def data(self) -> xr.Dataset:
+        """Full aggregation data as xarray Dataset.
+
+        Contains all clustering outputs from tsam as multi-dimensional DataArrays:
+        - cluster_representatives: Aggregated time series values
+        - accuracy_rmse, accuracy_mae: Clustering quality metrics per time series
+
+        This property requires full AggregationResult data (not available after
+        loading from JSON).
+
+        Returns:
+            Dataset with dims [cluster, time, period?, scenario?] for representatives,
+            [time_series, period?, scenario?] for accuracy metrics.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+
+        Example:
+            >>> clustering.data
+            <xarray.Dataset>
+            Dimensions:  (cluster: 8, time: 24, time_series: 3)
+            Data variables:
+                cluster_representatives  (cluster, time, time_series) float64 ...
+                accuracy_rmse            (time_series) float64 ...
+                accuracy_mae             (time_series) float64 ...
+        """
+        self._require_full_data('data')
+        if not hasattr(self, '_data_cache') or self._data_cache is None:
+            self._data_cache = self._build_aggregation_data()
+        return self._data_cache
+
+    def _build_aggregation_data(self) -> xr.Dataset:
+        """Build xarray Dataset from AggregationResults."""
+        has_periods = 'period' in self._dim_names
+        has_scenarios = 'scenario' in self._dim_names
+
+        # Get coordinate values
+        periods = sorted(set(k[0] for k in self._aggregation_results.keys())) if has_periods else [None]
+        scenarios = (
+            sorted(set(k[1 if has_periods else 0] for k in self._aggregation_results.keys()))
+            if has_scenarios
+            else [None]
+        )
+
+        # Get n_clusters from first result (same for all)
+        first_result = next(iter(self._aggregation_results.values()))
+        n_clusters = first_result.n_clusters
+
+        # Build cluster_representatives DataArray
+        representatives_slices = {}
+        accuracy_rmse_slices = {}
+        accuracy_mae_slices = {}
+
+        for key, result in self._aggregation_results.items():
+            # Reshape representatives from (n_clusters * n_timesteps, n_series) to (n_clusters, n_timesteps, n_series)
+            df = result.cluster_representatives
+            n_series = len(df.columns)
+            # Compute actual shape from this result's data
+            actual_n_timesteps = len(df) // n_clusters
+            data = df.values.reshape(n_clusters, actual_n_timesteps, n_series)
+
+            representatives_slices[key] = xr.DataArray(
+                data,
+                dims=['cluster', 'time', 'time_series'],
+                coords={
+                    'cluster': range(n_clusters),
+                    'time': range(actual_n_timesteps),
+                    'time_series': list(df.columns),
+                },
+            )
+
+            # Accuracy metrics
+            if result.accuracy is not None:
+                series_names = list(df.columns)
+                accuracy_rmse_slices[key] = xr.DataArray(
+                    [result.accuracy.rmse.get(ts, np.nan) for ts in series_names],
+                    dims=['time_series'],
+                    coords={'time_series': series_names},
+                )
+                accuracy_mae_slices[key] = xr.DataArray(
+                    [result.accuracy.mae.get(ts, np.nan) for ts in series_names],
+                    dims=['time_series'],
+                    coords={'time_series': series_names},
+                )
+
+        # Combine slices into multi-dim arrays
+        data_vars = {
+            'cluster_representatives': self._combine_data_slices(
+                representatives_slices, periods, scenarios, has_periods, has_scenarios
+            ),
+        }
+
+        if accuracy_rmse_slices:
+            data_vars['accuracy_rmse'] = self._combine_data_slices(
+                accuracy_rmse_slices, periods, scenarios, has_periods, has_scenarios
+            )
+            data_vars['accuracy_mae'] = self._combine_data_slices(
+                accuracy_mae_slices, periods, scenarios, has_periods, has_scenarios
+            )
+
+        return xr.Dataset(data_vars)
+
+    def _combine_data_slices(
+        self,
+        slices: dict[tuple, xr.DataArray],
+        periods: list,
+        scenarios: list,
+        has_periods: bool,
+        has_scenarios: bool,
+    ) -> xr.DataArray:
+        """Combine per-(period, scenario) slices into multi-dim DataArray."""
+        if not has_periods and not has_scenarios:
+            # Simple case - get the single slice
+            return slices[()]
+
+        # Use join='outer' to handle different time_series across periods/scenarios
+        if has_periods and has_scenarios:
+            period_arrays = []
+            for p in periods:
+                scenario_arrays = [slices[(p, s)] for s in scenarios]
+                period_arrays.append(
+                    xr.concat(
+                        scenario_arrays, dim=pd.Index(scenarios, name='scenario'), join='outer', fill_value=np.nan
+                    )
+                )
+            return xr.concat(period_arrays, dim=pd.Index(periods, name='period'), join='outer', fill_value=np.nan)
+        elif has_periods:
+            return xr.concat(
+                [slices[(p,)] for p in periods], dim=pd.Index(periods, name='period'), join='outer', fill_value=np.nan
+            )
+        else:
+            return xr.concat(
+                [slices[(s,)] for s in scenarios],
+                dim=pd.Index(scenarios, name='scenario'),
+                join='outer',
+                fill_value=np.nan,
+            )
+
+    @property
+    def cluster_representatives(self) -> xr.DataArray:
+        """Aggregated time series values for each cluster.
+
+        This is the core output of clustering - the representative values
+        for each typical period/cluster.
+
+        Requires full AggregationResult data (not available after JSON load).
+
+        Returns:
+            DataArray with dims [cluster, time, time_series, period?, scenario?].
+        """
+        return self.data['cluster_representatives']
+
+    @property
+    def accuracy(self) -> xr.Dataset:
+        """Clustering accuracy metrics per time series.
+
+        Contains RMSE and MAE comparing original vs reconstructed data.
+
+        Requires full AggregationResult data (not available after JSON load).
+
+        Returns:
+            Dataset with accuracy_rmse and accuracy_mae DataArrays,
+            dims [time_series, period?, scenario?].
+        """
+        return self.data[['accuracy_rmse', 'accuracy_mae']]
 
     def __repr__(self) -> str:
         return (
