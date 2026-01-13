@@ -660,6 +660,12 @@ class Clustering:
 
         Access individual tsam AggregationResult objects for detailed analysis.
 
+        Note:
+            This method is only available before saving/loading the FlowSystem.
+            After IO (to_dataset/from_dataset or to_json), the full AggregationResult
+            data is not preserved. Use `results.sel()` for structure-only access
+            after loading.
+
         Args:
             period: Period value (e.g., 2024). Required if clustering has periods.
             scenario: Scenario name (e.g., 'high'). Required if clustering has scenarios.
@@ -670,7 +676,7 @@ class Clustering:
 
         Raises:
             KeyError: If no result found for the specified combination.
-            ValueError: If accessed on a Clustering loaded from JSON.
+            ValueError: If accessed on a Clustering loaded from JSON/NetCDF.
 
         Example:
             >>> result = clustering.sel(period=2024, scenario='high')
@@ -1033,11 +1039,15 @@ class Clustering:
         arrays = {}
 
         # Collect original_data arrays
+        # Rename 'time' to 'original_time' to avoid conflict with clustered FlowSystem's time coord
         original_data_refs = None
         if self.original_data is not None:
             original_data_refs = []
             for name, da in self.original_data.data_vars.items():
                 ref_name = f'original_data|{name}'
+                # Rename time dim to avoid xarray alignment issues
+                if 'time' in da.dims:
+                    da = da.rename({'time': 'original_time'})
                 arrays[ref_name] = da
                 original_data_refs.append(f':::{ref_name}')
 
@@ -1130,7 +1140,13 @@ class Clustering:
         if _original_data_refs is not None and isinstance(_original_data_refs, list):
             # These are resolved DataArrays from the structure resolver
             if all(isinstance(da, xr.DataArray) for da in _original_data_refs):
-                self.original_data = xr.Dataset({da.name: da for da in _original_data_refs})
+                # Rename 'original_time' back to 'time' (was renamed during serialization)
+                renamed = []
+                for da in _original_data_refs:
+                    if 'original_time' in da.dims:
+                        da = da.rename({'original_time': 'time'})
+                    renamed.append(da)
+                self.original_data = xr.Dataset({da.name: da for da in renamed})
             else:
                 self.original_data = original_data
         else:
