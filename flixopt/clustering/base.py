@@ -1030,8 +1030,13 @@ class Clustering:
             name='timestep_mapping',
         )
 
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+    def _create_reference_structure(self, include_original_data: bool = True) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create serialization structure for to_dataset().
+
+        Args:
+            include_original_data: Whether to include original_data in serialization.
+                Set to False for smaller files when plot.compare() isn't needed after IO.
+                Defaults to True.
 
         Returns:
             Tuple of (reference_dict, arrays_dict).
@@ -1041,7 +1046,7 @@ class Clustering:
         # Collect original_data arrays
         # Rename 'time' to 'original_time' to avoid conflict with clustered FlowSystem's time coord
         original_data_refs = None
-        if self.original_data is not None:
+        if include_original_data and self.original_data is not None:
             original_data_refs = []
             for name, da in self.original_data.data_vars.items():
                 ref_name = f'original_data|{name}'

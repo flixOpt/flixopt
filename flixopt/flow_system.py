@@ -673,7 +673,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True, include_original_data: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
@@ -687,6 +687,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             include_solution: Whether to include the optimization solution in the dataset.
                 Defaults to True. Set to False to get only the FlowSystem structure
                 without solution data (useful for copying or saving templates).
+            include_original_data: Whether to include clustering.original_data in the dataset.
+                Defaults to True. Set to False for smaller files (~38% reduction) when
+                clustering.plot.compare() isn't needed after loading. The core workflow
+                (optimize → expand) works without original_data.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -724,7 +728,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Serialize Clustering object for full reconstruction in from_dataset()
         if self.clustering is not None:
-            clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
+            clustering_ref, clustering_arrays = self.clustering._create_reference_structure(
+                include_original_data=include_original_data
+            )
             # Add clustering arrays with prefix
             for name, arr in clustering_arrays.items():
                 ds[f'clustering|{name}'] = arr
@@ -887,7 +893,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return flow_system
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+    def to_netcdf(
+        self,
+        path: str | pathlib.Path,
+        compression: int = 5,
+        overwrite: bool = False,
+        include_original_data: bool = True,
+    ):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -899,6 +911,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             path: The path to the netCDF file. Parent directories are created if they don't exist.
             compression: The compression level to use when saving the file (0-9).
             overwrite: If True, overwrite existing file. If False, raise error if file exists.
+            include_original_data: Whether to include clustering.original_data in the file.
+                Defaults to True. Set to False for smaller files (~38% reduction) when
+                clustering.plot.compare() isn't needed after loading.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.
@@ -908,11 +923,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.connect_and_transform()
 
         path = pathlib.Path(path)
+
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         # Set name from filename (without extension)
         self.name = path.stem
 
-        super().to_netcdf(path, compression, overwrite)
-        logger.info(f'Saved FlowSystem to {path}')
+        try:
+            ds = self.to_dataset(include_original_data=include_original_data)
+            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+            logger.info(f'Saved FlowSystem to {path}')
+        except Exception as e:
+            raise OSError(f'Failed to save FlowSystem to NetCDF file {path}: {e}') from e
 
     @classmethod
     def from_netcdf(cls, path: str | pathlib.Path) -> FlowSystem:

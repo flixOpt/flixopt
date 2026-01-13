@@ -34,7 +34,9 @@ Example usage:
         print(f'{key}: {result.n_clusters} clusters')
 
     # Save and load - structure preserved, AggregationResult access lost
-    fs_clustered.to_json('system.json')
+    fs_clustered.to_netcdf('system.nc')
+    # Use include_original_data=False for smaller files (~38% reduction)
+    fs_clustered.to_netcdf('system.nc', include_original_data=False)
 
     # Expand back to full resolution
     fs_expanded = fs_clustered.transform.expand()
