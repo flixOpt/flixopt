@@ -1,11 +1,15 @@
 # Plotting Custom Data
 
-While the plot accessor (`flow_system.statistics.plot`) is designed for optimization results, you often need to plot custom xarray data. The `.fxplot` accessor provides the same convenience for any `xr.Dataset` or `xr.DataArray`.
+While the plot accessor (`flow_system.statistics.plot`) is designed for optimization results, you often need to plot custom xarray data. The `.plotly` accessor provides the same convenience for any `xr.Dataset` or `xr.DataArray`.
+
+!!! note "Accessor Registration"
+    The `.plotly` and `.fxstats` accessors are automatically registered when you import flixopt.
+    Just `import flixopt` and they become available on all xarray objects.
 
 ## Quick Example
 
 ```python
-import flixopt as fx
+import flixopt as fx  # Registers .plotly and .fxstats accessors
 import xarray as xr
 
 ds = xr.Dataset({
@@ -14,17 +18,17 @@ ds = xr.Dataset({
 })
 
 # Plot directly - no conversion needed!
-ds.fxplot.line(title='Energy Generation')
-ds.fxplot.stacked_bar(title='Stacked Generation')
+ds.plotly.line(title='Energy Generation')
+ds.plotly.bar(title='Stacked Generation')
 ```
 
 ## Full Documentation
 
-For comprehensive documentation with interactive examples, see the [Custom Data Plotting](../../notebooks/fxplot_accessor_demo.ipynb) notebook which covers:
+The `.plotly` accessor is provided by the [xarray_plotly](https://github.com/FBumann/xarray_plotly) package. See the [full documentation](https://fbumann.github.io/xarray_plotly/) for:
 
-- All available plot methods (line, bar, stacked_bar, area, scatter, heatmap, pie)
-- Automatic x-axis selection and faceting
-- Custom colors and axis labels
-- Duration curves with `.fxstats.to_duration_curve()`
-- Configuration options
+- All available plot methods (line, bar, area, scatter, imshow, pie, box)
+- Automatic dimension assignment
+- Custom colors and styling
 - Combining with xarray operations
+
+For duration curves, use `.fxstats.to_duration_curve()` before plotting.

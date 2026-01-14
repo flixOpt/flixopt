@@ -164,17 +164,6 @@ _DEFAULTS = MappingProxyType(
                 'default_sequential_colorscale': 'turbo',
                 'default_qualitative_colorscale': 'plotly',
                 'default_line_shape': 'hv',
-                'dim_priority': (
-                    'time',
-                    'duration',
-                    'duration_pct',
-                    'case',
-                    'variable',
-                    'cluster',
-                    'period',
-                    'scenario',
-                ),
-                'slot_priority': ('x', 'color', 'facet_col', 'facet_row', 'animation_frame'),
             }
         ),
         'solving': MappingProxyType(
@@ -570,10 +559,6 @@ class CONFIG:
             default_facet_cols: Default number of columns for faceted plots.
             default_sequential_colorscale: Default colorscale for heatmaps and continuous data.
             default_qualitative_colorscale: Default colormap for categorical plots (bar/line/area charts).
-            dim_priority: Priority order for assigning dimensions to plot slots.
-                Dimensions are assigned to slots based on this order.
-            slot_priority: Order in which slots are filled during auto-assignment.
-                Default: x → color → facet_col → facet_row → animation_frame.
 
         Examples:
             ```python
@@ -581,12 +566,6 @@ class CONFIG:
             CONFIG.Plotting.default_dpi = 600
             CONFIG.Plotting.default_sequential_colorscale = 'plasma'
             CONFIG.Plotting.default_qualitative_colorscale = 'Dark24'
-
-            # Customize dimension priority for auto-assignment
-            CONFIG.Plotting.dim_priority = ('time', 'scenario', 'variable', 'period', 'cluster')
-
-            # Change slot fill order (e.g., prioritize facets over color)
-            CONFIG.Plotting.slot_priority = ('x', 'facet_col', 'facet_row', 'color', 'animation_frame')
             ```
         """
 
@@ -597,8 +576,6 @@ class CONFIG:
         default_sequential_colorscale: str = _DEFAULTS['plotting']['default_sequential_colorscale']
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
         default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
-        dim_priority: tuple[str, ...] = _DEFAULTS['plotting']['dim_priority']
-        slot_priority: tuple[str, ...] = _DEFAULTS['plotting']['slot_priority']
 
     class Carriers:
         """Default carrier definitions for common energy types.
@@ -700,8 +677,6 @@ class CONFIG:
                 'default_sequential_colorscale': cls.Plotting.default_sequential_colorscale,
                 'default_qualitative_colorscale': cls.Plotting.default_qualitative_colorscale,
                 'default_line_shape': cls.Plotting.default_line_shape,
-                'dim_priority': cls.Plotting.dim_priority,
-                'slot_priority': cls.Plotting.slot_priority,
             },
         }
 
@@ -811,6 +786,40 @@ class CONFIG:
 
             pio.renderers.default = 'browser'
 
+        # Activate flixopt theme
+        cls.use_theme()
+
+        return cls
+
+    @classmethod
+    def use_theme(cls) -> type[CONFIG]:
+        """Activate the flixopt plotly theme as the default template.
+
+        Sets ``plotly.io.templates.default = 'plotly_white+flixopt'``.
+
+        The 'flixopt' template is registered automatically on import with colorscales
+        from CONFIG.Plotting. Call this method to make it the default for all plots.
+
+        Returns:
+            The CONFIG class for method chaining.
+
+        Examples:
+            ```python
+            # Activate flixopt theme globally
+            CONFIG.use_theme()
+
+            # Or combine with other setup
+            CONFIG.notebook()  # Already calls use_theme() internally
+
+            # Per-figure usage (without setting global default)
+            fig.update_layout(template='plotly_white+flixopt')
+            ```
+        """
+        import plotly.io as pio
+
+        # Re-register template to pick up any config changes made after import
+        _register_flixopt_template()
+        pio.templates.default = 'plotly_white+flixopt'
         return cls
 
     @classmethod
@@ -843,7 +852,9 @@ class CONFIG:
         # Set plotly to render inline in notebooks (respect PLOTLY_RENDERER env var)
         if 'PLOTLY_RENDERER' not in os.environ:
             pio.renderers.default = 'notebook'
-        pio.templates.default = 'plotly_white'
+
+        # Activate flixopt theme
+        cls.use_theme()
 
         # Disable default show since notebooks render via _repr_html_
         cls.Plotting.default_show = False
@@ -924,3 +935,44 @@ class CONFIG:
             elif hasattr(cls, key) and key != 'logging':
                 # Skip 'logging' as it requires special handling via CONFIG.Logging methods
                 setattr(cls, key, value)
+
+
+def _register_flixopt_template() -> None:
+    """Register the 'flixopt' plotly template (called on module import).
+
+    This makes the template available as 'flixopt' or 'plotly_white+flixopt',
+    but does NOT set it as the default. Users must call CONFIG.use_theme()
+    to activate it globally, or use it per-figure via template='flixopt'.
+    """
+    import logging
+
+    import plotly.graph_objects as go
+    import plotly.io as pio
+    from plotly.express import colors
+
+    # Get colorway from qualitative colorscale name
+    # Use .title() for multi-word names like 'dark24' -> 'Dark24'
+    colorscale_name = CONFIG.Plotting.default_qualitative_colorscale.title()
+    colorway = getattr(colors.qualitative, colorscale_name, None)
+
+    # Fall back to Plotly default if colorscale not found
+    if colorway is None:
+        logging.getLogger(__name__).warning(
+            f"Colorscale '{CONFIG.Plotting.default_qualitative_colorscale}' not found in "
+            f"plotly.express.colors.qualitative, falling back to 'Plotly'. "
+            f'Available: {[n for n in dir(colors.qualitative) if not n.startswith("_")]}'
+        )
+        colorway = colors.qualitative.Plotly
+
+    pio.templates['flixopt'] = go.layout.Template(
+        layout=go.Layout(
+            colorway=colorway,
+            colorscale=dict(
+                sequential=CONFIG.Plotting.default_sequential_colorscale,
+            ),
+        )
+    )
+
+
+# Register flixopt template on import (no side effects - just makes it available)
+_register_flixopt_template()
