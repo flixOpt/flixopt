@@ -926,23 +926,87 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             DeprecationWarning,
             stacklevel=2,
         )
-        from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
+        from flixopt.io import load_dataset_from_netcdf
 
         folder = pathlib.Path(folder)
-
-        # Load datasets directly (old format used --flow_system.nc4 and --solution.nc4)
         flow_system_path = folder / f'{name}--flow_system.nc4'
         solution_path = folder / f'{name}--solution.nc4'
 
-        flow_system_data = load_dataset_from_netcdf(flow_system_path)
-        solution = load_dataset_from_netcdf(solution_path)
+        # Load FlowSystem using from_old_dataset (suppress its deprecation warning)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', DeprecationWarning)
+            flow_system = cls.from_old_dataset(flow_system_path)
+        flow_system.name = name
 
-        # Convert flow_system_data to new parameter names
+        # Attach solution (convert attrs from dicts to JSON strings for consistency)
+        solution = load_dataset_from_netcdf(solution_path)
+        for key in ['Components', 'Buses', 'Effects', 'Flows']:
+            if key in solution.attrs and isinstance(solution.attrs[key], dict):
+                solution.attrs[key] = json.dumps(solution.attrs[key])
+        flow_system.solution = solution
+
+        return flow_system
+
+    @classmethod
+    def from_old_dataset(cls, path: str | pathlib.Path) -> FlowSystem:
+        """
+        Load a FlowSystem from an old-format dataset file (pre-v5 API).
+
+        This method loads a FlowSystem saved with older versions of flixopt
+        (the ``*--flow_system.nc4`` file) and converts parameter names to the
+        current API. Unlike :meth:`from_old_results`, this does not require
+        a solution file and returns a FlowSystem without solution data.
+
+        The method performs the following:
+
+        - Loads the old netCDF format
+        - Renames deprecated parameters in the FlowSystem structure
+          (e.g., ``on_off_parameters`` → ``status_parameters``)
+
+        Args:
+            path: Path to the old-format FlowSystem file (typically ``*--flow_system.nc4``)
+
+        Returns:
+            FlowSystem instance without solution
+
+        Warning:
+            This is a best-effort migration for loading old FlowSystem definitions.
+            For full compatibility, consider re-saving with the new API after loading.
+
+        Examples:
+            ```python
+            # Load old FlowSystem file
+            fs = FlowSystem.from_old_dataset('results/my_run--flow_system.nc4')
+
+            # Modify and optimize with current API
+            fs.optimize(solver)
+
+            # Save in new single-file format
+            fs.to_netcdf('my_run.nc')
+            ```
+
+        Deprecated:
+            This method will be removed in v6.
+        """
+        warnings.warn(
+            f'from_old_dataset() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            'This utility is only for migrating FlowSystems from flixopt versions before v5.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
+
+        path = pathlib.Path(path)
+
+        # Load dataset
+        flow_system_data = load_dataset_from_netcdf(path)
+
+        # Convert to new parameter names
         convert_old_dataset(flow_system_data)
 
         # Reconstruct FlowSystem
         flow_system = cls.from_dataset(flow_system_data)
-        flow_system.name = name
+        flow_system.name = path.stem.replace('--flow_system', '')
 
         # Set previous_flow_rate=0 for flows of components with status_parameters
         # In v4 API, previous_flow_rate=None defaulted to previous_status=0 (off)
@@ -952,12 +1016,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 for flow in comp.inputs + comp.outputs:
                     if flow.previous_flow_rate is None:
                         flow.previous_flow_rate = 0
-
-        # Attach solution (convert attrs from dicts to JSON strings for consistency)
-        for key in ['Components', 'Buses', 'Effects', 'Flows']:
-            if key in solution.attrs and isinstance(solution.attrs[key], dict):
-                solution.attrs[key] = json.dumps(solution.attrs[key])
-        flow_system.solution = solution
 
         return flow_system
 
