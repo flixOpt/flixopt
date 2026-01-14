@@ -917,6 +917,115 @@ class Clustering:
         result = list(result_arrays.values())[0]
         return result.transpose('time', ...).assign_attrs(aggregated.attrs)
 
+    def build_expansion_divisor(
+        self,
+        original_time: pd.DatetimeIndex | None = None,
+    ) -> xr.DataArray:
+        """Build divisor for correcting segment totals when expanding to hourly.
+
+        For segmented systems, each segment value is a total that gets repeated N times
+        when expanded to hourly resolution (where N = segment duration in timesteps).
+        This divisor allows converting those totals back to hourly rates during expansion.
+
+        For each original timestep, returns the number of original timesteps that map
+        to the same (cluster, segment) - i.e., the segment duration in timesteps.
+
+        Args:
+            original_time: Original time coordinates. Defaults to self.original_timesteps.
+
+        Returns:
+            DataArray with dims ['time'] or ['time', 'period'?, 'scenario'?] containing
+            the number of timesteps in each segment, aligned to original timesteps.
+        """
+        if not self.is_segmented or self.n_segments is None:
+            raise ValueError('build_expansion_divisor requires a segmented clustering')
+
+        if original_time is None:
+            original_time = self.original_timesteps
+
+        n_original = self.n_original_clusters
+        timesteps_per_cluster = self.timesteps_per_cluster
+        cluster_assignments = self.cluster_assignments  # Maps original clusters to typical clusters
+
+        def _build_divisor_for_result(
+            assignments: np.ndarray,
+            clustering_result: TsamClusteringResult,
+        ) -> np.ndarray:
+            """Build divisor for a single period/scenario using its clustering result."""
+            n_timesteps = n_original * timesteps_per_cluster
+            divisor = np.empty(n_timesteps)
+
+            # Get segment info from the specific clustering result
+            # segment_durations: tuple of tuples, one per cluster
+            # segment_assignments: tuple of tuples, one per cluster
+            seg_durations_per_cluster = clustering_result.segment_durations
+            seg_assignments_per_cluster = clustering_result.segment_assignments
+
+            for orig_cluster_idx in range(n_original):
+                typical_cluster_idx = int(assignments[orig_cluster_idx])
+
+                # Get segment durations and assignments for this typical cluster
+                seg_durs = seg_durations_per_cluster[typical_cluster_idx]
+                seg_assigns = seg_assignments_per_cluster[typical_cluster_idx]
+
+                # For each timestep within this cluster
+                cluster_start = orig_cluster_idx * timesteps_per_cluster
+                for t in range(timesteps_per_cluster):
+                    seg_idx = int(seg_assigns[t])
+                    divisor[cluster_start + t] = seg_durs[seg_idx]
+
+            return divisor
+
+        # Handle extra dimensions (period, scenario)
+        extra_dims = self.results.dim_names
+
+        if not extra_dims:
+            # Simple case: no period/scenario dimensions
+            result = self.results.sel()  # Get the single result
+            divisor_values = _build_divisor_for_result(cluster_assignments.values, result)
+            return xr.DataArray(
+                divisor_values,
+                dims=['time'],
+                coords={'time': original_time},
+                name='expansion_divisor',
+            )
+
+        # Multi-dimensional: build divisor for each period/scenario
+        dim_coords = self.results.coords
+        divisor_slices = {}
+
+        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
+            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
+
+            # Get cluster assignments for this period/scenario
+            if any(d in cluster_assignments.dims for d in selector):
+                assignments = _select_dims(cluster_assignments, **selector).values
+            else:
+                assignments = cluster_assignments.values
+
+            # Get the clustering result for this period/scenario
+            result = self.results.sel(**selector)
+            divisor_values = _build_divisor_for_result(assignments, result)
+
+            divisor_slices[tuple(selector.values())] = xr.DataArray(
+                divisor_values,
+                dims=['time'],
+                coords={'time': original_time},
+            )
+
+        # Concatenate along extra dimensions
+        result_arrays = divisor_slices
+        for dim in reversed(extra_dims):
+            dim_vals = dim_coords[dim]
+            grouped = {}
+            for key, arr in result_arrays.items():
+                rest_key = key[:-1] if len(key) > 1 else ()
+                grouped.setdefault(rest_key, []).append(arr)
+            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
+
+        result = list(result_arrays.values())[0]
+        return result.transpose('time', ...).assign_attrs({'name': 'expansion_divisor'})
+
     def get_result(
         self,
         period: Any = None,

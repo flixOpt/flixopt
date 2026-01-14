@@ -1847,11 +1847,43 @@ class TransformAccessor:
             n_original_clusters - 1,
         )
 
+        # For segmented systems: build expansion divisor to correct segment totals
+        expansion_divisor = None
+        if clustering.is_segmented:
+            expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
+
+        def _is_segment_total_var(var_name: str) -> bool:
+            """Check if variable represents a segment total (needs division).
+
+            Segment totals are values that represent the sum over a segment
+            (e.g., effect contributions). These need to be divided by segment
+            duration when expanding to hourly to get correct hourly rates.
+
+            Rate variables (like flow rates, on/off states, share factors) should NOT be divided.
+            """
+            # Exclude effect share factors (stored as EffectA|(temporal)->EffectB(temporal))
+            # These are rates/multipliers, not segment totals
+            if '|(temporal)->' in var_name or '|(periodic)->' in var_name:
+                return False
+            # Contribution patterns: Boiler(Q)->EffectA(temporal)
+            if '->' in var_name:
+                return True
+            # Explicit per-timestep totals: EffectA(temporal)|per_timestep
+            if '|per_timestep' in var_name:
+                return True
+            # Don't divide rates and states
+            return False
+
         def expand_da(da: xr.DataArray, var_name: str = '') -> xr.DataArray:
             """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
             expanded = clustering.expand_data(da, original_time=original_timesteps)
+
+            # For segmented systems: divide segment totals by expansion divisor
+            # This converts segment totals to hourly rates
+            if expansion_divisor is not None and _is_segment_total_var(var_name):
+                expanded = expanded / expansion_divisor
 
             # For charge_state with cluster dim, append the extra timestep value
             if var_name.endswith('|charge_state') and 'cluster' in da.dims:
