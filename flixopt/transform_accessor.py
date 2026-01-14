@@ -1773,6 +1773,49 @@ class TransformAccessor:
 
         return soc_boundary_per_timestep * decay_da
 
+    def _build_segment_total_varnames(self) -> set[str]:
+        """Build the set of solution variable names that represent segment totals.
+
+        For segmented systems, these variables contain values that are summed over
+        segments. When expanded to hourly resolution, they need to be divided by
+        segment duration to get correct hourly rates.
+
+        Derives variable names directly from FlowSystem structure (effects, flows,
+        components) rather than pattern matching, ensuring robustness.
+
+        Returns:
+            Set of variable names that should be divided by expansion divisor.
+        """
+        segment_total_vars: set[str] = set()
+
+        # Get all effect names
+        effect_names = list(self._fs.effects.keys())
+
+        # 1. Per-timestep totals for each effect: {effect}(temporal)|per_timestep
+        for effect in effect_names:
+            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
+
+        # 2. Flow contributions to effects: {flow}->{effect}(temporal)
+        #    (from effects_per_flow_hour on Flow elements)
+        for flow_label in self._fs.flows:
+            for effect in effect_names:
+                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
+
+        # 3. Component contributions to effects: {component}->{effect}(temporal)
+        #    (from effects_per_startup, effects_per_active_hour on OnOffParameters)
+        for component_label in self._fs.components:
+            for effect in effect_names:
+                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
+
+        # 4. Effect-to-effect contributions (from share_from_temporal)
+        #    {source_effect}(temporal)->{target_effect}(temporal)
+        for target_effect_name, target_effect in self._fs.effects.items():
+            if target_effect.share_from_temporal:
+                for source_effect_name in target_effect.share_from_temporal:
+                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
+
+        return segment_total_vars
+
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.
 
@@ -1847,44 +1890,19 @@ class TransformAccessor:
             n_original_clusters - 1,
         )
 
-        # For segmented systems: build expansion divisor to correct segment totals
+        # For segmented systems: build expansion divisor and identify segment total variables
         expansion_divisor = None
+        segment_total_vars: set[str] = set()
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-
-        def _is_segment_total_solution_var(var_name: str) -> bool:
-            """Check if a SOLUTION variable represents a segment total (needs division).
-
-            Only applies to solution variables - FlowSystem data should NEVER be divided.
-
-            Segment totals are computed values that represent the sum over a segment
-            (e.g., effect contributions per timestep). When expanded to hourly resolution,
-            these need to be divided by segment duration to get correct hourly rates.
-
-            Pattern matching for solution variables:
-            - `{contributor}->{effect}(temporal)`: Effect contributions (€ per segment)
-            - `{effect}(temporal)|per_timestep`: Aggregated effect totals per timestep
-
-            NOT divided (rates/states):
-            - `{flow}|flow_rate`: Flow rates (MW)
-            - `{component}|on`: On/off states
-            - `{storage}|charge_state`: State of charge (MWh)
-            """
-            # Effect contributions: Boiler(Q)->EffectA(temporal), EffectA(temporal)->EffectB(temporal)
-            if '->' in var_name and '(temporal)' in var_name:
-                return True
-            # Per-timestep totals: EffectA(temporal)|per_timestep
-            if '|per_timestep' in var_name:
-                return True
-            # Everything else (rates, states) - don't divide
-            return False
+            segment_total_vars = self._build_segment_total_varnames()
 
         def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
             """Expand a DataArray from clustered to original timesteps.
 
             Args:
                 da: DataArray to expand.
-                var_name: Variable name for pattern matching.
+                var_name: Variable name for segment total lookup.
                 is_solution: True if this is a solution variable (may need segment correction).
                     FlowSystem data (is_solution=False) is never corrected for segments.
             """
@@ -1893,8 +1911,8 @@ class TransformAccessor:
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
             # For segmented systems: divide segment totals by expansion divisor
-            # ONLY for solution variables - FlowSystem data should never be divided
-            if is_solution and expansion_divisor is not None and _is_segment_total_solution_var(var_name):
+            # ONLY for solution variables explicitly identified as segment totals
+            if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
                 expanded = expanded / expansion_divisor
 
             # For charge_state with cluster dim, append the extra timestep value
