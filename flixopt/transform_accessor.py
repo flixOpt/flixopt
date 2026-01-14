@@ -1852,37 +1852,49 @@ class TransformAccessor:
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
 
-        def _is_segment_total_var(var_name: str) -> bool:
-            """Check if variable represents a segment total (needs division).
+        def _is_segment_total_solution_var(var_name: str) -> bool:
+            """Check if a SOLUTION variable represents a segment total (needs division).
 
-            Segment totals are values that represent the sum over a segment
-            (e.g., effect contributions). These need to be divided by segment
-            duration when expanding to hourly to get correct hourly rates.
+            Only applies to solution variables - FlowSystem data should NEVER be divided.
 
-            Rate variables (like flow rates, on/off states, share factors) should NOT be divided.
+            Segment totals are computed values that represent the sum over a segment
+            (e.g., effect contributions per timestep). When expanded to hourly resolution,
+            these need to be divided by segment duration to get correct hourly rates.
+
+            Pattern matching for solution variables:
+            - `{contributor}->{effect}(temporal)`: Effect contributions (€ per segment)
+            - `{effect}(temporal)|per_timestep`: Aggregated effect totals per timestep
+
+            NOT divided (rates/states):
+            - `{flow}|flow_rate`: Flow rates (MW)
+            - `{component}|on`: On/off states
+            - `{storage}|charge_state`: State of charge (MWh)
             """
-            # Exclude effect share factors (stored as EffectA|(temporal)->EffectB(temporal))
-            # These are rates/multipliers, not segment totals
-            if '|(temporal)->' in var_name or '|(periodic)->' in var_name:
-                return False
-            # Contribution patterns: Boiler(Q)->EffectA(temporal)
-            if '->' in var_name:
+            # Effect contributions: Boiler(Q)->EffectA(temporal), EffectA(temporal)->EffectB(temporal)
+            if '->' in var_name and '(temporal)' in var_name:
                 return True
-            # Explicit per-timestep totals: EffectA(temporal)|per_timestep
+            # Per-timestep totals: EffectA(temporal)|per_timestep
             if '|per_timestep' in var_name:
                 return True
-            # Don't divide rates and states
+            # Everything else (rates, states) - don't divide
             return False
 
-        def expand_da(da: xr.DataArray, var_name: str = '') -> xr.DataArray:
-            """Expand a DataArray from clustered to original timesteps."""
+        def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
+            """Expand a DataArray from clustered to original timesteps.
+
+            Args:
+                da: DataArray to expand.
+                var_name: Variable name for pattern matching.
+                is_solution: True if this is a solution variable (may need segment correction).
+                    FlowSystem data (is_solution=False) is never corrected for segments.
+            """
             if 'time' not in da.dims:
                 return da.copy()
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
             # For segmented systems: divide segment totals by expansion divisor
-            # This converts segment totals to hourly rates
-            if expansion_divisor is not None and _is_segment_total_var(var_name):
+            # ONLY for solution variables - FlowSystem data should never be divided
+            if is_solution and expansion_divisor is not None and _is_segment_total_solution_var(var_name):
                 expanded = expanded / expansion_divisor
 
             # For charge_state with cluster dim, append the extra timestep value
@@ -1917,10 +1929,10 @@ class TransformAccessor:
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
-        # 2. Expand solution
+        # 2. Expand solution (with segment total correction for segmented systems)
         reduced_solution = self._fs.solution
         expanded_fs._solution = xr.Dataset(
-            {name: expand_da(da, name) for name, da in reduced_solution.data_vars.items()},
+            {name: expand_da(da, name, is_solution=True) for name, da in reduced_solution.data_vars.items()},
             attrs=reduced_solution.attrs,
         )
         expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
