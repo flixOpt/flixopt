@@ -434,8 +434,6 @@ class TransformAccessor:
             logger.info(
                 f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
             )
-        if n_clusters_requested is not None:
-            logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters_requested})')
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das = self._build_typical_das(
