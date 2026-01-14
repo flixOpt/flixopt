@@ -158,7 +158,8 @@ class TransformAccessor:
 
         def _weight_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            weights = np.array([occurrences.get(c, 1) for c in range(n_clusters)])
+            # Use cluster_coords directly (actual cluster IDs) instead of range(n_clusters)
+            weights = np.array([occurrences.get(c, 1) for c in cluster_coords])
             return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
 
         weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}
@@ -194,11 +195,13 @@ class TransformAccessor:
             if is_segmented:
                 # Segmented data: MultiIndex (Segment Step, Segment Duration)
                 # Need to extract by cluster (first level of index)
+                # Get actual cluster IDs from the DataFrame's MultiIndex
+                df_cluster_ids = typical_df.index.get_level_values(0).unique()
                 for col in typical_df.columns:
                     data = np.zeros((actual_n_clusters, n_time_points))
-                    for cluster_id in range(actual_n_clusters):
+                    for idx, cluster_id in enumerate(df_cluster_ids):
                         cluster_data = typical_df.loc[cluster_id, col]
-                        data[cluster_id, :] = cluster_data.values[:n_time_points]
+                        data[idx, :] = cluster_data.values[:n_time_points]
                     typical_das.setdefault(col, {})[key] = xr.DataArray(
                         data,
                         dims=['cluster', 'time'],
@@ -398,10 +401,20 @@ class TransformAccessor:
         clustering_metrics = self._build_clustering_metrics(clustering_metrics_all, periods, scenarios)
 
         n_reduced_timesteps = len(first_tsam.cluster_representatives)
-        actual_n_clusters = len(first_tsam.cluster_weights)
+
+        # Get actual cluster IDs from the DataFrame index (not from cluster_weights length
+        # which can differ due to tsam internal behavior)
+        cluster_representatives_df = first_tsam.cluster_representatives
+        if isinstance(cluster_representatives_df.index, pd.MultiIndex):
+            # Segmented: cluster IDs are the first level of the MultiIndex
+            cluster_ids = cluster_representatives_df.index.get_level_values(0).unique()
+        else:
+            # Non-segmented: cluster IDs can be derived from row count and timesteps_per_cluster
+            cluster_ids = np.arange(len(cluster_representatives_df) // timesteps_per_cluster)
+        actual_n_clusters = len(cluster_ids)
 
         # Create coordinates for the 2D cluster structure
-        cluster_coords = np.arange(actual_n_clusters)
+        cluster_coords = np.array(cluster_ids)
 
         # Detect if segmentation was used
         is_segmented = first_tsam.n_segments is not None
