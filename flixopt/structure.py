@@ -1603,8 +1603,20 @@ class Submodel(SubmodelsMixin):
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
 
-    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
-        """Create and register a variable in one step"""
+    def add_variables(
+        self,
+        short_name: str = None,
+        **kwargs: Any,
+    ) -> linopy.Variable:
+        """Create and register a variable in one step.
+
+        Args:
+            short_name: Short name for the variable (used as suffix in full name).
+            **kwargs: Additional arguments passed to linopy.Model.add_variables().
+
+        Returns:
+            The created linopy Variable.
+        """
         if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
