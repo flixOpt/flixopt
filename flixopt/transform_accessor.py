@@ -2055,11 +2055,15 @@ class TransformAccessor:
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
-        data_vars = {
-            name: expand_da(da, name)
-            for name, da in reduced_ds.data_vars.items()
-            if name != 'cluster_weight' and not name.startswith('clustering|')
-        }
+        skip_vars = {'cluster_weight', 'timestep_duration'}  # These have special handling
+        data_vars = {}
+        for name, da in reduced_ds.data_vars.items():
+            if name in skip_vars or name.startswith('clustering|'):
+                continue
+            # Skip cluster-only vars (no time dim) - they don't make sense after expansion
+            if da.dims == ('cluster',):
+                continue
+            data_vars[name] = expand_da(da, name)
         attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
 
