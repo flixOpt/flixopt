@@ -2060,8 +2060,9 @@ class TransformAccessor:
         for name, da in reduced_ds.data_vars.items():
             if name in skip_vars or name.startswith('clustering|'):
                 continue
-            # Skip cluster-only vars (no time dim) - they don't make sense after expansion
-            if da.dims == ('cluster',):
+            # Skip vars with cluster dim but no time dim - they don't make sense after expansion
+            # (e.g., representative_weights with dims ('cluster',) or ('cluster', 'period'))
+            if 'cluster' in da.dims and 'time' not in da.dims:
                 continue
             data_vars[name] = expand_da(da, name)
         attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
