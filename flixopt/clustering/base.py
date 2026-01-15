@@ -950,22 +950,17 @@ class Clustering:
             original_time = self.original_timesteps
 
         timestep_mapping = self.timestep_mapping  # Already multi-dimensional
-        segment_assignments = self.results.segment_assignments  # [cluster, time, period?, scenario?]
         segment_durations = self.results.segment_durations  # [cluster, segment, period?, scenario?]
 
-        # Decode cluster and time indices from timestep_mapping
-        # For segmented systems, time dimension is n_segments
+        # Decode cluster and segment indices from timestep_mapping
+        # For segmented systems, encoding is: cluster_id * n_segments + segment_idx
         time_dim_size = self.n_segments
         cluster_indices = timestep_mapping // time_dim_size
-        time_indices = timestep_mapping % time_dim_size
+        segment_indices = timestep_mapping % time_dim_size  # This IS the segment index
 
-        # Step 1: Get segment index for each original timestep
-        # segment_assignments[cluster, time] -> segment index
-        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
-
-        # Step 2: Get duration for each segment
+        # Get duration for each segment directly
         # segment_durations[cluster, segment] -> duration
-        divisor = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
+        divisor = segment_durations.isel(cluster=cluster_indices, segment=segment_indices)
 
         # Clean up coordinates and rename
         divisor = divisor.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
