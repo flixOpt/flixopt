@@ -905,7 +905,8 @@ class Clustering:
         """Expand aggregated data back to original timesteps.
 
         Uses the timestep_mapping to map each original timestep to its
-        representative value from the aggregated data.
+        representative value from the aggregated data. Fully vectorized using
+        xarray's advanced indexing - no loops over period/scenario dimensions.
 
         Args:
             aggregated: DataArray with aggregated (cluster, time) or (time,) dimension.
@@ -917,50 +918,31 @@ class Clustering:
         if original_time is None:
             original_time = self.original_timesteps
 
-        timestep_mapping = self.timestep_mapping
-        has_cluster_dim = 'cluster' in aggregated.dims
+        timestep_mapping = self.timestep_mapping  # Already multi-dimensional DataArray
 
-        # For segmented systems, the time dimension size is n_segments, not timesteps_per_cluster.
-        # The timestep_mapping uses timesteps_per_cluster for creating indices, but when
-        # indexing into aggregated data with (cluster, time) shape, we need the actual
-        # time dimension size.
-        if has_cluster_dim and self.is_segmented and self.n_segments is not None:
-            time_dim_size = self.n_segments
+        if 'cluster' not in aggregated.dims:
+            # No cluster dimension: use mapping directly as time index
+            expanded = aggregated.isel(time=timestep_mapping)
         else:
-            time_dim_size = self.timesteps_per_cluster
+            # Has cluster dimension: compute cluster and time indices from mapping
+            # For segmented systems, time dimension is n_segments, not timesteps_per_cluster
+            if self.is_segmented and self.n_segments is not None:
+                time_dim_size = self.n_segments
+            else:
+                time_dim_size = self.timesteps_per_cluster
 
-        def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
-            """Expand a single slice using the mapping."""
-            if has_cluster_dim:
-                cluster_ids = mapping // time_dim_size
-                time_within = mapping % time_dim_size
-                return data.values[cluster_ids, time_within]
-            return data.values[mapping]
+            cluster_indices = timestep_mapping // time_dim_size
+            time_indices = timestep_mapping % time_dim_size
 
-        # Simple case: no period/scenario dimensions
-        extra_dims = [d for d in timestep_mapping.dims if d != 'original_time']
-        if not extra_dims:
-            expanded_values = _expand_slice(timestep_mapping.values, aggregated)
-            return xr.DataArray(
-                expanded_values,
-                coords={'time': original_time},
-                dims=['time'],
-                attrs=aggregated.attrs,
-            )
+            # xarray's advanced indexing handles broadcasting across period/scenario dims
+            expanded = aggregated.isel(cluster=cluster_indices, time=time_indices)
 
-        # Multi-dimensional: expand each slice and combine
-        dim_coords = {d: list(timestep_mapping.coords[d].values) for d in extra_dims}
-        slices = {}
-        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
-            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
-            key = tuple(selector.values())
-            mapping = _select_dims(timestep_mapping, **selector).values
-            data_slice = (
-                _select_dims(aggregated, **selector) if any(d in aggregated.dims for d in selector) else aggregated
-            )
-            slices[key] = _expand_slice(mapping, data_slice)
+        # Clean up: drop coordinate artifacts from isel, then rename original_time -> time
+        # The isel operation may leave 'cluster' and 'time' as non-dimension coordinates
+        expanded = expanded.drop_vars(['cluster', 'time'], errors='ignore')
+        expanded = expanded.rename({'original_time': 'time'}).assign_coords(time=original_time)
 
-        return combine_slices(slices, extra_dims, dim_coords, 'time', original_time, aggregated.attrs)
+        return expanded.transpose('time', ...).assign_attrs(aggregated.attrs)
 
     def build_expansion_divisor(
         self,
