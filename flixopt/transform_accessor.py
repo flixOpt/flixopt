@@ -1172,6 +1172,10 @@ class TransformAccessor:
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
+        preserve_column_means: bool = True,
+        rescale_exclude_columns: list[str] | None = None,
+        round_decimals: int | None = None,
+        numerical_tolerance: float = 1e-13,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
@@ -1212,8 +1216,19 @@ class TransformAccessor:
             segments: Optional tsam ``SegmentConfig`` object specifying intra-period
                 segmentation. Segments divide each cluster period into variable-duration
                 sub-segments. Example: ``SegmentConfig(n_segments=4)``.
-            **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``.
-                See tsam documentation for all options (e.g., ``preserve_column_means``).
+            preserve_column_means: Rescale typical periods so each column's weighted mean
+                matches the original data's mean. Ensures total energy/load is preserved
+                when weights represent occurrence counts. Default is True.
+            rescale_exclude_columns: Column names to exclude from rescaling when
+                ``preserve_column_means=True``. Useful for binary/indicator columns (0/1 values)
+                that should not be rescaled.
+            round_decimals: Round output values to this many decimal places.
+                If None (default), no rounding is applied.
+            numerical_tolerance: Tolerance for numerical precision issues. Controls when
+                warnings are raised for aggregated values exceeding original time series bounds.
+                Default is 1e-13.
+            **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``
+                for forward compatibility. See tsam documentation for all options.
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -1302,11 +1317,16 @@ class TransformAccessor:
 
         # Validate tsam_kwargs doesn't override explicit parameters
         reserved_tsam_keys = {
-            'n_periods',
-            'period_hours',
-            'resolution',
-            'cluster',  # ClusterConfig object (weights are passed through this)
-            'extremes',  # ExtremeConfig object
+            'n_clusters',
+            'period_duration',  # exposed as cluster_duration
+            'timestep_duration',  # computed automatically
+            'cluster',
+            'segments',
+            'extremes',
+            'preserve_column_means',
+            'rescale_exclude_columns',
+            'round_decimals',
+            'numerical_tolerance',
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -1359,6 +1379,10 @@ class TransformAccessor:
                         cluster=cluster_config,
                         extremes=extremes,
                         segments=segments,
+                        preserve_column_means=preserve_column_means,
+                        rescale_exclude_columns=rescale_exclude_columns,
+                        round_decimals=round_decimals,
+                        numerical_tolerance=numerical_tolerance,
                         **tsam_kwargs,
                     )
 

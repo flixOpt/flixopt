@@ -1671,7 +1671,7 @@ class Submodel(SubmodelsMixin):
         self,
         short_name: str = None,
         category: VariableCategory = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> linopy.Variable:
         """Create and register a variable in one step.
 
