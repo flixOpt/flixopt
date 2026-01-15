@@ -76,10 +76,10 @@ jobs:
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
           set -eo pipefail
-          # Execute fast notebooks sequentially (HDF5/NetCDF not safe for parallel execution)
+          # Execute fast notebooks in parallel (4 at a time), excluding slow ones
           cd docs/notebooks && find . -name '*.ipynb' | \
             grep -vFf slow_notebooks.txt | \
-            xargs -P 1 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Build docs
         env:
@@ -140,10 +140,10 @@ jobs:
         if: steps.notebook-cache.outputs.cache-hit != 'true'
         run: |
           set -eo pipefail
-          # Execute fast notebooks sequentially (HDF5/NetCDF not safe for parallel execution)
+          # Execute fast notebooks in parallel (4 at a time), excluding slow ones
           cd docs/notebooks && find . -name '*.ipynb' | \
             grep -vFf slow_notebooks.txt | \
-            xargs -P 1 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Execute slow notebooks
         if: steps.notebook-cache.outputs.cache-hit != 'true'
