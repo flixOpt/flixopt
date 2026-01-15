@@ -413,25 +413,36 @@ class ClusteringResults:
         Only available if segmentation was configured during clustering.
 
         Returns:
-            DataArray with dims [cluster, time] or None if no segmentation.
+            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?].
+            Returns None if no segmentation.
         """
         first = self._first_result
         if first.segment_assignments is None:
             return None
 
+        periods = self._get_dim_values('period')
+        scenarios = self._get_dim_values('scenario')
+        timesteps_per_cluster = first.n_timesteps_per_period
+
         if not self.dim_names:
-            # segment_assignments is tuple of tuples: (cluster0_assignments, cluster1_assignments, ...)
+            # Simple case: segment_assignments is tuple of tuples
             data = np.array(first.segment_assignments)
             return xr.DataArray(
                 data,
                 dims=['cluster', 'time'],
-                coords={'cluster': range(self.n_clusters)},
+                coords={'cluster': range(self.n_clusters), 'time': range(timesteps_per_cluster)},
                 name='segment_assignments',
             )
 
-        # Multi-dim case would need more complex handling
-        # For now, return None for multi-dim
-        return None
+        # Multi-dimensional case: build array for each period/scenario
+        return self._build_multi_dim_array(
+            lambda cr: np.array(cr.segment_assignments),
+            base_dims=['cluster', 'time'],
+            base_coords={'cluster': range(self.n_clusters), 'time': range(timesteps_per_cluster)},
+            periods=periods,
+            scenarios=scenarios,
+            name='segment_assignments',
+        )
 
     @property
     def segment_durations(self) -> xr.DataArray | None:
@@ -440,18 +451,25 @@ class ClusteringResults:
         Only available if segmentation was configured during clustering.
 
         Returns:
-            DataArray with dims [cluster, segment] or None if no segmentation.
+            DataArray with dims [cluster, segment] or [cluster, segment, period?, scenario?].
+            Returns None if no segmentation.
         """
         first = self._first_result
         if first.segment_durations is None:
             return None
 
+        periods = self._get_dim_values('period')
+        scenarios = self._get_dim_values('scenario')
+        n_segments = first.n_segments
+
+        def _get_padded_durations(cr: TsamClusteringResult) -> np.ndarray:
+            """Get segment durations, padded with NaN for ragged arrays."""
+            durations = cr.segment_durations
+            return np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in durations])
+
         if not self.dim_names:
-            # segment_durations is tuple of tuples: (cluster0_durations, cluster1_durations, ...)
-            # Each cluster may have different segment counts, so we need to handle ragged arrays
-            durations = first.segment_durations
-            n_segments = first.n_segments
-            data = np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in durations])
+            # Simple case: segment_durations is tuple of tuples
+            data = _get_padded_durations(first)
             return xr.DataArray(
                 data,
                 dims=['cluster', 'segment'],
@@ -460,7 +478,15 @@ class ClusteringResults:
                 attrs={'units': 'hours'},
             )
 
-        return None
+        # Multi-dimensional case: build array for each period/scenario
+        return self._build_multi_dim_array(
+            _get_padded_durations,
+            base_dims=['cluster', 'segment'],
+            base_coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
+            periods=periods,
+            scenarios=scenarios,
+            name='segment_durations',
+        )
 
     @property
     def segment_centers(self) -> xr.DataArray | None:
@@ -477,6 +503,59 @@ class ClusteringResults:
 
         # tsam's segment_centers may be None even with segments configured
         return None
+
+    @property
+    def position_within_segment(self) -> xr.DataArray | None:
+        """Position of each timestep within its segment (0-indexed).
+
+        For each (cluster, time) position, returns how many timesteps into the
+        segment that position is. Used for interpolation within segments.
+
+        Returns:
+            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?].
+            Returns None if no segmentation.
+        """
+        segment_assignments = self.segment_assignments
+        if segment_assignments is None:
+            return None
+
+        def _compute_positions(seg_assigns: np.ndarray) -> np.ndarray:
+            """Compute position within segment for each (cluster, time)."""
+            n_clusters, n_times = seg_assigns.shape
+            positions = np.zeros_like(seg_assigns)
+            for c in range(n_clusters):
+                pos = 0
+                prev_seg = -1
+                for t in range(n_times):
+                    seg = seg_assigns[c, t]
+                    if seg != prev_seg:
+                        pos = 0
+                        prev_seg = seg
+                    positions[c, t] = pos
+                    pos += 1
+            return positions
+
+        # Handle extra dimensions by applying _compute_positions to each slice
+        extra_dims = [d for d in segment_assignments.dims if d not in ('cluster', 'time')]
+
+        if not extra_dims:
+            positions = _compute_positions(segment_assignments.values)
+            return xr.DataArray(
+                positions,
+                dims=['cluster', 'time'],
+                coords=segment_assignments.coords,
+                name='position_within_segment',
+            )
+
+        # Multi-dimensional case: compute for each period/scenario slice
+        result = xr.apply_ufunc(
+            _compute_positions,
+            segment_assignments,
+            input_core_dims=[['cluster', 'time']],
+            output_core_dims=[['cluster', 'time']],
+            vectorize=True,
+        )
+        return result.rename('position_within_segment')
 
     # === Serialization ===
 
@@ -957,6 +1036,8 @@ class Clustering:
         For each original timestep, returns the number of original timesteps that map
         to the same (cluster, segment) - i.e., the segment duration in timesteps.
 
+        Fully vectorized using xarray's advanced indexing - no loops over period/scenario.
+
         Args:
             original_time: Original time coordinates. Defaults to self.original_timesteps.
 
@@ -970,72 +1051,29 @@ class Clustering:
         if original_time is None:
             original_time = self.original_timesteps
 
-        n_original = self.n_original_clusters
-        timesteps_per_cluster = self.timesteps_per_cluster
-        cluster_assignments = self.cluster_assignments  # Maps original clusters to typical clusters
+        timestep_mapping = self.timestep_mapping  # Already multi-dimensional
+        segment_assignments = self.results.segment_assignments  # [cluster, time, period?, scenario?]
+        segment_durations = self.results.segment_durations  # [cluster, segment, period?, scenario?]
 
-        def _build_divisor_for_result(
-            assignments: np.ndarray,
-            clustering_result: TsamClusteringResult,
-        ) -> np.ndarray:
-            """Build divisor for a single period/scenario using its clustering result."""
-            n_timesteps = n_original * timesteps_per_cluster
-            divisor = np.empty(n_timesteps)
+        # Decode cluster and time indices from timestep_mapping
+        # For segmented systems, time dimension is n_segments
+        time_dim_size = self.n_segments
+        cluster_indices = timestep_mapping // time_dim_size
+        time_indices = timestep_mapping % time_dim_size
 
-            # Get segment info from the specific clustering result
-            # segment_durations: tuple of tuples, one per cluster
-            # segment_assignments: tuple of tuples, one per cluster
-            seg_durations_per_cluster = clustering_result.segment_durations
-            seg_assignments_per_cluster = clustering_result.segment_assignments
+        # Step 1: Get segment index for each original timestep
+        # segment_assignments[cluster, time] -> segment index
+        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
 
-            for orig_cluster_idx in range(n_original):
-                typical_cluster_idx = int(assignments[orig_cluster_idx])
+        # Step 2: Get duration for each segment
+        # segment_durations[cluster, segment] -> duration
+        divisor = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
 
-                # Get segment durations and assignments for this typical cluster
-                seg_durs = seg_durations_per_cluster[typical_cluster_idx]
-                seg_assigns = seg_assignments_per_cluster[typical_cluster_idx]
+        # Clean up coordinates and rename
+        divisor = divisor.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
+        divisor = divisor.rename({'original_time': 'time'}).assign_coords(time=original_time)
 
-                # For each timestep within this cluster
-                cluster_start = orig_cluster_idx * timesteps_per_cluster
-                for t in range(timesteps_per_cluster):
-                    seg_idx = int(seg_assigns[t])
-                    divisor[cluster_start + t] = seg_durs[seg_idx]
-
-            return divisor
-
-        # Handle extra dimensions (period, scenario)
-        extra_dims = self.results.dim_names
-
-        if not extra_dims:
-            # Simple case: no period/scenario dimensions
-            result = self.results.sel()  # Get the single result
-            divisor_values = _build_divisor_for_result(cluster_assignments.values, result)
-            return xr.DataArray(
-                divisor_values,
-                dims=['time'],
-                coords={'time': original_time},
-                name='expansion_divisor',
-            )
-
-        # Multi-dimensional: build divisor for each period/scenario and combine
-        dim_coords = self.results.coords
-        slices = {}
-
-        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
-            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
-            key = tuple(selector.values())
-
-            # Get cluster assignments for this period/scenario
-            if any(d in cluster_assignments.dims for d in selector):
-                assignments = _select_dims(cluster_assignments, **selector).values
-            else:
-                assignments = cluster_assignments.values
-
-            # Get the clustering result for this period/scenario
-            result = self.results.sel(**selector)
-            slices[key] = _build_divisor_for_result(assignments, result)
-
-        return combine_slices(slices, extra_dims, dim_coords, 'time', original_time, {'name': 'expansion_divisor'})
+        return divisor.transpose('time', ...).rename('expansion_divisor')
 
     def get_result(
         self,
