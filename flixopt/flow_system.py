@@ -1670,6 +1670,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._statistics = None  # Invalidate cached statistics
 
     @property
+    def variable_categories(self) -> dict[str, VariableCategory]:
+        """Variable categories for filtering and segment expansion.
+
+        Returns:
+            Dict mapping variable names to their VariableCategory.
+        """
+        return self._variable_categories
+
+    def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
+        """Get variable names matching any of the specified categories.
+
+        Args:
+            *categories: One or more VariableCategory values to filter by.
+            from_solution: If True, only return variables present in solution.
+                If False, return all registered variables matching categories.
+
+        Returns:
+            List of variable names matching any of the specified categories.
+
+        Example:
+            >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
+            ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', ...]
+            >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
+            ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
+        """
+        category_set = set(categories)
+        matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
+        if from_solution and self._solution is not None:
+            solution_vars = set(self._solution.data_vars)
+            matching = [v for v in matching if v in solution_vars]
+        return matching
+
+    @property
     def is_locked(self) -> bool:
         """Check if the FlowSystem is locked (has a solution).
 

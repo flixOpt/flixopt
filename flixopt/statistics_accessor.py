@@ -31,6 +31,7 @@ import xarray as xr
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 from .plot_result import PlotResult
+from .structure import VariableCategory
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -523,12 +524,12 @@ class StatisticsAccessor:
         """
         self._require_solution()
         if self._flow_rates is None:
-            flow_rate_vars = [v for v in self._fs.solution.data_vars if v.endswith('|flow_rate')]
+            flow_rate_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_RATE)
             flow_carriers = self._fs.flow_carriers  # Cached lookup
             carrier_units = self.carrier_units  # Cached lookup
             data_vars = {}
             for v in flow_rate_vars:
-                flow_label = v.replace('|flow_rate', '')
+                flow_label = v.rsplit('|', 1)[0]  # Extract label from 'label|flow_rate'
                 da = self._fs.solution[v].copy()
                 # Add carrier and unit as attributes
                 carrier = flow_carriers.get(flow_label)
@@ -568,10 +569,10 @@ class StatisticsAccessor:
         self._require_solution()
         if self._flow_sizes is None:
             flow_labels = set(self._fs.flows.keys())
-            size_vars = [
-                v for v in self._fs.solution.data_vars if v.endswith('|size') and v.replace('|size', '') in flow_labels
-            ]
-            self._flow_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            size_vars = self._fs.get_variables_by_category(VariableCategory.SIZE)
+            # Filter to only flow-related sizes
+            flow_size_vars = [v for v in size_vars if v.rsplit('|', 1)[0] in flow_labels]
+            self._flow_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in flow_size_vars})
         return self._flow_sizes
 
     @property
@@ -580,12 +581,10 @@ class StatisticsAccessor:
         self._require_solution()
         if self._storage_sizes is None:
             storage_labels = set(self._fs.storages.keys())
-            size_vars = [
-                v
-                for v in self._fs.solution.data_vars
-                if v.endswith('|size') and v.replace('|size', '') in storage_labels
-            ]
-            self._storage_sizes = xr.Dataset({v.replace('|size', ''): self._fs.solution[v] for v in size_vars})
+            size_vars = self._fs.get_variables_by_category(VariableCategory.SIZE)
+            # Filter to only storage-related sizes
+            storage_size_vars = [v for v in size_vars if v.rsplit('|', 1)[0] in storage_labels]
+            self._storage_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in storage_size_vars})
         return self._storage_sizes
 
     @property
@@ -600,10 +599,8 @@ class StatisticsAccessor:
         """All storage charge states as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._charge_states is None:
-            charge_vars = [v for v in self._fs.solution.data_vars if v.endswith('|charge_state')]
-            self._charge_states = xr.Dataset(
-                {v.replace('|charge_state', ''): self._fs.solution[v] for v in charge_vars}
-            )
+            charge_vars = self._fs.get_variables_by_category(VariableCategory.CHARGE_STATE)
+            self._charge_states = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in charge_vars})
         return self._charge_states
 
     @property
