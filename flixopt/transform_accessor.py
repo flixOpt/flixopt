@@ -1848,7 +1848,11 @@ class TransformAccessor:
         position_within_segment = clustering.results.position_within_segment
 
         # Decode timestep_mapping into cluster and time indices
-        time_dim_size = clustering.timesteps_per_cluster
+        # For segmented systems, use n_segments as the divisor (matches expand_data/build_expansion_divisor)
+        if clustering.is_segmented and clustering.n_segments is not None:
+            time_dim_size = clustering.n_segments
+        else:
+            time_dim_size = clustering.timesteps_per_cluster
         cluster_indices = timestep_mapping // time_dim_size
         time_indices = timestep_mapping % time_dim_size
 

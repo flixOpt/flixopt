@@ -74,6 +74,10 @@ def combine_slices(
     Returns:
         DataArray with dims [output_dim, *extra_dims].
 
+    Raises:
+        ValueError: If slices is empty.
+        KeyError: If a required key is missing from slices.
+
     Example:
         >>> slices = {
         ...     ('P1', 'base'): np.array([1, 2, 3]),
@@ -91,13 +95,20 @@ def combine_slices(
         >>> result.dims
         ('time', 'period', 'scenario')
     """
-    n_output = len(next(iter(slices.values())))
+    if not slices:
+        raise ValueError('slices cannot be empty')
+
+    first = next(iter(slices.values()))
+    n_output = len(first)
     shape = [n_output] + [len(dim_coords[d]) for d in extra_dims]
-    data = np.empty(shape)
+    data = np.empty(shape, dtype=first.dtype)
 
     for combo in np.ndindex(*shape[1:]):
         key = tuple(dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True))
-        data[(slice(None),) + combo] = slices[key]
+        try:
+            data[(slice(None),) + combo] = slices[key]
+        except KeyError:
+            raise KeyError(f'Missing slice for key {key} (extra_dims={extra_dims})') from None
 
     return xr.DataArray(
         data,

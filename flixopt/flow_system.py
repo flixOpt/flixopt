@@ -918,10 +918,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Restore variable categories if present
         if 'variable_categories' in reference_structure:
             categories_dict = json.loads(reference_structure['variable_categories'])
-            # Convert string values back to VariableCategory enum
-            flow_system._variable_categories = {
-                name: VariableCategory(value) for name, value in categories_dict.items()
-            }
+            # Convert string values back to VariableCategory enum with safe fallback
+            restored_categories = {}
+            for name, value in categories_dict.items():
+                try:
+                    restored_categories[name] = VariableCategory(value)
+                except ValueError:
+                    # Unknown category value (e.g., renamed/removed enum) - skip it
+                    # The variable will be treated as uncategorized during expansion
+                    logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
+            flow_system._variable_categories = restored_categories
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1689,6 +1695,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
+        self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
             element.submodel = None
             element._variable_names = []
