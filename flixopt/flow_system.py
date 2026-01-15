@@ -1696,7 +1696,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
         """
         category_set = set(categories)
-        matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
+
+        if self._variable_categories:
+            # Use registered categories
+            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
+        elif self._solution is not None:
+            # Fallback for old files without categories: match by suffix pattern
+            # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
+            suffixes = tuple(f'|{cat.value}' for cat in category_set)
+            matching = [v for v in self._solution.data_vars if v.endswith(suffixes)]
+        else:
+            matching = []
+
         if from_solution and self._solution is not None:
             solution_vars = set(self._solution.data_vars)
             matching = [v for v in matching if v in solution_vars]
