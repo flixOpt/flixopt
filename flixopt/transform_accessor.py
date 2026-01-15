@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .structure import VariableCategory
+
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
 
@@ -2069,9 +2071,23 @@ class TransformAccessor:
         # For segmented systems: build expansion divisor and identify segment total variables
         expansion_divisor = None
         segment_total_vars: set[str] = set()
+        variable_categories = getattr(self._fs, '_variable_categories', {})
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-            segment_total_vars = self._build_segment_total_varnames()
+            # Build segment total vars using registry first, fall back to pattern matching
+            segment_total_vars = {
+                name for name, cat in variable_categories.items() if cat == VariableCategory.SEGMENT_TOTAL
+            }
+            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
+            if not segment_total_vars:
+                segment_total_vars = self._build_segment_total_varnames()
+
+        def _is_state_variable(var_name: str) -> bool:
+            """Check if a variable is a state variable (should be interpolated)."""
+            if var_name in variable_categories:
+                return variable_categories[var_name] == VariableCategory.STATE
+            # Fall back to pattern matching for backwards compatibility
+            return var_name.endswith('|charge_state')
 
         def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
             """Expand a DataArray from clustered to original timesteps.
@@ -2085,9 +2101,9 @@ class TransformAccessor:
             if 'time' not in da.dims:
                 return da.copy()
 
-            # For charge_state in segmented systems: interpolate within segments
-            # to show the actual charge trajectory as storage charges/discharges
-            if var_name.endswith('|charge_state') and 'cluster' in da.dims and clustering.is_segmented:
+            # For state variables (like charge_state) in segmented systems: interpolate within segments
+            # to show the actual state trajectory as the storage charges/discharges
+            if _is_state_variable(var_name) and 'cluster' in da.dims and clustering.is_segmented:
                 expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
                 # Append the extra timestep value (final charge state)
                 cluster_assignments = clustering.cluster_assignments
@@ -2109,8 +2125,8 @@ class TransformAccessor:
             if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
                 expanded = expanded / expansion_divisor
 
-            # For charge_state with cluster dim (non-segmented), append the extra timestep value
-            if var_name.endswith('|charge_state') and 'cluster' in da.dims:
+            # For state variables (like charge_state) with cluster dim (non-segmented), append the extra timestep value
+            if _is_state_variable(var_name) and 'cluster' in da.dims:
                 cluster_assignments = clustering.cluster_assignments
                 if cluster_assignments.ndim == 1:
                     last_cluster = int(cluster_assignments[last_original_cluster_idx])

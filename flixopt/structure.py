@@ -13,6 +13,7 @@ import re
 import warnings
 from dataclasses import dataclass
 from difflib import get_close_matches
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,6 +40,27 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
+
+
+class VariableCategory(Enum):
+    """Category of a solution variable for segment expansion handling.
+
+    When expanding segmented clustered systems back to hourly resolution,
+    different variable types require different handling:
+
+    - STATE: Interpolated between segment boundaries (e.g., charge_state)
+    - SEGMENT_TOTAL: Divided by segment duration (e.g., effect contributions)
+    - RATE: Expanded as-is, already averaged by tsam (e.g., flow_rate)
+    - BINARY: Constant within segment, cannot interpolate (e.g., status)
+    - OTHER: Default, no special handling
+    """
+
+    STATE = 'state'
+    SEGMENT_TOTAL = 'segment_total'
+    RATE = 'rate'
+    BINARY = 'binary'
+    OTHER = 'other'
+
 
 CLASS_REGISTRY = {}
 
@@ -97,6 +119,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.flow_system = flow_system
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
+        self.variable_categories: dict[str, VariableCategory] = {}
 
     def do_modeling(self):
         # Create all element models
@@ -1603,8 +1626,22 @@ class Submodel(SubmodelsMixin):
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
 
-    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
-        """Create and register a variable in one step"""
+    def add_variables(
+        self,
+        short_name: str = None,
+        category: VariableCategory = None,
+        **kwargs,
+    ) -> linopy.Variable:
+        """Create and register a variable in one step.
+
+        Args:
+            short_name: Short name for the variable (used as suffix in full name).
+            category: Category for segment expansion handling. See VariableCategory.
+            **kwargs: Additional arguments passed to linopy.Model.add_variables().
+
+        Returns:
+            The created linopy Variable.
+        """
         if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
@@ -1612,6 +1649,11 @@ class Submodel(SubmodelsMixin):
 
         variable = self._model.add_variables(**kwargs)
         self.register_variable(variable, short_name)
+
+        # Register category in FlowSystemModel for segment expansion handling
+        if category is not None:
+            self._model.variable_categories[variable.name] = category
+
         return variable
 
     def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:

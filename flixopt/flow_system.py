@@ -29,7 +29,14 @@ from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
-from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .structure import (
+    CompositeContainerMixin,
+    Element,
+    ElementContainer,
+    FlowSystemModel,
+    Interface,
+    VariableCategory,
+)
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
@@ -248,6 +255,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
+
+        # Variable categories for segment expansion handling
+        # Populated when model is built, used by transform.expand()
+        self._variable_categories: dict[str, VariableCategory] = {}
 
         # Aggregation info - populated by transform.cluster()
         self.clustering: Clustering | None = None
@@ -1604,6 +1615,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Store solution on FlowSystem for direct Element access
         self.solution = self.model.solution
+
+        # Copy variable categories for segment expansion handling
+        self._variable_categories = self.model.variable_categories.copy()
 
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 

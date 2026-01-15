@@ -20,6 +20,7 @@ from .structure import (
     Element,
     ElementModel,
     FlowSystemModel,
+    VariableCategory,
     register_class_for_io,
 )
 
@@ -672,6 +673,7 @@ class FlowModel(ElementModel):
             upper=self.absolute_flow_rate_bounds[1],
             coords=self._model.get_coords(),
             short_name='flow_rate',
+            category=VariableCategory.RATE,
         )
 
         self._constraint_flow_rate()
@@ -726,7 +728,12 @@ class FlowModel(ElementModel):
         self._create_shares()
 
     def _create_status_model(self):
-        status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+        status = self.add_variables(
+            binary=True,
+            short_name='status',
+            coords=self._model.get_coords(),
+            category=VariableCategory.BINARY,
+        )
         self.add_submodels(
             StatusModel(
                 model=self._model,
@@ -1028,7 +1035,12 @@ class ComponentModel(ElementModel):
 
         # Create component status variable and StatusModel if needed
         if self.element.status_parameters:
-            status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+            status = self.add_variables(
+                binary=True,
+                short_name='status',
+                coords=self._model.get_coords(),
+                category=VariableCategory.BINARY,
+            )
             if len(all_flows) == 1:
                 self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')
             else:

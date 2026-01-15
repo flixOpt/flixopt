@@ -11,7 +11,7 @@ import linopy
 import numpy as np
 
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
-from .structure import FlowSystemModel, Submodel
+from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -211,8 +211,18 @@ class StatusModel(Submodel):
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_startup_tracking:
-            self.add_variables(binary=True, short_name='startup', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='shutdown', coords=self.get_coords())
+            self.add_variables(
+                binary=True,
+                short_name='startup',
+                coords=self.get_coords(),
+                category=VariableCategory.BINARY,
+            )
+            self.add_variables(
+                binary=True,
+                short_name='shutdown',
+                coords=self.get_coords(),
+                category=VariableCategory.BINARY,
+            )
 
             # Determine previous_state: None means relaxed (no constraint at t=0)
             previous_state = self._previous_status.isel(time=-1) if self._previous_status is not None else None
@@ -629,6 +639,7 @@ class ShareAllocationModel(Submodel):
                 upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
                 coords=self._model.get_coords(self._dims),
                 short_name='per_timestep',
+                category=VariableCategory.SEGMENT_TOTAL,
             )
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
@@ -668,10 +679,13 @@ class ShareAllocationModel(Submodel):
         if name in self.shares:
             self.share_constraints[name].lhs -= expression
         else:
+            # Temporal shares (with 'time' dim) are segment totals that need division
+            category = VariableCategory.SEGMENT_TOTAL if 'time' in dims else None
             self.shares[name] = self.add_variables(
                 coords=self._model.get_coords(dims),
                 name=f'{name}->{self.label_full}',
                 short_name=name,
+                category=category,
             )
 
             self.share_constraints[name] = self.add_constraints(

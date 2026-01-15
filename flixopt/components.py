@@ -17,7 +17,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns
-from .structure import FlowSystemModel, register_class_for_io
+from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -940,8 +940,13 @@ class StorageModel(ComponentModel):
             upper=ub,
             coords=self._model.get_coords(extra_timestep=True),
             short_name='charge_state',
+            category=VariableCategory.STATE,
         )
-        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+        self.add_variables(
+            coords=self._model.get_coords(),
+            short_name='netto_discharge',
+            category=VariableCategory.RATE,
+        )
 
     def _add_netto_discharge_constraint(self):
         """Add constraint: netto_discharge = discharging - charging."""
