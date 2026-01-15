@@ -1532,13 +1532,20 @@ class ClusteringPlotAccessor:
         return plot_result
 
     def _get_time_varying_variables(self) -> list[str]:
-        """Get list of time-varying variables from original data."""
+        """Get list of time-varying variables from original data that also exist in aggregated data."""
         if self._clustering.original_data is None:
             return []
+        # Get variables that exist in both original and aggregated data
+        aggregated_vars = (
+            set(self._clustering.aggregated_data.data_vars)
+            if self._clustering.aggregated_data is not None
+            else set(self._clustering.original_data.data_vars)
+        )
         return [
             name
             for name in self._clustering.original_data.data_vars
-            if 'time' in self._clustering.original_data[name].dims
+            if name in aggregated_vars
+            and 'time' in self._clustering.original_data[name].dims
             and not np.isclose(
                 self._clustering.original_data[name].min(),
                 self._clustering.original_data[name].max(),
