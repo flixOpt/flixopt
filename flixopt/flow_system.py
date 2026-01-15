@@ -747,6 +747,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 ds[f'clustering|{name}'] = arr
             ds.attrs['clustering'] = json.dumps(clustering_ref)
 
+        # Serialize variable categories for segment expansion handling
+        if self._variable_categories:
+            # Convert enum values to strings for JSON serialization
+            categories_dict = {name: cat.value for name, cat in self._variable_categories.items()}
+            ds.attrs['variable_categories'] = json.dumps(categories_dict)
+
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
@@ -908,6 +914,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
             if hasattr(clustering, 'representative_weights'):
                 flow_system.cluster_weight = clustering.representative_weights
+
+        # Restore variable categories if present
+        if 'variable_categories' in reference_structure:
+            categories_dict = json.loads(reference_structure['variable_categories'])
+            # Convert string values back to VariableCategory enum
+            flow_system._variable_categories = {
+                name: VariableCategory(value) for name, value in categories_dict.items()
+            }
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
