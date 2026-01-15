@@ -49,6 +49,64 @@ def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> 
     return da
 
 
+def combine_slices(
+    slices: dict[tuple, np.ndarray],
+    extra_dims: list[str],
+    dim_coords: dict[str, list],
+    output_dim: str,
+    output_coord: Any,
+    attrs: dict | None = None,
+) -> xr.DataArray:
+    """Combine {(dim_values): 1D_array} dict into a DataArray.
+
+    This utility simplifies the common pattern of iterating over extra dimensions
+    (like period, scenario), processing each slice, and combining results.
+
+    Args:
+        slices: Dict mapping dimension value tuples to 1D numpy arrays.
+            Keys are tuples like ('period1', 'scenario1') matching extra_dims order.
+        extra_dims: Dimension names in order (e.g., ['period', 'scenario']).
+        dim_coords: Dict mapping dimension names to coordinate values.
+        output_dim: Name of the output dimension (typically 'time').
+        output_coord: Coordinate values for output dimension.
+        attrs: Optional DataArray attributes.
+
+    Returns:
+        DataArray with dims [output_dim, *extra_dims].
+
+    Example:
+        >>> slices = {
+        ...     ('P1', 'base'): np.array([1, 2, 3]),
+        ...     ('P1', 'high'): np.array([4, 5, 6]),
+        ...     ('P2', 'base'): np.array([7, 8, 9]),
+        ...     ('P2', 'high'): np.array([10, 11, 12]),
+        ... }
+        >>> result = combine_slices(
+        ...     slices,
+        ...     extra_dims=['period', 'scenario'],
+        ...     dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
+        ...     output_dim='time',
+        ...     output_coord=[0, 1, 2],
+        ... )
+        >>> result.dims
+        ('time', 'period', 'scenario')
+    """
+    n_output = len(next(iter(slices.values())))
+    shape = [n_output] + [len(dim_coords[d]) for d in extra_dims]
+    data = np.empty(shape)
+
+    for combo in np.ndindex(*shape[1:]):
+        key = tuple(dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True))
+        data[(slice(None),) + combo] = slices[key]
+
+    return xr.DataArray(
+        data,
+        dims=[output_dim] + extra_dims,
+        coords={output_dim: output_coord, **dim_coords},
+        attrs=attrs or {},
+    )
+
+
 def _cluster_occurrences(cr: TsamClusteringResult) -> np.ndarray:
     """Compute cluster occurrences from ClusteringResult."""
     counts = Counter(cr.cluster_assignments)
@@ -890,32 +948,19 @@ class Clustering:
                 attrs=aggregated.attrs,
             )
 
-        # Multi-dimensional: expand each slice and recombine
+        # Multi-dimensional: expand each slice and combine
         dim_coords = {d: list(timestep_mapping.coords[d].values) for d in extra_dims}
-        expanded_slices = {}
+        slices = {}
         for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
             selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
+            key = tuple(selector.values())
             mapping = _select_dims(timestep_mapping, **selector).values
             data_slice = (
                 _select_dims(aggregated, **selector) if any(d in aggregated.dims for d in selector) else aggregated
             )
-            expanded_slices[tuple(selector.values())] = xr.DataArray(
-                _expand_slice(mapping, data_slice),
-                coords={'time': original_time},
-                dims=['time'],
-            )
+            slices[key] = _expand_slice(mapping, data_slice)
 
-        # Concatenate along extra dimensions
-        result_arrays = expanded_slices
-        for dim in reversed(extra_dims):
-            dim_vals = dim_coords[dim]
-            grouped = {}
-            for key, arr in result_arrays.items():
-                rest_key = key[:-1] if len(key) > 1 else ()
-                grouped.setdefault(rest_key, []).append(arr)
-            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
-        result = list(result_arrays.values())[0]
-        return result.transpose('time', ...).assign_attrs(aggregated.attrs)
+        return combine_slices(slices, extra_dims, dim_coords, 'time', original_time, aggregated.attrs)
 
     def build_expansion_divisor(
         self,
@@ -990,12 +1035,13 @@ class Clustering:
                 name='expansion_divisor',
             )
 
-        # Multi-dimensional: build divisor for each period/scenario
+        # Multi-dimensional: build divisor for each period/scenario and combine
         dim_coords = self.results.coords
-        divisor_slices = {}
+        slices = {}
 
         for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
             selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
+            key = tuple(selector.values())
 
             # Get cluster assignments for this period/scenario
             if any(d in cluster_assignments.dims for d in selector):
@@ -1005,26 +1051,9 @@ class Clustering:
 
             # Get the clustering result for this period/scenario
             result = self.results.sel(**selector)
-            divisor_values = _build_divisor_for_result(assignments, result)
+            slices[key] = _build_divisor_for_result(assignments, result)
 
-            divisor_slices[tuple(selector.values())] = xr.DataArray(
-                divisor_values,
-                dims=['time'],
-                coords={'time': original_time},
-            )
-
-        # Concatenate along extra dimensions
-        result_arrays = divisor_slices
-        for dim in reversed(extra_dims):
-            dim_vals = dim_coords[dim]
-            grouped = {}
-            for key, arr in result_arrays.items():
-                rest_key = key[:-1] if len(key) > 1 else ()
-                grouped.setdefault(rest_key, []).append(arr)
-            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
-
-        result = list(result_arrays.values())[0]
-        return result.transpose('time', ...).assign_attrs({'name': 'expansion_divisor'})
+        return combine_slices(slices, extra_dims, dim_coords, 'time', original_time, {'name': 'expansion_divisor'})
 
     def get_result(
         self,

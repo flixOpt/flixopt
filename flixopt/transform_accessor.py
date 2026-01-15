@@ -1904,17 +1904,18 @@ class TransformAccessor:
                 attrs=da.attrs,
             )
 
-        # Multi-dimensional case
+        # Multi-dimensional case: interpolate each slice and combine
+        from .clustering.base import _select_dims, combine_slices
+
         dim_coords = clustering.results.coords
-        interpolated_slices = {}
+        slices = {}
 
         for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
             selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
+            key = tuple(selector.values())
 
             # Get cluster assignments for this period/scenario
             if any(d in cluster_assignments.dims for d in selector):
-                from .clustering.base import _select_dims
-
                 assignments = _select_dims(cluster_assignments, **selector).values
             else:
                 assignments = cluster_assignments.values
@@ -1927,26 +1928,9 @@ class TransformAccessor:
 
             # Get clustering result for this period/scenario
             result = clustering.results.sel(**selector)
-            interpolated = _interpolate_slice(da_slice.values, assignments, result)
+            slices[key] = _interpolate_slice(da_slice.values, assignments, result)
 
-            interpolated_slices[tuple(selector.values())] = xr.DataArray(
-                interpolated,
-                dims=['time'],
-                coords={'time': original_timesteps},
-            )
-
-        # Concatenate along extra dimensions
-        result_arrays = interpolated_slices
-        for dim in reversed(extra_dims):
-            dim_vals = dim_coords[dim]
-            grouped = {}
-            for key, arr in result_arrays.items():
-                rest_key = key[:-1] if len(key) > 1 else ()
-                grouped.setdefault(rest_key, []).append(arr)
-            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
-
-        result = list(result_arrays.values())[0]
-        return result.transpose('time', ...).assign_attrs(da.attrs)
+        return combine_slices(slices, extra_dims, dim_coords, 'time', original_timesteps, da.attrs)
 
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.

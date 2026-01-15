@@ -1393,3 +1393,86 @@ class TestSegmentationIO:
             fs_segmented.solution['objective'].item(),
             rtol=1e-6,
         )
+
+
+class TestCombineSlices:
+    """Tests for the combine_slices utility function."""
+
+    def test_single_dim(self):
+        """Test combining slices with a single extra dimension."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {
+            ('A',): np.array([1.0, 2.0, 3.0]),
+            ('B',): np.array([4.0, 5.0, 6.0]),
+        }
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A', 'B']},
+            output_dim='time',
+            output_coord=[0, 1, 2],
+        )
+
+        assert result.dims == ('time', 'x')
+        assert result.shape == (3, 2)
+        assert result.sel(x='A').values.tolist() == [1.0, 2.0, 3.0]
+        assert result.sel(x='B').values.tolist() == [4.0, 5.0, 6.0]
+
+    def test_two_dims(self):
+        """Test combining slices with two extra dimensions."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {
+            ('P1', 'base'): np.array([1.0, 2.0]),
+            ('P1', 'high'): np.array([3.0, 4.0]),
+            ('P2', 'base'): np.array([5.0, 6.0]),
+            ('P2', 'high'): np.array([7.0, 8.0]),
+        }
+        result = combine_slices(
+            slices,
+            extra_dims=['period', 'scenario'],
+            dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
+            output_dim='time',
+            output_coord=[0, 1],
+        )
+
+        assert result.dims == ('time', 'period', 'scenario')
+        assert result.shape == (2, 2, 2)
+        assert result.sel(period='P1', scenario='base').values.tolist() == [1.0, 2.0]
+        assert result.sel(period='P2', scenario='high').values.tolist() == [7.0, 8.0]
+
+    def test_attrs_propagation(self):
+        """Test that attrs are propagated to the result."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {('A',): np.array([1.0, 2.0])}
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A']},
+            output_dim='time',
+            output_coord=[0, 1],
+            attrs={'units': 'kW', 'description': 'power'},
+        )
+
+        assert result.attrs['units'] == 'kW'
+        assert result.attrs['description'] == 'power'
+
+    def test_datetime_coords(self):
+        """Test with pandas DatetimeIndex as output coordinates."""
+        from flixopt.clustering.base import combine_slices
+
+        time_index = pd.date_range('2020-01-01', periods=3, freq='h')
+        slices = {('A',): np.array([1.0, 2.0, 3.0])}
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A']},
+            output_dim='time',
+            output_coord=time_index,
+        )
+
+        assert result.dims == ('time', 'x')
+        assert len(result.coords['time']) == 3
+        assert result.coords['time'][0].values == time_index[0]
