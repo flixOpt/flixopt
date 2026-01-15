@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import linopy
 import numpy as np
@@ -8,6 +9,27 @@ from .config import CONFIG
 from .structure import Submodel
 
 logger = logging.getLogger('flixopt')
+
+
+def _scalar_safe_isel(data: xr.DataArray | Any, indexers: dict) -> xr.DataArray | Any:
+    """Apply isel if data has the required dimensions, otherwise return data as-is.
+
+    This allows parameters to remain compact (scalar or lower-dimensional) while still
+    being usable in constraint expressions that use .isel() for slicing.
+
+    Args:
+        data: DataArray or scalar value
+        indexers: Dictionary of {dim: indexer} for isel
+
+    Returns:
+        Sliced DataArray if dims exist, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    # Only apply isel if data has all the required dimensions
+    if all(dim in data.dims for dim in indexers):
+        return data.isel(indexers)
+    return data
 
 
 class ModelingUtilitiesAbstract:
@@ -340,7 +362,7 @@ class ModelingPrimitives:
             constraints['lb'] = model.add_constraints(
                 duration
                 >= (state.isel({duration_dim: slice(None, -1)}) - state.isel({duration_dim: slice(1, None)}))
-                * minimum_duration.isel({duration_dim: slice(None, -1)}),
+                * _scalar_safe_isel(minimum_duration, {duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
 
@@ -351,7 +373,7 @@ class ModelingPrimitives:
                     if not isinstance(previous_duration, xr.DataArray)
                     else float(previous_duration.max().item())
                 )
-                min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
+                min0 = float(_scalar_safe_isel(minimum_duration, {duration_dim: 0}).max().item())
                 if prev > 0 and prev < min0:
                     constraints['initial_lb'] = model.add_constraints(
                         state.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'

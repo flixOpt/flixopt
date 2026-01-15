@@ -40,6 +40,35 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 
 logger = logging.getLogger('flixopt')
 
+
+def _ensure_coords(
+    data: xr.DataArray | float | int,
+    coords: xr.Coordinates,
+) -> xr.DataArray | float:
+    """Broadcast data to coords if needed.
+
+    This is used at the linopy interface to ensure bounds are properly broadcasted
+    to the target variable shape. Linopy needs at least one bound to have all
+    dimensions to determine the variable shape.
+
+    Note: Infinity values (-inf, inf) are kept as scalars because linopy uses
+    special checks like `if (lower != -inf)` that fail with DataArrays.
+    """
+    # Keep infinity values as scalars (linopy uses them for special checks)
+    if not isinstance(data, xr.DataArray):
+        if np.isinf(data):
+            return data
+        # Finite scalar - create full DataArray
+        return xr.DataArray(data, coords=coords, dims=list(coords.dims))
+
+    if set(data.dims) == set(coords.dims):
+        return data  # Already has all dims
+
+    # Broadcast to full coords
+    template = xr.DataArray(coords=coords, dims=list(coords.dims))
+    return data.broadcast_like(template)
+
+
 CLASS_REGISTRY = {}
 
 
@@ -97,6 +126,24 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.flow_system = flow_system
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
+
+    def add_variables(
+        self,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        coords: xr.Coordinates | None = None,
+        **kwargs,
+    ) -> linopy.Variable:
+        """Override to ensure bounds are broadcasted to coords shape.
+
+        Linopy uses the union of all DataArray dimensions to determine variable shape.
+        This override ensures at least one bound has all target dimensions when coords
+        is provided, allowing internal data to remain compact (scalars, 1D arrays).
+        """
+        if coords is not None:
+            lower = _ensure_coords(lower, coords)
+            upper = _ensure_coords(upper, coords)
+        return super().add_variables(lower=lower, upper=upper, coords=coords, **kwargs)
 
     def do_modeling(self):
         # Create all element models

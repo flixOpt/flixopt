@@ -366,6 +366,47 @@ class DataConverter:
         broadcasted = source_data.broadcast_like(target_template)
         return broadcasted.transpose(*target_dims)
 
+    @staticmethod
+    def _validate_dataarray_dims(
+        data: xr.DataArray, target_coords: dict[str, pd.Index], target_dims: tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Validate that DataArray dims are a subset of target dims (without broadcasting).
+
+        This method validates compatibility without expanding to full dimensions,
+        allowing data to remain in compact form. Broadcasting happens later at
+        the linopy interface (FlowSystemModel.add_variables).
+
+        Args:
+            data: DataArray to validate
+            target_coords: Target coordinates {dim_name: coordinate_index}
+            target_dims: Target dimension names
+
+        Returns:
+            The original DataArray if validation passes
+
+        Raises:
+            ConversionError: If data has dimensions not in target_dims,
+                           or coordinate values don't match
+        """
+        # Validate: all data dimensions must exist in target
+        extra_dims = set(data.dims) - set(target_dims)
+        if extra_dims:
+            raise ConversionError(f'Data has dimensions {extra_dims} not in target dimensions {target_dims}')
+
+        # Validate: coordinate compatibility for overlapping dimensions
+        for dim in data.dims:
+            if dim in data.coords and dim in target_coords:
+                data_coords = data.coords[dim]
+                target_coords_for_dim = target_coords[dim]
+
+                if not np.array_equal(data_coords.values, target_coords_for_dim.values):
+                    raise ConversionError(
+                        f'Coordinate mismatch for dimension "{dim}". Data and target coordinates have different values.'
+                    )
+
+        return data
+
     @classmethod
     def to_dataarray(
         cls,
