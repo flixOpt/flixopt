@@ -2015,54 +2015,40 @@ class TransformAccessor:
             # Fall back to pattern matching for backwards compatibility
             return var_name.endswith('|charge_state')
 
-        def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
-            """Expand a DataArray from clustered to original timesteps.
+        def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
+            """Append final state value from original data to expanded data."""
+            cluster_assignments = clustering.cluster_assignments
+            if cluster_assignments.ndim == 1:
+                last_cluster = int(cluster_assignments.values[last_original_cluster_idx])
+                extra_val = da.isel(cluster=last_cluster, time=-1)
+            else:
+                last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
+                extra_val = da.isel(cluster=last_clusters, time=-1)
+            extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
+            extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
+            return xr.concat([expanded, extra_val], dim='time')
 
-            Args:
-                da: DataArray to expand.
-                var_name: Variable name for segment total lookup.
-                is_solution: True if this is a solution variable (may need segment correction).
-                    FlowSystem data (is_solution=False) is never corrected for segments.
-            """
+        def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
+            """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
 
-            # For state variables (like charge_state) in segmented systems: interpolate within segments
-            # to show the actual state trajectory as the storage charges/discharges
-            if _is_state_variable(var_name) and 'cluster' in da.dims and clustering.is_segmented:
+            is_state = _is_state_variable(var_name) and 'cluster' in da.dims
+
+            # State variables in segmented systems: interpolate within segments
+            if is_state and clustering.is_segmented:
                 expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
-                # Append the extra timestep value (final charge state)
-                cluster_assignments = clustering.cluster_assignments
-                if cluster_assignments.ndim == 1:
-                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
-                    extra_val = da.isel(cluster=last_cluster, time=-1)
-                else:
-                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                    extra_val = da.isel(cluster=last_clusters, time=-1)
-                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-                expanded = xr.concat([expanded, extra_val], dim='time')
-                return expanded
+                return _append_final_state(expanded, da)
 
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
-            # For segmented systems: divide segment totals by expansion divisor
-            # ONLY for solution variables explicitly identified as segment totals
+            # Segment totals: divide by expansion divisor
             if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
                 expanded = expanded / expansion_divisor
 
-            # For state variables (like charge_state) with cluster dim (non-segmented), append the extra timestep value
-            if _is_state_variable(var_name) and 'cluster' in da.dims:
-                cluster_assignments = clustering.cluster_assignments
-                if cluster_assignments.ndim == 1:
-                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
-                    extra_val = da.isel(cluster=last_cluster, time=-1)
-                else:
-                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                    extra_val = da.isel(cluster=last_clusters, time=-1)
-                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-                expanded = xr.concat([expanded, extra_val], dim='time')
+            # State variables: append final state
+            if is_state:
+                expanded = _append_final_state(expanded, da)
 
             return expanded
 

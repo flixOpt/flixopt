@@ -324,167 +324,82 @@ class ClusteringResults:
 
     @property
     def cluster_assignments(self) -> xr.DataArray:
-        """Build multi-dimensional cluster_assignments DataArray.
+        """Maps each original cluster to its typical cluster index.
 
         Returns:
-            DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
+            DataArray with dims [original_cluster, period?, scenario?].
         """
-        if not self.dim_names:
-            # Simple case: no extra dimensions
-            # Note: Don't include coords - they cause issues when used as isel() indexer
-            return xr.DataArray(
-                np.array(self._results[()].cluster_assignments),
-                dims=['original_cluster'],
-                name='cluster_assignments',
-            )
-
-        # Multi-dimensional case
-        # Note: Don't include coords - they cause issues when used as isel() indexer
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-
-        return self._build_multi_dim_array(
+        # Note: No coords on original_cluster - they cause issues when used as isel() indexer
+        return self._build_property_array(
             lambda cr: np.array(cr.cluster_assignments),
             base_dims=['original_cluster'],
-            base_coords={},  # No coords on original_cluster
-            periods=periods,
-            scenarios=scenarios,
             name='cluster_assignments',
         )
 
     @property
     def cluster_occurrences(self) -> xr.DataArray:
-        """Build multi-dimensional cluster_occurrences DataArray.
+        """How many original clusters map to each typical cluster.
 
         Returns:
-            DataArray with dims [cluster] or [cluster, period?, scenario?].
+            DataArray with dims [cluster, period?, scenario?].
         """
-        if not self.dim_names:
-            return xr.DataArray(
-                _cluster_occurrences(self._results[()]),
-                dims=['cluster'],
-                coords={'cluster': range(self.n_clusters)},
-                name='cluster_occurrences',
-            )
-
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-
-        return self._build_multi_dim_array(
+        return self._build_property_array(
             _cluster_occurrences,
             base_dims=['cluster'],
             base_coords={'cluster': range(self.n_clusters)},
-            periods=periods,
-            scenarios=scenarios,
             name='cluster_occurrences',
         )
 
     @property
     def cluster_centers(self) -> xr.DataArray:
-        """Which original period is the representative (center) for each cluster.
+        """Which original cluster is the representative (center) for each typical cluster.
 
         Returns:
-            DataArray with dims [cluster] containing original period indices.
+            DataArray with dims [cluster, period?, scenario?].
         """
-        if not self.dim_names:
-            return xr.DataArray(
-                np.array(self._results[()].cluster_centers),
-                dims=['cluster'],
-                coords={'cluster': range(self.n_clusters)},
-                name='cluster_centers',
-            )
-
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-
-        return self._build_multi_dim_array(
+        return self._build_property_array(
             lambda cr: np.array(cr.cluster_centers),
             base_dims=['cluster'],
             base_coords={'cluster': range(self.n_clusters)},
-            periods=periods,
-            scenarios=scenarios,
             name='cluster_centers',
         )
 
     @property
     def segment_assignments(self) -> xr.DataArray | None:
-        """For each timestep within a cluster, which intra-period segment it belongs to.
-
-        Only available if segmentation was configured during clustering.
+        """For each timestep within a cluster, which segment it belongs to.
 
         Returns:
-            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?].
-            Returns None if no segmentation.
+            DataArray with dims [cluster, time, period?, scenario?], or None if not segmented.
         """
-        first = self._first_result
-        if first.segment_assignments is None:
+        if self._first_result.segment_assignments is None:
             return None
-
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-        timesteps_per_cluster = first.n_timesteps_per_period
-
-        if not self.dim_names:
-            # Simple case: segment_assignments is tuple of tuples
-            data = np.array(first.segment_assignments)
-            return xr.DataArray(
-                data,
-                dims=['cluster', 'time'],
-                coords={'cluster': range(self.n_clusters), 'time': range(timesteps_per_cluster)},
-                name='segment_assignments',
-            )
-
-        # Multi-dimensional case: build array for each period/scenario
-        return self._build_multi_dim_array(
+        timesteps = self._first_result.n_timesteps_per_period
+        return self._build_property_array(
             lambda cr: np.array(cr.segment_assignments),
             base_dims=['cluster', 'time'],
-            base_coords={'cluster': range(self.n_clusters), 'time': range(timesteps_per_cluster)},
-            periods=periods,
-            scenarios=scenarios,
+            base_coords={'cluster': range(self.n_clusters), 'time': range(timesteps)},
             name='segment_assignments',
         )
 
     @property
     def segment_durations(self) -> xr.DataArray | None:
-        """Duration of each intra-period segment in hours.
-
-        Only available if segmentation was configured during clustering.
+        """Duration of each segment in timesteps.
 
         Returns:
-            DataArray with dims [cluster, segment] or [cluster, segment, period?, scenario?].
-            Returns None if no segmentation.
+            DataArray with dims [cluster, segment, period?, scenario?], or None if not segmented.
         """
-        first = self._first_result
-        if first.segment_durations is None:
+        if self._first_result.segment_durations is None:
             return None
-
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-        n_segments = first.n_segments
+        n_segments = self._first_result.n_segments
 
         def _get_padded_durations(cr: TsamClusteringResult) -> np.ndarray:
-            """Get segment durations, padded with NaN for ragged arrays."""
-            durations = cr.segment_durations
-            return np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in durations])
+            """Pad ragged segment durations to uniform shape."""
+            return np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in cr.segment_durations])
 
-        if not self.dim_names:
-            # Simple case: segment_durations is tuple of tuples
-            data = _get_padded_durations(first)
-            return xr.DataArray(
-                data,
-                dims=['cluster', 'segment'],
-                coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
-                name='segment_durations',
-                attrs={'units': 'hours'},
-            )
-
-        # Multi-dimensional case: build array for each period/scenario
-        return self._build_multi_dim_array(
+        return self._build_property_array(
             _get_padded_durations,
             base_dims=['cluster', 'segment'],
             base_coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
-            periods=periods,
-            scenarios=scenarios,
             name='segment_durations',
         )
 
@@ -605,58 +520,41 @@ class ClusteringResults:
         idx = self._dim_names.index(dim)
         return sorted(set(k[idx] for k in self._results.keys()))
 
-    def _build_multi_dim_array(
+    def _build_property_array(
         self,
         get_data: callable,
         base_dims: list[str],
-        base_coords: dict,
-        periods: list | None,
-        scenarios: list | None,
-        name: str,
+        base_coords: dict | None = None,
+        name: str | None = None,
     ) -> xr.DataArray:
-        """Build a multi-dimensional DataArray from per-result data."""
-        has_periods = periods is not None
-        has_scenarios = scenarios is not None
+        """Build a DataArray property, handling both single and multi-dimensional cases."""
+        base_coords = base_coords or {}
+        periods = self._get_dim_values('period')
+        scenarios = self._get_dim_values('scenario')
 
-        slices = {}
-        if has_periods and has_scenarios:
-            for p in periods:
-                for s in scenarios:
-                    slices[(p, s)] = xr.DataArray(
-                        get_data(self._results[(p, s)]),
-                        dims=base_dims,
-                        coords=base_coords,
-                    )
-        elif has_periods:
-            for p in periods:
-                slices[(p,)] = xr.DataArray(
-                    get_data(self._results[(p,)]),
-                    dims=base_dims,
-                    coords=base_coords,
-                )
-        elif has_scenarios:
-            for s in scenarios:
-                slices[(s,)] = xr.DataArray(
-                    get_data(self._results[(s,)]),
-                    dims=base_dims,
-                    coords=base_coords,
-                )
+        # Build list of (dim_name, values) for dimensions that exist
+        extra_dims = []
+        if periods is not None:
+            extra_dims.append(('period', periods))
+        if scenarios is not None:
+            extra_dims.append(('scenario', scenarios))
 
-        # Combine slices into multi-dimensional array
-        if has_periods and has_scenarios:
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
-        elif has_periods:
-            result = xr.concat([slices[(p,)] for p in periods], dim=pd.Index(periods, name='period'))
-        else:
-            result = xr.concat([slices[(s,)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
+        # Simple case: no extra dimensions
+        if not extra_dims:
+            return xr.DataArray(get_data(self._results[()]), dims=base_dims, coords=base_coords, name=name)
 
-        # Ensure base dims come first
-        dim_order = base_dims + [d for d in result.dims if d not in base_dims]
-        return result.transpose(*dim_order).rename(name)
+        # Multi-dimensional: stack data for each combination
+        first_data = get_data(next(iter(self._results.values())))
+        shape = list(first_data.shape) + [len(vals) for _, vals in extra_dims]
+        data = np.empty(shape, dtype=first_data.dtype)  # Preserve dtype
+
+        for combo in np.ndindex(*[len(vals) for _, vals in extra_dims]):
+            key = tuple(extra_dims[i][1][idx] for i, idx in enumerate(combo))
+            data[(...,) + combo] = get_data(self._results[key])
+
+        dims = base_dims + [dim_name for dim_name, _ in extra_dims]
+        coords = {**base_coords, **{dim_name: vals for dim_name, vals in extra_dims}}
+        return xr.DataArray(data, dims=dims, coords=coords, name=name)
 
     @staticmethod
     def _key_to_str(key: tuple) -> str:
@@ -1180,24 +1078,10 @@ class Clustering:
         """Build timestep_mapping DataArray."""
         n_original = len(self.original_timesteps)
         original_time_coord = self.original_timesteps.rename('original_time')
-
-        if not self.dim_names:
-            # Simple case: no extra dimensions
-            mapping = _build_timestep_mapping(self.results[()], n_original)
-            return xr.DataArray(
-                mapping,
-                dims=['original_time'],
-                coords={'original_time': original_time_coord},
-                name='timestep_mapping',
-            )
-
-        # Multi-dimensional case: combine slices into multi-dim array
-        return self.results._build_multi_dim_array(
+        return self.results._build_property_array(
             lambda cr: _build_timestep_mapping(cr, n_original),
             base_dims=['original_time'],
             base_coords={'original_time': original_time_coord},
-            periods=self.results._get_dim_values('period'),
-            scenarios=self.results._get_dim_values('scenario'),
             name='timestep_mapping',
         )
 
