@@ -43,23 +43,64 @@ logger = logging.getLogger('flixopt')
 
 
 class VariableCategory(Enum):
-    """Category of a solution variable for segment expansion handling.
+    """Fine-grained variable categories - names mirror variable names.
 
-    When expanding segmented clustered systems back to hourly resolution,
-    different variable types require different handling:
-
-    - STATE: Interpolated between segment boundaries (e.g., charge_state)
-    - SEGMENT_TOTAL: Divided by segment duration (e.g., effect contributions)
-    - RATE: Expanded as-is, already averaged by tsam (e.g., flow_rate)
-    - BINARY: Constant within segment, cannot interpolate (e.g., status)
-    - OTHER: Default, no special handling
+    Each variable type has its own category for precise handling during
+    segment expansion and statistics calculation.
     """
 
-    STATE = 'state'
-    SEGMENT_TOTAL = 'segment_total'
-    RATE = 'rate'
-    BINARY = 'binary'
-    OTHER = 'other'
+    # === State variables ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Rate/Power variables ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+
+    # === Binary events ===
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Effect variables ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # All temporal contributions (flow, active, startup)
+    TOTAL = 'total'  # Effect total (per period/scenario)
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Effect total over all periods
+
+    # === Investment ===
+    SIZE = 'size'  # Investment size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Counting/Duration ===
+    STARTUP_COUNT = 'startup_count'  # Count of startups
+    DURATION = 'duration'  # Duration tracking (uptime/downtime)
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA0 = 'lambda0'  # Interpolation weight
+    LAMBDA1 = 'lambda1'  # Interpolation weight
+    ZERO_POINT = 'zero_point'  # Zero point handling
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# === Logical Groupings for Segment Expansion ===
+# Default behavior (not listed): repeat value within segment
+
+EXPAND_INTERPOLATE: set[VariableCategory] = {VariableCategory.CHARGE_STATE}
+"""State variables that should be interpolated between segment boundaries."""
+
+EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableCategory.SHARE}
+"""Segment totals that should be divided by expansion factor to preserve sums."""
+
+EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
+"""Binary events that should appear only at the first timestep of the segment."""
 
 
 CLASS_REGISTRY = {}

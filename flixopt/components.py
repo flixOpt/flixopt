@@ -940,12 +940,12 @@ class StorageModel(ComponentModel):
             upper=ub,
             coords=self._model.get_coords(extra_timestep=True),
             short_name='charge_state',
-            category=VariableCategory.STATE,
+            category=VariableCategory.CHARGE_STATE,
         )
         self.add_variables(
             coords=self._model.get_coords(),
             short_name='netto_discharge',
-            category=VariableCategory.RATE,
+            category=VariableCategory.NETTO_DISCHARGE,
         )
 
     def _add_netto_discharge_constraint(self):
@@ -1347,6 +1347,7 @@ class InterclusterStorageModel(StorageModel):
             coords=boundary_coords,
             dims=boundary_dims,
             short_name='SOC_boundary',
+            category=VariableCategory.SOC_BOUNDARY,
         )
 
         # 3. Link SOC_boundary to investment size

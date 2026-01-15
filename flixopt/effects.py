@@ -17,7 +17,15 @@ import xarray as xr
 
 from .core import PlausibilityError
 from .features import ShareAllocationModel
-from .structure import Element, ElementContainer, ElementModel, FlowSystemModel, Submodel, register_class_for_io
+from .structure import (
+    Element,
+    ElementContainer,
+    ElementModel,
+    FlowSystemModel,
+    Submodel,
+    VariableCategory,
+    register_class_for_io,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -377,6 +385,7 @@ class EffectModel(ElementModel):
             upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
             coords=self._model.get_coords(['period', 'scenario']),
             name=self.label_full,
+            category=VariableCategory.TOTAL,
         )
 
         self.add_constraints(
@@ -394,6 +403,7 @@ class EffectModel(ElementModel):
                 upper=self.element.maximum_over_periods if self.element.maximum_over_periods is not None else np.inf,
                 coords=self._model.get_coords(['scenario']),
                 short_name='total_over_periods',
+                category=VariableCategory.TOTAL_OVER_PERIODS,
             )
 
             self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')

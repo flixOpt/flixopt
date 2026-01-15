@@ -673,7 +673,7 @@ class FlowModel(ElementModel):
             upper=self.absolute_flow_rate_bounds[1],
             coords=self._model.get_coords(),
             short_name='flow_rate',
-            category=VariableCategory.RATE,
+            category=VariableCategory.FLOW_RATE,
         )
 
         self._constraint_flow_rate()
@@ -732,7 +732,7 @@ class FlowModel(ElementModel):
             binary=True,
             short_name='status',
             coords=self._model.get_coords(),
-            category=VariableCategory.BINARY,
+            category=VariableCategory.STATUS,
         )
         self.add_submodels(
             StatusModel(
@@ -964,11 +964,17 @@ class BusModel(ElementModel):
             imbalance_penalty = self.element.imbalance_penalty_per_flow_hour * self._model.timestep_duration
 
             self.virtual_supply = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='virtual_supply'
+                lower=0,
+                coords=self._model.get_coords(),
+                short_name='virtual_supply',
+                category=VariableCategory.VIRTUAL_FLOW,
             )
 
             self.virtual_demand = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='virtual_demand'
+                lower=0,
+                coords=self._model.get_coords(),
+                short_name='virtual_demand',
+                category=VariableCategory.VIRTUAL_FLOW,
             )
 
             # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
@@ -1039,7 +1045,7 @@ class ComponentModel(ElementModel):
                 binary=True,
                 short_name='status',
                 coords=self._model.get_coords(),
-                category=VariableCategory.BINARY,
+                category=VariableCategory.STATUS,
             )
             if len(all_flows) == 1:
                 self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')

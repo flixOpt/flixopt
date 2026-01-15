@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .structure import VariableCategory
+from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE
 
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -2075,9 +2075,7 @@ class TransformAccessor:
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
             # Build segment total vars using registry first, fall back to pattern matching
-            segment_total_vars = {
-                name for name, cat in variable_categories.items() if cat == VariableCategory.SEGMENT_TOTAL
-            }
+            segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
             # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
             if not segment_total_vars:
                 segment_total_vars = self._build_segment_total_varnames()
@@ -2085,7 +2083,7 @@ class TransformAccessor:
         def _is_state_variable(var_name: str) -> bool:
             """Check if a variable is a state variable (should be interpolated)."""
             if var_name in variable_categories:
-                return variable_categories[var_name] == VariableCategory.STATE
+                return variable_categories[var_name] in EXPAND_INTERPOLATE
             # Fall back to pattern matching for backwards compatibility
             return var_name.endswith('|charge_state')
 

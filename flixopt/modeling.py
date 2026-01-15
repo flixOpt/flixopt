@@ -5,7 +5,7 @@ import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .structure import Submodel
+from .structure import Submodel, VariableCategory
 
 logger = logging.getLogger('flixopt')
 
@@ -303,6 +303,7 @@ class ModelingPrimitives:
             coords=state.coords,
             name=name,
             short_name=short_name,
+            category=VariableCategory.DURATION,
         )
 
         constraints = {}
