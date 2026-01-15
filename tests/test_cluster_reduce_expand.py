@@ -1180,6 +1180,51 @@ class TestSegmentation:
         assert mapping.min() >= 0
         assert mapping.max() <= max_valid_idx
 
+    @pytest.mark.parametrize('freq', ['1h', '2h'])
+    def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
+        """Test that total_effects matches solution Cost after expand with segmentation.
+
+        This is a regression test for the bug where expansion_divisor was computed
+        incorrectly for segmented systems, causing total_effects to not match the
+        solution's objective value.
+        """
+        from tsam.config import SegmentConfig
+
+        # Create system with specified timestep frequency
+        n_timesteps = 72 if freq == '1h' else 36  # 3 days worth
+        timesteps = pd.date_range('2024-01-01', periods=n_timesteps, freq=freq)
+        fs = fx.FlowSystem(timesteps=timesteps)
+
+        # Minimal components: effect + source + sink with varying demand
+        fs.add_elements(fx.Effect('Cost', unit='EUR', is_objective=True))
+        fs.add_elements(fx.Bus('Heat'))
+        fs.add_elements(
+            fx.Source(
+                'Boiler',
+                outputs=[fx.Flow('Q', bus='Heat', size=100, effects_per_flow_hour={'Cost': 50})],
+            )
+        )
+        demand_profile = np.tile([0.5, 1], n_timesteps // 2)
+        fs.add_elements(
+            fx.Sink('Demand', inputs=[fx.Flow('Q', bus='Heat', size=50, fixed_relative_profile=demand_profile)])
+        )
+
+        # Cluster with segments -> solve -> expand
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=4),
+        )
+        fs_clustered.optimize(solver_fixture)
+        fs_expanded = fs_clustered.transform.expand()
+
+        # Validate: total_effects must match solution objective
+        computed = fs_expanded.statistics.total_effects['Cost'].sum('contributor')
+        expected = fs_expanded.solution['Cost']
+        assert np.allclose(computed.values, expected.values, rtol=1e-5), (
+            f'total_effects mismatch: computed={float(computed):.2f}, expected={float(expected):.2f}'
+        )
+
 
 class TestSegmentationWithStorage:
     """Tests for segmentation combined with storage components."""
