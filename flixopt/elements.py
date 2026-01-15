@@ -689,6 +689,7 @@ class FlowModel(ElementModel):
             ),
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
+            category=VariableCategory.TOTAL,
         )
 
         # Weighted sum over all periods constraint
@@ -719,6 +720,7 @@ class FlowModel(ElementModel):
                 ),
                 coords=['scenario'],
                 short_name='flow_hours_over_periods',
+                category=VariableCategory.TOTAL_OVER_PERIODS,
             )
 
         # Load factor constraints

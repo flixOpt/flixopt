@@ -214,6 +214,7 @@ class StatusModel(Submodel):
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
+            category=VariableCategory.TOTAL,
         )
 
         # 4. Switch tracking using existing pattern
