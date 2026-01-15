@@ -977,6 +977,7 @@ class StorageModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )
@@ -1291,6 +1292,7 @@ class InterclusterStorageModel(StorageModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )

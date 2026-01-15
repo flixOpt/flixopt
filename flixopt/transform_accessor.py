@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE
+from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -1697,7 +1697,7 @@ class TransformAccessor:
             n_original_clusters: Number of original clusters before aggregation.
         """
         n_original_timesteps_extra = len(original_timesteps_extra)
-        soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
+        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1800,14 +1800,15 @@ class TransformAccessor:
         return soc_boundary_per_timestep * decay_da
 
     def _build_segment_total_varnames(self) -> set[str]:
-        """Build the set of solution variable names that represent segment totals.
+        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
+
+        This method is only used when variable_categories is empty (old FlowSystems
+        saved before category registration was implemented). New FlowSystems use
+        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
 
         For segmented systems, these variables contain values that are summed over
         segments. When expanded to hourly resolution, they need to be divided by
         segment duration to get correct hourly rates.
-
-        Derives variable names directly from FlowSystem structure (effects, flows,
-        components) rather than pattern matching, ensuring robustness.
 
         Returns:
             Set of variable names that should be divided by expansion divisor.

@@ -755,6 +755,7 @@ class FlowModel(ElementModel):
                 label_of_element=self.label_of_element,
                 parameters=self.element.size,
                 label_of_model=self.label_of_element,
+                size_category=VariableCategory.FLOW_SIZE,
             ),
             'investment',
         )

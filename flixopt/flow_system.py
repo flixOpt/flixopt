@@ -1703,8 +1703,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         elif self._solution is not None:
             # Fallback for old files without categories: match by suffix pattern
             # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
-            suffixes = tuple(f'|{cat.value}' for cat in category_set)
-            matching = [v for v in self._solution.data_vars if v.endswith(suffixes)]
+            matching = []
+            for cat in category_set:
+                # Handle new sub-categories that map to old |size suffix
+                if cat == VariableCategory.FLOW_SIZE:
+                    flow_labels = set(self.flows.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                    )
+                elif cat == VariableCategory.STORAGE_SIZE:
+                    storage_labels = set(self.storages.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                    )
+                else:
+                    # Standard suffix matching
+                    suffix = f'|{cat.value}'
+                    matching.extend(v for v in self._solution.data_vars if v.endswith(suffix))
         else:
             matching = []
 

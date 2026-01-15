@@ -73,7 +73,9 @@ class VariableCategory(Enum):
     TOTAL_OVER_PERIODS = 'total_over_periods'  # Effect total over all periods
 
     # === Investment ===
-    SIZE = 'size'  # Investment size
+    SIZE = 'size'  # Generic investment size (for backwards compatibility)
+    FLOW_SIZE = 'flow_size'  # Flow investment size
+    STORAGE_SIZE = 'storage_size'  # Storage capacity size
     INVESTED = 'invested'  # Invested yes/no binary
 
     # === Counting/Duration ===

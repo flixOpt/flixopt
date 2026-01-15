@@ -37,6 +37,7 @@ class InvestmentModel(Submodel):
         label_of_element: The label of the parent (Element). Used to construct the full label of the model.
         parameters: The parameters of the feature model.
         label_of_model: The label of the model. This is needed to construct the full label of the model.
+        size_category: Category for the size variable (FLOW_SIZE, STORAGE_SIZE, or SIZE for generic).
     """
 
     parameters: InvestParameters
@@ -47,9 +48,11 @@ class InvestmentModel(Submodel):
         label_of_element: str,
         parameters: InvestParameters,
         label_of_model: str | None = None,
+        size_category: VariableCategory = VariableCategory.SIZE,
     ):
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
+        self._size_category = size_category
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
@@ -69,7 +72,7 @@ class InvestmentModel(Submodel):
             lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
-            category=VariableCategory.SIZE,
+            category=self._size_category,
         )
 
         if not self.parameters.mandatory:

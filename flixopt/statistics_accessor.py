@@ -568,10 +568,7 @@ class StatisticsAccessor:
         """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
         if self._flow_sizes is None:
-            flow_labels = set(self._fs.flows.keys())
-            size_vars = self._fs.get_variables_by_category(VariableCategory.SIZE)
-            # Filter to only flow-related sizes
-            flow_size_vars = [v for v in size_vars if v.rsplit('|', 1)[0] in flow_labels]
+            flow_size_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_SIZE)
             self._flow_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in flow_size_vars})
         return self._flow_sizes
 
@@ -580,10 +577,7 @@ class StatisticsAccessor:
         """Storage capacity sizes as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._storage_sizes is None:
-            storage_labels = set(self._fs.storages.keys())
-            size_vars = self._fs.get_variables_by_category(VariableCategory.SIZE)
-            # Filter to only storage-related sizes
-            storage_size_vars = [v for v in size_vars if v.rsplit('|', 1)[0] in storage_labels]
+            storage_size_vars = self._fs.get_variables_by_category(VariableCategory.STORAGE_SIZE)
             self._storage_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in storage_size_vars})
         return self._storage_sizes
 
