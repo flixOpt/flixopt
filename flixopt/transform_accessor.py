@@ -2140,14 +2140,24 @@ class TransformAccessor:
 
             return expanded
 
+        # Helper to construct DataArray without slow _construct_dataarray
+        def _fast_get_da(ds: xr.Dataset, name: str, coord_cache: dict) -> xr.DataArray:
+            variable = ds.variables[name]
+            var_dims = set(variable.dims)
+            coords = {k: v for k, v in coord_cache.items() if set(v.dims).issubset(var_dims)}
+            return xr.DataArray(variable, coords=coords, name=name)
+
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
         skip_vars = {'cluster_weight', 'timestep_duration'}  # These have special handling
         data_vars = {}
-        for name, da in reduced_ds.data_vars.items():
+        # Use ds.variables pattern to avoid slow _construct_dataarray calls
+        coord_cache = {k: v for k, v in reduced_ds.coords.items()}
+        for name in reduced_ds.data_vars:
             if name in skip_vars or name.startswith('clustering|'):
                 continue
+            da = _fast_get_da(reduced_ds, name, coord_cache)
             # Skip vars with cluster dim but no time dim - they don't make sense after expansion
             # (e.g., representative_weights with dims ('cluster',) or ('cluster', 'period'))
             if 'cluster' in da.dims and 'time' not in da.dims:
@@ -2164,10 +2174,13 @@ class TransformAccessor:
 
         # 2. Expand solution (with segment total correction for segmented systems)
         reduced_solution = self._fs.solution
-        expanded_fs._solution = xr.Dataset(
-            {name: expand_da(da, name, is_solution=True) for name, da in reduced_solution.data_vars.items()},
-            attrs=reduced_solution.attrs,
-        )
+        # Use ds.variables pattern to avoid slow _construct_dataarray calls
+        sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
+        expanded_sol_vars = {}
+        for name in reduced_solution.data_vars:
+            da = _fast_get_da(reduced_solution, name, sol_coord_cache)
+            expanded_sol_vars[name] = expand_da(da, name, is_solution=True)
+        expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)
         expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
 
         # 3. Combine charge_state with SOC_boundary for intercluster storages
