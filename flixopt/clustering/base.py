@@ -8,6 +8,7 @@ This module provides wrapper classes around tsam's clustering functionality:
 
 from __future__ import annotations
 
+import functools
 import json
 from collections import Counter
 from typing import TYPE_CHECKING, Any
@@ -809,12 +810,15 @@ class Clustering:
         """
         return self.cluster_occurrences.rename('representative_weights')
 
-    @property
+    @functools.cached_property
     def timestep_mapping(self) -> xr.DataArray:
         """Mapping from original timesteps to representative timestep indices.
 
         Each value indicates which representative timestep index (0 to n_representatives-1)
         corresponds to each original timestep.
+
+        Note: This property is cached for performance since it's accessed frequently
+        during expand() operations.
         """
         return self._build_timestep_mapping()
 
