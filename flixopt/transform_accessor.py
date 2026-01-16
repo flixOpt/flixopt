@@ -195,15 +195,22 @@ class TransformAccessor:
         for key, tsam_result in tsam_aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
             if is_segmented:
-                # Segmented data: MultiIndex (Segment Step, Segment Duration)
-                # Need to extract by cluster (first level of index)
-                for col in typical_df.columns:
-                    data = np.zeros((actual_n_clusters, n_time_points))
-                    for cluster_id in range(actual_n_clusters):
-                        cluster_data = typical_df.loc[cluster_id, col]
-                        data[cluster_id, :] = cluster_data.values[:n_time_points]
+                # Segmented data: MultiIndex with cluster as first level
+                # Each cluster has exactly n_time_points rows (segments)
+                # Extract all data at once using numpy reshape, avoiding slow .loc calls
+                columns = typical_df.columns.tolist()
+
+                # Get all values as numpy array: (n_clusters * n_time_points, n_columns)
+                all_values = typical_df.values
+
+                # Reshape to (n_clusters, n_time_points, n_columns)
+                reshaped = all_values.reshape(actual_n_clusters, n_time_points, -1)
+
+                for col_idx, col in enumerate(columns):
+                    # reshaped[:, :, col_idx] selects all clusters, all time points, single column
+                    # Result shape: (n_clusters, n_time_points)
                     typical_das.setdefault(col, {})[key] = xr.DataArray(
-                        data,
+                        reshaped[:, :, col_idx],
                         dims=['cluster', 'time'],
                         coords={'cluster': cluster_coords, 'time': time_coords},
                     )
