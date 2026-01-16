@@ -17,7 +17,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
-from .structure import FlowSystemModel, register_class_for_io
+from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -944,8 +944,13 @@ class StorageModel(ComponentModel):
             upper=ub,
             coords=self._model.get_coords(extra_timestep=True),
             short_name='charge_state',
+            category=VariableCategory.CHARGE_STATE,
         )
-        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+        self.add_variables(
+            coords=self._model.get_coords(),
+            short_name='netto_discharge',
+            category=VariableCategory.NETTO_DISCHARGE,
+        )
 
     def _add_netto_discharge_constraint(self):
         """Add constraint: netto_discharge = discharging - charging."""
@@ -976,6 +981,7 @@ class StorageModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )
@@ -1313,6 +1319,7 @@ class InterclusterStorageModel(StorageModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )
@@ -1369,6 +1376,7 @@ class InterclusterStorageModel(StorageModel):
             coords=boundary_coords,
             dims=boundary_dims,
             short_name='SOC_boundary',
+            category=VariableCategory.SOC_BOUNDARY,
         )
 
         # 3. Link SOC_boundary to investment size

@@ -1180,6 +1180,51 @@ class TestSegmentation:
         assert mapping.min() >= 0
         assert mapping.max() <= max_valid_idx
 
+    @pytest.mark.parametrize('freq', ['1h', '2h'])
+    def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
+        """Test that total_effects matches solution Cost after expand with segmentation.
+
+        This is a regression test for the bug where expansion_divisor was computed
+        incorrectly for segmented systems, causing total_effects to not match the
+        solution's objective value.
+        """
+        from tsam.config import SegmentConfig
+
+        # Create system with specified timestep frequency
+        n_timesteps = 72 if freq == '1h' else 36  # 3 days worth
+        timesteps = pd.date_range('2024-01-01', periods=n_timesteps, freq=freq)
+        fs = fx.FlowSystem(timesteps=timesteps)
+
+        # Minimal components: effect + source + sink with varying demand
+        fs.add_elements(fx.Effect('Cost', unit='EUR', is_objective=True))
+        fs.add_elements(fx.Bus('Heat'))
+        fs.add_elements(
+            fx.Source(
+                'Boiler',
+                outputs=[fx.Flow('Q', bus='Heat', size=100, effects_per_flow_hour={'Cost': 50})],
+            )
+        )
+        demand_profile = np.tile([0.5, 1], n_timesteps // 2)
+        fs.add_elements(
+            fx.Sink('Demand', inputs=[fx.Flow('Q', bus='Heat', size=50, fixed_relative_profile=demand_profile)])
+        )
+
+        # Cluster with segments -> solve -> expand
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=4),
+        )
+        fs_clustered.optimize(solver_fixture)
+        fs_expanded = fs_clustered.transform.expand()
+
+        # Validate: total_effects must match solution objective
+        computed = fs_expanded.statistics.total_effects['Cost'].sum('contributor')
+        expected = fs_expanded.solution['Cost']
+        assert np.allclose(computed.values, expected.values, rtol=1e-5), (
+            f'total_effects mismatch: computed={float(computed):.2f}, expected={float(expected):.2f}'
+        )
+
 
 class TestSegmentationWithStorage:
     """Tests for segmentation combined with storage components."""
@@ -1393,3 +1438,86 @@ class TestSegmentationIO:
             fs_segmented.solution['objective'].item(),
             rtol=1e-6,
         )
+
+
+class TestCombineSlices:
+    """Tests for the combine_slices utility function."""
+
+    def test_single_dim(self):
+        """Test combining slices with a single extra dimension."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {
+            ('A',): np.array([1.0, 2.0, 3.0]),
+            ('B',): np.array([4.0, 5.0, 6.0]),
+        }
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A', 'B']},
+            output_dim='time',
+            output_coord=[0, 1, 2],
+        )
+
+        assert result.dims == ('time', 'x')
+        assert result.shape == (3, 2)
+        assert result.sel(x='A').values.tolist() == [1.0, 2.0, 3.0]
+        assert result.sel(x='B').values.tolist() == [4.0, 5.0, 6.0]
+
+    def test_two_dims(self):
+        """Test combining slices with two extra dimensions."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {
+            ('P1', 'base'): np.array([1.0, 2.0]),
+            ('P1', 'high'): np.array([3.0, 4.0]),
+            ('P2', 'base'): np.array([5.0, 6.0]),
+            ('P2', 'high'): np.array([7.0, 8.0]),
+        }
+        result = combine_slices(
+            slices,
+            extra_dims=['period', 'scenario'],
+            dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
+            output_dim='time',
+            output_coord=[0, 1],
+        )
+
+        assert result.dims == ('time', 'period', 'scenario')
+        assert result.shape == (2, 2, 2)
+        assert result.sel(period='P1', scenario='base').values.tolist() == [1.0, 2.0]
+        assert result.sel(period='P2', scenario='high').values.tolist() == [7.0, 8.0]
+
+    def test_attrs_propagation(self):
+        """Test that attrs are propagated to the result."""
+        from flixopt.clustering.base import combine_slices
+
+        slices = {('A',): np.array([1.0, 2.0])}
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A']},
+            output_dim='time',
+            output_coord=[0, 1],
+            attrs={'units': 'kW', 'description': 'power'},
+        )
+
+        assert result.attrs['units'] == 'kW'
+        assert result.attrs['description'] == 'power'
+
+    def test_datetime_coords(self):
+        """Test with pandas DatetimeIndex as output coordinates."""
+        from flixopt.clustering.base import combine_slices
+
+        time_index = pd.date_range('2020-01-01', periods=3, freq='h')
+        slices = {('A',): np.array([1.0, 2.0, 3.0])}
+        result = combine_slices(
+            slices,
+            extra_dims=['x'],
+            dim_coords={'x': ['A']},
+            output_dim='time',
+            output_coord=time_index,
+        )
+
+        assert result.dims == ('time', 'x')
+        assert len(result.coords['time']) == 3
+        assert result.coords['time'][0].values == time_index[0]

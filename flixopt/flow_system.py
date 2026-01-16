@@ -29,7 +29,14 @@ from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
-from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .structure import (
+    CompositeContainerMixin,
+    Element,
+    ElementContainer,
+    FlowSystemModel,
+    Interface,
+    VariableCategory,
+)
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
@@ -248,6 +255,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
+
+        # Variable categories for segment expansion handling
+        # Populated when model is built, used by transform.expand()
+        self._variable_categories: dict[str, VariableCategory] = {}
 
         # Aggregation info - populated by transform.cluster()
         self.clustering: Clustering | None = None
@@ -740,6 +751,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 ds[f'clustering|{name}'] = arr
             ds.attrs['clustering'] = json.dumps(clustering_ref)
 
+        # Serialize variable categories for segment expansion handling
+        if self._variable_categories:
+            # Convert enum values to strings for JSON serialization
+            categories_dict = {name: cat.value for name, cat in self._variable_categories.items()}
+            ds.attrs['variable_categories'] = json.dumps(categories_dict)
+
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
@@ -912,6 +929,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
             if hasattr(clustering, 'representative_weights'):
                 flow_system.cluster_weight = clustering.representative_weights
+
+        # Restore variable categories if present
+        if 'variable_categories' in reference_structure:
+            categories_dict = json.loads(reference_structure['variable_categories'])
+            # Convert string values back to VariableCategory enum with safe fallback
+            restored_categories = {}
+            for name, value in categories_dict.items():
+                try:
+                    restored_categories[name] = VariableCategory(value)
+                except ValueError:
+                    # Unknown category value (e.g., renamed/removed enum) - skip it
+                    # The variable will be treated as uncategorized during expansion
+                    logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
+            flow_system._variable_categories = restored_categories
 
         # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
         flow_system.connect_and_transform()
@@ -1620,6 +1651,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Store solution on FlowSystem for direct Element access
         self.solution = self.model.solution
 
+        # Copy variable categories for segment expansion handling
+        self._variable_categories = self.model.variable_categories.copy()
+
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
@@ -1651,6 +1685,69 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._statistics = None  # Invalidate cached statistics
 
     @property
+    def variable_categories(self) -> dict[str, VariableCategory]:
+        """Variable categories for filtering and segment expansion.
+
+        Returns:
+            Dict mapping variable names to their VariableCategory.
+        """
+        return self._variable_categories
+
+    def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
+        """Get variable names matching any of the specified categories.
+
+        Args:
+            *categories: One or more VariableCategory values to filter by.
+            from_solution: If True, only return variables present in solution.
+                If False, return all registered variables matching categories.
+
+        Returns:
+            List of variable names matching any of the specified categories.
+
+        Example:
+            >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
+            ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', ...]
+            >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
+            ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
+        """
+        category_set = set(categories)
+
+        if self._variable_categories:
+            # Use registered categories
+            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
+        elif self._solution is not None:
+            # Fallback for old files without categories: match by suffix pattern
+            # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
+            matching = []
+            for cat in category_set:
+                # Handle new sub-categories that map to old |size suffix
+                if cat == VariableCategory.FLOW_SIZE:
+                    flow_labels = set(self.flows.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                    )
+                elif cat == VariableCategory.STORAGE_SIZE:
+                    storage_labels = set(self.storages.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                    )
+                else:
+                    # Standard suffix matching
+                    suffix = f'|{cat.value}'
+                    matching.extend(v for v in self._solution.data_vars if v.endswith(suffix))
+        else:
+            matching = []
+
+        if from_solution and self._solution is not None:
+            solution_vars = set(self._solution.data_vars)
+            matching = [v for v in matching if v in solution_vars]
+        return matching
+
+    @property
     def is_locked(self) -> bool:
         """Check if the FlowSystem is locked (has a solution).
 
@@ -1676,6 +1773,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
+        self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
             element.submodel = None
             element._variable_names = []

@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .structure import Submodel
+from .structure import Submodel, VariableCategory
 
 logger = logging.getLogger('flixopt')
 
@@ -270,6 +270,7 @@ class ModelingPrimitives:
         short_name: str = None,
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
+        category: VariableCategory = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
         """Creates a variable constrained to equal a given expression.
 
@@ -284,6 +285,7 @@ class ModelingPrimitives:
             short_name: Short name for display purposes
             bounds: Optional (lower_bound, upper_bound) tuple for the tracker variable
             coords: Coordinate dimensions for the variable (None uses all model coords)
+            category: Category for segment expansion handling. See VariableCategory.
 
         Returns:
             Tuple of (tracker_variable, tracking_constraint)
@@ -292,7 +294,9 @@ class ModelingPrimitives:
             raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
 
         if not bounds:
-            tracker = model.add_variables(name=name, coords=model.get_coords(coords), short_name=short_name)
+            tracker = model.add_variables(
+                name=name, coords=model.get_coords(coords), short_name=short_name, category=category
+            )
         else:
             tracker = model.add_variables(
                 lower=bounds[0] if bounds[0] is not None else -np.inf,
@@ -300,6 +304,7 @@ class ModelingPrimitives:
                 name=name,
                 coords=model.get_coords(coords),
                 short_name=short_name,
+                category=category,
             )
 
         # Constraint: tracker = expression
@@ -369,6 +374,7 @@ class ModelingPrimitives:
             coords=state.coords,
             name=name,
             short_name=short_name,
+            category=VariableCategory.DURATION,
         )
 
         constraints = {}

@@ -17,6 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from .modeling import _scalar_safe_reduce
+from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -436,8 +437,6 @@ class TransformAccessor:
             logger.info(
                 f'Reduced from {len(self._fs.timesteps)} to {actual_n_clusters} clusters × {timesteps_per_cluster} timesteps'
             )
-        if n_clusters_requested is not None:
-            logger.info(f'Clusters: {actual_n_clusters} (requested: {n_clusters_requested})')
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das = self._build_typical_das(
@@ -1200,6 +1199,10 @@ class TransformAccessor:
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
+        preserve_column_means: bool = True,
+        rescale_exclude_columns: list[str] | None = None,
+        round_decimals: int | None = None,
+        numerical_tolerance: float = 1e-13,
         **tsam_kwargs: Any,
     ) -> FlowSystem:
         """
@@ -1240,8 +1243,19 @@ class TransformAccessor:
             segments: Optional tsam ``SegmentConfig`` object specifying intra-period
                 segmentation. Segments divide each cluster period into variable-duration
                 sub-segments. Example: ``SegmentConfig(n_segments=4)``.
-            **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``.
-                See tsam documentation for all options (e.g., ``preserve_column_means``).
+            preserve_column_means: Rescale typical periods so each column's weighted mean
+                matches the original data's mean. Ensures total energy/load is preserved
+                when weights represent occurrence counts. Default is True.
+            rescale_exclude_columns: Column names to exclude from rescaling when
+                ``preserve_column_means=True``. Useful for binary/indicator columns (0/1 values)
+                that should not be rescaled.
+            round_decimals: Round output values to this many decimal places.
+                If None (default), no rounding is applied.
+            numerical_tolerance: Tolerance for numerical precision issues. Controls when
+                warnings are raised for aggregated values exceeding original time series bounds.
+                Default is 1e-13.
+            **tsam_kwargs: Additional keyword arguments passed to ``tsam.aggregate()``
+                for forward compatibility. See tsam documentation for all options.
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -1330,11 +1344,16 @@ class TransformAccessor:
 
         # Validate tsam_kwargs doesn't override explicit parameters
         reserved_tsam_keys = {
-            'n_periods',
-            'period_hours',
-            'resolution',
-            'cluster',  # ClusterConfig object (weights are passed through this)
-            'extremes',  # ExtremeConfig object
+            'n_clusters',
+            'period_duration',  # exposed as cluster_duration
+            'timestep_duration',  # computed automatically
+            'cluster',
+            'segments',
+            'extremes',
+            'preserve_column_means',
+            'rescale_exclude_columns',
+            'round_decimals',
+            'numerical_tolerance',
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -1387,6 +1406,10 @@ class TransformAccessor:
                         cluster=cluster_config,
                         extremes=extremes,
                         segments=segments,
+                        preserve_column_means=preserve_column_means,
+                        rescale_exclude_columns=rescale_exclude_columns,
+                        round_decimals=round_decimals,
+                        numerical_tolerance=numerical_tolerance,
                         **tsam_kwargs,
                     )
 
@@ -1701,7 +1724,7 @@ class TransformAccessor:
             n_original_clusters: Number of original clusters before aggregation.
         """
         n_original_timesteps_extra = len(original_timesteps_extra)
-        soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
+        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1803,6 +1826,112 @@ class TransformAccessor:
 
         return soc_boundary_per_timestep * decay_da
 
+    def _build_segment_total_varnames(self) -> set[str]:
+        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
+
+        This method is only used when variable_categories is empty (old FlowSystems
+        saved before category registration was implemented). New FlowSystems use
+        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
+
+        For segmented systems, these variables contain values that are summed over
+        segments. When expanded to hourly resolution, they need to be divided by
+        segment duration to get correct hourly rates.
+
+        Returns:
+            Set of variable names that should be divided by expansion divisor.
+        """
+        segment_total_vars: set[str] = set()
+
+        # Get all effect names
+        effect_names = list(self._fs.effects.keys())
+
+        # 1. Per-timestep totals for each effect: {effect}(temporal)|per_timestep
+        for effect in effect_names:
+            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
+
+        # 2. Flow contributions to effects: {flow}->{effect}(temporal)
+        #    (from effects_per_flow_hour on Flow elements)
+        for flow_label in self._fs.flows:
+            for effect in effect_names:
+                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
+
+        # 3. Component contributions to effects: {component}->{effect}(temporal)
+        #    (from effects_per_startup, effects_per_active_hour on OnOffParameters)
+        for component_label in self._fs.components:
+            for effect in effect_names:
+                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
+
+        # 4. Effect-to-effect contributions (from share_from_temporal)
+        #    {source_effect}(temporal)->{target_effect}(temporal)
+        for target_effect_name, target_effect in self._fs.effects.items():
+            if target_effect.share_from_temporal:
+                for source_effect_name in target_effect.share_from_temporal:
+                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
+
+        return segment_total_vars
+
+    def _interpolate_charge_state_segmented(
+        self,
+        da: xr.DataArray,
+        clustering: Clustering,
+        original_timesteps: pd.DatetimeIndex,
+    ) -> xr.DataArray:
+        """Interpolate charge_state values within segments for segmented systems.
+
+        For segmented systems, charge_state has values at segment boundaries (n_segments+1).
+        Instead of repeating the start boundary value for all timesteps in a segment,
+        this method interpolates between start and end boundary values to show the
+        actual charge trajectory as the storage charges/discharges.
+
+        Uses vectorized xarray operations via Clustering class properties.
+
+        Args:
+            da: charge_state DataArray with dims (cluster, time) where time has n_segments+1 entries.
+            clustering: Clustering object with segment info.
+            original_timesteps: Original timesteps to expand to.
+
+        Returns:
+            Interpolated charge_state with dims (time, ...) for original timesteps.
+        """
+        # Get multi-dimensional properties from Clustering
+        timestep_mapping = clustering.timestep_mapping
+        segment_assignments = clustering.results.segment_assignments
+        segment_durations = clustering.results.segment_durations
+        position_within_segment = clustering.results.position_within_segment
+
+        # Decode timestep_mapping into cluster and time indices
+        # For segmented systems, use n_segments as the divisor (matches expand_data/build_expansion_divisor)
+        if clustering.is_segmented and clustering.n_segments is not None:
+            time_dim_size = clustering.n_segments
+        else:
+            time_dim_size = clustering.timesteps_per_cluster
+        cluster_indices = timestep_mapping // time_dim_size
+        time_indices = timestep_mapping % time_dim_size
+
+        # Get segment index and position for each original timestep
+        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
+        positions = position_within_segment.isel(cluster=cluster_indices, time=time_indices)
+        durations = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
+
+        # Calculate interpolation factor: position within segment (0 to 1)
+        # At position=0, factor=0.5/duration (start of segment)
+        # At position=duration-1, factor approaches 1 (end of segment)
+        factor = xr.where(durations > 1, (positions + 0.5) / durations, 0.5)
+
+        # Get start and end boundary values from charge_state
+        # charge_state has dims (cluster, time) where time = segment boundaries (n_segments+1)
+        start_vals = da.isel(cluster=cluster_indices, time=seg_indices)
+        end_vals = da.isel(cluster=cluster_indices, time=seg_indices + 1)
+
+        # Linear interpolation
+        interpolated = start_vals + (end_vals - start_vals) * factor
+
+        # Clean up coordinate artifacts and rename
+        interpolated = interpolated.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
+        interpolated = interpolated.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
+
+        return interpolated.transpose('time', ...).assign_attrs(da.attrs)
+
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.
 
@@ -1853,6 +1982,52 @@ class TransformAccessor:
 
             For accurate dispatch results, use ``fix_sizes()`` to fix the sizes
             from the reduced optimization and re-optimize at full resolution.
+
+            **Segmented Systems Variable Handling:**
+
+            For systems clustered with ``SegmentConfig``, special handling is applied
+            to time-varying solution variables. Variables without a ``time`` dimension
+            are unaffected by segment expansion. This includes:
+
+            - Investment: ``{component}|size``, ``{component}|exists``
+            - Storage boundaries: ``{storage}|SOC_boundary``
+            - Aggregated totals: ``{flow}|total_flow_hours``, ``{flow}|active_hours``
+            - Effect totals: ``{effect}``, ``{effect}(temporal)``, ``{effect}(periodic)``
+
+            Time-varying variables are categorized and handled as follows:
+
+            1. **State variables** - Interpolated within segments:
+
+               - ``{storage}|charge_state``: Linear interpolation between segment
+                 boundary values to show the charge trajectory during charge/discharge.
+
+            2. **Segment totals** - Divided by segment duration:
+
+               These variables represent values summed over the segment. Division
+               converts them back to hourly rates for correct plotting and analysis.
+
+               - ``{effect}(temporal)|per_timestep``: Per-timestep effect contributions
+               - ``{flow}->{effect}(temporal)``: Flow contributions (includes both
+                 ``effects_per_flow_hour`` and ``effects_per_startup``)
+               - ``{component}->{effect}(temporal)``: Component-level contributions
+               - ``{source}(temporal)->{target}(temporal)``: Effect-to-effect shares
+
+            3. **Rate/average variables** - Expanded as-is:
+
+               These variables represent average values within the segment. tsam
+               already provides properly averaged values, so no correction needed.
+
+               - ``{flow}|flow_rate``: Average flow rate during segment
+               - ``{storage}|netto_discharge``: Net discharge rate (discharge - charge)
+
+            4. **Binary status variables** - Constant within segment:
+
+               These variables cannot be meaningfully interpolated. They indicate
+               the dominant state or whether an event occurred during the segment.
+
+               - ``{flow}|status``: On/off status (0 or 1)
+               - ``{flow}|startup``: Startup event occurred in segment
+               - ``{flow}|shutdown``: Shutdown event occurred in segment
         """
         from .flow_system import FlowSystem
 
@@ -1877,35 +2052,75 @@ class TransformAccessor:
             n_original_clusters - 1,
         )
 
-        def expand_da(da: xr.DataArray, var_name: str = '') -> xr.DataArray:
+        # For segmented systems: build expansion divisor and identify segment total variables
+        expansion_divisor = None
+        segment_total_vars: set[str] = set()
+        variable_categories = getattr(self._fs, '_variable_categories', {})
+        if clustering.is_segmented:
+            expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
+            # Build segment total vars using registry first, fall back to pattern matching
+            segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
+            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
+            if not segment_total_vars:
+                segment_total_vars = self._build_segment_total_varnames()
+
+        def _is_state_variable(var_name: str) -> bool:
+            """Check if a variable is a state variable (should be interpolated)."""
+            if var_name in variable_categories:
+                return variable_categories[var_name] in EXPAND_INTERPOLATE
+            # Fall back to pattern matching for backwards compatibility
+            return var_name.endswith('|charge_state')
+
+        def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
+            """Append final state value from original data to expanded data."""
+            cluster_assignments = clustering.cluster_assignments
+            if cluster_assignments.ndim == 1:
+                last_cluster = int(cluster_assignments.values[last_original_cluster_idx])
+                extra_val = da.isel(cluster=last_cluster, time=-1)
+            else:
+                last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
+                extra_val = da.isel(cluster=last_clusters, time=-1)
+            extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
+            extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
+            return xr.concat([expanded, extra_val], dim='time')
+
+        def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
             """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
+
+            is_state = _is_state_variable(var_name) and 'cluster' in da.dims
+
+            # State variables in segmented systems: interpolate within segments
+            if is_state and clustering.is_segmented:
+                expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
+                return _append_final_state(expanded, da)
+
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
-            # For charge_state with cluster dim, append the extra timestep value
-            if var_name.endswith('|charge_state') and 'cluster' in da.dims:
-                cluster_assignments = clustering.cluster_assignments
-                if cluster_assignments.ndim == 1:
-                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
-                    extra_val = da.isel(cluster=last_cluster, time=-1)
-                else:
-                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                    extra_val = da.isel(cluster=last_clusters, time=-1)
-                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-                expanded = xr.concat([expanded, extra_val], dim='time')
+            # Segment totals: divide by expansion divisor
+            if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
+                expanded = expanded / expansion_divisor
+
+            # State variables: append final state
+            if is_state:
+                expanded = _append_final_state(expanded, da)
 
             return expanded
 
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
-        data_vars = {
-            name: expand_da(da, name)
-            for name, da in reduced_ds.data_vars.items()
-            if name != 'cluster_weight' and not name.startswith('clustering|')
-        }
+        skip_vars = {'cluster_weight', 'timestep_duration'}  # These have special handling
+        data_vars = {}
+        for name, da in reduced_ds.data_vars.items():
+            if name in skip_vars or name.startswith('clustering|'):
+                continue
+            # Skip vars with cluster dim but no time dim - they don't make sense after expansion
+            # (e.g., representative_weights with dims ('cluster',) or ('cluster', 'period'))
+            if 'cluster' in da.dims and 'time' not in da.dims:
+                continue
+            data_vars[name] = expand_da(da, name)
         attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
 
@@ -1915,10 +2130,10 @@ class TransformAccessor:
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
-        # 2. Expand solution
+        # 2. Expand solution (with segment total correction for segmented systems)
         reduced_solution = self._fs.solution
         expanded_fs._solution = xr.Dataset(
-            {name: expand_da(da, name) for name, da in reduced_solution.data_vars.items()},
+            {name: expand_da(da, name, is_solution=True) for name, da in reduced_solution.data_vars.items()},
             attrs=reduced_solution.attrs,
         )
         expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
