@@ -1534,7 +1534,7 @@ class FlowSystemDatasetIO:
         Returns:
             Constructed DataArray
         """
-        variable = ds._variables[name]
+        variable = ds.variables[name]
         coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
         return xr.DataArray(variable, coords=coords, name=name)
 
@@ -1773,17 +1773,19 @@ class FlowSystemDatasetIO:
     ) -> xr.Dataset:
         """Add solution variables to dataset.
 
-        Uses _variables directly for fast serialization (avoids _construct_dataarray).
+        Uses ds.variables directly for fast serialization (avoids _construct_dataarray).
         """
         if include_solution and solution is not None:
             # Rename 'time' to 'solution_time' to preserve full solution
             solution_renamed = solution.rename({'time': 'solution_time'}) if 'time' in solution.dims else solution
 
-            # Use _variables directly to avoid slow _construct_dataarray calls
+            # Use ds.variables directly to avoid slow _construct_dataarray calls
+            # Only include data variables (not coordinates)
+            data_var_names = set(solution_renamed.data_vars)
             solution_vars = {
                 f'{cls.SOLUTION_PREFIX}{name}': var
-                for name, var in solution_renamed._variables.items()
-                if name not in solution_renamed.coords
+                for name, var in solution_renamed.variables.items()
+                if name in data_var_names
             }
             ds = ds.assign(solution_vars)
 
