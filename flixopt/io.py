@@ -527,106 +527,10 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     return documentation
 
 
-# === NetCDF Optimization ===
-# Collapse constant arrays to scalars for better compression and IO speed.
-# Arrays like relative_minimum=0 (repeated 8760 times) are stored as single scalars.
-# See benchmark_flixopt_io.py for performance analysis.
-
-COLLAPSED_VAR_PREFIX = '__collapsed__'
-
-
-def _collapse_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Collapse constant arrays to scalar values with metadata for restoration.
-
-    Arrays where all values are identical are stored as scalars with their
-    original dims stored in attrs. This dramatically reduces storage for
-    parameters like relative_minimum=0, relative_maximum=1, etc.
-
-    Args:
-        ds: Dataset with potentially constant arrays.
-
-    Returns:
-        Dataset with constant arrays collapsed to scalars.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        if da.dims:  # Has dimensions (not already a scalar)
-            values = da.values
-            # Check if all values are identical (constant array)
-            if values.size > 0:
-                first_val = values.flat[0]
-                # Handle NaN comparison properly
-                if np.issubdtype(values.dtype, np.floating):
-                    is_constant = np.all(values == first_val) or (np.isnan(first_val) and np.all(np.isnan(values)))
-                else:
-                    is_constant = np.all(values == first_val)
-
-                if is_constant:
-                    # Collapse to scalar with metadata
-                    scalar_da = xr.DataArray(first_val)
-                    scalar_da.attrs = {
-                        '_collapsed_dims': list(da.dims),
-                        '_collapsed_dtype': str(da.dtype),
-                        '_original_attrs': json.dumps(da.attrs) if da.attrs else None,
-                    }
-                    new_data_vars[f'{COLLAPSED_VAR_PREFIX}{name}'] = scalar_da
-                    continue
-
-        # Keep non-constant arrays as-is
-        new_data_vars[name] = da
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
-def _expand_collapsed_arrays(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Expand collapsed scalar values back to full arrays.
-
-    Reverses the operation of _collapse_constant_arrays().
-
-    Args:
-        ds: Dataset with collapsed arrays (from _collapse_constant_arrays).
-
-    Returns:
-        Dataset with constant arrays restored to their original shape.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        if name.startswith(COLLAPSED_VAR_PREFIX):
-            # This is a collapsed constant - expand it
-            original_name = name[len(COLLAPSED_VAR_PREFIX) :]
-            dims = tuple(da.attrs.get('_collapsed_dims', []))
-            dtype = da.attrs.get('_collapsed_dtype', str(da.dtype))
-
-            if dims:
-                # Get coordinate sizes
-                shape = tuple(len(ds.coords[d]) for d in dims)
-                # Create full array
-                expanded_values = np.full(shape, da.values, dtype=dtype)
-                expanded_da = xr.DataArray(expanded_values, dims=dims, coords={d: ds.coords[d] for d in dims})
-            else:
-                expanded_da = da.copy()
-
-            # Restore original attrs
-            if '_original_attrs' in da.attrs and da.attrs['_original_attrs']:
-                expanded_da.attrs = json.loads(da.attrs['_original_attrs'])
-
-            new_data_vars[original_name] = expanded_da
-        else:
-            # Keep as-is
-            new_data_vars[name] = da
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
 def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
-    collapse_constants: bool = True,
 ) -> None:
     """
     Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
@@ -635,8 +539,6 @@ def save_dataset_to_netcdf(
         ds: Dataset to save.
         path: Path to save the dataset to.
         compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
-        collapse_constants: If True, collapse constant arrays (all identical values) to scalars.
-            This dramatically reduces storage for parameters like relative_minimum=0. Default True.
 
     Raises:
         ValueError: If the path has an invalid file extension.
@@ -646,10 +548,6 @@ def save_dataset_to_netcdf(
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
     ds = ds.copy(deep=True)
-
-    # Collapse constant arrays to scalars
-    if collapse_constants:
-        ds = _collapse_constant_arrays(ds)
 
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
 
@@ -679,14 +577,11 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
     Load a dataset from a netcdf file. Load all attrs from 'attrs' attributes.
 
-    Automatically detects and reverses optimizations applied during save:
-    - Expands collapsed constant arrays
-
     Args:
         path: Path to load the dataset from.
 
     Returns:
-        Dataset: Loaded dataset with restored attrs and original structure.
+        Dataset: Loaded dataset with restored attrs.
     """
     # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
     with warnings.catch_warnings():
@@ -706,11 +601,6 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     for coord_name, coord_var in ds.coords.items():
         if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
             ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
-
-    # Expand collapsed constants if any are present
-    has_collapsed = any(name.startswith(COLLAPSED_VAR_PREFIX) for name in ds.data_vars)
-    if has_collapsed:
-        ds = _expand_collapsed_arrays(ds)
 
     return ds
 

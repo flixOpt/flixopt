@@ -724,11 +724,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             FlowSystem instance
         """
-        # Expand any collapsed arrays back (for NetCDF loaded datasets with scalar attrs)
-        from flixopt.io import _expand_collapsed_arrays
-
-        ds = _expand_collapsed_arrays(ds)
-
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 
