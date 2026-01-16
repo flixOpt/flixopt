@@ -525,35 +525,48 @@ class TransformAccessor:
         all_keys = {(p, s) for p in periods for s in scenarios}
         ds_new_vars = {}
 
-        for name, original_da in ds.data_vars.items():
-            if 'time' not in original_da.dims:
-                ds_new_vars[name] = original_da.copy()
+        # Use ds.variables to avoid _construct_dataarray overhead
+        variables = ds.variables
+        coord_cache = {k: ds.coords[k].values for k in ds.coords}
+
+        for name in ds.data_vars:
+            var = variables[name]
+            if 'time' not in var.dims:
+                # No time dimension - wrap Variable in DataArray
+                coords = {d: coord_cache[d] for d in var.dims if d in coord_cache}
+                ds_new_vars[name] = xr.DataArray(var.values, dims=var.dims, coords=coords, attrs=var.attrs, name=name)
             elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
                 # Time-dependent but constant: reshape to (cluster, time, ...)
-                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
-                other_dims = [d for d in sliced.dims if d != 'time']
-                other_shape = [sliced.sizes[d] for d in other_dims]
+                # Use numpy slicing instead of .isel()
+                time_idx = var.dims.index('time')
+                slices = [slice(None)] * len(var.dims)
+                slices[time_idx] = slice(0, n_reduced_timesteps)
+                sliced_values = var.values[tuple(slices)]
+
+                other_dims = [d for d in var.dims if d != 'time']
+                other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
-                reshaped = sliced.values.reshape(new_shape)
+                reshaped = sliced_values.reshape(new_shape)
                 new_coords = {'cluster': cluster_coords, 'time': time_coords}
                 for dim in other_dims:
-                    new_coords[dim] = sliced.coords[dim].values
+                    if dim in coord_cache:
+                        new_coords[dim] = coord_cache[dim]
                 ds_new_vars[name] = xr.DataArray(
                     reshaped,
                     dims=['cluster', 'time'] + other_dims,
                     coords=new_coords,
-                    attrs=original_da.attrs,
+                    attrs=var.attrs,
                 )
             else:
                 # Time-varying: combine per-(period, scenario) slices
                 da = self._combine_slices_to_dataarray_2d(
                     slices=typical_das[name],
-                    original_da=original_da,
+                    attrs=var.attrs,
                     periods=periods,
                     scenarios=scenarios,
                 )
-                if TimeSeriesData.is_timeseries_data(original_da):
-                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
+                if var.attrs.get('__timeseries_data__', False):
+                    da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
                 ds_new_vars[name] = da
 
         # Copy attrs but remove cluster_weight
@@ -1639,7 +1652,7 @@ class TransformAccessor:
     @staticmethod
     def _combine_slices_to_dataarray_2d(
         slices: dict[tuple, xr.DataArray],
-        original_da: xr.DataArray,
+        attrs: dict,
         periods: list,
         scenarios: list,
     ) -> xr.DataArray:
@@ -1647,7 +1660,7 @@ class TransformAccessor:
 
         Args:
             slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
-            original_da: Original DataArray to get attrs from.
+            attrs: Attributes to assign to the result.
             periods: List of period labels ([None] if no periods dimension).
             scenarios: List of scenario labels ([None] if no scenarios dimension).
 
@@ -1660,7 +1673,7 @@ class TransformAccessor:
 
         # Simple case: no period/scenario dimensions
         if not has_periods and not has_scenarios:
-            return slices[first_key].assign_attrs(original_da.attrs)
+            return slices[first_key].assign_attrs(attrs)
 
         # Multi-dimensional: use xr.concat to stack along period/scenario dims
         if has_periods and has_scenarios:
@@ -1678,7 +1691,7 @@ class TransformAccessor:
         # Put cluster and time first (standard order for clustered data)
         result = result.transpose('cluster', 'time', ...)
 
-        return result.assign_attrs(original_da.attrs)
+        return result.assign_attrs(attrs)
 
     def _validate_for_expansion(self) -> Clustering:
         """Validate FlowSystem can be expanded and return clustering info.
