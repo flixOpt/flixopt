@@ -724,7 +724,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
             )
             # Add solution variables with 'solution|' prefix to avoid conflicts
-            solution_vars = {f'solution|{name}': var for name, var in solution_renamed.data_vars.items()}
+            # Use _variables directly to avoid slow _construct_dataarray calls
+            solution_vars = {
+                f'solution|{name}': var
+                for name, var in solution_renamed._variables.items()
+                if name not in solution_renamed.coords
+            }
             ds = ds.assign(solution_vars)
             # Also add the solution_time coordinate if it exists
             if 'solution_time' in solution_renamed.coords:
