@@ -627,7 +627,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True, reduce_constants: bool = False) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
@@ -641,6 +641,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             include_solution: Whether to include the optimization solution in the dataset.
                 Defaults to True. Set to False to get only the FlowSystem structure
                 without solution data (useful for copying or saving templates).
+            reduce_constants: If True (default), reduce dimensions where all values are
+                constant along that dimension. This reduces memory and storage size
+                for parameters like relative_minimum=0 that are the same across all timesteps.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -687,6 +690,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
+        # Reduce constant dimensions for memory efficiency
+        if reduce_constants:
+            from flixopt.io import _reduce_constant_dims
+
+            ds = _reduce_constant_dims(ds)
+
         return ds
 
     @classmethod
@@ -709,6 +718,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             FlowSystem instance
         """
+        # Expand any collapsed/reduced arrays back to full arrays
+        from flixopt.io import _expand_collapsed_arrays, _expand_reduced_dims
+
+        ds = _expand_collapsed_arrays(ds)  # For NetCDF loaded datasets
+        ds = _expand_reduced_dims(ds)  # For reduced dimension datasets
+
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 

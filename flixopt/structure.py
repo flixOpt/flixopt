@@ -43,7 +43,7 @@ logger = logging.getLogger('flixopt')
 
 def _ensure_coords(
     data: xr.DataArray | float | int,
-    coords: xr.Coordinates,
+    coords: xr.Coordinates | dict,
 ) -> xr.DataArray | float:
     """Broadcast data to coords if needed.
 
@@ -54,18 +54,24 @@ def _ensure_coords(
     Note: Infinity values (-inf, inf) are kept as scalars because linopy uses
     special checks like `if (lower != -inf)` that fail with DataArrays.
     """
+    # Handle both dict and xr.Coordinates
+    if isinstance(coords, dict):
+        coord_dims = list(coords.keys())
+    else:
+        coord_dims = list(coords.dims)
+
     # Keep infinity values as scalars (linopy uses them for special checks)
     if not isinstance(data, xr.DataArray):
         if np.isinf(data):
             return data
         # Finite scalar - create full DataArray
-        return xr.DataArray(data, coords=coords, dims=list(coords.dims))
+        return xr.DataArray(data, coords=coords, dims=coord_dims)
 
-    if set(data.dims) == set(coords.dims):
+    if set(data.dims) == set(coord_dims):
         return data  # Already has all dims
 
     # Broadcast to full coords
-    template = xr.DataArray(coords=coords, dims=list(coords.dims))
+    template = xr.DataArray(coords=coords, dims=coord_dims)
     return data.broadcast_like(template)
 
 
