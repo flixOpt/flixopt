@@ -366,6 +366,55 @@ class DataConverter:
         broadcasted = source_data.broadcast_like(target_template)
         return broadcasted.transpose(*target_dims)
 
+    @staticmethod
+    def _validate_dataarray_dims(
+        data: xr.DataArray, target_coords: dict[str, pd.Index], target_dims: tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Validate that DataArray dims are a subset of target dims (without broadcasting).
+
+        This method validates compatibility without expanding to full dimensions,
+        allowing data to remain in compact form. Broadcasting happens later at
+        the linopy interface (FlowSystemModel.add_variables).
+
+        Also transposes data to canonical dimension order (matching target_dims order).
+
+        Args:
+            data: DataArray to validate
+            target_coords: Target coordinates {dim_name: coordinate_index}
+            target_dims: Target dimension names in canonical order
+
+        Returns:
+            DataArray with validated dims, transposed to canonical order
+
+        Raises:
+            ConversionError: If data has dimensions not in target_dims,
+                           or coordinate values don't match
+        """
+        # Validate: all data dimensions must exist in target
+        extra_dims = set(data.dims) - set(target_dims)
+        if extra_dims:
+            raise ConversionError(f'Data has dimensions {extra_dims} not in target dimensions {target_dims}')
+
+        # Validate: coordinate compatibility for overlapping dimensions
+        for dim in data.dims:
+            if dim in data.coords and dim in target_coords:
+                data_coords = data.coords[dim]
+                target_coords_for_dim = target_coords[dim]
+
+                if not np.array_equal(data_coords.values, target_coords_for_dim.values):
+                    raise ConversionError(
+                        f'Coordinate mismatch for dimension "{dim}". Data and target coordinates have different values.'
+                    )
+
+        # Transpose to canonical dimension order (subset of target_dims that data has)
+        if data.dims:
+            canonical_order = tuple(d for d in target_dims if d in data.dims)
+            if data.dims != canonical_order:
+                data = data.transpose(*canonical_order)
+
+        return data
+
     @classmethod
     def to_dataarray(
         cls,
@@ -480,8 +529,9 @@ class DataConverter:
                 f'Unsupported data type: {type(data).__name__}. Supported types: {", ".join(supported_types)}'
             )
 
-        # Broadcast intermediate result to target specification
-        return cls._broadcast_dataarray_to_target_specification(intermediate, validated_coords, target_dims)
+        # Validate dims are compatible (no broadcasting - data stays compact)
+        # Broadcasting happens at FlowSystemModel.add_variables() via _ensure_coords
+        return cls._validate_dataarray_dims(intermediate, validated_coords, target_dims)
 
     @staticmethod
     def _validate_and_prepare_target_coordinates(

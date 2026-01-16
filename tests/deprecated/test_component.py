@@ -131,7 +131,8 @@ class TestComponentModel:
 
         upper_bound_flow_rate = outputs[1].relative_maximum
 
-        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+        # Data stays in minimal form (1D array stays 1D)
+        assert upper_bound_flow_rate.dims == ('time',)
 
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
@@ -311,7 +312,8 @@ class TestComponentModel:
 
         upper_bound_flow_rate = outputs[1].relative_maximum
 
-        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+        # Data stays in minimal form (1D array stays 1D)
+        assert upper_bound_flow_rate.dims == ('time',)
 
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],

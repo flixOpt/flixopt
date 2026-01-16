@@ -632,6 +632,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
 
+        Data is stored in minimal form (scalars stay scalar, 1D arrays stay 1D) without
+        broadcasting to full model dimensions. This provides significant memory savings
+        for multi-period and multi-scenario models.
+
         If a solution is present and `include_solution=True`, it will be included
         in the dataset with variable names prefixed by 'solution|' to avoid conflicts
         with FlowSystem configuration variables. Solution time coordinates are renamed
@@ -686,6 +690,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
+
+        # Ensure model coordinates are always present in the Dataset
+        # (even if no data variable uses them, they define the model structure)
+        model_coords = {'time': self.timesteps}
+        if self.periods is not None:
+            model_coords['period'] = self.periods
+        if self.scenarios is not None:
+            model_coords['scenario'] = self.scenarios
+        if self.clusters is not None:
+            model_coords['cluster'] = self.clusters
+        ds = ds.assign_coords(model_coords)
 
         return ds
 

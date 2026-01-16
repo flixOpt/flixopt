@@ -204,12 +204,12 @@ class TestConvertOldDataset:
         assert 'custom_new' in result.attrs
         assert 'custom_old' not in result.attrs
 
-    def test_returns_same_object(self):
-        """Test that the function modifies and returns the same dataset object."""
+    def test_returns_equivalent_dataset(self):
+        """Test that the function converts and returns equivalent dataset."""
         ds = xr.Dataset(attrs={'minimum_operation': 100})
         result = convert_old_dataset(ds)
-        # Note: attrs are modified in place, so the object should be the same
-        assert result is ds
+        # Check that attrs are converted
+        assert result.attrs == {'minimum_temporal': 100}
 
 
 class TestConvertOldNetcdf:
