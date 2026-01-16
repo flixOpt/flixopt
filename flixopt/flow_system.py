@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from . import __version__
 from . import io as fx_io
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
@@ -709,74 +708,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
+
+        See Also:
+            from_dataset: Create FlowSystem from dataset
+            to_netcdf: Save to NetCDF file
         """
         if not self.connected_and_transformed:
             logger.info('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        ds = super().to_dataset()
+        # Get base dataset from parent class
+        base_ds = super().to_dataset()
 
-        # Include solution data if present and requested
-        if include_solution and self.solution is not None:
-            # Rename 'time' to 'solution_time' in solution variables to preserve full solution
-            # (linopy solution may have extra timesteps, e.g., for final charge states)
-            solution_renamed = (
-                self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
-            )
-            # Add solution variables with 'solution|' prefix to avoid conflicts
-            # Use _variables directly to avoid slow _construct_dataarray calls
-            solution_vars = {
-                f'solution|{name}': var
-                for name, var in solution_renamed._variables.items()
-                if name not in solution_renamed.coords
-            }
-            ds = ds.assign(solution_vars)
-            # Also add the solution_time coordinate if it exists
-            if 'solution_time' in solution_renamed.coords:
-                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
-            ds.attrs['has_solution'] = True
-        else:
-            ds.attrs['has_solution'] = False
-
-        # Include carriers if any are registered
-        if self._carriers:
-            carriers_structure = {}
-            for name, carrier in self._carriers.items():
-                carrier_ref, _ = carrier._create_reference_structure()
-                carriers_structure[name] = carrier_ref
-            ds.attrs['carriers'] = json.dumps(carriers_structure)
-
-        # Serialize Clustering object for full reconstruction in from_dataset()
-        if self.clustering is not None:
-            clustering_ref, clustering_arrays = self.clustering._create_reference_structure(
-                include_original_data=include_original_data
-            )
-            # Add clustering arrays with prefix
-            for name, arr in clustering_arrays.items():
-                ds[f'clustering|{name}'] = arr
-            ds.attrs['clustering'] = json.dumps(clustering_ref)
-
-        # Serialize variable categories for segment expansion handling
-        if self._variable_categories:
-            # Convert enum values to strings for JSON serialization
-            categories_dict = {name: cat.value for name, cat in self._variable_categories.items()}
-            ds.attrs['variable_categories'] = json.dumps(categories_dict)
-
-        # Add version info
-        ds.attrs['flixopt_version'] = __version__
-
-        # Ensure model coordinates are always present in the Dataset
-        # (even if no data variable uses them, they define the model structure)
-        model_coords = {'time': self.timesteps}
-        if self.periods is not None:
-            model_coords['period'] = self.periods
-        if self.scenarios is not None:
-            model_coords['scenario'] = self.scenarios
-        if self.clusters is not None:
-            model_coords['cluster'] = self.clusters
-        ds = ds.assign_coords(model_coords)
-
-        return ds
+        # Add FlowSystem-specific data (solution, clustering, metadata)
+        return fx_io.flow_system_to_dataset(self, base_ds, include_solution, include_original_data)
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:

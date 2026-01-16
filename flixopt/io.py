@@ -1762,3 +1762,181 @@ def _restore_metadata(flow_system: FlowSystem, parser: DatasetParser, cls: type[
                 # The variable will be treated as uncategorized during expansion
                 logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
         flow_system._variable_categories = restored_categories
+
+
+# =============================================================================
+# FlowSystem to Dataset Serialization
+# =============================================================================
+
+
+def flow_system_to_dataset(
+    flow_system: FlowSystem,
+    base_dataset: xr.Dataset,
+    include_solution: bool = True,
+    include_original_data: bool = True,
+) -> xr.Dataset:
+    """Convert FlowSystem-specific data to dataset.
+
+    This function adds FlowSystem-specific data (solution, clustering, metadata)
+    to a base dataset created by the parent class's to_dataset() method.
+
+    Args:
+        flow_system: The FlowSystem to serialize
+        base_dataset: Dataset from parent class with basic structure
+        include_solution: Whether to include optimization solution
+        include_original_data: Whether to include clustering.original_data
+
+    Returns:
+        Complete dataset with all FlowSystem data
+    """
+    from . import __version__
+
+    ds = base_dataset
+
+    # Add solution data
+    ds = _add_solution_to_dataset(ds, flow_system.solution, include_solution)
+
+    # Add carriers
+    ds = _add_carriers_to_dataset(ds, flow_system._carriers)
+
+    # Add clustering
+    ds = _add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
+
+    # Add variable categories
+    ds = _add_variable_categories_to_dataset(ds, flow_system._variable_categories)
+
+    # Add version info
+    ds.attrs['flixopt_version'] = __version__
+
+    # Ensure model coordinates are present
+    ds = _add_model_coords(ds, flow_system)
+
+    return ds
+
+
+def _add_solution_to_dataset(
+    ds: xr.Dataset,
+    solution: xr.Dataset | None,
+    include_solution: bool,
+) -> xr.Dataset:
+    """Add solution variables to dataset.
+
+    Uses _variables directly for fast serialization (avoids _construct_dataarray).
+
+    Args:
+        ds: Target dataset
+        solution: Solution dataset (may be None)
+        include_solution: Whether to include solution
+
+    Returns:
+        Dataset with solution added (or has_solution=False attr)
+    """
+    if include_solution and solution is not None:
+        # Rename 'time' to 'solution_time' to preserve full solution
+        solution_renamed = solution.rename({'time': 'solution_time'}) if 'time' in solution.dims else solution
+
+        # Use _variables directly to avoid slow _construct_dataarray calls
+        solution_vars = {
+            f'solution|{name}': var
+            for name, var in solution_renamed._variables.items()
+            if name not in solution_renamed.coords
+        }
+        ds = ds.assign(solution_vars)
+
+        # Add solution_time coordinate if it exists
+        if 'solution_time' in solution_renamed.coords:
+            ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+
+        ds.attrs['has_solution'] = True
+    else:
+        ds.attrs['has_solution'] = False
+
+    return ds
+
+
+def _add_carriers_to_dataset(ds: xr.Dataset, carriers: Any) -> xr.Dataset:
+    """Add carrier definitions to dataset attributes.
+
+    Args:
+        ds: Target dataset
+        carriers: Carriers collection from FlowSystem
+
+    Returns:
+        Dataset with carriers in attrs
+    """
+    if carriers:
+        carriers_structure = {}
+        for name, carrier in carriers.items():
+            carrier_ref, _ = carrier._create_reference_structure()
+            carriers_structure[name] = carrier_ref
+        ds.attrs['carriers'] = json.dumps(carriers_structure)
+
+    return ds
+
+
+def _add_clustering_to_dataset(
+    ds: xr.Dataset,
+    clustering: Any,
+    include_original_data: bool,
+) -> xr.Dataset:
+    """Add clustering object to dataset.
+
+    Args:
+        ds: Target dataset
+        clustering: Clustering object (may be None)
+        include_original_data: Whether to include original_data
+
+    Returns:
+        Dataset with clustering arrays and attrs
+    """
+    if clustering is not None:
+        clustering_ref, clustering_arrays = clustering._create_reference_structure(
+            include_original_data=include_original_data
+        )
+        # Add clustering arrays with prefix
+        for name, arr in clustering_arrays.items():
+            ds[f'clustering|{name}'] = arr
+        ds.attrs['clustering'] = json.dumps(clustering_ref)
+
+    return ds
+
+
+def _add_variable_categories_to_dataset(
+    ds: xr.Dataset,
+    variable_categories: dict,
+) -> xr.Dataset:
+    """Add variable categories to dataset attributes.
+
+    Args:
+        ds: Target dataset
+        variable_categories: Dict mapping var names to VariableCategory
+
+    Returns:
+        Dataset with variable_categories in attrs
+    """
+    if variable_categories:
+        categories_dict = {name: cat.value for name, cat in variable_categories.items()}
+        ds.attrs['variable_categories'] = json.dumps(categories_dict)
+
+    return ds
+
+
+def _add_model_coords(ds: xr.Dataset, flow_system: FlowSystem) -> xr.Dataset:
+    """Ensure model coordinates are present in dataset.
+
+    Args:
+        ds: Target dataset
+        flow_system: FlowSystem with coordinate definitions
+
+    Returns:
+        Dataset with all model coordinates
+    """
+    model_coords = {'time': flow_system.timesteps}
+    if flow_system.periods is not None:
+        model_coords['period'] = flow_system.periods
+    if flow_system.scenarios is not None:
+        model_coords['scenario'] = flow_system.scenarios
+    if flow_system.clusters is not None:
+        model_coords['cluster'] = flow_system.clusters
+
+    return ds.assign_coords(model_coords)
