@@ -527,208 +527,10 @@ def document_linopy_model(model: linopy.Model, path: pathlib.Path | None = None)
     return documentation
 
 
-# === NetCDF Optimization ===
-# Collapse constant arrays to scalars for better compression and IO speed.
-# Arrays like relative_minimum=0 (repeated 8760 times) are stored as single scalars.
-# See benchmark_flixopt_io.py for performance analysis.
-
-COLLAPSED_VAR_PREFIX = '__collapsed__'
-
-
-def _reduce_constant_dims(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Reduce dimensions where all values are constant along that dimension.
-
-    For each DataArray, check each dimension. If all values are identical along
-    a dimension, reduce it (take first slice). Store reduced dims and original
-    dim order in attrs for later expansion.
-
-    This is more granular than _collapse_constant_arrays - it preserves dimensions
-    where values vary while reducing those that are constant.
-
-    Args:
-        ds: Dataset with potentially constant dimensions.
-
-    Returns:
-        Dataset with constant dimensions reduced.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        # Skip solution variables - they should not be reduced
-        if name.startswith('solution|'):
-            new_data_vars[name] = da
-            continue
-
-        if not da.dims:
-            # Already scalar
-            new_data_vars[name] = da
-            continue
-
-        # Store original dimension order for restoration
-        original_dims = list(da.dims)
-        reduced_dims = []
-        result = da
-
-        # Check each dimension for constancy
-        for dim in list(result.dims):
-            # Check if all values are the same along this dimension
-            # by comparing first slice to the full array
-            if dim not in result.dims:
-                continue
-            first_slice = result.isel({dim: 0})
-            # Broadcast first slice back to compare
-            is_constant = (result == first_slice).all().item()
-
-            if is_constant:
-                # Reduce this dimension
-                result = result.isel({dim: 0}, drop=True)
-                reduced_dims.append(dim)
-
-        if reduced_dims:
-            result = result.copy()
-            result.attrs = dict(da.attrs)
-            result.attrs['_reduced_dims'] = reduced_dims
-            result.attrs['_original_dims'] = original_dims
-
-        new_data_vars[name] = result
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
-def _expand_reduced_dims(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Expand reduced dimensions back to full arrays.
-
-    Reverses the operation of _reduce_constant_dims().
-
-    Args:
-        ds: Dataset with reduced dimensions (from _reduce_constant_dims).
-
-    Returns:
-        Dataset with reduced dimensions expanded.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        reduced_dims = da.attrs.get('_reduced_dims', [])
-        original_dims = da.attrs.get('_original_dims', [])
-
-        if reduced_dims and original_dims:
-            result = da
-            # Broadcast to include reduced dims
-            for dim in reduced_dims:
-                if dim in ds.coords:
-                    result = result.expand_dims({dim: ds.coords[dim]})
-
-            # Transpose to restore original dimension order
-            # Only include dims that exist in the result
-            target_dims = [d for d in original_dims if d in result.dims]
-            if target_dims != list(result.dims):
-                result = result.transpose(*target_dims)
-
-            # Clean up attrs
-            result = result.copy()
-            result.attrs = {k: v for k, v in da.attrs.items() if k not in ('_reduced_dims', '_original_dims')}
-            new_data_vars[name] = result
-        else:
-            new_data_vars[name] = da
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
-def _collapse_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Collapse constant arrays to scalar values with metadata for restoration.
-
-    Arrays where all values are identical are stored as scalars with their
-    original dims stored in attrs. This dramatically reduces storage for
-    parameters like relative_minimum=0, relative_maximum=1, etc.
-
-    Args:
-        ds: Dataset with potentially constant arrays.
-
-    Returns:
-        Dataset with constant arrays collapsed to scalars.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        if da.dims:  # Has dimensions (not already a scalar)
-            values = da.values
-            # Check if all values are identical (constant array)
-            if values.size > 0:
-                first_val = values.flat[0]
-                # Handle NaN comparison properly
-                if np.issubdtype(values.dtype, np.floating):
-                    is_constant = np.all(values == first_val) or (np.isnan(first_val) and np.all(np.isnan(values)))
-                else:
-                    is_constant = np.all(values == first_val)
-
-                if is_constant:
-                    # Collapse to scalar with metadata
-                    scalar_da = xr.DataArray(first_val)
-                    scalar_da.attrs = {
-                        '_collapsed_dims': list(da.dims),
-                        '_collapsed_dtype': str(da.dtype),
-                        '_original_attrs': json.dumps(da.attrs) if da.attrs else None,
-                    }
-                    new_data_vars[f'{COLLAPSED_VAR_PREFIX}{name}'] = scalar_da
-                    continue
-
-        # Keep non-constant arrays as-is
-        new_data_vars[name] = da
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
-def _expand_collapsed_arrays(ds: xr.Dataset) -> xr.Dataset:
-    """
-    Expand collapsed scalar values back to full arrays.
-
-    Reverses the operation of _collapse_constant_arrays().
-
-    Args:
-        ds: Dataset with collapsed arrays (from _collapse_constant_arrays).
-
-    Returns:
-        Dataset with constant arrays restored to their original shape.
-    """
-    new_data_vars = {}
-
-    for name, da in ds.data_vars.items():
-        if name.startswith(COLLAPSED_VAR_PREFIX):
-            # This is a collapsed constant - expand it
-            original_name = name[len(COLLAPSED_VAR_PREFIX) :]
-            dims = tuple(da.attrs.get('_collapsed_dims', []))
-            dtype = da.attrs.get('_collapsed_dtype', str(da.dtype))
-
-            if dims:
-                # Get coordinate sizes
-                shape = tuple(len(ds.coords[d]) for d in dims)
-                # Create full array
-                expanded_values = np.full(shape, da.values, dtype=dtype)
-                expanded_da = xr.DataArray(expanded_values, dims=dims, coords={d: ds.coords[d] for d in dims})
-            else:
-                expanded_da = da.copy()
-
-            # Restore original attrs
-            if '_original_attrs' in da.attrs and da.attrs['_original_attrs']:
-                expanded_da.attrs = json.loads(da.attrs['_original_attrs'])
-
-            new_data_vars[original_name] = expanded_da
-        else:
-            # Keep as-is
-            new_data_vars[name] = da
-
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
-
-
 def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
-    collapse_constants: bool = True,
 ) -> None:
     """
     Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
@@ -737,8 +539,6 @@ def save_dataset_to_netcdf(
         ds: Dataset to save.
         path: Path to save the dataset to.
         compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
-        collapse_constants: If True, collapse constant arrays (all identical values) to scalars.
-            This dramatically reduces storage for parameters like relative_minimum=0. Default True.
 
     Raises:
         ValueError: If the path has an invalid file extension.
@@ -748,10 +548,6 @@ def save_dataset_to_netcdf(
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
     ds = ds.copy(deep=True)
-
-    # Collapse constant arrays to scalars
-    if collapse_constants:
-        ds = _collapse_constant_arrays(ds)
 
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
 
@@ -777,18 +573,58 @@ def save_dataset_to_netcdf(
         )
 
 
+def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Reduce constant dimensions in arrays for more efficient storage.
+
+    For each array, checks each dimension and removes it if values are constant
+    along that dimension. This handles cases like:
+    - Shape (8760,) all identical → scalar
+    - Shape (8760, 2) constant along time → shape (2,)
+    - Shape (8760, 2, 3) constant along time → shape (2, 3)
+
+    This is useful for datasets saved with older versions where data was
+    broadcast to full dimensions.
+
+    Args:
+        ds: Dataset with potentially constant arrays.
+
+    Returns:
+        Dataset with constant dimensions reduced.
+    """
+    new_data_vars = {}
+
+    for name, da in ds.data_vars.items():
+        if not da.dims or da.size == 0:
+            new_data_vars[name] = da
+            continue
+
+        # Try to reduce each dimension
+        reduced = da
+        for dim in list(da.dims):
+            if dim not in reduced.dims:
+                continue  # Already removed
+            # Check if constant along this dimension
+            first_slice = reduced.isel({dim: 0})
+            is_constant = (reduced == first_slice).all()
+            if is_constant:
+                # Remove this dimension by taking first slice
+                reduced = first_slice
+
+        new_data_vars[name] = reduced
+
+    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
+
+
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
     Load a dataset from a netcdf file. Load all attrs from 'attrs' attributes.
-
-    Automatically detects and reverses optimizations applied during save:
-    - Expands collapsed constant arrays
 
     Args:
         path: Path to load the dataset from.
 
     Returns:
-        Dataset: Loaded dataset with restored attrs and original structure.
+        Dataset: Loaded dataset with restored attrs.
     """
     # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
     with warnings.catch_warnings():
@@ -808,11 +644,6 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     for coord_name, coord_var in ds.coords.items():
         if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
             ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
-
-    # Expand collapsed constants if any are present
-    has_collapsed = any(name.startswith(COLLAPSED_VAR_PREFIX) for name in ds.data_vars)
-    if has_collapsed:
-        ds = _expand_collapsed_arrays(ds)
 
     return ds
 
@@ -954,20 +785,25 @@ def convert_old_dataset(
     ds: xr.Dataset,
     key_renames: dict[str, str] | None = None,
     value_renames: dict[str, dict] | None = None,
+    reduce_constants: bool = True,
 ) -> xr.Dataset:
-    """Convert an old FlowSystem dataset to use new parameter names.
+    """Convert an old FlowSystem dataset to the current format.
 
-    This function updates the reference structure in a dataset's attrs to use
-    the current parameter naming conventions. This is useful for loading
-    FlowSystem files saved with older versions of flixopt.
+    This function performs two conversions:
+    1. Renames parameters in the reference structure to current naming conventions
+    2. Reduces constant arrays to minimal dimensions (e.g., broadcasted scalars back to scalars)
+
+    This is useful for loading FlowSystem files saved with older versions of flixopt.
 
     Args:
-        ds: The dataset to convert (will be modified in place)
+        ds: The dataset to convert
         key_renames: Custom key renames to apply. If None, uses PARAMETER_RENAMES.
         value_renames: Custom value renames to apply. If None, uses VALUE_RENAMES.
+        reduce_constants: If True (default), reduce constant arrays to minimal dimensions.
+            Old files may have scalars broadcasted to full (time, period, scenario) shape.
 
     Returns:
-        The converted dataset (same object, modified in place)
+        The converted dataset
 
     Examples:
         Convert an old netCDF file to new format:
@@ -978,7 +814,7 @@ def convert_old_dataset(
         # Load old file
         ds = io.load_dataset_from_netcdf('old_flow_system.nc4')
 
-        # Convert parameter names
+        # Convert to current format
         ds = io.convert_old_dataset(ds)
 
         # Now load as FlowSystem
@@ -994,6 +830,10 @@ def convert_old_dataset(
 
     # Convert the attrs (reference_structure)
     ds.attrs = _rename_keys_recursive(ds.attrs, key_renames, value_renames)
+
+    # Reduce constant arrays to minimal dimensions
+    if reduce_constants:
+        ds = _reduce_constant_arrays(ds)
 
     return ds
 

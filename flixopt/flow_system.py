@@ -627,10 +627,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True, reduce_constants: bool = True) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
+
+        Data is stored in minimal form (scalars stay scalar, 1D arrays stay 1D) without
+        broadcasting to full model dimensions. This provides significant memory savings
+        for multi-period and multi-scenario models.
 
         If a solution is present and `include_solution=True`, it will be included
         in the dataset with variable names prefixed by 'solution|' to avoid conflicts
@@ -641,9 +645,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             include_solution: Whether to include the optimization solution in the dataset.
                 Defaults to True. Set to False to get only the FlowSystem structure
                 without solution data (useful for copying or saving templates).
-            reduce_constants: If True (default), reduce dimensions where all values are
-                constant along that dimension. This reduces memory and storage size
-                for parameters like relative_minimum=0 that are the same across all timesteps.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -690,11 +691,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Add version info
         ds.attrs['flixopt_version'] = __version__
 
-        # Reduce constant dimensions for memory efficiency
-        if reduce_constants:
-            from flixopt.io import _reduce_constant_dims
-
-            ds = _reduce_constant_dims(ds)
+        # Ensure model coordinates are always present in the Dataset
+        # (even if no data variable uses them, they define the model structure)
+        model_coords = {'time': self.timesteps}
+        if self.periods is not None:
+            model_coords['period'] = self.periods
+        if self.scenarios is not None:
+            model_coords['scenario'] = self.scenarios
+        if self.clusters is not None:
+            model_coords['cluster'] = self.clusters
+        ds = ds.assign_coords(model_coords)
 
         return ds
 
@@ -718,12 +724,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Returns:
             FlowSystem instance
         """
-        # Expand any collapsed/reduced arrays back to full arrays
-        from flixopt.io import _expand_collapsed_arrays, _expand_reduced_dims
-
-        ds = _expand_collapsed_arrays(ds)  # For NetCDF loaded datasets
-        ds = _expand_reduced_dims(ds)  # For reduced dimension datasets
-
         # Get the reference structure from attrs
         reference_structure = dict(ds.attrs)
 

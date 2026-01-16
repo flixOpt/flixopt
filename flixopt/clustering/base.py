@@ -439,6 +439,9 @@ class ClusterResult:
             if has_cluster_dim:
                 cluster_ids = mapping // timesteps_per_cluster
                 time_within = mapping % timesteps_per_cluster
+                # Ensure dimension order is (cluster, time) for correct indexing
+                if data.dims != ('cluster', 'time'):
+                    data = data.transpose('cluster', 'time')
                 return data.values[cluster_ids, time_within]
             return data.values[mapping]
 

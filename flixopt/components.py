@@ -16,7 +16,7 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns
+from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -570,8 +570,12 @@ class Storage(Component):
             # Initial charge state should not constrain investment decision
             # If initial > (min_cap * rel_max), investment is forced to increase capacity
             # If initial < (max_cap * rel_min), investment is forced to decrease capacity
-            min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-            max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+            min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
+                self.relative_minimum_charge_state, {'time': 0}
+            )
+            max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
+                self.relative_maximum_charge_state, {'time': 0}
+            )
 
             # Only perform numeric comparisons if using a numeric initial_charge_state
             if not initial_equals_final and self.initial_charge_state is not None:
@@ -1100,24 +1104,47 @@ class StorageModel(ComponentModel):
         Returns:
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
-        final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
+        timesteps_extra = self._model.flow_system.timesteps_extra
+
+        # Get the original bounds (may be scalar or have time dim)
+        rel_min = self.element.relative_minimum_charge_state
+        rel_max = self.element.relative_maximum_charge_state
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = self.element.relative_minimum_charge_state.isel(time=-1, drop=True)
+            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
         else:
-            min_final = self.element.relative_minimum_final_charge_state
-        min_final = min_final.expand_dims('time').assign_coords(time=final_coords['time'])
+            min_final_value = self.element.relative_minimum_final_charge_state
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = self.element.relative_maximum_charge_state.isel(time=-1, drop=True)
+            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
         else:
-            max_final = self.element.relative_maximum_final_charge_state
-        max_final = max_final.expand_dims('time').assign_coords(time=final_coords['time'])
-        # Concatenate with original bounds
-        min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
-        max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
+            max_final_value = self.element.relative_maximum_final_charge_state
+
+        # Build bounds arrays for timesteps_extra (includes final timestep)
+        # Handle case where original data may be scalar (no time dim)
+        if 'time' in rel_min.dims:
+            # Original has time dim - concat with final value
+            min_final_da = (
+                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+            )
+            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
+            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
+        else:
+            # Original is scalar - broadcast to full time range (constant value)
+            min_bounds = rel_min.expand_dims(time=timesteps_extra)
+
+        if 'time' in rel_max.dims:
+            # Original has time dim - concat with final value
+            max_final_da = (
+                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+            )
+            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
+            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
+        else:
+            # Original is scalar - broadcast to full time range (constant value)
+            max_bounds = rel_max.expand_dims(time=timesteps_extra)
 
         return min_bounds, max_bounds
 
@@ -1477,8 +1504,8 @@ class InterclusterStorageModel(StorageModel):
         # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
         # Use mean over time (linking operates at period level, not timestep)
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
-        hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
+        rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
+        hours_per_cluster = timesteps_per_cluster * _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
         decay_n = (1 - rel_loss) ** hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
@@ -1522,8 +1549,8 @@ class InterclusterStorageModel(StorageModel):
         # Get self-discharge rate for decay calculation
         # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
-        mean_timestep_duration = self._model.timestep_duration.mean('time')
+        rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
+        mean_timestep_duration = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
 
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
 

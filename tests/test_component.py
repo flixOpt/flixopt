@@ -7,6 +7,7 @@ import flixopt.elements
 from .conftest import (
     assert_almost_equal_numeric,
     assert_conequal,
+    assert_dims_compatible,
     assert_sets_equal,
     assert_var_equal,
     create_linopy_model,
@@ -131,7 +132,7 @@ class TestComponentModel:
 
         upper_bound_flow_rate = outputs[1].relative_maximum
 
-        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+        assert_dims_compatible(upper_bound_flow_rate, tuple(model.get_coords()))
 
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
@@ -311,7 +312,7 @@ class TestComponentModel:
 
         upper_bound_flow_rate = outputs[1].relative_maximum
 
-        assert upper_bound_flow_rate.dims == tuple(model.get_coords())
+        assert_dims_compatible(upper_bound_flow_rate, tuple(model.get_coords()))
 
         assert_var_equal(
             model['TestComponent(Out2)|flow_rate'],
