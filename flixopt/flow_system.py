@@ -760,11 +760,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
+        # Helper to get coordinate as Index (works for both dimension and non-dimension coords)
+        def get_coord_as_index(coord_name: str) -> pd.Index | None:
+            if coord_name not in ds.coords:
+                return None
+            values = ds.coords[coord_name].values
+            # Convert to DatetimeIndex if dtype is datetime64
+            if np.issubdtype(values.dtype, np.datetime64):
+                return pd.DatetimeIndex(values, name=coord_name)
+            return pd.Index(values, name=coord_name)
+
         # Create FlowSystem instance with constructor parameters
         flow_system = cls(
-            timesteps=ds.indexes['time'],
-            periods=ds.indexes.get('period'),
-            scenarios=ds.indexes.get('scenario'),
+            timesteps=get_coord_as_index('time'),
+            periods=get_coord_as_index('period'),
+            scenarios=get_coord_as_index('scenario'),
             clusters=clusters,
             hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
             hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
