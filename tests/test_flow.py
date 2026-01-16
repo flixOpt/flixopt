@@ -4,7 +4,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_sets_equal, assert_var_equal, create_linopy_model
+from .conftest import assert_conequal, assert_dims_compatible, assert_sets_equal, assert_var_equal, create_linopy_model
 
 
 class TestFlowModel:
@@ -69,8 +69,8 @@ class TestFlowModel:
             model.add_variables(lower=10, upper=1000, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
+        assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         assert_var_equal(
             flow.submodel.flow_rate,
@@ -182,8 +182,8 @@ class TestFlowInvestModel:
             model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
+        assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # flow_rate
         assert_var_equal(
@@ -247,8 +247,8 @@ class TestFlowInvestModel:
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
+        assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # flow_rate
         assert_var_equal(
@@ -322,8 +322,8 @@ class TestFlowInvestModel:
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
+        assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # flow_rate
         assert_var_equal(
@@ -390,8 +390,8 @@ class TestFlowInvestModel:
             model.add_variables(lower=1e-5, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
+        assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # flow_rate
         assert_var_equal(
@@ -629,8 +629,8 @@ class TestFlowOnModel:
         costs_per_running_hour = flow.status_parameters.effects_per_active_hour['costs']
         co2_per_running_hour = flow.status_parameters.effects_per_active_hour['CO2']
 
-        assert costs_per_running_hour.dims == tuple(model.get_coords())
-        assert co2_per_running_hour.dims == tuple(model.get_coords())
+        assert_dims_compatible(costs_per_running_hour, tuple(model.get_coords()))
+        assert_dims_compatible(co2_per_running_hour, tuple(model.get_coords()))
 
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(temporal)'],

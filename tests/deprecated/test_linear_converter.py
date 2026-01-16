@@ -282,7 +282,8 @@ class TestLinearConverterModel:
 
         factor = converter.conversion_factors[0]['electricity']
 
-        assert factor.dims == tuple(model.get_coords())
+        # Data stays in minimal form (1D array stays 1D)
+        assert factor.dims == ('time',)
 
         # Verify the constraint has the time-varying coefficient
         assert_conequal(

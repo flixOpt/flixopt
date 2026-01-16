@@ -4,7 +4,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_var_equal, create_linopy_model
+from .conftest import assert_conequal, assert_dims_compatible, assert_var_equal, create_linopy_model
 
 
 class TestLinearConverterModel:
@@ -282,7 +282,7 @@ class TestLinearConverterModel:
 
         factor = converter.conversion_factors[0]['electricity']
 
-        assert factor.dims == tuple(model.get_coords())
+        assert_dims_compatible(factor, tuple(model.get_coords()))
 
         # Verify the constraint has the time-varying coefficient
         assert_conequal(

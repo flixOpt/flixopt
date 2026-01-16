@@ -876,6 +876,9 @@ class Clustering:
             if has_cluster_dim:
                 cluster_ids = mapping // time_dim_size
                 time_within = mapping % time_dim_size
+                # Ensure dimension order is (cluster, time) for correct indexing
+                if data.dims != ('cluster', 'time'):
+                    data = data.transpose('cluster', 'time')
                 return data.values[cluster_ids, time_within]
             return data.values[mapping]
 
