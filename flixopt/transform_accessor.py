@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .modeling import _scalar_safe_reduce
 from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
@@ -884,6 +885,26 @@ class TransformAccessor:
         time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
         non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
 
+        # Handle case where no data variables have time dimension (all scalars)
+        # We still need to resample the time coordinate itself
+        if not time_var_names:
+            if 'time' not in dataset.coords:
+                raise ValueError('Dataset has no time dimension to resample')
+            # Create a dummy variable to resample the time coordinate
+            dummy = xr.DataArray(
+                np.zeros(len(dataset.coords['time'])), dims=['time'], coords={'time': dataset.coords['time']}
+            )
+            dummy_ds = xr.Dataset({'__dummy__': dummy})
+            resampled_dummy = getattr(dummy_ds.resample(time=freq, **kwargs), method)()
+            # Get the resampled time coordinate
+            resampled_time = resampled_dummy.coords['time']
+            # Create result with all original scalar data and resampled time coordinate
+            # Keep all existing coordinates (period, scenario, etc.) except time which gets resampled
+            result = dataset.copy()
+            result = result.assign_coords(time=resampled_time)
+            result.attrs.update(original_attrs)
+            return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
@@ -916,6 +937,12 @@ class TransformAccessor:
             result = xr.merge([resampled_time_dataset, non_time_dataset])
         else:
             result = resampled_time_dataset
+
+        # Preserve all original coordinates that aren't 'time' (e.g., period, scenario, cluster)
+        # These may be lost during merge if no data variable uses them
+        for coord_name, coord_val in dataset.coords.items():
+            if coord_name != 'time' and coord_name not in result.coords:
+                result = result.assign_coords({coord_name: coord_val})
 
         result.attrs.update(original_attrs)
         return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
@@ -1776,7 +1803,7 @@ class TransformAccessor:
         )
 
         # Decay factor: (1 - loss)^t
-        loss_value = storage.relative_loss_per_hour.mean('time')
+        loss_value = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
         if not np.any(loss_value.values > 0):
             return soc_boundary_per_timestep
 

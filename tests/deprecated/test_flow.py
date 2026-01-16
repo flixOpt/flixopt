@@ -69,8 +69,9 @@ class TestFlowModel:
             model.add_variables(lower=10, upper=1000, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        # Data stays in minimal form (not broadcast to all model dimensions)
+        assert flow.relative_minimum.dims == ('time',)  # Only time dimension
+        assert flow.relative_maximum.dims == ('time',)  # Only time dimension
 
         assert_var_equal(
             flow.submodel.flow_rate,
@@ -182,8 +183,9 @@ class TestFlowInvestModel:
             model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        # Data stays in minimal form (not broadcast to all model dimensions)
+        assert flow.relative_minimum.dims == ('time',)  # Only time dimension
+        assert flow.relative_maximum.dims == ('time',)  # Only time dimension
 
         # flow_rate
         assert_var_equal(
@@ -247,8 +249,9 @@ class TestFlowInvestModel:
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        # Data stays in minimal form (not broadcast to all model dimensions)
+        assert flow.relative_minimum.dims == ('time',)  # Only time dimension
+        assert flow.relative_maximum.dims == ('time',)  # Only time dimension
 
         # flow_rate
         assert_var_equal(
@@ -322,8 +325,9 @@ class TestFlowInvestModel:
             model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        # Data stays in minimal form (not broadcast to all model dimensions)
+        assert flow.relative_minimum.dims == ('time',)  # Only time dimension
+        assert flow.relative_maximum.dims == ('time',)  # Only time dimension
 
         # flow_rate
         assert_var_equal(
@@ -390,8 +394,9 @@ class TestFlowInvestModel:
             model.add_variables(lower=1e-5, upper=100, coords=model.get_coords(['period', 'scenario'])),
         )
 
-        assert flow.relative_minimum.dims == tuple(model.get_coords())
-        assert flow.relative_maximum.dims == tuple(model.get_coords())
+        # Data stays in minimal form (not broadcast to all model dimensions)
+        assert flow.relative_minimum.dims == ('time',)  # Only time dimension
+        assert flow.relative_maximum.dims == ('time',)  # Only time dimension
 
         # flow_rate
         assert_var_equal(
@@ -629,8 +634,9 @@ class TestFlowOnModel:
         costs_per_running_hour = flow.status_parameters.effects_per_active_hour['costs']
         co2_per_running_hour = flow.status_parameters.effects_per_active_hour['CO2']
 
-        assert costs_per_running_hour.dims == tuple(model.get_coords())
-        assert co2_per_running_hour.dims == tuple(model.get_coords())
+        # Data stays in minimal form (1D array stays 1D)
+        assert costs_per_running_hour.dims == ('time',)
+        assert co2_per_running_hour.dims == ('time',)
 
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(temporal)'],

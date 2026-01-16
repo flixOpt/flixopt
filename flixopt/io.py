@@ -548,6 +548,7 @@ def save_dataset_to_netcdf(
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
     ds = ds.copy(deep=True)
+
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
 
     # Convert all DataArray attrs to JSON strings
@@ -570,6 +571,49 @@ def save_dataset_to_netcdf(
             else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
             engine='netcdf4',
         )
+
+
+def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Reduce constant dimensions in arrays for more efficient storage.
+
+    For each array, checks each dimension and removes it if values are constant
+    along that dimension. This handles cases like:
+    - Shape (8760,) all identical → scalar
+    - Shape (8760, 2) constant along time → shape (2,)
+    - Shape (8760, 2, 3) constant along time → shape (2, 3)
+
+    This is useful for datasets saved with older versions where data was
+    broadcast to full dimensions.
+
+    Args:
+        ds: Dataset with potentially constant arrays.
+
+    Returns:
+        Dataset with constant dimensions reduced.
+    """
+    new_data_vars = {}
+
+    for name, da in ds.data_vars.items():
+        if not da.dims or da.size == 0:
+            new_data_vars[name] = da
+            continue
+
+        # Try to reduce each dimension
+        reduced = da
+        for dim in list(da.dims):
+            if dim not in reduced.dims:
+                continue  # Already removed
+            # Check if constant along this dimension
+            first_slice = reduced.isel({dim: 0})
+            is_constant = (reduced == first_slice).all()
+            if is_constant:
+                # Remove this dimension by taking first slice
+                reduced = first_slice
+
+        new_data_vars[name] = reduced
+
+    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
@@ -741,20 +785,25 @@ def convert_old_dataset(
     ds: xr.Dataset,
     key_renames: dict[str, str] | None = None,
     value_renames: dict[str, dict] | None = None,
+    reduce_constants: bool = True,
 ) -> xr.Dataset:
-    """Convert an old FlowSystem dataset to use new parameter names.
+    """Convert an old FlowSystem dataset to the current format.
 
-    This function updates the reference structure in a dataset's attrs to use
-    the current parameter naming conventions. This is useful for loading
-    FlowSystem files saved with older versions of flixopt.
+    This function performs two conversions:
+    1. Renames parameters in the reference structure to current naming conventions
+    2. Reduces constant arrays to minimal dimensions (e.g., broadcasted scalars back to scalars)
+
+    This is useful for loading FlowSystem files saved with older versions of flixopt.
 
     Args:
-        ds: The dataset to convert (will be modified in place)
+        ds: The dataset to convert
         key_renames: Custom key renames to apply. If None, uses PARAMETER_RENAMES.
         value_renames: Custom value renames to apply. If None, uses VALUE_RENAMES.
+        reduce_constants: If True (default), reduce constant arrays to minimal dimensions.
+            Old files may have scalars broadcasted to full (time, period, scenario) shape.
 
     Returns:
-        The converted dataset (same object, modified in place)
+        The converted dataset
 
     Examples:
         Convert an old netCDF file to new format:
@@ -765,7 +814,7 @@ def convert_old_dataset(
         # Load old file
         ds = io.load_dataset_from_netcdf('old_flow_system.nc4')
 
-        # Convert parameter names
+        # Convert to current format
         ds = io.convert_old_dataset(ds)
 
         # Now load as FlowSystem
@@ -781,6 +830,10 @@ def convert_old_dataset(
 
     # Convert the attrs (reference_structure)
     ds.attrs = _rename_keys_recursive(ds.attrs, key_renames, value_renames)
+
+    # Reduce constant arrays to minimal dimensions
+    if reduce_constants:
+        ds = _reduce_constant_arrays(ds)
 
     return ds
 
