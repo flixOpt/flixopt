@@ -777,7 +777,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
-        Handles FlowSystem-specific reconstruction logic.
 
         If the dataset contains solution data (variables prefixed with 'solution|'),
         the solution will be restored to the FlowSystem. Solution time coordinates
@@ -792,180 +791,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Returns:
             FlowSystem instance
+
+        See Also:
+            to_dataset: Convert FlowSystem to dataset
+            from_netcdf: Load from NetCDF file
         """
-        # Get the reference structure from attrs
-        reference_structure = dict(ds.attrs)
-
-        # Separate solution variables from config variables
-        # Use fast DataArray construction via ds._variables (avoids slow _construct_dataarray)
-        solution_prefix = 'solution|'
-        solution_var_names = {}  # Maps original_name -> ds_name
-        config_var_names = []  # Config variable names
-
-        for name in ds.data_vars:
-            if name.startswith(solution_prefix):
-                solution_var_names[name[len(solution_prefix) :]] = name
-            else:
-                config_var_names.append(name)
-
-        # Fast DataArray construction using ds._variables directly
-        # This bypasses the slow _construct_dataarray method (~1.5ms -> ~0.1ms per var)
-        # Pre-cache coordinate DataArrays to avoid repeated _construct_dataarray calls
-        coord_cache = {k: ds.coords[k] for k in ds.coords}
-
-        def _fast_get_dataarray(name: str) -> xr.DataArray:
-            """Construct DataArray from Variable without slow coordinate inference."""
-            variable = ds._variables[name]
-            coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
-            return xr.DataArray(variable, coords=coords, name=name)
-
-        # Build arrays dict using fast construction
-        arrays_dict = {name: _fast_get_dataarray(name) for name in config_var_names}
-
-        # Extract cluster index if present (clustered FlowSystem)
-        clusters = ds.indexes.get('cluster')
-
-        # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
-        if clusters is not None:
-            cluster_weight_for_constructor = None
-        else:
-            cluster_weight_for_constructor = (
-                cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
-                if 'cluster_weight' in reference_structure
-                else None
-            )
-
-        # Resolve scenario_weights only if scenario dimension exists
-        scenario_weights = None
-        if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
-            scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
-
-        # Resolve timestep_duration if present as DataArray reference (for segmented systems with variable durations)
-        timestep_duration = None
-        if 'timestep_duration' in reference_structure:
-            ref_value = reference_structure['timestep_duration']
-            # Only resolve if it's a DataArray reference (starts with ":::")
-            # For non-segmented systems, it may be stored as a simple list/scalar
-            if isinstance(ref_value, str) and ref_value.startswith(':::'):
-                timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
-
-        # Get timesteps - convert integer index to RangeIndex for segmented systems
-        time_index = ds.indexes['time']
-        if not isinstance(time_index, pd.DatetimeIndex):
-            # Segmented systems use RangeIndex (stored as integer array in NetCDF)
-            time_index = pd.RangeIndex(len(time_index), name='time')
-
-        # Create FlowSystem instance with constructor parameters
-        flow_system = cls(
-            timesteps=time_index,
-            periods=ds.indexes.get('period'),
-            scenarios=ds.indexes.get('scenario'),
-            clusters=clusters,
-            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
-            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-            weight_of_last_period=reference_structure.get('weight_of_last_period'),
-            scenario_weights=scenario_weights,
-            cluster_weight=cluster_weight_for_constructor,
-            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
-            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
-            name=reference_structure.get('name'),
-            timestep_duration=timestep_duration,
-        )
-
-        # Restore components
-        components_structure = reference_structure.get('components', {})
-        for comp_label, comp_data in components_structure.items():
-            component = cls._resolve_reference_structure(comp_data, arrays_dict)
-            if not isinstance(component, Component):
-                logger.critical(f'Restoring component {comp_label} failed.')
-            flow_system._add_components(component)
-
-        # Restore buses
-        buses_structure = reference_structure.get('buses', {})
-        for bus_label, bus_data in buses_structure.items():
-            bus = cls._resolve_reference_structure(bus_data, arrays_dict)
-            if not isinstance(bus, Bus):
-                logger.critical(f'Restoring bus {bus_label} failed.')
-            flow_system._add_buses(bus)
-
-        # Restore effects
-        effects_structure = reference_structure.get('effects', {})
-        for effect_label, effect_data in effects_structure.items():
-            effect = cls._resolve_reference_structure(effect_data, arrays_dict)
-            if not isinstance(effect, Effect):
-                logger.critical(f'Restoring effect {effect_label} failed.')
-            flow_system._add_effects(effect)
-
-        # Restore solution if present
-        if reference_structure.get('has_solution', False) and solution_var_names:
-            # Use dataset subsetting (faster than individual ds[name] access)
-            solution_ds_names = list(solution_var_names.values())
-            solution_ds = ds[solution_ds_names]
-            # Rename variables to remove 'solution|' prefix
-            rename_map = {ds_name: orig_name for orig_name, ds_name in solution_var_names.items()}
-            solution_ds = solution_ds.rename(rename_map)
-            # Rename 'solution_time' back to 'time' if present
-            if 'solution_time' in solution_ds.dims:
-                solution_ds = solution_ds.rename({'solution_time': 'time'})
-            flow_system.solution = solution_ds
-
-        # Restore carriers if present
-        if 'carriers' in reference_structure:
-            carriers_structure = json.loads(reference_structure['carriers'])
-            for carrier_data in carriers_structure.values():
-                carrier = cls._resolve_reference_structure(carrier_data, {})
-                flow_system._carriers.add(carrier)
-
-        # Restore Clustering object if present
-        if 'clustering' in reference_structure:
-            clustering_structure = json.loads(reference_structure['clustering'])
-            # Collect clustering arrays (prefixed with 'clustering|')
-            # Access directly from dataset for clustering vars to avoid triggering lazy load of all vars
-            clustering_prefix = 'clustering|'
-            clustering_arrays = {}
-            main_var_names = []
-            for name in config_var_names:
-                if name.startswith(clustering_prefix):
-                    arr = ds[name]
-                    arr_name = name[len(clustering_prefix) :]
-                    clustering_arrays[arr_name] = arr.rename(arr_name)
-                else:
-                    main_var_names.append(name)
-            clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
-            flow_system.clustering = clustering
-
-            # Reconstruct aggregated_data from FlowSystem's main data arrays
-            # (aggregated_data is not serialized to avoid redundant storage)
-            if clustering.aggregated_data is None and main_var_names:
-                from .core import drop_constant_arrays
-
-                # Build main_vars lazily - only access what we need
-                main_vars = {name: arrays_dict[name] for name in main_var_names}
-                clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
-
-            # Restore cluster_weight from clustering's representative_weights
-            # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
-            if hasattr(clustering, 'representative_weights'):
-                flow_system.cluster_weight = clustering.representative_weights
-
-        # Restore variable categories if present
-        if 'variable_categories' in reference_structure:
-            categories_dict = json.loads(reference_structure['variable_categories'])
-            # Convert string values back to VariableCategory enum with safe fallback
-            restored_categories = {}
-            for name, value in categories_dict.items():
-                try:
-                    restored_categories[name] = VariableCategory(value)
-                except ValueError:
-                    # Unknown category value (e.g., renamed/removed enum) - skip it
-                    # The variable will be treated as uncategorized during expansion
-                    logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
-            flow_system._variable_categories = restored_categories
-
-        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
-        flow_system.connect_and_transform()
-
-        return flow_system
+        return fx_io.restore_flow_system_from_dataset(ds)
 
     def to_netcdf(
         self,
