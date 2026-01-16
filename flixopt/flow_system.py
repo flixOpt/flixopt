@@ -627,7 +627,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True, reduce_constants: bool = False) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True, reduce_constants: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
