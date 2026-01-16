@@ -798,18 +798,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Separate solution variables from config variables
         solution_prefix = 'solution|'
-        solution_vars = {}
-        config_vars = {}
-        for name, array in ds.data_vars.items():
-            if name.startswith(solution_prefix):
-                # Remove prefix for solution dataset
-                original_name = name[len(solution_prefix) :]
-                solution_vars[original_name] = array
-            else:
-                config_vars[name] = array
+        solution_var_names = {}  # Maps original_name -> ds_name
+        arrays_dict = {}  # Config variables for component restoration
 
-        # Create arrays dictionary from config variables only
-        arrays_dict = config_vars
+        for name in ds.data_vars:
+            if name.startswith(solution_prefix):
+                solution_var_names[name[len(solution_prefix) :]] = name
+            else:
+                arrays_dict[name] = ds[name]
 
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
@@ -886,7 +882,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             flow_system._add_effects(effect)
 
         # Restore solution if present
-        if reference_structure.get('has_solution', False) and solution_vars:
+        if reference_structure.get('has_solution', False) and solution_var_names:
+            # Build solution vars dict lazily (only access needed vars)
+            solution_vars = {orig_name: ds[ds_name] for orig_name, ds_name in solution_var_names.items()}
             solution_ds = xr.Dataset(solution_vars)
             # Rename 'solution_time' back to 'time' if present
             if 'solution_time' in solution_ds.dims:
@@ -903,27 +901,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Restore Clustering object if present
         if 'clustering' in reference_structure:
             clustering_structure = json.loads(reference_structure['clustering'])
-            # Collect clustering arrays (prefixed with 'clustering|')
+            # Collect clustering arrays from arrays_dict (prefixed with 'clustering|')
+            clustering_prefix = 'clustering|'
             clustering_arrays = {}
-            for name, arr in ds.data_vars.items():
-                if name.startswith('clustering|'):
-                    # Remove 'clustering|' prefix (11 chars) from both key and DataArray name
-                    # This ensures that if the FlowSystem is serialized again, the arrays
-                    # won't get double-prefixed (clustering|clustering|...)
-                    arr_name = name[11:]
+            main_vars = {}
+            for name, arr in arrays_dict.items():
+                if name.startswith(clustering_prefix):
+                    # Remove prefix from both key and DataArray name
+                    arr_name = name[len(clustering_prefix) :]
                     clustering_arrays[arr_name] = arr.rename(arr_name)
+                else:
+                    main_vars[name] = arr
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering
 
             # Reconstruct aggregated_data from FlowSystem's main data arrays
             # (aggregated_data is not serialized to avoid redundant storage)
-            if clustering.aggregated_data is None:
+            if clustering.aggregated_data is None and main_vars:
                 from .core import drop_constant_arrays
 
-                # Get non-clustering variables and filter to time-varying only
-                main_vars = {name: arr for name, arr in ds.data_vars.items() if not name.startswith('clustering|')}
-                if main_vars:
-                    clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
+                clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
 
             # Restore cluster_weight from clustering's representative_weights
             # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
