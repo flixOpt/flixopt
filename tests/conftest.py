@@ -829,6 +829,25 @@ def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
         raise AssertionError(error_msg)
 
 
+def assert_dims_compatible(data: xr.DataArray, model_coords: tuple[str, ...], msg: str = ''):
+    """Assert that data dimensions are a subset of model coordinates (compatible with broadcasting).
+
+    Parameters in flixopt now stay in minimal form (scalar, 1D, etc.) and are broadcast
+    at the linopy interface. This helper verifies that data dims are valid for the model.
+
+    Args:
+        data: DataArray to check
+        model_coords: Tuple of model coordinate names (from model.get_coords())
+        msg: Optional message for assertion error
+    """
+    extra_dims = set(data.dims) - set(model_coords)
+    if extra_dims:
+        error = f'Data has dimensions {extra_dims} not in model coordinates {model_coords}'
+        if msg:
+            error = f'{msg}: {error}'
+        raise AssertionError(error)
+
+
 # ============================================================================
 # PLOTTING CLEANUP FIXTURES
 # ============================================================================

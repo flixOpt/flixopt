@@ -46,32 +46,38 @@ class TestScalarConversion:
         assert result.item() == 42
 
     def test_scalar_single_coord(self, time_coords):
-        """Scalar with single coordinate should broadcast."""
+        """Scalar with single coordinate stays as scalar (no broadcasting at conversion time)."""
         result = DataConverter.to_dataarray(42, coords={'time': time_coords})
-        assert result.shape == (5,)
-        assert result.dims == ('time',)
-        assert np.all(result.values == 42)
+        # Scalars stay as scalars - broadcasting happens at linopy interface
+        assert result.shape == ()
+        assert result.dims == ()
+        assert result.item() == 42
 
     def test_scalar_multiple_coords(self, time_coords, scenario_coords):
-        """Scalar with multiple coordinates should broadcast to all."""
+        """Scalar with multiple coordinates stays as scalar (no broadcasting at conversion time)."""
         result = DataConverter.to_dataarray(42, coords={'time': time_coords, 'scenario': scenario_coords})
-        assert result.shape == (5, 3)
-        assert result.dims == ('time', 'scenario')
-        assert np.all(result.values == 42)
+        # Scalars stay as scalars - broadcasting happens at linopy interface
+        assert result.shape == ()
+        assert result.dims == ()
+        assert result.item() == 42
 
     def test_numpy_scalars(self, time_coords):
-        """Test numpy scalar types."""
+        """Test numpy scalar types stay as scalars."""
         for scalar in [np.int32(42), np.int64(42), np.float32(42.5), np.float64(42.5)]:
             result = DataConverter.to_dataarray(scalar, coords={'time': time_coords})
-            assert result.shape == (5,)
-            assert np.all(result.values == scalar.item())
+            # Scalars stay as scalars - broadcasting happens at linopy interface
+            assert result.shape == ()
+            assert result.item() == scalar.item()
 
     def test_scalar_many_dimensions(self, standard_coords):
-        """Scalar should broadcast to any number of dimensions."""
+        """Scalar stays as scalar regardless of target dimensions."""
         coords = {**standard_coords, 'technology': pd.Index(['solar', 'wind'], name='technology')}
 
         result = DataConverter.to_dataarray(42, coords=coords)
-        assert result.shape == (5, 3, 2, 2)
+        # Scalars stay as scalars - broadcasting happens at linopy interface
+        assert result.shape == ()
+        assert result.dims == ()
+        assert result.item() == 42
         assert result.dims == ('time', 'scenario', 'region', 'technology')
         assert np.all(result.values == 42)
 
@@ -105,26 +111,20 @@ class TestOneDimensionalArrayConversion:
             DataConverter.to_dataarray(arr, coords={'time': time_coords})
 
     def test_1d_array_broadcast_to_multiple_coords(self, time_coords, scenario_coords):
-        """1D array should broadcast to matching dimension."""
-        # Array matching time dimension
+        """1D array stays in minimal form, matching only one dimension (no broadcast at conversion)."""
+        # Array matching time dimension - stays as 1D with time dim only
         time_arr = np.array([10, 20, 30, 40, 50])
         result = DataConverter.to_dataarray(time_arr, coords={'time': time_coords, 'scenario': scenario_coords})
-        assert result.shape == (5, 3)
-        assert result.dims == ('time', 'scenario')
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, time_arr)
 
-        # Each scenario should have the same time values
-        for scenario in scenario_coords:
-            assert np.array_equal(result.sel(scenario=scenario).values, time_arr)
-
-        # Array matching scenario dimension
+        # Array matching scenario dimension - stays as 1D with scenario dim only
         scenario_arr = np.array([100, 200, 300])
         result = DataConverter.to_dataarray(scenario_arr, coords={'time': time_coords, 'scenario': scenario_coords})
-        assert result.shape == (5, 3)
-        assert result.dims == ('time', 'scenario')
-
-        # Each time should have the same scenario values
-        for time in time_coords:
-            assert np.array_equal(result.sel(time=time).values, scenario_arr)
+        assert result.shape == (3,)
+        assert result.dims == ('scenario',)
+        assert np.array_equal(result.values, scenario_arr)
 
     def test_1d_array_ambiguous_length(self):
         """Array length matching multiple dimensions should fail."""
@@ -139,18 +139,14 @@ class TestOneDimensionalArrayConversion:
             DataConverter.to_dataarray(arr, coords=coords_3x3)
 
     def test_1d_array_broadcast_to_many_dimensions(self, standard_coords):
-        """1D array should broadcast to many dimensions."""
-        # Array matching time dimension
+        """1D array stays in minimal form with matched dimension only (no broadcast at conversion)."""
+        # Array matching time dimension - stays as 1D with time dim only
         time_arr = np.array([10, 20, 30, 40, 50])
         result = DataConverter.to_dataarray(time_arr, coords=standard_coords)
 
-        assert result.shape == (5, 3, 2)
-        assert result.dims == ('time', 'scenario', 'region')
-
-        # Check broadcasting - all scenarios and regions should have same time values
-        for scenario in standard_coords['scenario']:
-            for region in standard_coords['region']:
-                assert np.array_equal(result.sel(scenario=scenario, region=region).values, time_arr)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, time_arr)
 
 
 class TestSeriesConversion:
@@ -194,14 +190,13 @@ class TestSeriesConversion:
             DataConverter.to_dataarray(series, coords={'time': time_coords})
 
     def test_series_broadcast_to_multiple_coords(self, time_coords, scenario_coords):
-        """Series should broadcast to non-matching dimensions."""
-        # Time series broadcast to scenarios
+        """Series stays in minimal form with matched dimension only (no broadcast at conversion)."""
+        # Time series stays as 1D with time dim only
         time_series = pd.Series([10, 20, 30, 40, 50], index=time_coords)
         result = DataConverter.to_dataarray(time_series, coords={'time': time_coords, 'scenario': scenario_coords})
-        assert result.shape == (5, 3)
-
-        for scenario in scenario_coords:
-            assert np.array_equal(result.sel(scenario=scenario).values, time_series.values)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, time_series.values)
 
     def test_series_wrong_dimension(self, time_coords, region_coords):
         """Series indexed by dimension not in coords should fail."""
@@ -211,17 +206,13 @@ class TestSeriesConversion:
             DataConverter.to_dataarray(wrong_series, coords={'time': time_coords})
 
     def test_series_broadcast_to_many_dimensions(self, standard_coords):
-        """Series should broadcast to many dimensions."""
+        """Series stays in minimal form with matched dimension only (no broadcast at conversion)."""
         time_series = pd.Series([100, 200, 300, 400, 500], index=standard_coords['time'])
         result = DataConverter.to_dataarray(time_series, coords=standard_coords)
 
-        assert result.shape == (5, 3, 2)
-        assert result.dims == ('time', 'scenario', 'region')
-
-        # Check that all non-time dimensions have the same time series values
-        for scenario in standard_coords['scenario']:
-            for region in standard_coords['region']:
-                assert np.array_equal(result.sel(scenario=scenario, region=region).values, time_series.values)
+        assert result.shape == (5,)
+        assert result.dims == ('time',)
+        assert np.array_equal(result.values, time_series.values)
 
 
 class TestDataFrameConversion:

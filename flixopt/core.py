@@ -521,8 +521,9 @@ class DataConverter:
                 f'Unsupported data type: {type(data).__name__}. Supported types: {", ".join(supported_types)}'
             )
 
-        # Broadcast intermediate result to target specification
-        return cls._broadcast_dataarray_to_target_specification(intermediate, validated_coords, target_dims)
+        # Validate dims are compatible (no broadcasting - data stays compact)
+        # Broadcasting happens at FlowSystemModel.add_variables() via _ensure_coords
+        return cls._validate_dataarray_dims(intermediate, validated_coords, target_dims)
 
     @staticmethod
     def _validate_and_prepare_target_coordinates(

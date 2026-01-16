@@ -1104,30 +1104,47 @@ class StorageModel(ComponentModel):
         Returns:
             Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
         """
-        final_coords = {'time': [self._model.flow_system.timesteps_extra[-1]]}
+        timesteps_extra = self._model.flow_system.timesteps_extra
+
+        # Get the original bounds (may be scalar or have time dim)
+        rel_min = self.element.relative_minimum_charge_state
+        rel_max = self.element.relative_maximum_charge_state
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = _scalar_safe_isel_drop(self.element.relative_minimum_charge_state, 'time', -1)
+            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
         else:
-            min_final = self.element.relative_minimum_final_charge_state
-        # Ensure min_final has time dim with correct coord (handles both scalar and already-dropped cases)
-        if 'time' not in min_final.dims:
-            min_final = min_final.expand_dims('time')
-        min_final = min_final.assign_coords(time=final_coords['time'])
+            min_final_value = self.element.relative_minimum_final_charge_state
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = _scalar_safe_isel_drop(self.element.relative_maximum_charge_state, 'time', -1)
+            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
         else:
-            max_final = self.element.relative_maximum_final_charge_state
-        # Ensure max_final has time dim with correct coord (handles both scalar and already-dropped cases)
-        if 'time' not in max_final.dims:
-            max_final = max_final.expand_dims('time')
-        max_final = max_final.assign_coords(time=final_coords['time'])
-        # Concatenate with original bounds
-        min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
-        max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
+            max_final_value = self.element.relative_maximum_final_charge_state
+
+        # Build bounds arrays for timesteps_extra (includes final timestep)
+        # Handle case where original data may be scalar (no time dim)
+        if 'time' in rel_min.dims:
+            # Original has time dim - concat with final value
+            min_final_da = (
+                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+            )
+            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
+            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
+        else:
+            # Original is scalar - broadcast to full time range (constant value)
+            min_bounds = rel_min.expand_dims(time=timesteps_extra)
+
+        if 'time' in rel_max.dims:
+            # Original has time dim - concat with final value
+            max_final_da = (
+                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+            )
+            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
+            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
+        else:
+            # Original is scalar - broadcast to full time range (constant value)
+            max_bounds = rel_max.expand_dims(time=timesteps_extra)
 
         return min_bounds, max_bounds
 
