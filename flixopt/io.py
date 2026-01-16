@@ -606,7 +606,7 @@ def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
                 continue  # Already removed
             # Check if constant along this dimension
             first_slice = reduced.isel({dim: 0})
-            is_constant = (reduced == first_slice).all()
+            is_constant = (reduced == first_slice).all().item()
             if is_constant:
                 # Remove this dimension by taking first slice
                 reduced = first_slice

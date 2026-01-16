@@ -67,6 +67,10 @@ def _ensure_coords(
         # Finite scalar - create full DataArray
         return xr.DataArray(data, coords=coords, dims=coord_dims)
 
+    # Handle 0-D DataArray containing infinity - return as plain scalar
+    if data.ndim == 0 and np.isinf(data.item()):
+        return data.item()
+
     if set(data.dims) == set(coord_dims):
         # Has all dims - ensure correct order
         if data.dims != tuple(coord_dims):
