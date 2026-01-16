@@ -32,6 +32,28 @@ def _scalar_safe_isel(data: xr.DataArray | Any, indexers: dict) -> xr.DataArray 
     return data
 
 
+def _scalar_safe_isel_drop(data: xr.DataArray | Any, dim: str, index: int) -> xr.DataArray | Any:
+    """Apply isel with drop=True if data has the dimension, otherwise return data as-is.
+
+    Useful for cases like selecting the last value of a potentially reduced array:
+    - If data has time dimension: returns data.isel(time=-1, drop=True)
+    - If data is reduced (no time dimension): returns data unchanged (already represents constant)
+
+    Args:
+        data: DataArray or scalar value
+        dim: Dimension name to select from
+        index: Index to select (e.g., -1 for last, 0 for first)
+
+    Returns:
+        Selected value with dimension dropped if dim exists, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    if dim in data.dims:
+        return data.isel({dim: index}, drop=True)
+    return data
+
+
 class ModelingUtilitiesAbstract:
     """Utility functions for modeling - leveraging xarray for temporal data"""
 

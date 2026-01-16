@@ -16,7 +16,7 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns
+from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop
 from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -570,8 +570,12 @@ class Storage(Component):
             # Initial charge state should not constrain investment decision
             # If initial > (min_cap * rel_max), investment is forced to increase capacity
             # If initial < (max_cap * rel_min), investment is forced to decrease capacity
-            min_initial_at_max_capacity = maximum_capacity * self.relative_minimum_charge_state.isel(time=0)
-            max_initial_at_min_capacity = minimum_capacity * self.relative_maximum_charge_state.isel(time=0)
+            min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
+                self.relative_minimum_charge_state, {'time': 0}
+            )
+            max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
+                self.relative_maximum_charge_state, {'time': 0}
+            )
 
             # Only perform numeric comparisons if using a numeric initial_charge_state
             if not initial_equals_final and self.initial_charge_state is not None:
@@ -1104,17 +1108,23 @@ class StorageModel(ComponentModel):
 
         # Get final minimum charge state
         if self.element.relative_minimum_final_charge_state is None:
-            min_final = self.element.relative_minimum_charge_state.isel(time=-1, drop=True)
+            min_final = _scalar_safe_isel_drop(self.element.relative_minimum_charge_state, 'time', -1)
         else:
             min_final = self.element.relative_minimum_final_charge_state
-        min_final = min_final.expand_dims('time').assign_coords(time=final_coords['time'])
+        # Ensure min_final has time dim with correct coord (handles both scalar and already-dropped cases)
+        if 'time' not in min_final.dims:
+            min_final = min_final.expand_dims('time')
+        min_final = min_final.assign_coords(time=final_coords['time'])
 
         # Get final maximum charge state
         if self.element.relative_maximum_final_charge_state is None:
-            max_final = self.element.relative_maximum_charge_state.isel(time=-1, drop=True)
+            max_final = _scalar_safe_isel_drop(self.element.relative_maximum_charge_state, 'time', -1)
         else:
             max_final = self.element.relative_maximum_final_charge_state
-        max_final = max_final.expand_dims('time').assign_coords(time=final_coords['time'])
+        # Ensure max_final has time dim with correct coord (handles both scalar and already-dropped cases)
+        if 'time' not in max_final.dims:
+            max_final = max_final.expand_dims('time')
+        max_final = max_final.assign_coords(time=final_coords['time'])
         # Concatenate with original bounds
         min_bounds = xr.concat([self.element.relative_minimum_charge_state, min_final], dim='time')
         max_bounds = xr.concat([self.element.relative_maximum_charge_state, max_final], dim='time')
