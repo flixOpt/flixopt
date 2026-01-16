@@ -16,7 +16,7 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop
+from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, register_class_for_io
 
 if TYPE_CHECKING:
@@ -1504,8 +1504,8 @@ class InterclusterStorageModel(StorageModel):
         # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
         # Use mean over time (linking operates at period level, not timestep)
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
-        hours_per_cluster = timesteps_per_cluster * self._model.timestep_duration.mean('time')
+        rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
+        hours_per_cluster = timesteps_per_cluster * _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
         decay_n = (1 - rel_loss) ** hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
@@ -1549,8 +1549,8 @@ class InterclusterStorageModel(StorageModel):
         # Get self-discharge rate for decay calculation
         # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
-        rel_loss = self.element.relative_loss_per_hour.mean('time')
-        mean_timestep_duration = self._model.timestep_duration.mean('time')
+        rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
+        mean_timestep_duration = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
 
         sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
 

@@ -54,6 +54,28 @@ def _scalar_safe_isel_drop(data: xr.DataArray | Any, dim: str, index: int) -> xr
     return data
 
 
+def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean') -> xr.DataArray | Any:
+    """Apply reduction (mean/sum/etc) over dimension if it exists, otherwise return data as-is.
+
+    Useful for aggregating over time dimension when data may be scalar (constant):
+    - If data has time dimension: returns getattr(data, method)(dim)
+    - If data is reduced (no time dimension): returns data unchanged (already represents constant)
+
+    Args:
+        data: DataArray or scalar value
+        dim: Dimension name to reduce over
+        method: Reduction method ('mean', 'sum', 'min', 'max', etc.)
+
+    Returns:
+        Reduced value if dim exists, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    if dim in data.dims:
+        return getattr(data, method)(dim)
+    return data
+
+
 class ModelingUtilitiesAbstract:
     """Utility functions for modeling - leveraging xarray for temporal data"""
 
