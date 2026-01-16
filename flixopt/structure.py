@@ -68,9 +68,12 @@ def _ensure_coords(
         return xr.DataArray(data, coords=coords, dims=coord_dims)
 
     if set(data.dims) == set(coord_dims):
-        return data  # Already has all dims
+        # Has all dims - ensure correct order
+        if data.dims != tuple(coord_dims):
+            return data.transpose(*coord_dims)
+        return data
 
-    # Broadcast to full coords
+    # Broadcast to full coords (broadcast_like ensures correct dim order)
     template = xr.DataArray(coords=coords, dims=coord_dims)
     return data.broadcast_like(template)
 

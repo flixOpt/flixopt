@@ -377,13 +377,15 @@ class DataConverter:
         allowing data to remain in compact form. Broadcasting happens later at
         the linopy interface (FlowSystemModel.add_variables).
 
+        Also transposes data to canonical dimension order (matching target_dims order).
+
         Args:
             data: DataArray to validate
             target_coords: Target coordinates {dim_name: coordinate_index}
-            target_dims: Target dimension names
+            target_dims: Target dimension names in canonical order
 
         Returns:
-            The original DataArray if validation passes
+            DataArray with validated dims, transposed to canonical order
 
         Raises:
             ConversionError: If data has dimensions not in target_dims,
@@ -404,6 +406,12 @@ class DataConverter:
                     raise ConversionError(
                         f'Coordinate mismatch for dimension "{dim}". Data and target coordinates have different values.'
                     )
+
+        # Transpose to canonical dimension order (subset of target_dims that data has)
+        if data.dims:
+            canonical_order = tuple(d for d in target_dims if d in data.dims)
+            if data.dims != canonical_order:
+                data = data.transpose(*canonical_order)
 
         return data
 
