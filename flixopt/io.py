@@ -1432,70 +1432,93 @@ def suppress_output():
 
 
 # ============================================================================
-# FlowSystem Dataset Restoration
+# FlowSystem Dataset I/O
 # ============================================================================
 
 
-@dataclass
-class DatasetParser:
-    """Parses a FlowSystem dataset for restoration.
+class FlowSystemDatasetIO:
+    """Unified I/O handler for FlowSystem dataset serialization and deserialization.
 
-    This class handles the parsing and caching logic for efficiently
-    reconstructing a FlowSystem from an xarray Dataset.
+    This class provides optimized methods for converting FlowSystem objects to/from
+    xarray Datasets. It uses shared constants for variable prefixes and implements
+    fast DataArray construction to avoid xarray's slow _construct_dataarray method.
 
-    Attributes:
-        ds: The source xarray Dataset
-        reference_structure: Parsed attrs containing component/bus/effect structure
-        arrays_dict: Pre-constructed DataArrays for config variables
-        solution_var_names: Mapping of original name -> dataset name for solution variables
-        config_var_names: List of configuration variable names (non-solution)
-        _coord_cache: Cached coordinate DataArrays for fast construction
+    Constants:
+        SOLUTION_PREFIX: Prefix for solution variables ('solution|')
+        CLUSTERING_PREFIX: Prefix for clustering variables ('clustering|')
+
+    Example:
+        # Serialization (FlowSystem -> Dataset)
+        ds = FlowSystemDatasetIO.to_dataset(flow_system, base_ds)
+
+        # Deserialization (Dataset -> FlowSystem)
+        fs = FlowSystemDatasetIO.from_dataset(ds)
     """
 
-    ds: xr.Dataset
-    reference_structure: dict[str, Any]
-    arrays_dict: dict[str, xr.DataArray]
-    solution_var_names: dict[str, str]
-    config_var_names: list[str]
-    _coord_cache: dict[str, xr.DataArray]
+    # Shared prefixes for variable namespacing
+    SOLUTION_PREFIX = 'solution|'
+    CLUSTERING_PREFIX = 'clustering|'
+
+    # --- Deserialization (Dataset -> FlowSystem) ---
 
     @classmethod
-    def from_dataset(cls, ds: xr.Dataset) -> DatasetParser:
-        """Parse dataset structure with fast DataArray construction.
+    def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
+        """Create FlowSystem from dataset.
+
+        This is the main entry point for dataset restoration.
+        Called by FlowSystem.from_dataset().
+
+        If the dataset contains solution data (variables prefixed with 'solution|'),
+        the solution will be restored to the FlowSystem. Solution time coordinates
+        are renamed back from 'solution_time' to 'time'.
+
+        Supports clustered datasets with (cluster, time) dimensions. When detected,
+        creates a synthetic DatetimeIndex for compatibility and stores the clustered
+        data structure for later use.
 
         Args:
-            ds: Source xarray Dataset containing FlowSystem data
+            ds: Dataset containing the FlowSystem data
 
         Returns:
-            DatasetParser instance with parsed and cached data
+            FlowSystem instance with all components, buses, effects, and solution restored
         """
-        reference_structure = dict(ds.attrs)
+        from .flow_system import FlowSystem
 
-        # Separate solution variables from config variables
-        solution_prefix = 'solution|'
+        # Parse dataset structure
+        reference_structure = dict(ds.attrs)
+        solution_var_names, config_var_names = cls._separate_variables(ds)
+        coord_cache = {k: ds.coords[k] for k in ds.coords}
+        arrays_dict = {name: cls._fast_get_dataarray(ds, name, coord_cache) for name in config_var_names}
+
+        # Create and populate FlowSystem
+        flow_system = cls._create_flow_system(ds, reference_structure, arrays_dict, FlowSystem)
+        cls._restore_elements(flow_system, reference_structure, arrays_dict, FlowSystem)
+        cls._restore_solution(flow_system, ds, reference_structure, solution_var_names)
+        cls._restore_clustering(flow_system, ds, reference_structure, config_var_names, arrays_dict, FlowSystem)
+        cls._restore_metadata(flow_system, reference_structure, FlowSystem)
+        flow_system.connect_and_transform()
+        return flow_system
+
+    @classmethod
+    def _separate_variables(cls, ds: xr.Dataset) -> tuple[dict[str, str], list[str]]:
+        """Separate solution variables from config variables.
+
+        Args:
+            ds: Source dataset
+
+        Returns:
+            Tuple of (solution_var_names dict, config_var_names list)
+        """
         solution_var_names: dict[str, str] = {}  # Maps original_name -> ds_name
         config_var_names: list[str] = []
 
         for name in ds.data_vars:
-            if name.startswith(solution_prefix):
-                solution_var_names[name[len(solution_prefix) :]] = name
+            if name.startswith(cls.SOLUTION_PREFIX):
+                solution_var_names[name[len(cls.SOLUTION_PREFIX) :]] = name
             else:
                 config_var_names.append(name)
 
-        # Pre-cache coordinate DataArrays to avoid repeated _construct_dataarray calls
-        coord_cache = {k: ds.coords[k] for k in ds.coords}
-
-        # Build arrays dict using fast construction
-        arrays_dict = {name: cls._fast_get_dataarray(ds, name, coord_cache) for name in config_var_names}
-
-        return cls(
-            ds=ds,
-            reference_structure=reference_structure,
-            arrays_dict=arrays_dict,
-            solution_var_names=solution_var_names,
-            config_var_names=config_var_names,
-            _coord_cache=coord_cache,
-        )
+        return solution_var_names, config_var_names
 
     @staticmethod
     def _fast_get_dataarray(ds: xr.Dataset, name: str, coord_cache: dict[str, xr.DataArray]) -> xr.DataArray:
@@ -1515,6 +1538,326 @@ class DatasetParser:
         coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
         return xr.DataArray(variable, coords=coords, name=name)
 
+    @staticmethod
+    def _create_flow_system(
+        ds: xr.Dataset,
+        reference_structure: dict[str, Any],
+        arrays_dict: dict[str, xr.DataArray],
+        cls: type[FlowSystem],
+    ) -> FlowSystem:
+        """Create FlowSystem instance with constructor parameters."""
+        # Extract cluster index if present (clustered FlowSystem)
+        clusters = ds.indexes.get('cluster')
+
+        # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
+        if clusters is not None:
+            cluster_weight_for_constructor = None
+        else:
+            cluster_weight_for_constructor = (
+                cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+                if 'cluster_weight' in reference_structure
+                else None
+            )
+
+        # Resolve scenario_weights only if scenario dimension exists
+        scenario_weights = None
+        if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
+            scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
+
+        # Resolve timestep_duration if present as DataArray reference
+        timestep_duration = None
+        if 'timestep_duration' in reference_structure:
+            ref_value = reference_structure['timestep_duration']
+            if isinstance(ref_value, str) and ref_value.startswith(':::'):
+                timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
+
+        # Get timesteps - convert integer index to RangeIndex for segmented systems
+        time_index = ds.indexes['time']
+        if not isinstance(time_index, pd.DatetimeIndex):
+            time_index = pd.RangeIndex(len(time_index), name='time')
+
+        return cls(
+            timesteps=time_index,
+            periods=ds.indexes.get('period'),
+            scenarios=ds.indexes.get('scenario'),
+            clusters=clusters,
+            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
+            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
+            weight_of_last_period=reference_structure.get('weight_of_last_period'),
+            scenario_weights=scenario_weights,
+            cluster_weight=cluster_weight_for_constructor,
+            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
+            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
+            name=reference_structure.get('name'),
+            timestep_duration=timestep_duration,
+        )
+
+    @staticmethod
+    def _restore_elements(
+        flow_system: FlowSystem,
+        reference_structure: dict[str, Any],
+        arrays_dict: dict[str, xr.DataArray],
+        cls: type[FlowSystem],
+    ) -> None:
+        """Restore components, buses, and effects to FlowSystem."""
+        from .effects import Effect
+        from .elements import Bus, Component
+
+        # Restore components
+        for comp_label, comp_data in reference_structure.get('components', {}).items():
+            component = cls._resolve_reference_structure(comp_data, arrays_dict)
+            if not isinstance(component, Component):
+                logger.critical(f'Restoring component {comp_label} failed.')
+            flow_system._add_components(component)
+
+        # Restore buses
+        for bus_label, bus_data in reference_structure.get('buses', {}).items():
+            bus = cls._resolve_reference_structure(bus_data, arrays_dict)
+            if not isinstance(bus, Bus):
+                logger.critical(f'Restoring bus {bus_label} failed.')
+            flow_system._add_buses(bus)
+
+        # Restore effects
+        for effect_label, effect_data in reference_structure.get('effects', {}).items():
+            effect = cls._resolve_reference_structure(effect_data, arrays_dict)
+            if not isinstance(effect, Effect):
+                logger.critical(f'Restoring effect {effect_label} failed.')
+            flow_system._add_effects(effect)
+
+    @classmethod
+    def _restore_solution(
+        cls,
+        flow_system: FlowSystem,
+        ds: xr.Dataset,
+        reference_structure: dict[str, Any],
+        solution_var_names: dict[str, str],
+    ) -> None:
+        """Restore solution dataset if present."""
+        if not reference_structure.get('has_solution', False) or not solution_var_names:
+            return
+
+        # Use dataset subsetting (faster than individual ds[name] access)
+        solution_ds_names = list(solution_var_names.values())
+        solution_ds = ds[solution_ds_names]
+        # Rename variables to remove 'solution|' prefix
+        rename_map = {ds_name: orig_name for orig_name, ds_name in solution_var_names.items()}
+        solution_ds = solution_ds.rename(rename_map)
+        # Rename 'solution_time' back to 'time' if present
+        if 'solution_time' in solution_ds.dims:
+            solution_ds = solution_ds.rename({'solution_time': 'time'})
+        flow_system.solution = solution_ds
+
+    @classmethod
+    def _restore_clustering(
+        cls,
+        flow_system: FlowSystem,
+        ds: xr.Dataset,
+        reference_structure: dict[str, Any],
+        config_var_names: list[str],
+        arrays_dict: dict[str, xr.DataArray],
+        fs_cls: type[FlowSystem],
+    ) -> None:
+        """Restore Clustering object if present."""
+        if 'clustering' not in reference_structure:
+            return
+
+        clustering_structure = json.loads(reference_structure['clustering'])
+
+        # Collect clustering arrays (prefixed with 'clustering|')
+        clustering_arrays: dict[str, xr.DataArray] = {}
+        main_var_names: list[str] = []
+
+        for name in config_var_names:
+            if name.startswith(cls.CLUSTERING_PREFIX):
+                arr = ds[name]
+                arr_name = name[len(cls.CLUSTERING_PREFIX) :]
+                clustering_arrays[arr_name] = arr.rename(arr_name)
+            else:
+                main_var_names.append(name)
+
+        clustering = fs_cls._resolve_reference_structure(clustering_structure, clustering_arrays)
+        flow_system.clustering = clustering
+
+        # Reconstruct aggregated_data from FlowSystem's main data arrays
+        if clustering.aggregated_data is None and main_var_names:
+            from .core import drop_constant_arrays
+
+            main_vars = {name: arrays_dict[name] for name in main_var_names}
+            clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
+
+        # Restore cluster_weight from clustering's representative_weights
+        if hasattr(clustering, 'representative_weights'):
+            flow_system.cluster_weight = clustering.representative_weights
+
+    @staticmethod
+    def _restore_metadata(
+        flow_system: FlowSystem,
+        reference_structure: dict[str, Any],
+        cls: type[FlowSystem],
+    ) -> None:
+        """Restore carriers and variable categories."""
+        from .structure import VariableCategory
+
+        # Restore carriers if present
+        if 'carriers' in reference_structure:
+            carriers_structure = json.loads(reference_structure['carriers'])
+            for carrier_data in carriers_structure.values():
+                carrier = cls._resolve_reference_structure(carrier_data, {})
+                flow_system._carriers.add(carrier)
+
+        # Restore variable categories if present
+        if 'variable_categories' in reference_structure:
+            categories_dict = json.loads(reference_structure['variable_categories'])
+            restored_categories: dict[str, VariableCategory] = {}
+            for name, value in categories_dict.items():
+                try:
+                    restored_categories[name] = VariableCategory(value)
+                except ValueError:
+                    logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
+            flow_system._variable_categories = restored_categories
+
+    # --- Serialization (FlowSystem -> Dataset) ---
+
+    @classmethod
+    def to_dataset(
+        cls,
+        flow_system: FlowSystem,
+        base_dataset: xr.Dataset,
+        include_solution: bool = True,
+        include_original_data: bool = True,
+    ) -> xr.Dataset:
+        """Convert FlowSystem-specific data to dataset.
+
+        This function adds FlowSystem-specific data (solution, clustering, metadata)
+        to a base dataset created by the parent class's to_dataset() method.
+
+        Args:
+            flow_system: The FlowSystem to serialize
+            base_dataset: Dataset from parent class with basic structure
+            include_solution: Whether to include optimization solution
+            include_original_data: Whether to include clustering.original_data
+
+        Returns:
+            Complete dataset with all FlowSystem data
+        """
+        from . import __version__
+
+        ds = base_dataset
+
+        # Add solution data
+        ds = cls._add_solution_to_dataset(ds, flow_system.solution, include_solution)
+
+        # Add carriers
+        ds = cls._add_carriers_to_dataset(ds, flow_system._carriers)
+
+        # Add clustering
+        ds = cls._add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
+
+        # Add variable categories
+        ds = cls._add_variable_categories_to_dataset(ds, flow_system._variable_categories)
+
+        # Add version info
+        ds.attrs['flixopt_version'] = __version__
+
+        # Ensure model coordinates are present
+        ds = cls._add_model_coords(ds, flow_system)
+
+        return ds
+
+    @classmethod
+    def _add_solution_to_dataset(
+        cls,
+        ds: xr.Dataset,
+        solution: xr.Dataset | None,
+        include_solution: bool,
+    ) -> xr.Dataset:
+        """Add solution variables to dataset.
+
+        Uses _variables directly for fast serialization (avoids _construct_dataarray).
+        """
+        if include_solution and solution is not None:
+            # Rename 'time' to 'solution_time' to preserve full solution
+            solution_renamed = solution.rename({'time': 'solution_time'}) if 'time' in solution.dims else solution
+
+            # Use _variables directly to avoid slow _construct_dataarray calls
+            solution_vars = {
+                f'{cls.SOLUTION_PREFIX}{name}': var
+                for name, var in solution_renamed._variables.items()
+                if name not in solution_renamed.coords
+            }
+            ds = ds.assign(solution_vars)
+
+            # Add solution_time coordinate if it exists
+            if 'solution_time' in solution_renamed.coords:
+                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+
+            ds.attrs['has_solution'] = True
+        else:
+            ds.attrs['has_solution'] = False
+
+        return ds
+
+    @staticmethod
+    def _add_carriers_to_dataset(ds: xr.Dataset, carriers: Any) -> xr.Dataset:
+        """Add carrier definitions to dataset attributes."""
+        if carriers:
+            carriers_structure = {}
+            for name, carrier in carriers.items():
+                carrier_ref, _ = carrier._create_reference_structure()
+                carriers_structure[name] = carrier_ref
+            ds.attrs['carriers'] = json.dumps(carriers_structure)
+
+        return ds
+
+    @classmethod
+    def _add_clustering_to_dataset(
+        cls,
+        ds: xr.Dataset,
+        clustering: Any,
+        include_original_data: bool,
+    ) -> xr.Dataset:
+        """Add clustering object to dataset."""
+        if clustering is not None:
+            clustering_ref, clustering_arrays = clustering._create_reference_structure(
+                include_original_data=include_original_data
+            )
+            # Add clustering arrays with prefix
+            for name, arr in clustering_arrays.items():
+                ds[f'{cls.CLUSTERING_PREFIX}{name}'] = arr
+            ds.attrs['clustering'] = json.dumps(clustering_ref)
+
+        return ds
+
+    @staticmethod
+    def _add_variable_categories_to_dataset(
+        ds: xr.Dataset,
+        variable_categories: dict,
+    ) -> xr.Dataset:
+        """Add variable categories to dataset attributes."""
+        if variable_categories:
+            categories_dict = {name: cat.value for name, cat in variable_categories.items()}
+            ds.attrs['variable_categories'] = json.dumps(categories_dict)
+
+        return ds
+
+    @staticmethod
+    def _add_model_coords(ds: xr.Dataset, flow_system: FlowSystem) -> xr.Dataset:
+        """Ensure model coordinates are present in dataset."""
+        model_coords = {'time': flow_system.timesteps}
+        if flow_system.periods is not None:
+            model_coords['period'] = flow_system.periods
+        if flow_system.scenarios is not None:
+            model_coords['scenario'] = flow_system.scenarios
+        if flow_system.clusters is not None:
+            model_coords['cluster'] = flow_system.clusters
+
+        return ds.assign_coords(model_coords)
+
+
+# =============================================================================
+# Public API Functions (delegate to FlowSystemDatasetIO class)
+# =============================================================================
+
 
 def restore_flow_system_from_dataset(ds: xr.Dataset) -> FlowSystem:
     """Create FlowSystem from dataset.
@@ -1522,251 +1865,16 @@ def restore_flow_system_from_dataset(ds: xr.Dataset) -> FlowSystem:
     This is the main entry point for dataset restoration.
     Called by FlowSystem.from_dataset().
 
-    If the dataset contains solution data (variables prefixed with 'solution|'),
-    the solution will be restored to the FlowSystem. Solution time coordinates
-    are renamed back from 'solution_time' to 'time'.
-
-    Supports clustered datasets with (cluster, time) dimensions. When detected,
-    creates a synthetic DatetimeIndex for compatibility and stores the clustered
-    data structure for later use.
-
     Args:
         ds: Dataset containing the FlowSystem data
 
     Returns:
         FlowSystem instance with all components, buses, effects, and solution restored
+
+    See Also:
+        FlowSystemDatasetIO: Class containing the implementation
     """
-    # Import here to avoid circular imports
-    from .flow_system import FlowSystem
-
-    parser = DatasetParser.from_dataset(ds)
-    flow_system = _create_flow_system(parser, FlowSystem)
-    _restore_elements(flow_system, parser, FlowSystem)
-    _restore_solution(flow_system, parser)
-    _restore_clustering(flow_system, parser, FlowSystem)
-    _restore_metadata(flow_system, parser, FlowSystem)
-    flow_system.connect_and_transform()
-    return flow_system
-
-
-def _create_flow_system(parser: DatasetParser, cls: type[FlowSystem]) -> FlowSystem:
-    """Create FlowSystem instance with constructor parameters.
-
-    Args:
-        parser: Parsed dataset
-        cls: FlowSystem class (for calling class methods)
-
-    Returns:
-        New FlowSystem instance (not yet connected)
-    """
-    ds = parser.ds
-    reference_structure = parser.reference_structure
-    arrays_dict = parser.arrays_dict
-
-    # Extract cluster index if present (clustered FlowSystem)
-    clusters = ds.indexes.get('cluster')
-
-    # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
-    if clusters is not None:
-        cluster_weight_for_constructor = None
-    else:
-        cluster_weight_for_constructor = (
-            cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
-            if 'cluster_weight' in reference_structure
-            else None
-        )
-
-    # Resolve scenario_weights only if scenario dimension exists
-    scenario_weights = None
-    if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
-        scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
-
-    # Resolve timestep_duration if present as DataArray reference
-    # (for segmented systems with variable durations)
-    timestep_duration = None
-    if 'timestep_duration' in reference_structure:
-        ref_value = reference_structure['timestep_duration']
-        # Only resolve if it's a DataArray reference (starts with ":::")
-        # For non-segmented systems, it may be stored as a simple list/scalar
-        if isinstance(ref_value, str) and ref_value.startswith(':::'):
-            timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
-
-    # Get timesteps - convert integer index to RangeIndex for segmented systems
-    time_index = ds.indexes['time']
-    if not isinstance(time_index, pd.DatetimeIndex):
-        # Segmented systems use RangeIndex (stored as integer array in NetCDF)
-        time_index = pd.RangeIndex(len(time_index), name='time')
-
-    # Create FlowSystem instance with constructor parameters
-    return cls(
-        timesteps=time_index,
-        periods=ds.indexes.get('period'),
-        scenarios=ds.indexes.get('scenario'),
-        clusters=clusters,
-        hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
-        hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-        weight_of_last_period=reference_structure.get('weight_of_last_period'),
-        scenario_weights=scenario_weights,
-        cluster_weight=cluster_weight_for_constructor,
-        scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
-        scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
-        name=reference_structure.get('name'),
-        timestep_duration=timestep_duration,
-    )
-
-
-def _restore_elements(flow_system: FlowSystem, parser: DatasetParser, cls: type[FlowSystem]) -> None:
-    """Restore components, buses, and effects to FlowSystem.
-
-    Args:
-        flow_system: Target FlowSystem instance
-        parser: Parsed dataset
-        cls: FlowSystem class (for calling class methods)
-    """
-    from .effects import Effect
-    from .elements import Bus, Component
-
-    reference_structure = parser.reference_structure
-    arrays_dict = parser.arrays_dict
-
-    # Restore components
-    components_structure = reference_structure.get('components', {})
-    for comp_label, comp_data in components_structure.items():
-        component = cls._resolve_reference_structure(comp_data, arrays_dict)
-        if not isinstance(component, Component):
-            logger.critical(f'Restoring component {comp_label} failed.')
-        flow_system._add_components(component)
-
-    # Restore buses
-    buses_structure = reference_structure.get('buses', {})
-    for bus_label, bus_data in buses_structure.items():
-        bus = cls._resolve_reference_structure(bus_data, arrays_dict)
-        if not isinstance(bus, Bus):
-            logger.critical(f'Restoring bus {bus_label} failed.')
-        flow_system._add_buses(bus)
-
-    # Restore effects
-    effects_structure = reference_structure.get('effects', {})
-    for effect_label, effect_data in effects_structure.items():
-        effect = cls._resolve_reference_structure(effect_data, arrays_dict)
-        if not isinstance(effect, Effect):
-            logger.critical(f'Restoring effect {effect_label} failed.')
-        flow_system._add_effects(effect)
-
-
-def _restore_solution(flow_system: FlowSystem, parser: DatasetParser) -> None:
-    """Restore solution dataset if present.
-
-    Args:
-        flow_system: Target FlowSystem instance
-        parser: Parsed dataset
-    """
-    reference_structure = parser.reference_structure
-    solution_var_names = parser.solution_var_names
-    ds = parser.ds
-
-    if not reference_structure.get('has_solution', False) or not solution_var_names:
-        return
-
-    # Use dataset subsetting (faster than individual ds[name] access)
-    solution_ds_names = list(solution_var_names.values())
-    solution_ds = ds[solution_ds_names]
-    # Rename variables to remove 'solution|' prefix
-    rename_map = {ds_name: orig_name for orig_name, ds_name in solution_var_names.items()}
-    solution_ds = solution_ds.rename(rename_map)
-    # Rename 'solution_time' back to 'time' if present
-    if 'solution_time' in solution_ds.dims:
-        solution_ds = solution_ds.rename({'solution_time': 'time'})
-    flow_system.solution = solution_ds
-
-
-def _restore_clustering(flow_system: FlowSystem, parser: DatasetParser, cls: type[FlowSystem]) -> None:
-    """Restore Clustering object if present.
-
-    Args:
-        flow_system: Target FlowSystem instance
-        parser: Parsed dataset
-        cls: FlowSystem class (for calling class methods)
-    """
-    reference_structure = parser.reference_structure
-    config_var_names = parser.config_var_names
-    arrays_dict = parser.arrays_dict
-    ds = parser.ds
-
-    if 'clustering' not in reference_structure:
-        return
-
-    clustering_structure = json.loads(reference_structure['clustering'])
-
-    # Collect clustering arrays (prefixed with 'clustering|')
-    # Access directly from dataset for clustering vars to avoid triggering lazy load
-    clustering_prefix = 'clustering|'
-    clustering_arrays: dict[str, xr.DataArray] = {}
-    main_var_names: list[str] = []
-
-    for name in config_var_names:
-        if name.startswith(clustering_prefix):
-            arr = ds[name]
-            arr_name = name[len(clustering_prefix) :]
-            clustering_arrays[arr_name] = arr.rename(arr_name)
-        else:
-            main_var_names.append(name)
-
-    clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
-    flow_system.clustering = clustering
-
-    # Reconstruct aggregated_data from FlowSystem's main data arrays
-    # (aggregated_data is not serialized to avoid redundant storage)
-    if clustering.aggregated_data is None and main_var_names:
-        from .core import drop_constant_arrays
-
-        # Build main_vars lazily - only access what we need
-        main_vars = {name: arrays_dict[name] for name in main_var_names}
-        clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
-
-    # Restore cluster_weight from clustering's representative_weights
-    # This is needed because cluster_weight_for_constructor was set to None
-    if hasattr(clustering, 'representative_weights'):
-        flow_system.cluster_weight = clustering.representative_weights
-
-
-def _restore_metadata(flow_system: FlowSystem, parser: DatasetParser, cls: type[FlowSystem]) -> None:
-    """Restore carriers and variable categories.
-
-    Args:
-        flow_system: Target FlowSystem instance
-        parser: Parsed dataset
-        cls: FlowSystem class (for calling class methods)
-    """
-    from .structure import VariableCategory
-
-    reference_structure = parser.reference_structure
-
-    # Restore carriers if present
-    if 'carriers' in reference_structure:
-        carriers_structure = json.loads(reference_structure['carriers'])
-        for carrier_data in carriers_structure.values():
-            carrier = cls._resolve_reference_structure(carrier_data, {})
-            flow_system._carriers.add(carrier)
-
-    # Restore variable categories if present
-    if 'variable_categories' in reference_structure:
-        categories_dict = json.loads(reference_structure['variable_categories'])
-        # Convert string values back to VariableCategory enum with safe fallback
-        restored_categories: dict[str, VariableCategory] = {}
-        for name, value in categories_dict.items():
-            try:
-                restored_categories[name] = VariableCategory(value)
-            except ValueError:
-                # Unknown category value (e.g., renamed/removed enum) - skip it
-                # The variable will be treated as uncategorized during expansion
-                logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
-        flow_system._variable_categories = restored_categories
-
-
-# =============================================================================
-# FlowSystem to Dataset Serialization
-# =============================================================================
+    return FlowSystemDatasetIO.from_dataset(ds)
 
 
 def flow_system_to_dataset(
@@ -1788,155 +1896,8 @@ def flow_system_to_dataset(
 
     Returns:
         Complete dataset with all FlowSystem data
+
+    See Also:
+        FlowSystemDatasetIO: Class containing the implementation
     """
-    from . import __version__
-
-    ds = base_dataset
-
-    # Add solution data
-    ds = _add_solution_to_dataset(ds, flow_system.solution, include_solution)
-
-    # Add carriers
-    ds = _add_carriers_to_dataset(ds, flow_system._carriers)
-
-    # Add clustering
-    ds = _add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
-
-    # Add variable categories
-    ds = _add_variable_categories_to_dataset(ds, flow_system._variable_categories)
-
-    # Add version info
-    ds.attrs['flixopt_version'] = __version__
-
-    # Ensure model coordinates are present
-    ds = _add_model_coords(ds, flow_system)
-
-    return ds
-
-
-def _add_solution_to_dataset(
-    ds: xr.Dataset,
-    solution: xr.Dataset | None,
-    include_solution: bool,
-) -> xr.Dataset:
-    """Add solution variables to dataset.
-
-    Uses _variables directly for fast serialization (avoids _construct_dataarray).
-
-    Args:
-        ds: Target dataset
-        solution: Solution dataset (may be None)
-        include_solution: Whether to include solution
-
-    Returns:
-        Dataset with solution added (or has_solution=False attr)
-    """
-    if include_solution and solution is not None:
-        # Rename 'time' to 'solution_time' to preserve full solution
-        solution_renamed = solution.rename({'time': 'solution_time'}) if 'time' in solution.dims else solution
-
-        # Use _variables directly to avoid slow _construct_dataarray calls
-        solution_vars = {
-            f'solution|{name}': var
-            for name, var in solution_renamed._variables.items()
-            if name not in solution_renamed.coords
-        }
-        ds = ds.assign(solution_vars)
-
-        # Add solution_time coordinate if it exists
-        if 'solution_time' in solution_renamed.coords:
-            ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
-
-        ds.attrs['has_solution'] = True
-    else:
-        ds.attrs['has_solution'] = False
-
-    return ds
-
-
-def _add_carriers_to_dataset(ds: xr.Dataset, carriers: Any) -> xr.Dataset:
-    """Add carrier definitions to dataset attributes.
-
-    Args:
-        ds: Target dataset
-        carriers: Carriers collection from FlowSystem
-
-    Returns:
-        Dataset with carriers in attrs
-    """
-    if carriers:
-        carriers_structure = {}
-        for name, carrier in carriers.items():
-            carrier_ref, _ = carrier._create_reference_structure()
-            carriers_structure[name] = carrier_ref
-        ds.attrs['carriers'] = json.dumps(carriers_structure)
-
-    return ds
-
-
-def _add_clustering_to_dataset(
-    ds: xr.Dataset,
-    clustering: Any,
-    include_original_data: bool,
-) -> xr.Dataset:
-    """Add clustering object to dataset.
-
-    Args:
-        ds: Target dataset
-        clustering: Clustering object (may be None)
-        include_original_data: Whether to include original_data
-
-    Returns:
-        Dataset with clustering arrays and attrs
-    """
-    if clustering is not None:
-        clustering_ref, clustering_arrays = clustering._create_reference_structure(
-            include_original_data=include_original_data
-        )
-        # Add clustering arrays with prefix
-        for name, arr in clustering_arrays.items():
-            ds[f'clustering|{name}'] = arr
-        ds.attrs['clustering'] = json.dumps(clustering_ref)
-
-    return ds
-
-
-def _add_variable_categories_to_dataset(
-    ds: xr.Dataset,
-    variable_categories: dict,
-) -> xr.Dataset:
-    """Add variable categories to dataset attributes.
-
-    Args:
-        ds: Target dataset
-        variable_categories: Dict mapping var names to VariableCategory
-
-    Returns:
-        Dataset with variable_categories in attrs
-    """
-    if variable_categories:
-        categories_dict = {name: cat.value for name, cat in variable_categories.items()}
-        ds.attrs['variable_categories'] = json.dumps(categories_dict)
-
-    return ds
-
-
-def _add_model_coords(ds: xr.Dataset, flow_system: FlowSystem) -> xr.Dataset:
-    """Ensure model coordinates are present in dataset.
-
-    Args:
-        ds: Target dataset
-        flow_system: FlowSystem with coordinate definitions
-
-    Returns:
-        Dataset with all model coordinates
-    """
-    model_coords = {'time': flow_system.timesteps}
-    if flow_system.periods is not None:
-        model_coords['period'] = flow_system.periods
-    if flow_system.scenarios is not None:
-        model_coords['scenario'] = flow_system.scenarios
-    if flow_system.clusters is not None:
-        model_coords['cluster'] = flow_system.clusters
-
-    return ds.assign_coords(model_coords)
+    return FlowSystemDatasetIO.to_dataset(flow_system, base_dataset, include_solution, include_original_data)
