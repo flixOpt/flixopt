@@ -1886,9 +1886,10 @@ class FlowSystemDatasetIO:
             clustering_ref, clustering_arrays = clustering._create_reference_structure(
                 include_original_data=include_original_data
             )
-            # Add clustering arrays with prefix
-            for name, arr in clustering_arrays.items():
-                ds[f'{cls.CLUSTERING_PREFIX}{name}'] = arr
+            # Add clustering arrays with prefix using batch assignment
+            # (individual ds[name] = arr assignments are slow)
+            prefixed_arrays = {f'{cls.CLUSTERING_PREFIX}{name}': arr for name, arr in clustering_arrays.items()}
+            ds = ds.assign(prefixed_arrays)
             ds.attrs['clustering'] = json.dumps(clustering_ref)
 
         return ds
