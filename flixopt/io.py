@@ -645,24 +645,48 @@ def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Da
         Stacked variables are named 'stacked_{dims}' and have a coordinate
         '{stacked_dim}_{dims}' containing the original variable names.
     """
+    # Use ds.variables to avoid slow _construct_dataarray calls
+    variables = ds.variables
+    data_var_names = set(ds.data_vars)
+
+    # Group variables by their dimensions
     groups = defaultdict(list)
-    for name, var in ds.data_vars.items():
+    for name in data_var_names:
+        var = variables[name]
         groups[var.dims].append(name)
 
     new_data_vars = {}
     for dims, var_names in groups.items():
         if len(var_names) == 1:
-            new_data_vars[var_names[0]] = ds[var_names[0]]
+            # Single variable - use Variable directly
+            new_data_vars[var_names[0]] = variables[var_names[0]]
         else:
             dim_suffix = '_'.join(dims) if dims else 'scalar'
             group_stacked_dim = f'{stacked_dim}_{dim_suffix}'
 
-            stacked = xr.concat([ds[name] for name in var_names], dim=group_stacked_dim)
-            stacked = stacked.assign_coords({group_stacked_dim: var_names})
+            # Stack using numpy directly - much faster than xr.concat
+            # All variables in this group have the same dims/shape
+            arrays = [variables[name].values for name in var_names]
+            stacked_data = np.stack(arrays, axis=0)
 
-            new_data_vars[f'stacked_{dim_suffix}'] = stacked
+            # Create new Variable with stacked dimension first
+            stacked_var = xr.Variable(
+                dims=(group_stacked_dim,) + dims,
+                data=stacked_data,
+            )
+            new_data_vars[f'stacked_{dim_suffix}'] = stacked_var
 
-    return xr.Dataset(new_data_vars, attrs=ds.attrs)
+    # Build result dataset preserving coordinates
+    result = xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
+
+    # Add the stacking coordinates (variable names)
+    for dims, var_names in groups.items():
+        if len(var_names) > 1:
+            dim_suffix = '_'.join(dims) if dims else 'scalar'
+            group_stacked_dim = f'{stacked_dim}_{dim_suffix}'
+            result = result.assign_coords({group_stacked_dim: var_names})
+
+    return result
 
 
 def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dataset:
@@ -677,16 +701,34 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
         Dataset with individual variables restored from stacked arrays.
     """
     new_data_vars = {}
-    for name, var in ds.data_vars.items():
-        stacked_dims = [d for d in var.dims if d.startswith(stacked_prefix)]
-        if stacked_dims:
-            stacked_dim = stacked_dims[0]
-            for label in var[stacked_dim].values:
-                new_data_vars[str(label)] = var.sel({stacked_dim: label}, drop=True)
+    variables = ds.variables
+
+    for name in ds.data_vars:
+        var = variables[name]
+        # Find stacked dimension (if any)
+        stacked_dim = None
+        stacked_dim_idx = None
+        for i, d in enumerate(var.dims):
+            if d.startswith(stacked_prefix):
+                stacked_dim = d
+                stacked_dim_idx = i
+                break
+
+        if stacked_dim is not None:
+            # Get labels from the stacked coordinate
+            labels = ds.coords[stacked_dim].values
+            # Get remaining dims (everything except stacked dim)
+            remaining_dims = var.dims[:stacked_dim_idx] + var.dims[stacked_dim_idx + 1 :]
+            # Extract each slice using numpy indexing (much faster than .sel())
+            data = var.values
+            for idx, label in enumerate(labels):
+                # Use numpy indexing to get the slice
+                sliced_data = np.take(data, idx, axis=stacked_dim_idx)
+                new_data_vars[str(label)] = xr.Variable(remaining_dims, sliced_data)
         else:
             new_data_vars[name] = var
 
-    return xr.Dataset(new_data_vars, attrs=ds.attrs)
+    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
