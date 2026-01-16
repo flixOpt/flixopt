@@ -810,15 +810,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Fast DataArray construction using ds._variables directly
         # This bypasses the slow _construct_dataarray method (~1.5ms -> ~0.1ms per var)
-        def _fast_get_dataarray(dataset: xr.Dataset, name: str) -> xr.DataArray:
+        # Pre-cache coordinate DataArrays to avoid repeated _construct_dataarray calls
+        coord_cache = {k: ds.coords[k] for k in ds.coords}
+
+        def _fast_get_dataarray(name: str) -> xr.DataArray:
             """Construct DataArray from Variable without slow coordinate inference."""
-            variable = dataset._variables[name]
-            # Get only the coordinates that apply to this variable's dimensions
-            coords = {k: dataset.coords[k] for k in variable.dims if k in dataset.coords}
+            variable = ds._variables[name]
+            coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
             return xr.DataArray(variable, coords=coords, name=name)
 
         # Build arrays dict using fast construction
-        arrays_dict = {name: _fast_get_dataarray(ds, name) for name in config_var_names}
+        arrays_dict = {name: _fast_get_dataarray(name) for name in config_var_names}
 
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
