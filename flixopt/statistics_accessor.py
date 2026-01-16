@@ -145,6 +145,23 @@ def _reshape_time_for_heatmap(
     return result.transpose('timestep', 'timeframe', *other_dims)
 
 
+def _iter_all_traces(fig: go.Figure):
+    """Iterate over all traces in a figure, including animation frames.
+
+    Yields traces from fig.data first, then from each frame in fig.frames.
+    Useful for applying styling to all traces including those in animations.
+
+    Args:
+        fig: Plotly Figure.
+
+    Yields:
+        Each trace object from the figure.
+    """
+    yield from fig.data
+    for frame in getattr(fig, 'frames', []) or []:
+        yield from frame.data
+
+
 def _style_area_as_bar(fig: go.Figure) -> None:
     """Style area chart traces to look like bar charts with proper pos/neg stacking.
 
@@ -216,14 +233,38 @@ def _style_area_as_bar(fig: go.Figure) -> None:
             trace.fill = None
             trace.line = dict(width=0, color=color, shape='hv')
 
-    # Style main traces
-    for trace in fig.data:
+    # Style all traces (main + animation frames)
+    for trace in _iter_all_traces(fig):
         style_trace(trace)
 
-    # Style animation frame traces
-    for frame in getattr(fig, 'frames', []) or []:
-        for trace in frame.data:
-            style_trace(trace)
+
+def _apply_unified_hover(fig: go.Figure, unit: str = '', decimals: int = 1) -> None:
+    """Apply unified hover mode with clean formatting to any Plotly figure.
+
+    Sets up 'x unified' hovermode with spike lines and formats hover labels
+    as '<b>name</b>: value unit'.
+
+    Works with any plot type (area, bar, line, scatter).
+
+    Args:
+        fig: Plotly Figure to style.
+        unit: Unit string to append (e.g., 'kW', 'MWh'). Empty for no unit.
+        decimals: Number of decimal places for values.
+    """
+    unit_suffix = f' {unit}' if unit else ''
+    hover_template = f'<b>%{{fullData.name}}</b>: %{{y:.{decimals}f}}{unit_suffix}<extra></extra>'
+
+    # Apply to all traces (main + animation frames)
+    for trace in _iter_all_traces(fig):
+        trace.hovertemplate = hover_template
+
+    # Layout settings for unified hover
+    fig.update_layout(
+        hovermode='x unified',
+        xaxis_showspikes=True,
+        xaxis_spikecolor='gray',
+        xaxis_spikethickness=1,
+    )
 
 
 # --- Helper functions ---
@@ -1617,6 +1658,7 @@ class StatisticsPlotAccessor:
             **plotly_kwargs,
         )
         _style_area_as_bar(fig)
+        _apply_unified_hover(fig, unit=unit_label)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1741,6 +1783,7 @@ class StatisticsPlotAccessor:
             **plotly_kwargs,
         )
         _style_area_as_bar(fig)
+        _apply_unified_hover(fig, unit=unit_label)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -2330,15 +2373,22 @@ class StatisticsPlotAccessor:
         else:
             color_kwargs = _build_color_kwargs(colors, flow_labels)
 
+        # Get unit label from flow data
+        unit_label = ''
+        if flow_ds.data_vars:
+            first_var = next(iter(flow_ds.data_vars))
+            unit_label = flow_ds[first_var].attrs.get('unit', '')
+
         # Create stacked area chart for flows (styled as bar)
         _apply_slot_defaults(plotly_kwargs, 'storage')
         fig = flow_ds.plotly.area(
-            title=f'{storage} Operation ({unit})',
+            title=f'{storage} Operation [{unit_label}]' if unit_label else f'{storage} Operation',
             line_shape='hv',
             **color_kwargs,
             **plotly_kwargs,
         )
         _style_area_as_bar(fig)
+        _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
         # Only pass faceting kwargs that add_line_overlay accepts
