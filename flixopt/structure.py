@@ -1116,7 +1116,17 @@ class Interface:
             reference_structure.pop('__class__', None)
 
             # Create arrays dictionary from dataset variables
-            arrays_dict = {name: array for name, array in ds.data_vars.items()}
+            # Use ds.variables with coord_cache for faster DataArray construction
+            variables = ds.variables
+            coord_cache = {k: ds.coords[k] for k in ds.coords}
+            arrays_dict = {
+                name: xr.DataArray(
+                    variables[name],
+                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
+                    name=name,
+                )
+                for name in ds.data_vars
+            }
 
             # Resolve all references using the centralized method
             resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
