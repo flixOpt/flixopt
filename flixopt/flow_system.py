@@ -797,15 +797,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         reference_structure = dict(ds.attrs)
 
         # Separate solution variables from config variables
+        # Use fast DataArray construction via ds._variables (avoids slow _construct_dataarray)
         solution_prefix = 'solution|'
         solution_var_names = {}  # Maps original_name -> ds_name
-        arrays_dict = {}  # Config variables for component restoration
+        config_var_names = []  # Config variable names
 
         for name in ds.data_vars:
             if name.startswith(solution_prefix):
                 solution_var_names[name[len(solution_prefix) :]] = name
             else:
-                arrays_dict[name] = ds[name]
+                config_var_names.append(name)
+
+        # Fast DataArray construction using ds._variables directly
+        # This bypasses the slow _construct_dataarray method (~1.5ms -> ~0.1ms per var)
+        def _fast_get_dataarray(dataset: xr.Dataset, name: str) -> xr.DataArray:
+            """Construct DataArray from Variable without slow coordinate inference."""
+            variable = dataset._variables[name]
+            # Get only the coordinates that apply to this variable's dimensions
+            coords = {k: dataset.coords[k] for k in variable.dims if k in dataset.coords}
+            return xr.DataArray(variable, coords=coords, name=name)
+
+        # Build arrays dict using fast construction
+        arrays_dict = {name: _fast_get_dataarray(ds, name) for name in config_var_names}
 
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
@@ -883,9 +896,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Restore solution if present
         if reference_structure.get('has_solution', False) and solution_var_names:
-            # Build solution vars dict lazily (only access needed vars)
-            solution_vars = {orig_name: ds[ds_name] for orig_name, ds_name in solution_var_names.items()}
-            solution_ds = xr.Dataset(solution_vars)
+            # Use dataset subsetting (faster than individual ds[name] access)
+            solution_ds_names = list(solution_var_names.values())
+            solution_ds = ds[solution_ds_names]
+            # Rename variables to remove 'solution|' prefix
+            rename_map = {ds_name: orig_name for orig_name, ds_name in solution_var_names.items()}
+            solution_ds = solution_ds.rename(rename_map)
             # Rename 'solution_time' back to 'time' if present
             if 'solution_time' in solution_ds.dims:
                 solution_ds = solution_ds.rename({'solution_time': 'time'})
@@ -901,25 +917,28 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Restore Clustering object if present
         if 'clustering' in reference_structure:
             clustering_structure = json.loads(reference_structure['clustering'])
-            # Collect clustering arrays from arrays_dict (prefixed with 'clustering|')
+            # Collect clustering arrays (prefixed with 'clustering|')
+            # Access directly from dataset for clustering vars to avoid triggering lazy load of all vars
             clustering_prefix = 'clustering|'
             clustering_arrays = {}
-            main_vars = {}
-            for name, arr in arrays_dict.items():
+            main_var_names = []
+            for name in config_var_names:
                 if name.startswith(clustering_prefix):
-                    # Remove prefix from both key and DataArray name
+                    arr = ds[name]
                     arr_name = name[len(clustering_prefix) :]
                     clustering_arrays[arr_name] = arr.rename(arr_name)
                 else:
-                    main_vars[name] = arr
+                    main_var_names.append(name)
             clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
             flow_system.clustering = clustering
 
             # Reconstruct aggregated_data from FlowSystem's main data arrays
             # (aggregated_data is not serialized to avoid redundant storage)
-            if clustering.aggregated_data is None and main_vars:
+            if clustering.aggregated_data is None and main_var_names:
                 from .core import drop_constant_arrays
 
+                # Build main_vars lazily - only access what we need
+                main_vars = {name: arrays_dict[name] for name in main_var_names}
                 clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
 
             # Restore cluster_weight from clustering's representative_weights
