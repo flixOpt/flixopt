@@ -1505,11 +1505,11 @@ class InterclusterStorageModel(StorageModel):
 
         # Apply self-discharge decay factor (1-loss)^hours to soc_before per Eq. 5
         # relative_loss_per_hour is per-hour, so we need total hours per cluster
-        # Use sum over time to handle both regular and segmented systems
+        # Use sum over time to get total duration (handles both regular and segmented systems)
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
-        hours_per_cluster = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
-        decay_n = (1 - rel_loss) ** hours_per_cluster
+        total_hours_per_cluster = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'sum')
+        decay_n = (1 - rel_loss) ** total_hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
         self.add_constraints(lhs == 0, short_name='link')

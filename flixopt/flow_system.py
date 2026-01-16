@@ -214,6 +214,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         elif computed_timestep_duration is not None:
             self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
         else:
+            # RangeIndex (segmented systems) requires explicit timestep_duration
+            if isinstance(self.timesteps, pd.RangeIndex):
+                raise ValueError(
+                    'timestep_duration is required when using RangeIndex timesteps (segmented systems). '
+                    'Provide timestep_duration explicitly or use DatetimeIndex timesteps.'
+                )
             self.timestep_duration = None
 
         # Cluster weight for cluster() optimization (default 1.0)

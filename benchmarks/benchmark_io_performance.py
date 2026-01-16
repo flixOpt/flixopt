@@ -142,7 +142,18 @@ def run_io_benchmarks(
 
     print('\n2. Clustering and solving...')
     fs_clustered = fs.transform.cluster(n_clusters=n_clusters, cluster_duration='1D')
-    fs_clustered.optimize(fx.solvers.GurobiSolver())
+
+    # Try Gurobi first, fall back to HiGHS if not available
+    try:
+        solver = fx.solvers.GurobiSolver()
+        fs_clustered.optimize(solver)
+    except Exception as e:
+        if 'gurobi' in str(e).lower() or 'license' in str(e).lower():
+            print(f'   Gurobi not available ({e}), falling back to HiGHS...')
+            solver = fx.solvers.HighsSolver()
+            fs_clustered.optimize(solver)
+        else:
+            raise
 
     print('\n3. Expanding...')
     fs_expanded = fs_clustered.transform.expand()

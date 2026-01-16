@@ -1401,6 +1401,16 @@ class TransformAccessor:
                     ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
                 )
                 temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
+
+                # Guard against empty dataset after removing constant arrays
+                if not temporaly_changing_ds_for_clustering.data_vars:
+                    filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
+                    selector_info = f', selector={selector}' if selector else ''
+                    raise ValueError(
+                        f'No time-varying data found for clustering ({filter_info}{selector_info}). '
+                        f'All variables are constant over time. Check your data_vars filter or input data.'
+                    )
+
                 df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
 
                 if selector:
@@ -1920,13 +1930,15 @@ class TransformAccessor:
         position_within_segment = clustering.results.position_within_segment
 
         # Decode timestep_mapping into cluster and time indices
-        # For segmented systems, use n_segments as the divisor (matches expand_data/build_expansion_divisor)
+        # For segmented systems:
+        # - Use n_segments for cluster division (matches expand_data/build_expansion_divisor)
+        # - Use timesteps_per_cluster for time position (actual position within original cluster)
         if clustering.is_segmented and clustering.n_segments is not None:
             time_dim_size = clustering.n_segments
         else:
             time_dim_size = clustering.timesteps_per_cluster
         cluster_indices = timestep_mapping // time_dim_size
-        time_indices = timestep_mapping % time_dim_size
+        time_indices = timestep_mapping % clustering.timesteps_per_cluster
 
         # Get segment index and position for each original timestep
         seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)

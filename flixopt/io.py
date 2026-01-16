@@ -1598,7 +1598,10 @@ class FlowSystemDatasetIO:
             Constructed DataArray
         """
         variable = ds.variables[name]
-        coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
+        var_dims = set(variable.dims)
+        # Include coordinates whose dims are a subset of the variable's dims
+        # This preserves both dimension coordinates and auxiliary coordinates
+        coords = {k: v for k, v in coord_cache.items() if set(v.dims).issubset(var_dims)}
         return xr.DataArray(variable, coords=coords, name=name)
 
     @staticmethod
