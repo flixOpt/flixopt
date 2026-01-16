@@ -377,7 +377,8 @@ class DataConverter:
         allowing data to remain in compact form. Broadcasting happens later at
         the linopy interface (FlowSystemModel.add_variables).
 
-        Also transposes data to canonical dimension order (matching target_dims order).
+        Also reduces constant dimensions and transposes data to canonical dimension
+        order (matching target_dims order).
 
         Args:
             data: DataArray to validate
@@ -385,7 +386,7 @@ class DataConverter:
             target_dims: Target dimension names in canonical order
 
         Returns:
-            DataArray with validated dims, transposed to canonical order
+            DataArray with validated dims, reduced constants, transposed to canonical order
 
         Raises:
             ConversionError: If data has dimensions not in target_dims,

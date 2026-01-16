@@ -1016,8 +1016,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Load dataset
         flow_system_data = load_dataset_from_netcdf(path)
 
-        # Convert to new parameter names
-        convert_old_dataset(flow_system_data)
+        # Convert to new parameter names and reduce constant dimensions
+        flow_system_data = convert_old_dataset(flow_system_data)
 
         # Reconstruct FlowSystem
         flow_system = cls.from_dataset(flow_system_data)
