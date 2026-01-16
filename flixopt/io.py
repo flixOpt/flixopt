@@ -8,6 +8,7 @@ import pathlib
 import re
 import sys
 import warnings
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -531,6 +532,7 @@ def save_dataset_to_netcdf(
     ds: xr.Dataset,
     path: str | pathlib.Path,
     compression: int = 0,
+    stack_vars: bool = True,
 ) -> None:
     """
     Save a dataset to a netcdf file. Store all attrs as JSON strings in 'attrs' attributes.
@@ -539,6 +541,8 @@ def save_dataset_to_netcdf(
         ds: Dataset to save.
         path: Path to save the dataset to.
         compression: Compression level for the dataset (0-9). 0 means no compression. 5 is a good default.
+        stack_vars: If True (default), stack variables with equal dims for faster I/O.
+            Variables are automatically unstacked when loading with load_dataset_from_netcdf.
 
     Raises:
         ValueError: If the path has an invalid file extension.
@@ -548,6 +552,10 @@ def save_dataset_to_netcdf(
         raise ValueError(f'Invalid file extension for path {path}. Only .nc and .nc4 are supported')
 
     ds = ds.copy(deep=True)
+
+    # Stack variables with equal dims for faster I/O
+    if stack_vars:
+        ds = _stack_equal_vars(ds)
 
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
 
@@ -616,15 +624,82 @@ def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
     return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
+def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Dataset:
+    """
+    Stack data_vars with equal dims into single DataArrays with a stacked dimension.
+
+    This reduces the number of data_vars in a dataset by grouping variables that
+    share the same dimensions. Each group is concatenated along a new stacked
+    dimension, with the original variable names stored as coordinates.
+
+    This can significantly improve I/O performance for datasets with many
+    variables that share the same shape.
+
+    Args:
+        ds: Input dataset
+        stacked_dim: Base name for the stacking dimensions (default: '__stacked__')
+
+    Returns:
+        Dataset with fewer variables (equal-dim vars stacked together).
+        Stacked variables are named 'stacked_{dims}' and have a coordinate
+        '{stacked_dim}_{dims}' containing the original variable names.
+    """
+    groups = defaultdict(list)
+    for name, var in ds.data_vars.items():
+        groups[var.dims].append(name)
+
+    new_data_vars = {}
+    for dims, var_names in groups.items():
+        if len(var_names) == 1:
+            new_data_vars[var_names[0]] = ds[var_names[0]]
+        else:
+            dim_suffix = '_'.join(dims) if dims else 'scalar'
+            group_stacked_dim = f'{stacked_dim}_{dim_suffix}'
+
+            stacked = xr.concat([ds[name] for name in var_names], dim=group_stacked_dim)
+            stacked = stacked.assign_coords({group_stacked_dim: var_names})
+
+            new_data_vars[f'stacked_{dim_suffix}'] = stacked
+
+    return xr.Dataset(new_data_vars, attrs=ds.attrs)
+
+
+def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dataset:
+    """
+    Reverse of _stack_equal_vars - unstack back to individual variables.
+
+    Args:
+        ds: Dataset with stacked variables (from _stack_equal_vars)
+        stacked_prefix: Prefix used for stacking dimensions (default: '__stacked__')
+
+    Returns:
+        Dataset with individual variables restored from stacked arrays.
+    """
+    new_data_vars = {}
+    for name, var in ds.data_vars.items():
+        stacked_dims = [d for d in var.dims if d.startswith(stacked_prefix)]
+        if stacked_dims:
+            stacked_dim = stacked_dims[0]
+            for label in var[stacked_dim].values:
+                new_data_vars[str(label)] = var.sel({stacked_dim: label}, drop=True)
+        else:
+            new_data_vars[name] = var
+
+    return xr.Dataset(new_data_vars, attrs=ds.attrs)
+
+
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     """
     Load a dataset from a netcdf file. Load all attrs from 'attrs' attributes.
+
+    Automatically unstacks variables that were stacked during saving with
+    save_dataset_to_netcdf(stack_vars=True).
 
     Args:
         path: Path to load the dataset from.
 
     Returns:
-        Dataset: Loaded dataset with restored attrs.
+        Dataset: Loaded dataset with restored attrs and unstacked variables.
     """
     # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
     with warnings.catch_warnings():
@@ -635,7 +710,7 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     if 'attrs' in ds.attrs:
         ds.attrs = json.loads(ds.attrs['attrs'])
 
-    # Restore DataArray attrs
+    # Restore DataArray attrs (before unstacking, as stacked vars have no individual attrs)
     for var_name, data_var in ds.data_vars.items():
         if 'attrs' in data_var.attrs:
             ds[var_name].attrs = json.loads(data_var.attrs['attrs'])
@@ -644,6 +719,11 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     for coord_name, coord_var in ds.coords.items():
         if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
             ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
+
+    # Unstack variables if they were stacked during saving
+    # Detection: check if any dataset dimension starts with '__stacked__'
+    if any(dim.startswith('__stacked__') for dim in ds.dims):
+        ds = _unstack_vars(ds)
 
     return ds
 
