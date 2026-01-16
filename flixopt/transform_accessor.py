@@ -16,6 +16,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .modeling import _scalar_safe_reduce
+from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
+
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
 
@@ -882,6 +885,26 @@ class TransformAccessor:
         time_var_names = [v for v in dataset.data_vars if 'time' in dataset[v].dims]
         non_time_var_names = [v for v in dataset.data_vars if v not in time_var_names]
 
+        # Handle case where no data variables have time dimension (all scalars)
+        # We still need to resample the time coordinate itself
+        if not time_var_names:
+            if 'time' not in dataset.coords:
+                raise ValueError('Dataset has no time dimension to resample')
+            # Create a dummy variable to resample the time coordinate
+            dummy = xr.DataArray(
+                np.zeros(len(dataset.coords['time'])), dims=['time'], coords={'time': dataset.coords['time']}
+            )
+            dummy_ds = xr.Dataset({'__dummy__': dummy})
+            resampled_dummy = getattr(dummy_ds.resample(time=freq, **kwargs), method)()
+            # Get the resampled time coordinate
+            resampled_time = resampled_dummy.coords['time']
+            # Create result with all original scalar data and resampled time coordinate
+            # Keep all existing coordinates (period, scenario, etc.) except time which gets resampled
+            result = dataset.copy()
+            result = result.assign_coords(time=resampled_time)
+            result.attrs.update(original_attrs)
+            return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
 
@@ -914,6 +937,12 @@ class TransformAccessor:
             result = xr.merge([resampled_time_dataset, non_time_dataset])
         else:
             result = resampled_time_dataset
+
+        # Preserve all original coordinates that aren't 'time' (e.g., period, scenario, cluster)
+        # These may be lost during merge if no data variable uses them
+        for coord_name, coord_val in dataset.coords.items():
+            if coord_name != 'time' and coord_name not in result.coords:
+                result = result.assign_coords({coord_name: coord_val})
 
         result.attrs.update(original_attrs)
         return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
@@ -1695,7 +1724,7 @@ class TransformAccessor:
             n_original_clusters: Number of original clusters before aggregation.
         """
         n_original_timesteps_extra = len(original_timesteps_extra)
-        soc_boundary_vars = [name for name in reduced_solution.data_vars if name.endswith('|SOC_boundary')]
+        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1774,7 +1803,7 @@ class TransformAccessor:
         )
 
         # Decay factor: (1 - loss)^t
-        loss_value = storage.relative_loss_per_hour.mean('time')
+        loss_value = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
         if not np.any(loss_value.values > 0):
             return soc_boundary_per_timestep
 
@@ -1798,14 +1827,15 @@ class TransformAccessor:
         return soc_boundary_per_timestep * decay_da
 
     def _build_segment_total_varnames(self) -> set[str]:
-        """Build the set of solution variable names that represent segment totals.
+        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
+
+        This method is only used when variable_categories is empty (old FlowSystems
+        saved before category registration was implemented). New FlowSystems use
+        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
 
         For segmented systems, these variables contain values that are summed over
         segments. When expanded to hourly resolution, they need to be divided by
         segment duration to get correct hourly rates.
-
-        Derives variable names directly from FlowSystem structure (effects, flows,
-        components) rather than pattern matching, ensuring robustness.
 
         Returns:
             Set of variable names that should be divided by expansion divisor.
@@ -1853,6 +1883,8 @@ class TransformAccessor:
         this method interpolates between start and end boundary values to show the
         actual charge trajectory as the storage charges/discharges.
 
+        Uses vectorized xarray operations via Clustering class properties.
+
         Args:
             da: charge_state DataArray with dims (cluster, time) where time has n_segments+1 entries.
             clustering: Clustering object with segment info.
@@ -1861,114 +1893,44 @@ class TransformAccessor:
         Returns:
             Interpolated charge_state with dims (time, ...) for original timesteps.
         """
-        timesteps_per_cluster = clustering.timesteps_per_cluster
-        n_original_clusters = clustering.n_original_clusters
-        cluster_assignments = clustering.cluster_assignments
+        # Get multi-dimensional properties from Clustering
+        timestep_mapping = clustering.timestep_mapping
+        segment_assignments = clustering.results.segment_assignments
+        segment_durations = clustering.results.segment_durations
+        position_within_segment = clustering.results.position_within_segment
 
-        # Get segment assignments and durations from clustering results
-        extra_dims = clustering.results.dim_names
+        # Decode timestep_mapping into cluster and time indices
+        # For segmented systems, use n_segments as the divisor (matches expand_data/build_expansion_divisor)
+        if clustering.is_segmented and clustering.n_segments is not None:
+            time_dim_size = clustering.n_segments
+        else:
+            time_dim_size = clustering.timesteps_per_cluster
+        cluster_indices = timestep_mapping // time_dim_size
+        time_indices = timestep_mapping % time_dim_size
 
-        def _interpolate_slice(
-            charge_state_data: np.ndarray,
-            assignments: np.ndarray,
-            clustering_result,
-        ) -> np.ndarray:
-            """Interpolate charge_state for a single period/scenario slice."""
-            n_timesteps = n_original_clusters * timesteps_per_cluster
-            result = np.zeros(n_timesteps)
+        # Get segment index and position for each original timestep
+        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
+        positions = position_within_segment.isel(cluster=cluster_indices, time=time_indices)
+        durations = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
 
-            seg_assignments = clustering_result.segment_assignments
-            seg_durations = clustering_result.segment_durations
+        # Calculate interpolation factor: position within segment (0 to 1)
+        # At position=0, factor=0.5/duration (start of segment)
+        # At position=duration-1, factor approaches 1 (end of segment)
+        factor = xr.where(durations > 1, (positions + 0.5) / durations, 0.5)
 
-            for orig_cluster_idx in range(n_original_clusters):
-                typical_cluster_idx = int(assignments[orig_cluster_idx])
-                cluster_seg_assigns = seg_assignments[typical_cluster_idx]
-                cluster_seg_durs = seg_durations[typical_cluster_idx]
+        # Get start and end boundary values from charge_state
+        # charge_state has dims (cluster, time) where time = segment boundaries (n_segments+1)
+        start_vals = da.isel(cluster=cluster_indices, time=seg_indices)
+        end_vals = da.isel(cluster=cluster_indices, time=seg_indices + 1)
 
-                # Build cumulative positions within cluster for interpolation
-                for t in range(timesteps_per_cluster):
-                    seg_idx = int(cluster_seg_assigns[t])
-                    # Count how many timesteps before this one are in the same segment
-                    seg_start_t = 0
-                    for prev_t in range(t):
-                        if cluster_seg_assigns[prev_t] == seg_idx:
-                            break
-                        seg_start_t = prev_t + 1
-                    t_within_seg = t - seg_start_t
-                    seg_duration = cluster_seg_durs[seg_idx]
+        # Linear interpolation
+        interpolated = start_vals + (end_vals - start_vals) * factor
 
-                    # Interpolation factor: position within segment (0 to 1)
-                    # At t_within_seg=0, factor=0 (start of segment)
-                    # At t_within_seg=seg_duration-1, factor approaches 1 (end of segment)
-                    if seg_duration > 1:
-                        factor = (t_within_seg + 0.5) / seg_duration
-                    else:
-                        factor = 0.5
+        # Clean up coordinate artifacts and rename
+        interpolated = interpolated.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
+        interpolated = interpolated.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
 
-                    # Get start and end boundary values
-                    start_val = charge_state_data[typical_cluster_idx, seg_idx]
-                    end_val = charge_state_data[typical_cluster_idx, seg_idx + 1]
-
-                    # Linear interpolation
-                    result[orig_cluster_idx * timesteps_per_cluster + t] = start_val + (end_val - start_val) * factor
-
-            return result
-
-        # Handle extra dimensions (period, scenario)
-        if not extra_dims:
-            # Simple case: no period/scenario dimensions
-            result = clustering.results.sel()
-            interpolated = _interpolate_slice(da.values, cluster_assignments.values, result)
-            return xr.DataArray(
-                interpolated,
-                dims=['time'],
-                coords={'time': original_timesteps},
-                attrs=da.attrs,
-            )
-
-        # Multi-dimensional case
-        dim_coords = clustering.results.coords
-        interpolated_slices = {}
-
-        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
-            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
-
-            # Get cluster assignments for this period/scenario
-            if any(d in cluster_assignments.dims for d in selector):
-                from .clustering.base import _select_dims
-
-                assignments = _select_dims(cluster_assignments, **selector).values
-            else:
-                assignments = cluster_assignments.values
-
-            # Get charge_state data for this period/scenario
-            da_slice = da
-            for dim, val in selector.items():
-                if dim in da.dims:
-                    da_slice = da_slice.sel({dim: val})
-
-            # Get clustering result for this period/scenario
-            result = clustering.results.sel(**selector)
-            interpolated = _interpolate_slice(da_slice.values, assignments, result)
-
-            interpolated_slices[tuple(selector.values())] = xr.DataArray(
-                interpolated,
-                dims=['time'],
-                coords={'time': original_timesteps},
-            )
-
-        # Concatenate along extra dimensions
-        result_arrays = interpolated_slices
-        for dim in reversed(extra_dims):
-            dim_vals = dim_coords[dim]
-            grouped = {}
-            for key, arr in result_arrays.items():
-                rest_key = key[:-1] if len(key) > 1 else ()
-                grouped.setdefault(rest_key, []).append(arr)
-            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
-
-        result = list(result_arrays.values())[0]
-        return result.transpose('time', ...).assign_attrs(da.attrs)
+        return interpolated.transpose('time', ...).assign_attrs(da.attrs)
 
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.
@@ -2093,69 +2055,72 @@ class TransformAccessor:
         # For segmented systems: build expansion divisor and identify segment total variables
         expansion_divisor = None
         segment_total_vars: set[str] = set()
+        variable_categories = getattr(self._fs, '_variable_categories', {})
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-            segment_total_vars = self._build_segment_total_varnames()
+            # Build segment total vars using registry first, fall back to pattern matching
+            segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
+            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
+            if not segment_total_vars:
+                segment_total_vars = self._build_segment_total_varnames()
+
+        def _is_state_variable(var_name: str) -> bool:
+            """Check if a variable is a state variable (should be interpolated)."""
+            if var_name in variable_categories:
+                return variable_categories[var_name] in EXPAND_INTERPOLATE
+            # Fall back to pattern matching for backwards compatibility
+            return var_name.endswith('|charge_state')
+
+        def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
+            """Append final state value from original data to expanded data."""
+            cluster_assignments = clustering.cluster_assignments
+            if cluster_assignments.ndim == 1:
+                last_cluster = int(cluster_assignments.values[last_original_cluster_idx])
+                extra_val = da.isel(cluster=last_cluster, time=-1)
+            else:
+                last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
+                extra_val = da.isel(cluster=last_clusters, time=-1)
+            extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
+            extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
+            return xr.concat([expanded, extra_val], dim='time')
 
         def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
-            """Expand a DataArray from clustered to original timesteps.
-
-            Args:
-                da: DataArray to expand.
-                var_name: Variable name for segment total lookup.
-                is_solution: True if this is a solution variable (may need segment correction).
-                    FlowSystem data (is_solution=False) is never corrected for segments.
-            """
+            """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
 
-            # For charge_state in segmented systems: interpolate within segments
-            # to show the actual charge trajectory as storage charges/discharges
-            if var_name.endswith('|charge_state') and 'cluster' in da.dims and clustering.is_segmented:
+            is_state = _is_state_variable(var_name) and 'cluster' in da.dims
+
+            # State variables in segmented systems: interpolate within segments
+            if is_state and clustering.is_segmented:
                 expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
-                # Append the extra timestep value (final charge state)
-                cluster_assignments = clustering.cluster_assignments
-                if cluster_assignments.ndim == 1:
-                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
-                    extra_val = da.isel(cluster=last_cluster, time=-1)
-                else:
-                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                    extra_val = da.isel(cluster=last_clusters, time=-1)
-                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-                expanded = xr.concat([expanded, extra_val], dim='time')
-                return expanded
+                return _append_final_state(expanded, da)
 
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
-            # For segmented systems: divide segment totals by expansion divisor
-            # ONLY for solution variables explicitly identified as segment totals
+            # Segment totals: divide by expansion divisor
             if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
                 expanded = expanded / expansion_divisor
 
-            # For charge_state with cluster dim (non-segmented), append the extra timestep value
-            if var_name.endswith('|charge_state') and 'cluster' in da.dims:
-                cluster_assignments = clustering.cluster_assignments
-                if cluster_assignments.ndim == 1:
-                    last_cluster = int(cluster_assignments[last_original_cluster_idx])
-                    extra_val = da.isel(cluster=last_cluster, time=-1)
-                else:
-                    last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                    extra_val = da.isel(cluster=last_clusters, time=-1)
-                extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-                extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-                expanded = xr.concat([expanded, extra_val], dim='time')
+            # State variables: append final state
+            if is_state:
+                expanded = _append_final_state(expanded, da)
 
             return expanded
 
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
-        data_vars = {
-            name: expand_da(da, name)
-            for name, da in reduced_ds.data_vars.items()
-            if name != 'cluster_weight' and not name.startswith('clustering|')
-        }
+        skip_vars = {'cluster_weight', 'timestep_duration'}  # These have special handling
+        data_vars = {}
+        for name, da in reduced_ds.data_vars.items():
+            if name in skip_vars or name.startswith('clustering|'):
+                continue
+            # Skip vars with cluster dim but no time dim - they don't make sense after expansion
+            # (e.g., representative_weights with dims ('cluster',) or ('cluster', 'period'))
+            if 'cluster' in da.dims and 'time' not in da.dims:
+                continue
+            data_vars[name] = expand_da(da, name)
         attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
 
