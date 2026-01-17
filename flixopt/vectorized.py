@@ -21,18 +21,19 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
-import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .structure import VariableCategory
-
 if TYPE_CHECKING:
-    from .structure import FlowSystemModel
+    from collections.abc import Callable
+
+    import linopy
+
+    from .structure import FlowSystemModel, VariableCategory
 
 logger = logging.getLogger('flixopt')
 
@@ -223,9 +224,7 @@ class VariableRegistry:
         # Check for duplicate element_id in same category
         existing_ids = {s.element_id for s in self._specs_by_category[spec.category]}
         if spec.element_id in existing_ids:
-            raise ValueError(
-                f"Element '{spec.element_id}' already registered for category '{spec.category}'"
-            )
+            raise ValueError(f"Element '{spec.element_id}' already registered for category '{spec.category}'")
 
         self._specs_by_category[spec.category].append(spec)
 
@@ -373,7 +372,7 @@ class VariableRegistry:
 
         # Need to stack into DataArray
         arrays_to_stack = []
-        for bound, eid in zip(bounds, element_ids):
+        for bound, eid in zip(bounds, element_ids, strict=False):
             if isinstance(bound, xr.DataArray):
                 # Ensure proper dimension order
                 arr = bound.expand_dims(element=[eid])
@@ -418,7 +417,7 @@ class VariableRegistry:
 
         # Build mask array
         mask_arrays = []
-        for mask, eid in zip(masks, element_ids):
+        for mask, eid in zip(masks, element_ids, strict=False):
             if mask is None:
                 # No mask = all True
                 arr = xr.DataArray(True, coords={'element': [eid]}, dims=['element'])
@@ -448,9 +447,7 @@ class VariableRegistry:
 
         if element_id not in self._handles[category]:
             available = list(self._handles[category].keys())
-            raise KeyError(
-                f"Element '{element_id}' not found in category '{category}'. Available: {available}"
-            )
+            raise KeyError(f"Element '{element_id}' not found in category '{category}'. Available: {available}")
 
         return self._handles[category][element_id]
 
@@ -499,8 +496,8 @@ class VariableRegistry:
     def __repr__(self) -> str:
         status = 'created' if self._created else 'pending'
         return (
-            f"VariableRegistry(categories={len(self._specs_by_category)}, "
-            f"elements={self.element_count}, status={status})"
+            f'VariableRegistry(categories={len(self._specs_by_category)}, '
+            f'elements={self.element_count}, status={status})'
         )
 
 
@@ -521,11 +518,13 @@ class ConstraintRegistry:
 
     Example:
         >>> registry = ConstraintRegistry(model, var_registry)
-        >>> registry.register(ConstraintSpec(
-        ...     category='flow_bounds',
-        ...     element_id='Boiler',
-        ...     build_fn=lambda m, h: ConstraintResult(h['flow_rate'].variable, 100, '<='),
-        ... ))
+        >>> registry.register(
+        ...     ConstraintSpec(
+        ...         category='flow_bounds',
+        ...         element_id='Boiler',
+        ...         build_fn=lambda m, h: ConstraintResult(h['flow_rate'].variable, 100, '<='),
+        ...     )
+        ... )
         >>> registry.create_all()
     """
 
@@ -565,9 +564,7 @@ class ConstraintRegistry:
                 self._create_batch(category, specs)
 
         self._created = True
-        logger.debug(
-            f'ConstraintRegistry created {len(self._specs_by_category)} constraint categories'
-        )
+        logger.debug(f'ConstraintRegistry created {len(self._specs_by_category)} constraint categories')
 
     def _create_batch(self, category: str, specs: list[ConstraintSpec]) -> None:
         """Create all constraints of a category.
@@ -600,7 +597,7 @@ class ConstraintRegistry:
             elif result.sense == '>=':
                 self.model.add_constraints(result.lhs >= result.rhs, name=constraint_name)
             else:
-                raise ValueError(f"Invalid constraint sense: {result.sense}")
+                raise ValueError(f'Invalid constraint sense: {result.sense}')
 
     @property
     def categories(self) -> list[str]:
@@ -610,10 +607,7 @@ class ConstraintRegistry:
     def __repr__(self) -> str:
         status = 'created' if self._created else 'pending'
         total_specs = sum(len(specs) for specs in self._specs_by_category.values())
-        return (
-            f"ConstraintRegistry(categories={len(self._specs_by_category)}, "
-            f"specs={total_specs}, status={status})"
-        )
+        return f'ConstraintRegistry(categories={len(self._specs_by_category)}, specs={total_specs}, status={status})'
 
 
 # =============================================================================
@@ -645,10 +639,12 @@ class SystemConstraintRegistry:
 
     Example:
         >>> registry = SystemConstraintRegistry(model, var_registry)
-        >>> registry.register(SystemConstraintSpec(
-        ...     category='bus_balance',
-        ...     build_fn=build_bus_balance,
-        ... ))
+        >>> registry.register(
+        ...     SystemConstraintSpec(
+        ...         category='bus_balance',
+        ...         build_fn=build_bus_balance,
+        ...     )
+        ... )
         >>> registry.create_all()
     """
 
@@ -673,9 +669,7 @@ class SystemConstraintRegistry:
             try:
                 results = spec.build_fn(self.model, self.variable_registry)
             except Exception as e:
-                raise RuntimeError(
-                    f"Failed to build system constraint '{spec.category}': {e}"
-                ) from e
+                raise RuntimeError(f"Failed to build system constraint '{spec.category}': {e}") from e
 
             # Handle single or multiple results
             if isinstance(results, ConstraintResult):
@@ -694,4 +688,4 @@ class SystemConstraintRegistry:
 
     def __repr__(self) -> str:
         status = 'created' if self._created else 'pending'
-        return f"SystemConstraintRegistry(specs={len(self._specs)}, status={status})"
+        return f'SystemConstraintRegistry(specs={len(self._specs)}, status={status})'

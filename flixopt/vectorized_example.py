@@ -15,11 +15,8 @@ Run this file directly to see the pattern in action:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from typing import Callable
 
 import linopy
-import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -29,12 +26,10 @@ from .vectorized import (
     ConstraintResult,
     ConstraintSpec,
     SystemConstraintRegistry,
-    SystemConstraintSpec,
     VariableHandle,
     VariableRegistry,
     VariableSpec,
 )
-
 
 # =============================================================================
 # Simplified Element Classes (Demonstrating DCE Pattern)
@@ -92,26 +87,30 @@ class FlowModel(SimplifiedElementModel):
         specs = []
 
         # Main flow rate variable
-        specs.append(VariableSpec(
-            category='flow_rate',
-            element_id=self.element_id,
-            lower=self.min_flow if not self.with_status else 0.0,  # If status, bounds via constraint
-            upper=self.max_flow,
-            dims=('time',),
-            var_category=VariableCategory.FLOW_RATE,
-        ))
+        specs.append(
+            VariableSpec(
+                category='flow_rate',
+                element_id=self.element_id,
+                lower=self.min_flow if not self.with_status else 0.0,  # If status, bounds via constraint
+                upper=self.max_flow,
+                dims=('time',),
+                var_category=VariableCategory.FLOW_RATE,
+            )
+        )
 
         # Status variable (if needed)
         if self.with_status:
-            specs.append(VariableSpec(
-                category='status',
-                element_id=self.element_id,
-                lower=0,
-                upper=1,
-                binary=True,
-                dims=('time',),
-                var_category=VariableCategory.STATUS,
-            ))
+            specs.append(
+                VariableSpec(
+                    category='status',
+                    element_id=self.element_id,
+                    lower=0,
+                    upper=1,
+                    binary=True,
+                    dims=('time',),
+                    var_category=VariableCategory.STATUS,
+                )
+            )
 
         return specs
 
@@ -120,18 +119,22 @@ class FlowModel(SimplifiedElementModel):
 
         if self.with_status:
             # Flow rate upper bound: flow_rate <= status * max_flow
-            specs.append(ConstraintSpec(
-                category='flow_rate_ub',
-                element_id=self.element_id,
-                build_fn=self._build_upper_bound,
-            ))
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_ub',
+                    element_id=self.element_id,
+                    build_fn=self._build_upper_bound,
+                )
+            )
 
             # Flow rate lower bound: flow_rate >= status * min_flow
-            specs.append(ConstraintSpec(
-                category='flow_rate_lb',
-                element_id=self.element_id,
-                build_fn=self._build_lower_bound,
-            ))
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_lb',
+                    element_id=self.element_id,
+                    build_fn=self._build_lower_bound,
+                )
+            )
 
         return specs
 
@@ -274,55 +277,55 @@ class SimplifiedFlowSystemModel(linopy.Model):
         Phase 2: Collection - Already done by registries
         Phase 3: Execution - Batch create variables and constraints
         """
-        print("\n=== Phase 1: DECLARATION ===")
+        print('\n=== Phase 1: DECLARATION ===')
         start = time.perf_counter()
 
         # Collect variable declarations
         for element_id, model in self.element_models.items():
             for spec in model.declare_variables():
                 self.variable_registry.register(spec)
-            print(f"  Declared variables for: {element_id}")
+            print(f'  Declared variables for: {element_id}')
 
         declaration_time = time.perf_counter() - start
-        print(f"  Declaration time: {declaration_time*1000:.2f}ms")
+        print(f'  Declaration time: {declaration_time * 1000:.2f}ms')
 
-        print("\n=== Phase 2: COLLECTION (implicit) ===")
-        print(f"  {self.variable_registry}")
+        print('\n=== Phase 2: COLLECTION (implicit) ===')
+        print(f'  {self.variable_registry}')
 
-        print("\n=== Phase 3: EXECUTION (Variables) ===")
+        print('\n=== Phase 3: EXECUTION (Variables) ===')
         start = time.perf_counter()
 
         # Batch create all variables
         self.variable_registry.create_all()
 
         var_creation_time = time.perf_counter() - start
-        print(f"  Variable creation time: {var_creation_time*1000:.2f}ms")
+        print(f'  Variable creation time: {var_creation_time * 1000:.2f}ms')
 
         # Distribute handles to elements
         for element_id, model in self.element_models.items():
             handles = self.variable_registry.get_handles_for_element(element_id)
             model.on_variables_created(handles)
-            print(f"  Distributed {len(handles)} handles to: {element_id}")
+            print(f'  Distributed {len(handles)} handles to: {element_id}')
 
-        print("\n=== Phase 3: EXECUTION (Constraints) ===")
+        print('\n=== Phase 3: EXECUTION (Constraints) ===')
         start = time.perf_counter()
 
         # Now collect and create constraints
         self.constraint_registry = ConstraintRegistry(self, self.variable_registry)
 
-        for element_id, model in self.element_models.items():
+        for _element_id, model in self.element_models.items():
             for spec in model.declare_constraints():
                 self.constraint_registry.register(spec)
 
         self.constraint_registry.create_all()
 
         constraint_time = time.perf_counter() - start
-        print(f"  Constraint creation time: {constraint_time*1000:.2f}ms")
+        print(f'  Constraint creation time: {constraint_time * 1000:.2f}ms')
 
-        print("\n=== SUMMARY ===")
-        print(f"  Variables: {len(self.variables)}")
-        print(f"  Constraints: {len(self.constraints)}")
-        print(f"  Categories in registry: {self.variable_registry.categories}")
+        print('\n=== SUMMARY ===')
+        print(f'  Variables: {len(self.variables)}')
+        print(f'  Constraints: {len(self.constraints)}')
+        print(f'  Categories in registry: {self.variable_registry.categories}')
 
 
 # =============================================================================
@@ -378,10 +381,12 @@ def benchmark_dce_pattern(n_elements: int, n_timesteps: int) -> float:
     model.add_variables(
         lower=0,
         upper=100,
-        coords=xr.Coordinates({
-            'element': pd.Index(element_ids),
-            'time': timesteps,
-        }),
+        coords=xr.Coordinates(
+            {
+                'element': pd.Index(element_ids),
+                'time': timesteps,
+            }
+        ),
         name='flow_rate',
     )
 
@@ -389,10 +394,12 @@ def benchmark_dce_pattern(n_elements: int, n_timesteps: int) -> float:
     model.add_variables(
         lower=0,
         upper=1,
-        coords=xr.Coordinates({
-            'element': pd.Index(element_ids),
-            'time': timesteps,
-        }),
+        coords=xr.Coordinates(
+            {
+                'element': pd.Index(element_ids),
+                'time': timesteps,
+            }
+        ),
         name='status',
         binary=True,
     )
@@ -409,9 +416,9 @@ def benchmark_dce_pattern(n_elements: int, n_timesteps: int) -> float:
 
 def run_benchmark():
     """Run benchmark comparing old vs DCE pattern."""
-    print("\n" + "=" * 60)
-    print("BENCHMARK: Old Pattern vs DCE Pattern")
-    print("=" * 60)
+    print('\n' + '=' * 60)
+    print('BENCHMARK: Old Pattern vs DCE Pattern')
+    print('=' * 60)
 
     configs = [
         (10, 24),
@@ -421,8 +428,8 @@ def run_benchmark():
         (500, 168),
     ]
 
-    print(f"\n{'Elements':>10} {'Timesteps':>10} {'Old (ms)':>12} {'DCE (ms)':>12} {'Speedup':>10}")
-    print("-" * 60)
+    print(f'\n{"Elements":>10} {"Timesteps":>10} {"Old (ms)":>12} {"DCE (ms)":>12} {"Speedup":>10}')
+    print('-' * 60)
 
     for n_elements, n_timesteps in configs:
         # Run each benchmark 3 times and take minimum
@@ -433,14 +440,14 @@ def run_benchmark():
         dce_time = min(dce_times) * 1000
         speedup = old_time / dce_time if dce_time > 0 else float('inf')
 
-        print(f"{n_elements:>10} {n_timesteps:>10} {old_time:>12.2f} {dce_time:>12.2f} {speedup:>10.1f}x")
+        print(f'{n_elements:>10} {n_timesteps:>10} {old_time:>12.2f} {dce_time:>12.2f} {speedup:>10.1f}x')
 
 
 def run_demo():
     """Run a demonstration of the DCE pattern."""
-    print("\n" + "=" * 60)
-    print("DEMO: DCE Pattern with Simplified Elements")
-    print("=" * 60)
+    print('\n' + '=' * 60)
+    print('DEMO: DCE Pattern with Simplified Elements')
+    print('=' * 60)
 
     # Create timesteps
     timesteps = pd.date_range('2024-01-01', periods=24, freq='h')
@@ -460,22 +467,22 @@ def run_demo():
     model.do_modeling_dce()
 
     # Show that elements can access their variables
-    print("\n=== Element Variable Access ===")
+    print('\n=== Element Variable Access ===')
     boiler = model.element_models['Boiler_Q_th']
-    print(f"  Boiler flow_rate shape: {boiler.get_variable('flow_rate').shape}")
-    print(f"  Boiler status shape: {boiler.get_variable('status').shape}")
+    print(f'  Boiler flow_rate shape: {boiler.get_variable("flow_rate").shape}')
+    print(f'  Boiler status shape: {boiler.get_variable("status").shape}')
 
     storage = model.element_models['ThermalStorage']
-    print(f"  Storage charge_state shape: {storage.get_variable('charge_state').shape}")
+    print(f'  Storage charge_state shape: {storage.get_variable("charge_state").shape}')
 
     # Show batched variables
-    print("\n=== Batched Variables in Registry ===")
+    print('\n=== Batched Variables in Registry ===')
     flow_rate_full = model.variable_registry.get_full_variable('flow_rate')
-    print(f"  flow_rate full shape: {flow_rate_full.shape}")
-    print(f"  flow_rate dims: {flow_rate_full.dims}")
+    print(f'  flow_rate full shape: {flow_rate_full.shape}')
+    print(f'  flow_rate dims: {flow_rate_full.dims}')
 
     status_full = model.variable_registry.get_full_variable('status')
-    print(f"  status full shape: {status_full.shape}")
+    print(f'  status full shape: {status_full.shape}')
 
 
 if __name__ == '__main__':
