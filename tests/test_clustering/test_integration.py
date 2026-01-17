@@ -122,6 +122,97 @@ class TestFlowSystemDimsIndexesWeights:
         np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
 
+class TestClusteringData:
+    """Tests for FlowSystem.transform.clustering_data method."""
+
+    def test_clustering_data_method_exists(self):
+        """Test that transform.clustering_data method exists."""
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=48, freq='h'))
+
+        assert hasattr(fs.transform, 'clustering_data')
+        assert callable(fs.transform.clustering_data)
+
+    def test_clustering_data_returns_dataset(self):
+        """Test that clustering_data returns an xr.Dataset."""
+        from flixopt import Bus, Flow, Sink, Source
+
+        n_hours = 48
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+
+        # Add components with time-varying data
+        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        sink = Sink(
+            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+        )
+        fs.add_elements(source, sink, bus)
+
+        clustering_data = fs.transform.clustering_data()
+
+        assert isinstance(clustering_data, xr.Dataset)
+
+    def test_clustering_data_contains_only_time_varying(self):
+        """Test that clustering_data returns only time-varying data."""
+        from flixopt import Bus, Flow, Sink, Source
+
+        n_hours = 48
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+
+        # Add components with time-varying and constant data
+        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        sink = Sink(
+            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+        )
+        fs.add_elements(source, sink, bus)
+
+        clustering_data = fs.transform.clustering_data()
+
+        # Should contain the demand profile
+        assert 'demand(demand_out)|fixed_relative_profile' in clustering_data.data_vars
+
+        # All arrays should have 'time' dimension
+        for var in clustering_data.data_vars:
+            assert 'time' in clustering_data[var].dims
+
+    def test_clustering_data_with_periods(self):
+        """Test clustering_data with multi-period system."""
+        from flixopt import Bus, Effect, Flow, Sink, Source
+
+        n_hours = 48
+        periods = pd.Index([2024, 2030], name='period')
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=periods,
+        )
+
+        # Add components
+        demand_data = xr.DataArray(
+            np.random.rand(n_hours, 2),
+            dims=['time', 'period'],
+            coords={'time': fs.timesteps, 'period': periods},
+        )
+        bus = Bus('electricity')
+        effect = Effect('costs', '€', is_objective=True)
+        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        sink = Sink(
+            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+        )
+        fs.add_elements(source, sink, bus, effect)
+
+        # Get data for specific period
+        data_2024 = fs.transform.clustering_data(period=2024)
+
+        # Should not have period dimension (it was selected)
+        assert 'period' not in data_2024.dims
+
+        # Get data for all periods
+        data_all = fs.transform.clustering_data()
+        assert 'period' in data_all.dims
+
+
 class TestClusterMethod:
     """Tests for FlowSystem.transform.cluster method."""
 
@@ -194,10 +285,12 @@ class TestClusterAdvancedOptions:
         fs.add_elements(source, sink, bus)
         return fs
 
-    def test_cluster_method_parameter(self, basic_flow_system):
-        """Test that cluster_method parameter works."""
+    def test_cluster_config_parameter(self, basic_flow_system):
+        """Test that cluster config parameter works."""
+        from tsam.config import ClusterConfig
+
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', cluster_method='hierarchical'
+            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(method='hierarchical')
         )
         assert len(fs_clustered.clusters) == 2
 
@@ -207,7 +300,7 @@ class TestClusterAdvancedOptions:
         fs2 = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
 
         # Hierarchical clustering should produce identical cluster orders
-        xr.testing.assert_equal(fs1.clustering.cluster_order, fs2.clustering.cluster_order)
+        xr.testing.assert_equal(fs1.clustering.cluster_assignments, fs2.clustering.cluster_assignments)
 
     def test_metrics_available(self, basic_flow_system):
         """Test that clustering metrics are available after clustering."""
@@ -219,23 +312,27 @@ class TestClusterAdvancedOptions:
         assert len(fs_clustered.clustering.metrics.data_vars) > 0
 
     def test_representation_method_parameter(self, basic_flow_system):
-        """Test that representation_method parameter works."""
+        """Test that representation method via ClusterConfig works."""
+        from tsam.config import ClusterConfig
+
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', representation_method='medoidRepresentation'
+            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(representation='medoid')
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_rescale_cluster_periods_parameter(self, basic_flow_system):
-        """Test that rescale_cluster_periods parameter works."""
+    def test_preserve_column_means_parameter(self, basic_flow_system):
+        """Test that preserve_column_means parameter works via tsam_kwargs."""
         fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2, cluster_duration='1D', rescale_cluster_periods=False
+            n_clusters=2, cluster_duration='1D', preserve_column_means=False
         )
         assert len(fs_clustered.clusters) == 2
 
     def test_tsam_kwargs_passthrough(self, basic_flow_system):
         """Test that additional kwargs are passed to tsam."""
-        # sameMean is a valid tsam parameter
-        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D', sameMean=True)
+        # preserve_column_means is a valid tsam.aggregate() parameter
+        fs_clustered = basic_flow_system.transform.cluster(
+            n_clusters=2, cluster_duration='1D', preserve_column_means=False
+        )
         assert len(fs_clustered.clusters) == 2
 
     def test_metrics_with_periods(self):
@@ -275,12 +372,4 @@ class TestClusteringModuleImports:
         """Test that clustering module can be imported from flixopt."""
         from flixopt import clustering
 
-        assert hasattr(clustering, 'ClusterResult')
-        assert hasattr(clustering, 'ClusterStructure')
         assert hasattr(clustering, 'Clustering')
-
-    def test_create_cluster_structure_from_mapping_available(self):
-        """Test that create_cluster_structure_from_mapping is available."""
-        from flixopt.clustering import create_cluster_structure_from_mapping
-
-        assert callable(create_cluster_structure_from_mapping)

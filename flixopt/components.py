@@ -4,6 +4,7 @@ This module contains the basic components of the flixopt framework.
 
 from __future__ import annotations
 
+import functools
 import logging
 import warnings
 from typing import TYPE_CHECKING, Literal
@@ -17,7 +18,7 @@ from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
-from .structure import FlowSystemModel, register_class_for_io
+from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -944,8 +945,13 @@ class StorageModel(ComponentModel):
             upper=ub,
             coords=self._model.get_coords(extra_timestep=True),
             short_name='charge_state',
+            category=VariableCategory.CHARGE_STATE,
         )
-        self.add_variables(coords=self._model.get_coords(), short_name='netto_discharge')
+        self.add_variables(
+            coords=self._model.get_coords(),
+            short_name='netto_discharge',
+            category=VariableCategory.NETTO_DISCHARGE,
+        )
 
     def _add_netto_discharge_constraint(self):
         """Add constraint: netto_discharge = discharging - charging."""
@@ -976,6 +982,7 @@ class StorageModel(ComponentModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )
@@ -1096,7 +1103,7 @@ class StorageModel(ComponentModel):
                 relative_upper_bound * cap,
             )
 
-    @property
+    @functools.cached_property
     def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Get relative charge state bounds with final timestep values.
@@ -1146,7 +1153,9 @@ class StorageModel(ComponentModel):
             # Original is scalar - broadcast to full time range (constant value)
             max_bounds = rel_max.expand_dims(time=timesteps_extra)
 
-        return min_bounds, max_bounds
+        # Ensure both bounds have matching dimensions (broadcast once here,
+        # so downstream code doesn't need to handle dimension mismatches)
+        return xr.broadcast(min_bounds, max_bounds)
 
     @property
     def _investment(self) -> InvestmentModel | None:
@@ -1208,7 +1217,7 @@ class InterclusterStorageModel(StorageModel):
     1. **Cluster start constraint**: ``ΔE(cluster_start) = 0``
        Each representative cluster starts with zero relative charge.
 
-    2. **Linking constraint**: ``SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_order[d]]``
+    2. **Linking constraint**: ``SOC_boundary[d+1] = SOC_boundary[d] + delta_SOC[cluster_assignments[d]]``
        The boundary SOC after period d equals the boundary before plus the net
        charge/discharge of the representative cluster for that period.
 
@@ -1313,6 +1322,7 @@ class InterclusterStorageModel(StorageModel):
                     label_of_element=self.label_of_element,
                     label_of_model=self.label_of_element,
                     parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
                 ),
                 short_name='investment',
             )
@@ -1347,18 +1357,13 @@ class InterclusterStorageModel(StorageModel):
         )
 
         clustering = self._model.flow_system.clustering
-        if clustering is None or clustering.result.cluster_structure is None:
+        if clustering is None:
             return
 
-        cluster_structure = clustering.result.cluster_structure
-        n_clusters = (
-            int(cluster_structure.n_clusters)
-            if isinstance(cluster_structure.n_clusters, (int, np.integer))
-            else int(cluster_structure.n_clusters.values)
-        )
-        timesteps_per_cluster = cluster_structure.timesteps_per_cluster
-        n_original_clusters = cluster_structure.n_original_clusters
-        cluster_order = cluster_structure.cluster_order
+        n_clusters = clustering.n_clusters
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        n_original_clusters = clustering.n_original_clusters
+        cluster_assignments = clustering.cluster_assignments
 
         # 1. Constrain ΔE = 0 at cluster starts
         self._add_cluster_start_constraints(n_clusters, timesteps_per_cluster)
@@ -1374,6 +1379,7 @@ class InterclusterStorageModel(StorageModel):
             coords=boundary_coords,
             dims=boundary_dims,
             short_name='SOC_boundary',
+            category=VariableCategory.SOC_BOUNDARY,
         )
 
         # 3. Link SOC_boundary to investment size
@@ -1388,7 +1394,7 @@ class InterclusterStorageModel(StorageModel):
 
         # 5. Add linking constraints
         self._add_linking_constraints(
-            soc_boundary, delta_soc, cluster_order, n_original_clusters, timesteps_per_cluster
+            soc_boundary, delta_soc, cluster_assignments, n_original_clusters, timesteps_per_cluster
         )
 
         # 6. Add cyclic or initial constraint
@@ -1417,7 +1423,7 @@ class InterclusterStorageModel(StorageModel):
         # 7. Add combined bound constraints
         self._add_combined_bound_constraints(
             soc_boundary,
-            cluster_order,
+            cluster_assignments,
             capacity_bounds.has_investment,
             n_original_clusters,
             timesteps_per_cluster,
@@ -1467,14 +1473,14 @@ class InterclusterStorageModel(StorageModel):
         self,
         soc_boundary: xr.DataArray,
         delta_soc: xr.DataArray,
-        cluster_order: xr.DataArray,
+        cluster_assignments: xr.DataArray,
         n_original_clusters: int,
         timesteps_per_cluster: int,
     ) -> None:
         """Add constraints linking consecutive SOC_boundary values.
 
         Per Blanke et al. (2022) Eq. 5, implements:
-            SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC[cluster_order[d]]
+            SOC_boundary[d+1] = SOC_boundary[d] * (1-loss)^N + delta_SOC[cluster_assignments[d]]
 
         where N is timesteps_per_cluster and loss is self-discharge rate per timestep.
 
@@ -1484,7 +1490,7 @@ class InterclusterStorageModel(StorageModel):
         Args:
             soc_boundary: SOC_boundary variable.
             delta_soc: Net SOC change per cluster.
-            cluster_order: Mapping from original periods to representative clusters.
+            cluster_assignments: Mapping from original periods to representative clusters.
             n_original_clusters: Number of original (non-clustered) periods.
             timesteps_per_cluster: Number of timesteps in each cluster period.
         """
@@ -1497,16 +1503,16 @@ class InterclusterStorageModel(StorageModel):
         soc_before = soc_before.rename({'cluster_boundary': 'original_cluster'})
         soc_before = soc_before.assign_coords(original_cluster=np.arange(n_original_clusters))
 
-        # Get delta_soc for each original period using cluster_order
-        delta_soc_ordered = delta_soc.isel(cluster=cluster_order)
+        # Get delta_soc for each original period using cluster_assignments
+        delta_soc_ordered = delta_soc.isel(cluster=cluster_assignments)
 
         # Apply self-discharge decay factor (1-loss)^hours to soc_before per Eq. 5
-        # relative_loss_per_hour is per-hour, so we need hours = timesteps * duration
-        # Use mean over time (linking operates at period level, not timestep)
+        # relative_loss_per_hour is per-hour, so we need total hours per cluster
+        # Use sum over time to get total duration (handles both regular and segmented systems)
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
-        hours_per_cluster = timesteps_per_cluster * _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
-        decay_n = (1 - rel_loss) ** hours_per_cluster
+        total_hours_per_cluster = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'sum')
+        decay_n = (1 - rel_loss) ** total_hours_per_cluster
 
         lhs = soc_after - soc_before * decay_n - delta_soc_ordered
         self.add_constraints(lhs == 0, short_name='link')
@@ -1514,7 +1520,7 @@ class InterclusterStorageModel(StorageModel):
     def _add_combined_bound_constraints(
         self,
         soc_boundary: xr.DataArray,
-        cluster_order: xr.DataArray,
+        cluster_assignments: xr.DataArray,
         has_investment: bool,
         n_original_clusters: int,
         timesteps_per_cluster: int,
@@ -1530,11 +1536,11 @@ class InterclusterStorageModel(StorageModel):
         middle, and end of each cluster.
 
         With 2D (cluster, time) structure, we simply select charge_state at a
-        given time offset, then reorder by cluster_order to get original_cluster order.
+        given time offset, then reorder by cluster_assignments to get original_cluster order.
 
         Args:
             soc_boundary: SOC_boundary variable.
-            cluster_order: Mapping from original periods to clusters.
+            cluster_assignments: Mapping from original periods to clusters.
             has_investment: Whether the storage has investment sizing.
             n_original_clusters: Number of original periods.
             timesteps_per_cluster: Timesteps in each cluster.
@@ -1552,13 +1558,15 @@ class InterclusterStorageModel(StorageModel):
         rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
         mean_timestep_duration = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
 
-        sample_offsets = [0, timesteps_per_cluster // 2, timesteps_per_cluster - 1]
+        # Use actual time dimension size (may be smaller than timesteps_per_cluster for segmented systems)
+        actual_time_size = charge_state.sizes['time']
+        sample_offsets = [0, actual_time_size // 2, actual_time_size - 1]
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
-            # With 2D structure: select time offset, then reorder by cluster_order
+            # With 2D structure: select time offset, then reorder by cluster_assignments
             cs_at_offset = charge_state.isel(time=offset)  # Shape: (cluster, ...)
-            # Reorder to original_cluster order using cluster_order indexer
-            cs_t = cs_at_offset.isel(cluster=cluster_order)
+            # Reorder to original_cluster order using cluster_assignments indexer
+            cs_t = cs_at_offset.isel(cluster=cluster_assignments)
             # Suppress xarray warning about index loss - we immediately assign new coords anyway
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', message='.*does not create an index anymore.*')

@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from . import __version__
 from . import io as fx_io
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
@@ -29,7 +28,14 @@ from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
-from .structure import CompositeContainerMixin, Element, ElementContainer, FlowSystemModel, Interface
+from .structure import (
+    CompositeContainerMixin,
+    Element,
+    ElementContainer,
+    FlowSystemModel,
+    Interface,
+    VariableCategory,
+)
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
 
@@ -173,7 +179,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def __init__(
         self,
-        timesteps: pd.DatetimeIndex,
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
         periods: pd.Index | None = None,
         scenarios: pd.Index | None = None,
         clusters: pd.Index | None = None,
@@ -185,6 +191,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_sizes: bool | list[str] = True,
         scenario_independent_flow_rates: bool | list[str] = False,
         name: str | None = None,
+        timestep_duration: xr.DataArray | None = None,
     ):
         self.timesteps = self._validate_timesteps(timesteps)
 
@@ -193,14 +200,27 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.timesteps_extra,
             self.hours_of_last_timestep,
             self.hours_of_previous_timesteps,
-            timestep_duration,
+            computed_timestep_duration,
         ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
 
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
         self.clusters = clusters  # Cluster dimension for clustered FlowSystems
 
-        self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
+        # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
+        # For RangeIndex (segmented systems), computed_timestep_duration is None
+        if timestep_duration is not None:
+            self.timestep_duration = timestep_duration
+        elif computed_timestep_duration is not None:
+            self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
+        else:
+            # RangeIndex (segmented systems) requires explicit timestep_duration
+            if isinstance(self.timesteps, pd.RangeIndex):
+                raise ValueError(
+                    'timestep_duration is required when using RangeIndex timesteps (segmented systems). '
+                    'Provide timestep_duration explicitly or use DatetimeIndex timesteps.'
+                )
+            self.timestep_duration = None
 
         # Cluster weight for cluster() optimization (default 1.0)
         # Represents how many original timesteps each cluster represents
@@ -241,6 +261,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
+        # Variable categories for segment expansion handling
+        # Populated when model is built, used by transform.expand()
+        self._variable_categories: dict[str, VariableCategory] = {}
+
         # Aggregation info - populated by transform.cluster()
         self.clustering: Clustering | None = None
 
@@ -264,14 +288,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.name = name
 
     @staticmethod
-    def _validate_timesteps(timesteps: pd.DatetimeIndex) -> pd.DatetimeIndex:
-        """Validate timesteps format and rename if needed."""
-        if not isinstance(timesteps, pd.DatetimeIndex):
-            raise TypeError('timesteps must be a pandas DatetimeIndex')
+    def _validate_timesteps(
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
+    ) -> pd.DatetimeIndex | pd.RangeIndex:
+        """Validate timesteps format and rename if needed.
+
+        Accepts either DatetimeIndex (standard) or RangeIndex (for segmented systems).
+        """
+        if not isinstance(timesteps, (pd.DatetimeIndex, pd.RangeIndex)):
+            raise TypeError('timesteps must be a pandas DatetimeIndex or RangeIndex')
         if len(timesteps) < 2:
             raise ValueError('timesteps must contain at least 2 timestamps')
         if timesteps.name != 'time':
-            timesteps.name = 'time'
+            timesteps = timesteps.rename('time')
         if not timesteps.is_monotonic_increasing:
             raise ValueError('timesteps must be sorted')
         return timesteps
@@ -317,9 +346,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @staticmethod
     def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex, hours_of_last_timestep: float | None
-    ) -> pd.DatetimeIndex:
-        """Create timesteps with an extra step at the end."""
+        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_last_timestep: float | None
+    ) -> pd.DatetimeIndex | pd.RangeIndex:
+        """Create timesteps with an extra step at the end.
+
+        For DatetimeIndex, adds an extra timestep using hours_of_last_timestep.
+        For RangeIndex (segmented systems), simply appends the next integer.
+        """
+        if isinstance(timesteps, pd.RangeIndex):
+            # For RangeIndex, just add one more integer
+            return pd.RangeIndex(len(timesteps) + 1, name='time')
+
         if hours_of_last_timestep is None:
             hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
 
@@ -327,8 +364,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return pd.DatetimeIndex(timesteps.append(last_date), name='time')
 
     @staticmethod
-    def calculate_timestep_duration(timesteps_extra: pd.DatetimeIndex) -> xr.DataArray:
-        """Calculate duration of each timestep in hours as a 1D DataArray."""
+    def calculate_timestep_duration(
+        timesteps_extra: pd.DatetimeIndex | pd.RangeIndex,
+    ) -> xr.DataArray | None:
+        """Calculate duration of each timestep in hours as a 1D DataArray.
+
+        For RangeIndex (segmented systems), returns None since duration cannot be
+        computed from the index. Use timestep_duration parameter instead.
+        """
+        if isinstance(timesteps_extra, pd.RangeIndex):
+            # Cannot compute duration from RangeIndex - must be provided externally
+            return None
+
         hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
         return xr.DataArray(
             hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='timestep_duration'
@@ -336,11 +383,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @staticmethod
     def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex, hours_of_previous_timesteps: float | np.ndarray | None
-    ) -> float | np.ndarray:
-        """Calculate duration of regular timesteps."""
+        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_previous_timesteps: float | np.ndarray | None
+    ) -> float | np.ndarray | None:
+        """Calculate duration of regular timesteps.
+
+        For RangeIndex (segmented systems), returns None if not provided.
+        """
         if hours_of_previous_timesteps is not None:
             return hours_of_previous_timesteps
+        if isinstance(timesteps, pd.RangeIndex):
+            # Cannot compute from RangeIndex
+            return None
         # Calculate from the first interval
         first_interval = timesteps[1] - timesteps[0]
         return first_interval.total_seconds() / 3600  # Convert to hours
@@ -385,33 +438,42 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @classmethod
     def _compute_time_metadata(
         cls,
-        timesteps: pd.DatetimeIndex,
+        timesteps: pd.DatetimeIndex | pd.RangeIndex,
         hours_of_last_timestep: int | float | None = None,
         hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> tuple[pd.DatetimeIndex, float, float | np.ndarray, xr.DataArray]:
+    ) -> tuple[
+        pd.DatetimeIndex | pd.RangeIndex,
+        float | None,
+        float | np.ndarray | None,
+        xr.DataArray | None,
+    ]:
         """
         Compute all time-related metadata from timesteps.
 
         This is the single source of truth for time metadata computation, used by both
         __init__ and dataset operations (sel/isel/resample) to ensure consistency.
 
+        For RangeIndex (segmented systems), timestep_duration cannot be calculated from
+        the index and must be provided externally after FlowSystem creation.
+
         Args:
-            timesteps: The time index to compute metadata from
+            timesteps: The time index to compute metadata from (DatetimeIndex or RangeIndex)
             hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
             hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
                 Can be a scalar or array.
 
         Returns:
             Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration)
+            For RangeIndex, hours_of_last_timestep and timestep_duration may be None.
         """
         # Create timesteps with extra step at the end
         timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
 
-        # Calculate timestep duration
+        # Calculate timestep duration (returns None for RangeIndex)
         timestep_duration = cls.calculate_timestep_duration(timesteps_extra)
 
         # Extract hours_of_last_timestep if not provided
-        if hours_of_last_timestep is None:
+        if hours_of_last_timestep is None and timestep_duration is not None:
             hours_of_last_timestep = timestep_duration.isel(time=-1).item()
 
         # Compute hours_of_previous_timesteps (handles both None and provided cases)
@@ -627,7 +689,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True, include_original_data: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
@@ -645,70 +707,32 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             include_solution: Whether to include the optimization solution in the dataset.
                 Defaults to True. Set to False to get only the FlowSystem structure
                 without solution data (useful for copying or saving templates).
+            include_original_data: Whether to include clustering.original_data in the dataset.
+                Defaults to True. Set to False for smaller files (~38% reduction) when
+                clustering.plot.compare() isn't needed after loading. The core workflow
+                (optimize → expand) works without original_data.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
+
+        See Also:
+            from_dataset: Create FlowSystem from dataset
+            to_netcdf: Save to NetCDF file
         """
         if not self.connected_and_transformed:
             logger.info('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        ds = super().to_dataset()
+        # Get base dataset from parent class
+        base_ds = super().to_dataset()
 
-        # Include solution data if present and requested
-        if include_solution and self.solution is not None:
-            # Rename 'time' to 'solution_time' in solution variables to preserve full solution
-            # (linopy solution may have extra timesteps, e.g., for final charge states)
-            solution_renamed = (
-                self.solution.rename({'time': 'solution_time'}) if 'time' in self.solution.dims else self.solution
-            )
-            # Add solution variables with 'solution|' prefix to avoid conflicts
-            solution_vars = {f'solution|{name}': var for name, var in solution_renamed.data_vars.items()}
-            ds = ds.assign(solution_vars)
-            # Also add the solution_time coordinate if it exists
-            if 'solution_time' in solution_renamed.coords:
-                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
-            ds.attrs['has_solution'] = True
-        else:
-            ds.attrs['has_solution'] = False
-
-        # Include carriers if any are registered
-        if self._carriers:
-            carriers_structure = {}
-            for name, carrier in self._carriers.items():
-                carrier_ref, _ = carrier._create_reference_structure()
-                carriers_structure[name] = carrier_ref
-            ds.attrs['carriers'] = json.dumps(carriers_structure)
-
-        # Serialize Clustering object for full reconstruction in from_dataset()
-        if self.clustering is not None:
-            clustering_ref, clustering_arrays = self.clustering._create_reference_structure()
-            # Add clustering arrays with prefix
-            for name, arr in clustering_arrays.items():
-                ds[f'clustering|{name}'] = arr
-            ds.attrs['clustering'] = json.dumps(clustering_ref)
-
-        # Add version info
-        ds.attrs['flixopt_version'] = __version__
-
-        # Ensure model coordinates are always present in the Dataset
-        # (even if no data variable uses them, they define the model structure)
-        model_coords = {'time': self.timesteps}
-        if self.periods is not None:
-            model_coords['period'] = self.periods
-        if self.scenarios is not None:
-            model_coords['scenario'] = self.scenarios
-        if self.clusters is not None:
-            model_coords['cluster'] = self.clusters
-        ds = ds.assign_coords(model_coords)
-
-        return ds
+        # Add FlowSystem-specific data (solution, clustering, metadata)
+        return fx_io.flow_system_to_dataset(self, base_ds, include_solution, include_original_data)
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
         """
         Create a FlowSystem from an xarray Dataset.
-        Handles FlowSystem-specific reconstruction logic.
 
         If the dataset contains solution data (variables prefixed with 'solution|'),
         the solution will be restored to the FlowSystem. Solution time coordinates
@@ -723,124 +747,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Returns:
             FlowSystem instance
+
+        See Also:
+            to_dataset: Convert FlowSystem to dataset
+            from_netcdf: Load from NetCDF file
         """
-        # Get the reference structure from attrs
-        reference_structure = dict(ds.attrs)
+        return fx_io.restore_flow_system_from_dataset(ds)
 
-        # Separate solution variables from config variables
-        solution_prefix = 'solution|'
-        solution_vars = {}
-        config_vars = {}
-        for name, array in ds.data_vars.items():
-            if name.startswith(solution_prefix):
-                # Remove prefix for solution dataset
-                original_name = name[len(solution_prefix) :]
-                solution_vars[original_name] = array
-            else:
-                config_vars[name] = array
-
-        # Create arrays dictionary from config variables only
-        arrays_dict = config_vars
-
-        # Extract cluster index if present (clustered FlowSystem)
-        clusters = ds.indexes.get('cluster')
-
-        # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
-        if clusters is not None:
-            cluster_weight_for_constructor = None
-        else:
-            cluster_weight_for_constructor = (
-                cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
-                if 'cluster_weight' in reference_structure
-                else None
-            )
-
-        # Resolve scenario_weights only if scenario dimension exists
-        scenario_weights = None
-        if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
-            scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
-
-        # Create FlowSystem instance with constructor parameters
-        flow_system = cls(
-            timesteps=ds.indexes['time'],
-            periods=ds.indexes.get('period'),
-            scenarios=ds.indexes.get('scenario'),
-            clusters=clusters,
-            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
-            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-            weight_of_last_period=reference_structure.get('weight_of_last_period'),
-            scenario_weights=scenario_weights,
-            cluster_weight=cluster_weight_for_constructor,
-            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
-            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
-            name=reference_structure.get('name'),
-        )
-
-        # Restore components
-        components_structure = reference_structure.get('components', {})
-        for comp_label, comp_data in components_structure.items():
-            component = cls._resolve_reference_structure(comp_data, arrays_dict)
-            if not isinstance(component, Component):
-                logger.critical(f'Restoring component {comp_label} failed.')
-            flow_system._add_components(component)
-
-        # Restore buses
-        buses_structure = reference_structure.get('buses', {})
-        for bus_label, bus_data in buses_structure.items():
-            bus = cls._resolve_reference_structure(bus_data, arrays_dict)
-            if not isinstance(bus, Bus):
-                logger.critical(f'Restoring bus {bus_label} failed.')
-            flow_system._add_buses(bus)
-
-        # Restore effects
-        effects_structure = reference_structure.get('effects', {})
-        for effect_label, effect_data in effects_structure.items():
-            effect = cls._resolve_reference_structure(effect_data, arrays_dict)
-            if not isinstance(effect, Effect):
-                logger.critical(f'Restoring effect {effect_label} failed.')
-            flow_system._add_effects(effect)
-
-        # Restore solution if present
-        if reference_structure.get('has_solution', False) and solution_vars:
-            solution_ds = xr.Dataset(solution_vars)
-            # Rename 'solution_time' back to 'time' if present
-            if 'solution_time' in solution_ds.dims:
-                solution_ds = solution_ds.rename({'solution_time': 'time'})
-            flow_system.solution = solution_ds
-
-        # Restore carriers if present
-        if 'carriers' in reference_structure:
-            carriers_structure = json.loads(reference_structure['carriers'])
-            for carrier_data in carriers_structure.values():
-                carrier = cls._resolve_reference_structure(carrier_data, {})
-                flow_system._carriers.add(carrier)
-
-        # Restore Clustering object if present
-        if 'clustering' in reference_structure:
-            clustering_structure = json.loads(reference_structure['clustering'])
-            # Collect clustering arrays (prefixed with 'clustering|')
-            clustering_arrays = {}
-            for name, arr in ds.data_vars.items():
-                if name.startswith('clustering|'):
-                    # Remove 'clustering|' prefix (11 chars) from both key and DataArray name
-                    # This ensures that if the FlowSystem is serialized again, the arrays
-                    # won't get double-prefixed (clustering|clustering|...)
-                    arr_name = name[11:]
-                    clustering_arrays[arr_name] = arr.rename(arr_name)
-            clustering = cls._resolve_reference_structure(clustering_structure, clustering_arrays)
-            flow_system.clustering = clustering
-
-            # Restore cluster_weight from clustering's representative_weights
-            # This is needed because cluster_weight_for_constructor was set to None for clustered datasets
-            if hasattr(clustering, 'result') and hasattr(clustering.result, 'representative_weights'):
-                flow_system.cluster_weight = clustering.result.representative_weights
-
-        # Reconnect network to populate bus inputs/outputs (not stored in NetCDF).
-        flow_system.connect_and_transform()
-
-        return flow_system
-
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+    def to_netcdf(
+        self,
+        path: str | pathlib.Path,
+        compression: int = 5,
+        overwrite: bool = False,
+        include_original_data: bool = True,
+    ):
         """
         Save the FlowSystem to a NetCDF file.
         Ensures FlowSystem is connected before saving.
@@ -852,6 +772,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             path: The path to the netCDF file. Parent directories are created if they don't exist.
             compression: The compression level to use when saving the file (0-9).
             overwrite: If True, overwrite existing file. If False, raise error if file exists.
+            include_original_data: Whether to include clustering.original_data in the file.
+                Defaults to True. Set to False for smaller files (~38% reduction) when
+                clustering.plot.compare() isn't needed after loading.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.
@@ -861,11 +784,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self.connect_and_transform()
 
         path = pathlib.Path(path)
+
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         # Set name from filename (without extension)
         self.name = path.stem
 
-        super().to_netcdf(path, compression, overwrite)
-        logger.info(f'Saved FlowSystem to {path}')
+        try:
+            ds = self.to_dataset(include_original_data=include_original_data)
+            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+            logger.info(f'Saved FlowSystem to {path}')
+        except Exception as e:
+            raise OSError(f'Failed to save FlowSystem to NetCDF file {path}: {e}') from e
 
     @classmethod
     def from_netcdf(cls, path: str | pathlib.Path) -> FlowSystem:
@@ -1523,6 +1456,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Store solution on FlowSystem for direct Element access
         self.solution = self.model.solution
 
+        # Copy variable categories for segment expansion handling
+        self._variable_categories = self.model.variable_categories.copy()
+
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
@@ -1554,6 +1490,69 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._statistics = None  # Invalidate cached statistics
 
     @property
+    def variable_categories(self) -> dict[str, VariableCategory]:
+        """Variable categories for filtering and segment expansion.
+
+        Returns:
+            Dict mapping variable names to their VariableCategory.
+        """
+        return self._variable_categories
+
+    def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
+        """Get variable names matching any of the specified categories.
+
+        Args:
+            *categories: One or more VariableCategory values to filter by.
+            from_solution: If True, only return variables present in solution.
+                If False, return all registered variables matching categories.
+
+        Returns:
+            List of variable names matching any of the specified categories.
+
+        Example:
+            >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
+            ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', ...]
+            >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
+            ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
+        """
+        category_set = set(categories)
+
+        if self._variable_categories:
+            # Use registered categories
+            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
+        elif self._solution is not None:
+            # Fallback for old files without categories: match by suffix pattern
+            # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
+            matching = []
+            for cat in category_set:
+                # Handle new sub-categories that map to old |size suffix
+                if cat == VariableCategory.FLOW_SIZE:
+                    flow_labels = set(self.flows.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                    )
+                elif cat == VariableCategory.STORAGE_SIZE:
+                    storage_labels = set(self.storages.keys())
+                    matching.extend(
+                        v
+                        for v in self._solution.data_vars
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                    )
+                else:
+                    # Standard suffix matching
+                    suffix = f'|{cat.value}'
+                    matching.extend(v for v in self._solution.data_vars if v.endswith(suffix))
+        else:
+            matching = []
+
+        if from_solution and self._solution is not None:
+            solution_vars = set(self._solution.data_vars)
+            matching = [v for v in matching if v in solution_vars]
+        return matching
+
+    @property
     def is_locked(self) -> bool:
         """Check if the FlowSystem is locked (has a solution).
 
@@ -1579,6 +1578,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
+        self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
             element.submodel = None
             element._variable_names = []
@@ -1932,10 +1932,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Return a detailed string representation showing all containers."""
         r = fx_io.format_title_with_underline('FlowSystem', '=')
 
-        # Timestep info
-        time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
-        freq_str = str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
-        r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+        # Timestep info - handle both DatetimeIndex and RangeIndex (segmented)
+        if self.is_segmented:
+            r += f'Timesteps: {len(self.timesteps)} segments (segmented)\n'
+        else:
+            time_period = f'{self.timesteps[0].date()} to {self.timesteps[-1].date()}'
+            freq_str = (
+                str(self.timesteps.freq).replace('<', '').replace('>', '') if self.timesteps.freq else 'irregular'
+            )
+            r += f'Timesteps: {len(self.timesteps)} ({freq_str}) [{time_period}]\n'
+
+        # Add clusters if present
+        if self.clusters is not None:
+            r += f'Clusters: {len(self.clusters)}\n'
 
         # Add periods if present
         if self.periods is not None:
@@ -2116,9 +2125,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return len(self.timesteps) if self.clusters is not None else None
 
     @property
-    def _cluster_time_coords(self) -> pd.DatetimeIndex | None:
+    def _cluster_time_coords(self) -> pd.DatetimeIndex | pd.RangeIndex | None:
         """Get time coordinates for clustered system (same as timesteps)."""
         return self.timesteps if self.clusters is not None else None
+
+    @property
+    def is_segmented(self) -> bool:
+        """Check if this FlowSystem uses segmented time (RangeIndex instead of DatetimeIndex).
+
+        Segmented systems have variable timestep durations stored in timestep_duration,
+        and use a RangeIndex for time coordinates instead of DatetimeIndex.
+        """
+        return isinstance(self.timesteps, pd.RangeIndex)
 
     @property
     def n_timesteps(self) -> int:

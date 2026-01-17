@@ -4,6 +4,7 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ from .structure import (
     Element,
     ElementModel,
     FlowSystemModel,
+    VariableCategory,
     register_class_for_io,
 )
 
@@ -672,6 +674,7 @@ class FlowModel(ElementModel):
             upper=self.absolute_flow_rate_bounds[1],
             coords=self._model.get_coords(),
             short_name='flow_rate',
+            category=VariableCategory.FLOW_RATE,
         )
 
         self._constraint_flow_rate()
@@ -687,6 +690,7 @@ class FlowModel(ElementModel):
             ),
             coords=['period', 'scenario'],
             short_name='total_flow_hours',
+            category=VariableCategory.TOTAL,
         )
 
         # Weighted sum over all periods constraint
@@ -717,6 +721,7 @@ class FlowModel(ElementModel):
                 ),
                 coords=['scenario'],
                 short_name='flow_hours_over_periods',
+                category=VariableCategory.TOTAL_OVER_PERIODS,
             )
 
         # Load factor constraints
@@ -726,7 +731,12 @@ class FlowModel(ElementModel):
         self._create_shares()
 
     def _create_status_model(self):
-        status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+        status = self.add_variables(
+            binary=True,
+            short_name='status',
+            coords=self._model.get_coords(),
+            category=VariableCategory.STATUS,
+        )
         self.add_submodels(
             StatusModel(
                 model=self._model,
@@ -746,6 +756,7 @@ class FlowModel(ElementModel):
                 label_of_element=self.label_of_element,
                 parameters=self.element.size,
                 label_of_model=self.label_of_element,
+                size_category=VariableCategory.FLOW_SIZE,
             ),
             'investment',
         )
@@ -856,11 +867,13 @@ class FlowModel(ElementModel):
                 short_name='load_factor_min',
             )
 
-    @property
+    @functools.cached_property
     def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile
-        return self.element.relative_minimum, self.element.relative_maximum
+        # Ensure both bounds have matching dimensions (broadcast once here,
+        # so downstream code doesn't need to handle dimension mismatches)
+        return xr.broadcast(self.element.relative_minimum, self.element.relative_maximum)
 
     @property
     def absolute_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -957,11 +970,17 @@ class BusModel(ElementModel):
             imbalance_penalty = self.element.imbalance_penalty_per_flow_hour * self._model.timestep_duration
 
             self.virtual_supply = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='virtual_supply'
+                lower=0,
+                coords=self._model.get_coords(),
+                short_name='virtual_supply',
+                category=VariableCategory.VIRTUAL_FLOW,
             )
 
             self.virtual_demand = self.add_variables(
-                lower=0, coords=self._model.get_coords(), short_name='virtual_demand'
+                lower=0,
+                coords=self._model.get_coords(),
+                short_name='virtual_demand',
+                category=VariableCategory.VIRTUAL_FLOW,
             )
 
             # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
@@ -1028,7 +1047,12 @@ class ComponentModel(ElementModel):
 
         # Create component status variable and StatusModel if needed
         if self.element.status_parameters:
-            status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
+            status = self.add_variables(
+                binary=True,
+                short_name='status',
+                coords=self._model.get_coords(),
+                category=VariableCategory.STATUS,
+            )
             if len(all_flows) == 1:
                 self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')
             else:

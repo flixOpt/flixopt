@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .structure import Submodel
+from .structure import Submodel, VariableCategory
 
 logger = logging.getLogger('flixopt')
 
@@ -74,6 +74,27 @@ def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean'
     if dim in data.dims:
         return getattr(data, method)(dim)
     return data
+
+
+def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
+    """Check if two DataArrays are element-wise equal within tolerance.
+
+    Args:
+        a: First DataArray
+        b: Second DataArray
+        rtol: Relative tolerance (default matches np.allclose)
+        atol: Absolute tolerance (default matches np.allclose)
+
+    Returns:
+        True if all elements are close (including matching NaN positions)
+    """
+    # Fast path: same dims and shape - use numpy directly
+    if a.dims == b.dims and a.shape == b.shape:
+        return np.allclose(a.values, b.values, rtol=rtol, atol=atol, equal_nan=True)
+
+    # Slow path: broadcast to common shape, then use numpy
+    a_bc, b_bc = xr.broadcast(a, b)
+    return np.allclose(a_bc.values, b_bc.values, rtol=rtol, atol=atol, equal_nan=True)
 
 
 class ModelingUtilitiesAbstract:
@@ -270,6 +291,7 @@ class ModelingPrimitives:
         short_name: str = None,
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
+        category: VariableCategory = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
         """Creates a variable constrained to equal a given expression.
 
@@ -284,6 +306,7 @@ class ModelingPrimitives:
             short_name: Short name for display purposes
             bounds: Optional (lower_bound, upper_bound) tuple for the tracker variable
             coords: Coordinate dimensions for the variable (None uses all model coords)
+            category: Category for segment expansion handling. See VariableCategory.
 
         Returns:
             Tuple of (tracker_variable, tracking_constraint)
@@ -292,7 +315,9 @@ class ModelingPrimitives:
             raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
 
         if not bounds:
-            tracker = model.add_variables(name=name, coords=model.get_coords(coords), short_name=short_name)
+            tracker = model.add_variables(
+                name=name, coords=model.get_coords(coords), short_name=short_name, category=category
+            )
         else:
             tracker = model.add_variables(
                 lower=bounds[0] if bounds[0] is not None else -np.inf,
@@ -300,6 +325,7 @@ class ModelingPrimitives:
                 name=name,
                 coords=model.get_coords(coords),
                 short_name=short_name,
+                category=category,
             )
 
         # Constraint: tracker = expression
@@ -369,6 +395,7 @@ class ModelingPrimitives:
             coords=state.coords,
             name=name,
             short_name=short_name,
+            category=VariableCategory.DURATION,
         )
 
         constraints = {}
@@ -540,7 +567,7 @@ class BoundingPatterns:
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
-        if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
+        if _xr_allclose(lower_bound, upper_bound):
             fix_constraint = model.add_constraints(variable == state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
@@ -582,7 +609,7 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
-        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
+        if _xr_allclose(rel_lower, rel_upper):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
