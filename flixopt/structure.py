@@ -463,7 +463,10 @@ class TypeModel(ABC):
                 arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
             arrays_to_stack.append(arr)
 
-        stacked = xr.concat(arrays_to_stack, dim='element')
+        # Broadcast all arrays to common dimensions before concat
+        # This handles cases where some bounds have period/scenario dims and others don't
+        broadcasted = xr.broadcast(*arrays_to_stack)
+        stacked = xr.concat(broadcasted, dim='element')
 
         # Ensure element is first dimension
         if 'element' in stacked.dims and stacked.dims[0] != 'element':
