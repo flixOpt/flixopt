@@ -572,8 +572,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
         self._dce_mode: bool = False  # When True, elements skip _do_modeling()
-        self._type_level_mode: bool = False  # When True, Flows skip FlowModel creation
+        self._type_level_mode: bool = False  # When True, Flows and Buses skip Model creation
         self._flows_model: TypeModel | None = None  # Reference to FlowsModel when in type-level mode
+        self._buses_model: TypeModel | None = None  # Reference to BusesModel when in type-level mode
 
     def add_variables(
         self,
@@ -764,8 +765,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """Build the model using type-level models (one model per element TYPE).
 
         This is an alternative to `do_modeling()` and `do_modeling_dce()` that uses
-        TypeModel classes (e.g., FlowsModel) which handle ALL elements of a type
-        in a single instance with true vectorized operations.
+        TypeModel classes (e.g., FlowsModel, BusesModel) which handle ALL elements
+        of a type in a single instance with true vectorized operations.
 
         Benefits over DCE:
         - Cleaner architecture: One model per type, not per instance
@@ -776,12 +777,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             timing: If True, print detailed timing breakdown.
 
         Note:
-            This method is experimental. Currently only FlowsModel is implemented.
-            Components and buses still use the traditional approach.
+            This method is experimental. Currently FlowsModel and BusesModel are
+            implemented. Components and storages still use the traditional approach.
         """
         import time
 
-        from .elements import FlowsModel
+        from .elements import BusesModel, FlowsModel
 
         timings = {}
 
@@ -813,12 +814,28 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('flows_constraints')
 
-        # Create effect shares
+        # Create effect shares for flows
         self._flows_model.create_effect_shares()
 
         record('flows_effects')
 
-        # Enable type-level mode - Flows will skip FlowModel creation
+        # Create type-level model for all buses
+        all_buses = list(self.flow_system.buses.values())
+        self._buses_model = BusesModel(self, all_buses, self._flows_model)
+        self._buses_model.create_variables()
+
+        record('buses_variables')
+
+        self._buses_model.create_constraints()
+
+        record('buses_constraints')
+
+        # Create effect shares for buses (imbalance penalties)
+        self._buses_model.create_effect_shares()
+
+        record('buses_effects')
+
+        # Enable type-level mode - Flows and Buses will use proxy models
         self._type_level_mode = True
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
@@ -827,7 +844,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('components')
 
-        # Create bus models
+        # Create bus proxy models (for results structure, no variables/constraints)
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
 
@@ -848,6 +865,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'flows_variables',
                 'flows_constraints',
                 'flows_effects',
+                'buses_variables',
+                'buses_constraints',
+                'buses_effects',
                 'components',
                 'buses',
                 'end',

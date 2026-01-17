@@ -284,8 +284,11 @@ class Bus(Element):
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
 
-    def create_model(self, model: FlowSystemModel) -> BusModel:
+    def create_model(self, model: FlowSystemModel) -> BusModel | BusModelProxy:
         self._plausibility_checks()
+        if model._type_level_mode:
+            self.submodel = BusModelProxy(model, self)
+            return self.submodel
         self.submodel = BusModel(model, self)
         return self.submodel
 
@@ -2018,6 +2021,268 @@ class BusModel(ElementModel):
                 expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
                 target='temporal',
             )
+
+    def results_structure(self):
+        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
+        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+        if self.virtual_supply is not None:
+            inputs.append(self.virtual_supply.name)
+        if self.virtual_demand is not None:
+            outputs.append(self.virtual_demand.name)
+        return {
+            **super().results_structure(),
+            'inputs': inputs,
+            'outputs': outputs,
+            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+        }
+
+
+class BusesModel(TypeModel):
+    """Type-level model for ALL buses in a FlowSystem.
+
+    Unlike BusModel (one per Bus instance), BusesModel handles ALL buses
+    in a single instance with batched variables and constraints.
+
+    This enables:
+    - One constraint call for all bus balance constraints
+    - Batched virtual_supply/virtual_demand for buses with imbalance
+    - Efficient batch creation instead of N individual calls
+
+    The model handles heterogeneous buses by creating subsets:
+    - All buses: balance constraints
+    - Buses with imbalance: virtual_supply, virtual_demand variables
+
+    Example:
+        >>> buses_model = BusesModel(model, all_buses, flows_model)
+        >>> buses_model.create_variables()
+        >>> buses_model.create_constraints()
+    """
+
+    element_type = ElementType.BUS
+
+    def __init__(self, model: FlowSystemModel, elements: list[Bus], flows_model: FlowsModel):
+        """Initialize the type-level model for all buses.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of all Bus elements to model.
+            flows_model: The FlowsModel containing flow_rate variables.
+        """
+        super().__init__(model, elements)
+        self._flows_model = flows_model
+
+        # Categorize buses by their features
+        self.buses_with_imbalance: list[Bus] = [b for b in elements if b.allows_imbalance]
+
+        # Element ID lists for subsets
+        self.imbalance_ids: list[str] = [b.label_full for b in self.buses_with_imbalance]
+
+        # Set reference on each bus element
+        for bus in elements:
+            bus._buses_model = self
+
+    def create_variables(self) -> None:
+        """Create all batched variables for buses.
+
+        Creates:
+        - virtual_supply: For buses with imbalance penalty
+        - virtual_demand: For buses with imbalance penalty
+        """
+        if self.buses_with_imbalance:
+            # virtual_supply: allows adding flow to meet demand
+            self._add_subset_variables(
+                name='virtual_supply',
+                var_type=VariableType.VIRTUAL_FLOW,
+                element_ids=self.imbalance_ids,
+                lower=0.0,
+                upper=np.inf,
+                dims=self.model.temporal_dims,
+            )
+
+            # virtual_demand: allows removing excess flow
+            self._add_subset_variables(
+                name='virtual_demand',
+                var_type=VariableType.VIRTUAL_FLOW,
+                element_ids=self.imbalance_ids,
+                lower=0.0,
+                upper=np.inf,
+                dims=self.model.temporal_dims,
+            )
+
+        logger.debug(
+            f'BusesModel created variables: {len(self.elements)} buses, {len(self.buses_with_imbalance)} with imbalance'
+        )
+
+    def _add_subset_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        element_ids: list[str],
+        dims: tuple[str, ...],
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        **kwargs,
+    ) -> None:
+        """Create a variable for a subset of elements."""
+        # Build coordinates with subset element dimension
+        coord_dict = {'element': pd.Index(element_ids, name='element')}
+        model_coords = self.model.get_coords(dims=dims)
+        if model_coords is not None:
+            for dim in dims:
+                if dim in model_coords:
+                    coord_dict[dim] = model_coords[dim]
+        coords = xr.Coordinates(coord_dict)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=full_name,
+            **kwargs,
+        )
+
+        # Register category for segment expansion
+        from .structure import VARIABLE_TYPE_TO_EXPANSION
+
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        # Store reference
+        self._variables[name] = variable
+
+    def create_constraints(self) -> None:
+        """Create all batched constraints for buses.
+
+        Creates:
+        - bus_balance: Sum(inputs) == Sum(outputs) for all buses
+        - With virtual_supply/demand adjustment for buses with imbalance
+        """
+        flow_rate = self._flows_model._variables['flow_rate']
+
+        # Build the balance constraint for each bus
+        # We need to do this per-bus because each bus has different inputs/outputs
+        # However, we can batch create using xr.concat
+        lhs_list = []
+        rhs_list = []
+
+        for bus in self.elements:
+            bus_label = bus.label_full
+
+            # Get input flow IDs and output flow IDs for this bus
+            input_ids = [f.label_full for f in bus.inputs]
+            output_ids = [f.label_full for f in bus.outputs]
+
+            # Sum of input flow rates
+            if input_ids:
+                inputs_sum = flow_rate.sel(element=input_ids).sum('element')
+            else:
+                inputs_sum = 0
+
+            # Sum of output flow rates
+            if output_ids:
+                outputs_sum = flow_rate.sel(element=output_ids).sum('element')
+            else:
+                outputs_sum = 0
+
+            # Add virtual supply/demand if this bus allows imbalance
+            if bus.allows_imbalance:
+                virtual_supply = self._variables['virtual_supply'].sel(element=bus_label)
+                virtual_demand = self._variables['virtual_demand'].sel(element=bus_label)
+                # inputs + virtual_supply == outputs + virtual_demand
+                lhs = inputs_sum + virtual_supply
+                rhs = outputs_sum + virtual_demand
+            else:
+                # inputs == outputs (strict balance)
+                lhs = inputs_sum
+                rhs = outputs_sum
+
+            lhs_list.append(lhs)
+            rhs_list.append(rhs)
+
+        # Stack into a single constraint with bus dimension
+        # Note: For efficiency, we create one constraint per bus but they share a name prefix
+        for i, bus in enumerate(self.elements):
+            constraint_name = f'{self.element_type.value}|{bus.label}|balance'
+            self.model.add_constraints(
+                lhs_list[i] == rhs_list[i],
+                name=constraint_name,
+            )
+
+        logger.debug(f'BusesModel created {len(self.elements)} balance constraints')
+
+    def create_effect_shares(self) -> None:
+        """Create penalty effect shares for buses with imbalance."""
+        if not self.buses_with_imbalance:
+            return
+
+        from .effects import PENALTY_EFFECT_LABEL
+
+        for bus in self.buses_with_imbalance:
+            bus_label = bus.label_full
+            imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
+
+            virtual_supply = self._variables['virtual_supply'].sel(element=bus_label)
+            virtual_demand = self._variables['virtual_demand'].sel(element=bus_label)
+
+            total_imbalance_penalty = (virtual_supply + virtual_demand) * imbalance_penalty
+
+            self.model.effects.add_share_to_effects(
+                name=bus_label,
+                expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
+                target='temporal',
+            )
+
+    def get_variable(self, name: str, element_id: str | None = None):
+        """Get a variable, optionally selecting a specific element.
+
+        Args:
+            name: Variable name (e.g., 'virtual_supply').
+            element_id: Optional element label_full. If provided, returns slice for that element.
+
+        Returns:
+            Full batched variable, or element slice if element_id provided.
+        """
+        var = self._variables.get(name)
+        if var is None:
+            return None
+        if element_id is not None:
+            return var.sel(element=element_id)
+        return var
+
+
+class BusModelProxy(ElementModel):
+    """Lightweight proxy for Bus elements when using type-level modeling.
+
+    Instead of creating its own variables and constraints, this proxy
+    provides access to the variables created by BusesModel. This enables
+    the same interface (virtual_supply, virtual_demand, etc.) while avoiding
+    duplicate variable/constraint creation.
+    """
+
+    element: Bus  # Type hint
+
+    def __init__(self, model: FlowSystemModel, element: Bus):
+        self.virtual_supply: linopy.Variable | None = None
+        self.virtual_demand: linopy.Variable | None = None
+        super().__init__(model, element)
+        self._buses_model = model._buses_model
+
+        # Register variables from BusesModel in our local registry
+        if self._buses_model is not None and self.label_full in self._buses_model.imbalance_ids:
+            self.virtual_supply = self._buses_model.get_variable('virtual_supply', self.label_full)
+            self.register_variable(self.virtual_supply, 'virtual_supply')
+
+            self.virtual_demand = self._buses_model.get_variable('virtual_demand', self.label_full)
+            self.register_variable(self.virtual_demand, 'virtual_demand')
+
+    def _do_modeling(self):
+        """Skip modeling - BusesModel already created everything."""
+        # Register flow variables in our local registry for results_structure
+        for flow in self.element.inputs + self.element.outputs:
+            self.register_variable(flow.submodel.flow_rate, flow.label_full)
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
