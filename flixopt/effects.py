@@ -725,8 +725,8 @@ class EffectCollectionModel(Submodel):
         """Apply batched effect shares for flows to all relevant effects.
 
         This method receives pre-grouped effect specifications and applies them
-        efficiently using vectorized operations. The batching happens in one place
-        (the effect system) rather than scattered across TypeModels.
+        efficiently using vectorized operations. Creates ONE batched share variable
+        per effect (with element dimension) to preserve per-element contribution info.
 
         Args:
             flow_rate: The batched flow_rate variable with element dimension.
@@ -734,10 +734,12 @@ class EffectCollectionModel(Submodel):
                 Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
 
         Note:
-            This directly modifies the effect's temporal constraint (no intermediate
-            share variable) for efficiency. The expression is:
-                flow_rate[elements] * timestep_duration * factors
+            Creates batched share variables with element dimension for results visibility:
+                share_var[element, time, ...] = flow_rate[element, time, ...] * timestep * factor[element]
+            The sum across elements is added to the effect's total_per_timestep.
         """
+        import pandas as pd
+
         for effect_name, element_factors in effect_specs.items():
             if effect_name not in self.effects:
                 logger.warning(f'Effect {effect_name} not found, skipping shares')
@@ -756,9 +758,27 @@ class EffectCollectionModel(Submodel):
             flow_rate_subset = flow_rate.sel(element=element_ids)
             expression = flow_rate_subset * self._model.timestep_duration * factors_da
 
-            # Add to effect's temporal total (sum across elements)
+            # Create batched share variable with element dimension (preserves per-element info)
+            temporal_coords = self._model.get_coords(self._model.temporal_dims)
+            share_var = self._model.add_variables(
+                coords=xr.Coordinates(
+                    {
+                        'element': pd.Index(element_ids, name='element'),
+                        **{dim: temporal_coords[dim] for dim in temporal_coords},
+                    }
+                ),
+                name=f'flow_effects->{effect_name}(temporal)',
+            )
+
+            # Constraint: share_var == expression (vectorized, per-element)
+            self._model.add_constraints(
+                share_var == expression,
+                name=f'flow_effects->{effect_name}(temporal)',
+            )
+
+            # Add sum of shares to effect's total_per_timestep
             effect = self.effects[effect_name]
-            effect.submodel.temporal._eq_total_per_timestep.lhs -= expression.sum('element')
+            effect.submodel.temporal._eq_total_per_timestep.lhs -= share_var.sum('element')
 
     def apply_batched_penalty_shares(
         self,
@@ -766,11 +786,27 @@ class EffectCollectionModel(Submodel):
     ) -> None:
         """Apply batched penalty effect shares.
 
+        Creates individual share variables to preserve per-element contribution info.
+
         Args:
             penalty_expressions: List of (element_label, penalty_expression) tuples.
         """
-        for _element_label, expression in penalty_expressions:
-            self.effects[PENALTY_EFFECT_LABEL].submodel.temporal._eq_total_per_timestep.lhs -= expression
+        effect = self.effects[PENALTY_EFFECT_LABEL]
+        for element_label, expression in penalty_expressions:
+            # Create share variable for this element (preserves per-element info in results)
+            share_var = self._model.add_variables(
+                coords=self._model.get_coords(self._model.temporal_dims),
+                name=f'{element_label}->Penalty(temporal)',
+            )
+
+            # Constraint: share_var == penalty_expression
+            self._model.add_constraints(
+                share_var == expression,
+                name=f'{element_label}->Penalty(temporal)',
+            )
+
+            # Add to effect's total_per_timestep
+            effect.submodel.temporal._eq_total_per_timestep.lhs -= share_var
 
 
 def calculate_all_conversion_paths(
