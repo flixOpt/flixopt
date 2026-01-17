@@ -1152,7 +1152,9 @@ class StorageModel(ComponentModel):
             # Original is scalar - broadcast to full time range (constant value)
             max_bounds = rel_max.expand_dims(time=timesteps_extra)
 
-        return min_bounds, max_bounds
+        # Ensure both bounds have matching dimensions (broadcast once here,
+        # so downstream code doesn't need to handle dimension mismatches)
+        return xr.broadcast(min_bounds, max_bounds)
 
     @property
     def _investment(self) -> InvestmentModel | None:

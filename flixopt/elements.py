@@ -870,7 +870,9 @@ class FlowModel(ElementModel):
     def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile
-        return self.element.relative_minimum, self.element.relative_maximum
+        # Ensure both bounds have matching dimensions (broadcast once here,
+        # so downstream code doesn't need to handle dimension mismatches)
+        return xr.broadcast(self.element.relative_minimum, self.element.relative_maximum)
 
     @property
     def absolute_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
