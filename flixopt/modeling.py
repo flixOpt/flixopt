@@ -76,23 +76,25 @@ def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean'
     return data
 
 
-def _xr_allclose(a: xr.DataArray, b: xr.DataArray, atol: float = 1e-10) -> bool:
+def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
     """Check if two DataArrays are element-wise equal within tolerance.
-
-    Unlike np.allclose, this uses xarray operations that handle broadcasting
-    automatically when arrays have different dimensions.
 
     Args:
         a: First DataArray
         b: Second DataArray
-        atol: Absolute tolerance for comparison
+        rtol: Relative tolerance (default matches np.allclose)
+        atol: Absolute tolerance (default matches np.allclose)
 
     Returns:
         True if all elements are close (including matching NaN positions)
     """
-    diff = a - b  # xarray broadcasts automatically
-    is_close = (abs(diff) <= atol) | (a.isnull() & b.isnull())
-    return bool(is_close.all())
+    # Fast path: same dims and shape - use numpy directly
+    if a.dims == b.dims and a.shape == b.shape:
+        return np.allclose(a.values, b.values, rtol=rtol, atol=atol, equal_nan=True)
+
+    # Slow path: broadcast to common shape, then use numpy
+    a_bc, b_bc = xr.broadcast(a, b)
+    return np.allclose(a_bc.values, b_bc.values, rtol=rtol, atol=atol, equal_nan=True)
 
 
 class ModelingUtilitiesAbstract:
