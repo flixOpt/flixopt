@@ -800,8 +800,18 @@ class FlowModel(ElementModel):
         return specs
 
     def on_variables_created(self, handles: dict[str, VariableHandle]) -> None:
-        """Called after batch variable creation with handles to our variables."""
+        """Called after batch variable creation with handles to our variables.
+
+        Also creates effects since they need the flow_rate variable.
+        """
         self._dce_handles = handles
+
+        # Register the DCE variables in our local registry so properties like self.flow_rate work
+        for category, handle in handles.items():
+            self.register_variable(handle.variable, category)
+
+        # Now create effects (needs flow_rate to be accessible)
+        self._create_shares()
 
     # =========================================================================
     # DCE Constraint Build Functions
@@ -871,8 +881,20 @@ class FlowModel(ElementModel):
     # =========================================================================
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create variables, constraints, and nested submodels.
+
+        When FlowSystemModel._dce_mode is True, this method skips variable/constraint
+        creation since those will be handled by the DCE registries. Only effects
+        are still created here since they don't use DCE yet.
+        """
         super()._do_modeling()
+
+        # In DCE mode, skip all variable/constraint creation - handled by registries
+        # Effects are created after variables exist via on_variables_created()
+        if self._model._dce_mode:
+            return
+
+        # === Traditional (non-DCE) variable/constraint creation ===
 
         # Main flow rate variable
         self.add_variables(
@@ -1162,6 +1184,11 @@ class BusModel(ElementModel):
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
+
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
@@ -1248,6 +1275,10 @@ class ComponentModel(ElementModel):
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
+
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
 
         # Create component status variable and StatusModel if needed
         if self.element.status_parameters:

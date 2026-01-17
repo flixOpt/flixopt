@@ -200,6 +200,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
+        self._dce_mode: bool = False  # When True, elements skip _do_modeling()
 
     def add_variables(
         self,
@@ -257,6 +258,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             fall back to individual creation.
         """
         from .vectorized import ConstraintRegistry, VariableRegistry
+
+        # Enable DCE mode - elements will skip _do_modeling() variable creation
+        self._dce_mode = True
 
         # Initialize registries
         variable_registry = VariableRegistry(self)

@@ -818,6 +818,10 @@ class TransmissionModel(ComponentModel):
         """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
         super()._do_modeling()
 
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
+
         # first direction
         self.create_transmission_equation('dir1', self.element.in1, self.element.out1)
 
@@ -868,6 +872,10 @@ class LinearConverterModel(ComponentModel):
     def _do_modeling(self):
         """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
+
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
 
         # Create conversion factor constraints if specified
         if self.element.conversion_factors:
@@ -928,6 +936,9 @@ class StorageModel(ComponentModel):
     def _do_modeling(self):
         """Create charge state variables, energy balance equations, and optional investment submodels."""
         super()._do_modeling()
+        # In DCE mode, skip variable/constraint creation - will be added later
+        if self._model._dce_mode:
+            return
         self._create_storage_variables()
         self._add_netto_discharge_constraint()
         self._add_energy_balance_constraint()
@@ -1304,6 +1315,9 @@ class InterclusterStorageModel(StorageModel):
         inter-cluster linking. Overrides specific methods to customize behavior.
         """
         super()._do_modeling()
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
         self._add_intercluster_linking()
 
     def _add_cluster_cyclic_constraint(self):
