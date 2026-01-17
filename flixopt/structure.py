@@ -455,7 +455,6 @@ class TypeModel(ABC):
             )
 
         # Slow path: need full concat for multi-dimensional bounds
-        # First, collect all arrays with element dimension added
         arrays_to_stack = []
         for bound, eid in zip(bounds, self.element_ids, strict=False):
             if isinstance(bound, xr.DataArray):
@@ -464,27 +463,21 @@ class TypeModel(ABC):
                 arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
             arrays_to_stack.append(arr)
 
-        # Find union of all non-element dimensions
-        all_non_element_dims = set()
-        dim_coords = {}
+        # Find union of all non-element dimensions and their coords
+        all_dims = {}  # dim -> coords
         for arr in arrays_to_stack:
             for dim in arr.dims:
-                if dim != 'element' and dim not in all_non_element_dims:
-                    all_non_element_dims.add(dim)
-                    dim_coords[dim] = arr.coords[dim]
+                if dim != 'element' and dim not in all_dims:
+                    all_dims[dim] = arr.coords[dim].values
 
-        # Expand each array to have all dimensions, preserving element coordinate
+        # Expand each array to have all non-element dimensions
         expanded = []
         for arr in arrays_to_stack:
-            for dim in all_non_element_dims:
+            for dim, coords in all_dims.items():
                 if dim not in arr.dims:
-                    coord_vals = dim_coords[dim]
-                    if hasattr(coord_vals, 'values'):
-                        coord_vals = coord_vals.values
-                    arr = arr.expand_dims({dim: coord_vals})
+                    arr = arr.expand_dims({dim: coords})
             expanded.append(arr)
 
-        # Now concat along element - all arrays have same non-element dimensions
         stacked = xr.concat(expanded, dim='element')
 
         # Ensure element is first dimension
