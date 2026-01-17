@@ -1606,6 +1606,18 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
+        # Validate that timesteps match the clustering expectations
+        current_timesteps = len(self._fs.timesteps)
+        expected_timesteps = clustering.n_original_clusters * clustering.timesteps_per_cluster
+        if current_timesteps != expected_timesteps:
+            raise ValueError(
+                f'Timestep count mismatch in apply_clustering(): '
+                f'FlowSystem has {current_timesteps} timesteps, but clustering expects '
+                f'{expected_timesteps} timesteps ({clustering.n_original_clusters} clusters × '
+                f'{clustering.timesteps_per_cluster} timesteps/cluster). '
+                f'Ensure self._fs.timesteps matches the original data used for clustering.results.apply(ds).'
+            )
+
         # Apply existing clustering to all (period, scenario) combinations at once
         logger.info('Applying clustering...')
         with warnings.catch_warnings():

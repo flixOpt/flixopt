@@ -686,10 +686,14 @@ def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Da
             arrays = [variables[name].values for name in var_names]
             stacked_data = np.stack(arrays, axis=0)
 
+            # Capture per-variable attrs before stacking
+            per_variable_attrs = {name: dict(variables[name].attrs) for name in var_names}
+
             # Create new Variable with stacked dimension first
             stacked_var = xr.Variable(
                 dims=(group_stacked_dim,) + dims,
                 data=stacked_data,
+                attrs={'__per_variable_attrs__': per_variable_attrs},
             )
             new_data_vars[f'stacked_{dim_suffix}'] = stacked_var
 
@@ -736,12 +740,16 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
             labels = ds.coords[stacked_dim].values
             # Get remaining dims (everything except stacked dim)
             remaining_dims = var.dims[:stacked_dim_idx] + var.dims[stacked_dim_idx + 1 :]
+            # Get per-variable attrs if available
+            per_variable_attrs = var.attrs.get('__per_variable_attrs__', {})
             # Extract each slice using numpy indexing (much faster than .sel())
             data = var.values
             for idx, label in enumerate(labels):
                 # Use numpy indexing to get the slice
                 sliced_data = np.take(data, idx, axis=stacked_dim_idx)
-                new_data_vars[str(label)] = xr.Variable(remaining_dims, sliced_data)
+                # Restore original attrs if available
+                restored_attrs = per_variable_attrs.get(str(label), {})
+                new_data_vars[str(label)] = xr.Variable(remaining_dims, sliced_data, attrs=restored_attrs)
         else:
             new_data_vars[name] = var
 

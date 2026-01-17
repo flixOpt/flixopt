@@ -1177,8 +1177,8 @@ class TestSegmentation:
 
         # Each mapped value should be in valid range: [0, n_clusters * n_segments)
         max_valid_idx = 2 * 6 - 1  # n_clusters * n_segments - 1
-        assert mapping.min() >= 0
-        assert mapping.max() <= max_valid_idx
+        assert mapping.min().item() >= 0
+        assert mapping.max().item() <= max_valid_idx
 
     @pytest.mark.parametrize('freq', ['1h', '2h'])
     def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
