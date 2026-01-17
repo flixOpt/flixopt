@@ -337,7 +337,7 @@ class TypeModel(ABC):
         var_type: VariableType,
         lower: xr.DataArray | float = -np.inf,
         upper: xr.DataArray | float = np.inf,
-        dims: tuple[str, ...] = ('time',),
+        dims: tuple[str, ...] | None = ('time',),
         **kwargs,
     ) -> linopy.Variable:
         """Create a batched variable with element dimension.
@@ -347,7 +347,7 @@ class TypeModel(ABC):
             var_type: Variable type for semantic categorization.
             lower: Lower bounds (scalar or per-element DataArray).
             upper: Upper bounds (scalar or per-element DataArray).
-            dims: Additional dimensions beyond 'element'.
+            dims: Dimensions beyond 'element'. None means ALL model dimensions.
             **kwargs: Additional arguments passed to model.add_variables().
 
         Returns:
@@ -396,11 +396,11 @@ class TypeModel(ABC):
         self._constraints[name] = constraint
         return constraint
 
-    def _build_coords(self, dims: tuple[str, ...] = ('time',)) -> xr.Coordinates:
+    def _build_coords(self, dims: tuple[str, ...] | None = ('time',)) -> xr.Coordinates:
         """Build coordinate dict with element dimension + model dimensions.
 
         Args:
-            dims: Tuple of dimension names from the model.
+            dims: Tuple of dimension names from the model. If None, includes ALL model dimensions.
 
         Returns:
             xarray Coordinates with 'element' + requested dims.
@@ -410,9 +410,14 @@ class TypeModel(ABC):
         # Add model dimensions
         model_coords = self.model.get_coords(dims=dims)
         if model_coords is not None:
-            for dim in dims:
-                if dim in model_coords:
-                    coord_dict[dim] = model_coords[dim]
+            if dims is None:
+                # Include all model coords
+                for dim, coord in model_coords.items():
+                    coord_dict[dim] = coord
+            else:
+                for dim in dims:
+                    if dim in model_coords:
+                        coord_dict[dim] = model_coords[dim]
 
         return xr.Coordinates(coord_dict)
 

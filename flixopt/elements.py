@@ -1613,6 +1613,8 @@ class FlowsModel(TypeModel):
         - flow_hours_over_periods: For flows with that constraint
         """
         # === flow_rate: ALL flows ===
+        # Use dims=None to include ALL dimensions (time, period, scenario)
+        # This matches traditional mode behavior where flow_rate has all coords
         lower_bounds = self._collect_bounds('absolute_lower')
         upper_bounds = self._collect_bounds('absolute_upper')
 
@@ -1621,7 +1623,7 @@ class FlowsModel(TypeModel):
             var_type=VariableType.FLOW_RATE,
             lower=lower_bounds,
             upper=upper_bounds,
-            dims=self.model.temporal_dims,
+            dims=None,  # Include all dimensions (time, period, scenario)
         )
 
         # === total_flow_hours: ALL flows ===
@@ -1647,7 +1649,7 @@ class FlowsModel(TypeModel):
                 var_type=VariableType.STATUS,
                 element_ids=self.status_ids,
                 binary=True,
-                dims=self.model.temporal_dims,
+                dims=None,  # Include all dimensions (time, period, scenario)
             )
 
         # Note: Investment variables (size, invested) are created by InvestmentsModel
@@ -1719,7 +1721,7 @@ class FlowsModel(TypeModel):
         name: str,
         var_type: VariableType,
         element_ids: list[str],
-        dims: tuple[str, ...],
+        dims: tuple[str, ...] | None,
         lower: xr.DataArray | float = -np.inf,
         upper: xr.DataArray | float = np.inf,
         binary: bool = False,
@@ -1729,14 +1731,22 @@ class FlowsModel(TypeModel):
 
         Unlike add_variables() which uses self.element_ids, this creates
         a variable with a custom subset of element IDs.
+
+        Args:
+            dims: Dimensions to include. None means ALL model dimensions.
         """
         # Build coordinates with subset element dimension
         coord_dict = {'element': pd.Index(element_ids, name='element')}
         model_coords = self.model.get_coords(dims=dims)
         if model_coords is not None:
-            for dim in dims:
-                if dim in model_coords:
-                    coord_dict[dim] = model_coords[dim]
+            if dims is None:
+                # Include all model coords
+                for dim, coord in model_coords.items():
+                    coord_dict[dim] = coord
+            else:
+                for dim in dims:
+                    if dim in model_coords:
+                        coord_dict[dim] = model_coords[dim]
         coords = xr.Coordinates(coord_dict)
 
         # Create variable
