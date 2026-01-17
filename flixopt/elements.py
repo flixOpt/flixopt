@@ -4,6 +4,7 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import TYPE_CHECKING
 
@@ -866,7 +867,7 @@ class FlowModel(ElementModel):
                 short_name='load_factor_min',
             )
 
-    @property
+    @functools.cached_property
     def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         if self.element.fixed_relative_profile is not None:
             return self.element.fixed_relative_profile, self.element.fixed_relative_profile

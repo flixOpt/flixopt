@@ -4,6 +4,7 @@ This module contains the basic components of the flixopt framework.
 
 from __future__ import annotations
 
+import functools
 import logging
 import warnings
 from typing import TYPE_CHECKING, Literal
@@ -1102,7 +1103,7 @@ class StorageModel(ComponentModel):
                 relative_upper_bound * cap,
             )
 
-    @property
+    @functools.cached_property
     def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Get relative charge state bounds with final timestep values.
