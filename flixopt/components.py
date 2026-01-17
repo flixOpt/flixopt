@@ -28,6 +28,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+class _InvestmentProxy:
+    """Proxy providing access to batched InvestmentsModel for a specific element.
+
+    This class provides the same interface as InvestmentModel.size/invested
+    but returns slices from the batched InvestmentsModel variables.
+    """
+
+    def __init__(self, investments_model, element_id: str):
+        self._investments_model = investments_model
+        self._element_id = element_id
+
+    @property
+    def size(self):
+        """Investment size variable for this element."""
+        return self._investments_model.get_variable('size', self._element_id)
+
+    @property
+    def invested(self):
+        """Binary investment decision variable for this element (if non-mandatory)."""
+        return self._investments_model.get_variable('invested', self._element_id)
+
+
 @register_class_for_io
 class LinearConverter(Component):
     """
@@ -1621,12 +1643,15 @@ class StoragesModel:
 
     This enables:
     - Batched charge_state and netto_discharge variables with element dimension
+    - Batched investment variables via InvestmentsModel
     - Consistent architecture with FlowsModel and BusesModel
 
     Example:
         >>> storages_model = StoragesModel(model, basic_storages, flows_model)
         >>> storages_model.create_variables()
         >>> storages_model.create_constraints()
+        >>> storages_model.create_investment_model()  # After storage variables exist
+        >>> storages_model.create_investment_constraints()
     """
 
     def __init__(
@@ -1658,6 +1683,9 @@ class StoragesModel:
             s for s in elements if isinstance(s.capacity_in_flow_hours, InvestParameters)
         ]
         self.investment_ids: list[str] = [s.label_full for s in self.storages_with_investment]
+
+        # Batched investment model (created later via create_investment_model)
+        self._investments_model = None
 
         # Set reference on each storage element
         for storage in elements:
@@ -1943,59 +1971,93 @@ class StoragesModel:
             name='storage|cluster_cyclic',
         )
 
-    def create_investment_constraints(self) -> None:
-        """Create scaled bounds for storages with investment.
+    def create_investment_model(self) -> None:
+        """Create batched InvestmentsModel for storages with investment.
 
-        Must be called AFTER investment models are created (in component.create_model()).
+        This method creates variables (size, invested) for all storages with
+        InvestParameters using a single batched model.
+
+        Must be called BEFORE create_investment_constraints().
+        """
+        if not self.storages_with_investment:
+            return
+
+        from .features import InvestmentsModel
+        from .structure import VariableCategory
+
+        self._investments_model = InvestmentsModel(
+            model=self.model,
+            elements=self.storages_with_investment,
+            parameters_getter=lambda s: s.capacity_in_flow_hours,
+            size_category=VariableCategory.STORAGE_SIZE,
+        )
+        self._investments_model.create_variables()
+        self._investments_model.create_constraints()
+        self._investments_model.create_effect_shares()
+
+        logger.debug(
+            f'StoragesModel created batched InvestmentsModel for {len(self.storages_with_investment)} storages'
+        )
+
+    def create_investment_constraints(self) -> None:
+        """Create batched scaled bounds linking charge_state to investment size.
+
+        Must be called AFTER create_investment_model().
 
         Mathematical formulation:
             charge_state >= size * relative_minimum_charge_state
             charge_state <= size * relative_maximum_charge_state
 
-        Note:
-            These constraints are created per-element because each storage has its own
-            investment.size variable. True batching would require a batched InvestmentsModel
-            with a shared size variable with element dimension.
+        Uses the batched size variable from InvestmentsModel for true vectorized
+        constraint creation.
         """
-        if not self.storages_with_investment:
+        if not self.storages_with_investment or self._investments_model is None:
             return
 
         charge_state = self._variables['charge_state']
+        size_var = self._investments_model.size  # Batched size with element dimension
 
-        # Create scaled bounds constraints for each storage with investment
+        # Collect relative bounds for all investment storages
+        rel_lowers = []
+        rel_uppers = []
         for storage in self.storages_with_investment:
-            element_id = storage.label_full
-
-            # Get investment size variable from the storage's submodel
-            size_var = storage.submodel.investment.size
-
-            # Get relative bounds for this storage
             rel_lower, rel_upper = self._get_relative_charge_state_bounds(storage)
+            rel_lowers.append(rel_lower)
+            rel_uppers.append(rel_upper)
 
-            # Get charge_state for this specific storage
-            cs_element = charge_state.sel(element=element_id)
+        # Stack relative bounds with element dimension
+        rel_lower_stacked = xr.concat(rel_lowers, dim='element').assign_coords(element=self.investment_ids)
+        rel_upper_stacked = xr.concat(rel_uppers, dim='element').assign_coords(element=self.investment_ids)
 
-            # Check if bounds are equal (fixed relative bounds)
-            from .modeling import _xr_allclose
+        # Select charge_state for investment storages only
+        cs_investment = charge_state.sel(element=self.investment_ids)
 
-            if _xr_allclose(rel_lower, rel_upper):
-                # Fixed bounds: charge_state == size * relative_bound
-                self.model.add_constraints(
-                    cs_element == size_var * rel_lower,
-                    name=f'{element_id}|charge_state|fixed',
-                )
-            else:
-                # Variable bounds: lower <= charge_state <= upper
-                self.model.add_constraints(
-                    cs_element >= size_var * rel_lower,
-                    name=f'{element_id}|charge_state|lb',
-                )
-                self.model.add_constraints(
-                    cs_element <= size_var * rel_upper,
-                    name=f'{element_id}|charge_state|ub',
-                )
+        # Select size for these storages (it already has element dimension)
+        size_investment = size_var.sel(element=self.investment_ids)
 
-        logger.debug(f'StoragesModel created investment constraints for {len(self.storages_with_investment)} storages')
+        # Check if all bounds are equal (fixed relative bounds)
+        from .modeling import _xr_allclose
+
+        if _xr_allclose(rel_lower_stacked, rel_upper_stacked):
+            # Fixed bounds: charge_state == size * relative_bound
+            self.model.add_constraints(
+                cs_investment == size_investment * rel_lower_stacked,
+                name='storage|charge_state|investment|fixed',
+            )
+        else:
+            # Variable bounds: lower <= charge_state <= upper
+            self.model.add_constraints(
+                cs_investment >= size_investment * rel_lower_stacked,
+                name='storage|charge_state|investment|lb',
+            )
+            self.model.add_constraints(
+                cs_investment <= size_investment * rel_upper_stacked,
+                name='storage|charge_state|investment|ub',
+            )
+
+        logger.debug(
+            f'StoragesModel created batched investment constraints for {len(self.storages_with_investment)} storages'
+        )
 
     def _add_initial_final_constraints_legacy(self, storage, cs) -> None:
         """Legacy per-element initial/final constraints (kept for reference)."""
@@ -2089,37 +2151,36 @@ class StorageModelProxy(ComponentModel):
             flow.create_model(self._model)
             self.add_submodels(flow.submodel, short_name=flow.label)
 
-        # Handle investment model if applicable
-        # Note: Investment model is created here, but scaled bounds constraints
-        # are created by StoragesModel.create_investment_constraints() which runs
-        # after all component models are created.
-        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            self.add_submodels(
-                InvestmentModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=self.label_of_element,
-                    parameters=self.element.capacity_in_flow_hours,
-                    size_category=VariableCategory.STORAGE_SIZE,
-                ),
-                short_name='investment',
-            )
-            # Scaled bounds constraints are created by StoragesModel.create_investment_constraints()
-            # in batched form after all component models are created
+        # Note: Investment model is handled by StoragesModel's InvestmentsModel
+        # The batched investment creates size/invested variables for all storages at once
+        # StorageModelProxy.investment property provides access to the batched variables
 
-        # Handle balanced sizes constraint
+        # Handle balanced sizes constraint (for flows with investment)
         if self.element.balanced:
+            # Get size variables from flows' investment models
+            charge_size = self.element.charging.submodel.investment.size
+            discharge_size = self.element.discharging.submodel.investment.size
             self._model.add_constraints(
-                self.element.charging.submodel.investment.size - self.element.discharging.submodel.investment.size == 0,
+                charge_size - discharge_size == 0,
                 name=f'{self.label_of_element}|balanced_sizes',
             )
 
     @property
-    def investment(self) -> InvestmentModel | None:
-        """Investment feature."""
-        if 'investment' not in self.submodels:
+    def investment(self):
+        """Investment feature - provides access to batched InvestmentsModel for this storage.
+
+        Returns a proxy object with size/invested properties that select this storage's
+        portion of the batched investment variables.
+        """
+        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return None
-        return self.submodels['investment']
+
+        investments_model = self._storages_model._investments_model
+        if investments_model is None:
+            return None
+
+        # Return a proxy that provides size/invested for this specific element
+        return _InvestmentProxy(investments_model, self.label_full)
 
     @property
     def charge_state(self) -> linopy.Variable:

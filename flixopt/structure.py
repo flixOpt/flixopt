@@ -861,20 +861,25 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('storages_constraints')
 
+        # Create batched investment model for storages (creates size/invested variables, constraints, effects)
+        self._storages_model.create_investment_model()
+
+        record('storages_investment_model')
+
+        # Create batched investment constraints linking charge_state to investment size
+        self._storages_model.create_investment_constraints()
+
+        record('storages_investment_constraints')
+
         # Enable type-level mode - Flows, Buses, and Storages will use proxy models
         self._type_level_mode = True
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
+        # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
         for component in self.flow_system.components.values():
             component.create_model(self)
 
         record('components')
-
-        # Create batched investment constraints for storages (needs investment models from components)
-        if self._storages_model is not None:
-            self._storages_model.create_investment_constraints()
-
-        record('storages_investment')
 
         # Create bus proxy models (for results structure, no variables/constraints)
         for bus in self.flow_system.buses.values():
@@ -902,8 +907,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'buses_effects',
                 'storages_variables',
                 'storages_constraints',
+                'storages_investment_model',
+                'storages_investment_constraints',
                 'components',
-                'storages_investment',
                 'buses',
                 'end',
             ]:

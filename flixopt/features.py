@@ -154,6 +154,356 @@ class InvestmentModel(Submodel):
         return self._variables['invested']
 
 
+class InvestmentsModel:
+    """Type-level model for batched investment decisions across multiple elements.
+
+    Unlike InvestmentModel (one per element), InvestmentsModel handles ALL elements
+    with investment in a single instance with batched variables.
+
+    This enables:
+    - Batched `size` and `invested` variables with element dimension
+    - Vectorized constraint creation
+    - Batched effect shares
+
+    The model categorizes elements by investment type:
+    - mandatory: Required investment (only size variable, with bounds)
+    - non_mandatory: Optional investment (size + invested variables, state-controlled bounds)
+
+    Example:
+        >>> investments_model = InvestmentsModel(
+        ...     model=flow_system_model,
+        ...     elements=storages_with_investment,
+        ...     parameters_getter=lambda s: s.capacity_in_flow_hours,
+        ...     size_category=VariableCategory.STORAGE_SIZE,
+        ... )
+        >>> investments_model.create_variables()
+        >>> investments_model.create_constraints()
+        >>> investments_model.create_effect_shares()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        elements: list,
+        parameters_getter: callable,
+        size_category: VariableCategory = VariableCategory.SIZE,
+    ):
+        """Initialize the type-level investment model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of elements with InvestParameters.
+            parameters_getter: Function to get InvestParameters from element.
+                e.g., lambda storage: storage.capacity_in_flow_hours
+            size_category: Category for size variable expansion.
+        """
+        import logging
+
+        import pandas as pd
+        import xarray as xr
+
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.elements = elements
+        self.element_ids: list[str] = [e.label_full for e in elements]
+        self._parameters_getter = parameters_getter
+        self._size_category = size_category
+
+        # Storage for created variables
+        self._variables: dict[str, linopy.Variable] = {}
+
+        # Categorize by mandatory/non-mandatory
+        self._mandatory_elements: list = []
+        self._mandatory_ids: list[str] = []
+        self._non_mandatory_elements: list = []
+        self._non_mandatory_ids: list[str] = []
+
+        for element in elements:
+            params = parameters_getter(element)
+            if params.mandatory:
+                self._mandatory_elements.append(element)
+                self._mandatory_ids.append(element.label_full)
+            else:
+                self._non_mandatory_elements.append(element)
+                self._non_mandatory_ids.append(element.label_full)
+
+        # Store xr and pd for use in methods
+        self._xr = xr
+        self._pd = pd
+
+    def create_variables(self) -> None:
+        """Create batched investment variables with element dimension.
+
+        Creates:
+        - size: For ALL elements (with element dimension)
+        - invested: For non-mandatory elements only (binary, with element dimension)
+        """
+        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
+
+        if not self.elements:
+            return
+
+        xr = self._xr
+        pd = self._pd
+
+        # Get base coords (period, scenario) - may be None if neither exist
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+
+        # === size: ALL elements ===
+        # Collect bounds per element
+        lower_bounds_list = []
+        upper_bounds_list = []
+
+        for element in self.elements:
+            params = self._parameters_getter(element)
+            size_min = params.minimum_or_fixed_size
+            size_max = params.maximum_or_fixed_size
+
+            # Handle linked_periods masking
+            if params.linked_periods is not None:
+                size_min = size_min * params.linked_periods
+                size_max = size_max * params.linked_periods
+
+            # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
+            if not params.mandatory:
+                size_min = xr.zeros_like(size_min) if isinstance(size_min, xr.DataArray) else 0
+
+            lower_bounds_list.append(size_min if isinstance(size_min, xr.DataArray) else xr.DataArray(size_min))
+            upper_bounds_list.append(size_max if isinstance(size_max, xr.DataArray) else xr.DataArray(size_max))
+
+        # Stack bounds into DataArrays with element dimension
+        lower_bounds = xr.concat(lower_bounds_list, dim='element').assign_coords(element=self.element_ids)
+        upper_bounds = xr.concat(upper_bounds_list, dim='element').assign_coords(element=self.element_ids)
+
+        # Build coords with element dimension
+        size_coords = xr.Coordinates(
+            {
+                'element': pd.Index(self.element_ids, name='element'),
+                **base_coords_dict,
+            }
+        )
+
+        size_var = self.model.add_variables(
+            lower=lower_bounds,
+            upper=upper_bounds,
+            coords=size_coords,
+            name='investment|size',
+        )
+        self._variables['size'] = size_var
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
+        if expansion_category is not None:
+            self.model.variable_categories[size_var.name] = expansion_category
+
+        # === invested: non-mandatory elements only ===
+        if self._non_mandatory_elements:
+            invested_coords = xr.Coordinates(
+                {
+                    'element': pd.Index(self._non_mandatory_ids, name='element'),
+                    **base_coords_dict,
+                }
+            )
+
+            invested_var = self.model.add_variables(
+                binary=True,
+                coords=invested_coords,
+                name='investment|invested',
+            )
+            self._variables['invested'] = invested_var
+
+            # Register category
+            expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.INVESTED)
+            if expansion_category is not None:
+                self.model.variable_categories[invested_var.name] = expansion_category
+
+        self._logger.debug(
+            f'InvestmentsModel created variables: {len(self.elements)} elements '
+            f'({len(self._mandatory_elements)} mandatory, {len(self._non_mandatory_elements)} non-mandatory)'
+        )
+
+    def create_constraints(self) -> None:
+        """Create batched investment constraints.
+
+        For non-mandatory investments, creates state-controlled bounds:
+            invested * min_size <= size <= invested * max_size
+        """
+        if not self._non_mandatory_elements:
+            return
+
+        xr = self._xr
+
+        size_var = self._variables['size']
+        invested_var = self._variables['invested']
+
+        # Collect bounds for non-mandatory elements
+        min_bounds_list = []
+        max_bounds_list = []
+
+        for element in self._non_mandatory_elements:
+            params = self._parameters_getter(element)
+            min_bounds_list.append(
+                params.minimum_or_fixed_size
+                if isinstance(params.minimum_or_fixed_size, xr.DataArray)
+                else xr.DataArray(params.minimum_or_fixed_size)
+            )
+            max_bounds_list.append(
+                params.maximum_or_fixed_size
+                if isinstance(params.maximum_or_fixed_size, xr.DataArray)
+                else xr.DataArray(params.maximum_or_fixed_size)
+            )
+
+        min_bounds = xr.concat(min_bounds_list, dim='element').assign_coords(element=self._non_mandatory_ids)
+        max_bounds = xr.concat(max_bounds_list, dim='element').assign_coords(element=self._non_mandatory_ids)
+
+        # Select size for non-mandatory elements
+        size_non_mandatory = size_var.sel(element=self._non_mandatory_ids)
+
+        # State-controlled bounds: invested * min <= size <= invested * max
+        # Lower bound with epsilon to force non-zero when invested
+        from .config import CONFIG
+
+        epsilon = CONFIG.Modeling.epsilon
+        effective_min = xr.where(min_bounds > epsilon, min_bounds, epsilon)
+
+        self.model.add_constraints(
+            size_non_mandatory >= invested_var * effective_min,
+            name='investment|size|lb',
+        )
+        self.model.add_constraints(
+            size_non_mandatory <= invested_var * max_bounds,
+            name='investment|size|ub',
+        )
+
+        # Handle linked_periods constraints
+        self._add_linked_periods_constraints()
+
+        self._logger.debug(
+            f'InvestmentsModel created constraints for {len(self._non_mandatory_elements)} non-mandatory elements'
+        )
+
+    def _add_linked_periods_constraints(self) -> None:
+        """Add linked periods constraints for elements that have them."""
+        size_var = self._variables['size']
+
+        for element in self.elements:
+            params = self._parameters_getter(element)
+            if params.linked_periods is not None:
+                element_size = size_var.sel(element=element.label_full)
+                masked_size = element_size.where(params.linked_periods, drop=True)
+                if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
+                    self.model.add_constraints(
+                        masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                        name=f'{element.label_full}|linked_periods',
+                    )
+
+    def create_effect_shares(self) -> None:
+        """Create batched effect shares for investment effects.
+
+        Handles:
+        - effects_of_investment (fixed costs)
+        - effects_of_investment_per_size (variable costs)
+        - effects_of_retirement (divestment costs)
+
+        Note: piecewise_effects_of_investment is handled per-element due to complexity.
+        """
+        size_var = self._variables['size']
+        invested_var = self._variables.get('invested')
+
+        # Collect effect shares by effect name
+        fix_effects: dict[str, list[tuple[str, any]]] = {}  # effect_name -> [(element_id, factor), ...]
+        per_size_effects: dict[str, list[tuple[str, any]]] = {}
+        retirement_effects: dict[str, list[tuple[str, any]]] = {}
+
+        for element in self.elements:
+            params = self._parameters_getter(element)
+            element_id = element.label_full
+
+            if params.effects_of_investment:
+                for effect_name, factor in params.effects_of_investment.items():
+                    if effect_name not in fix_effects:
+                        fix_effects[effect_name] = []
+                    fix_effects[effect_name].append((element_id, factor))
+
+            if params.effects_of_investment_per_size:
+                for effect_name, factor in params.effects_of_investment_per_size.items():
+                    if effect_name not in per_size_effects:
+                        per_size_effects[effect_name] = []
+                    per_size_effects[effect_name].append((element_id, factor))
+
+            if params.effects_of_retirement and not params.mandatory:
+                for effect_name, factor in params.effects_of_retirement.items():
+                    if effect_name not in retirement_effects:
+                        retirement_effects[effect_name] = []
+                    retirement_effects[effect_name].append((element_id, factor))
+
+        # Apply fixed effects (factor * invested or factor if mandatory)
+        for effect_name, element_factors in fix_effects.items():
+            expressions = {}
+            for element_id, factor in element_factors:
+                element = next(e for e in self.elements if e.label_full == element_id)
+                params = self._parameters_getter(element)
+                if params.mandatory:
+                    # Always incurred
+                    expressions[element_id] = factor
+                else:
+                    # Only if invested
+                    invested_elem = invested_var.sel(element=element_id)
+                    expressions[element_id] = invested_elem * factor
+
+            # Add to effects (per-element for now, could be batched further)
+            for element_id, expr in expressions.items():
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|invest_fix',
+                    expressions={effect_name: expr},
+                    target='periodic',
+                )
+
+        # Apply per-size effects (size * factor)
+        for effect_name, element_factors in per_size_effects.items():
+            for element_id, factor in element_factors:
+                size_elem = size_var.sel(element=element_id)
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|invest_per_size',
+                    expressions={effect_name: size_elem * factor},
+                    target='periodic',
+                )
+
+        # Apply retirement effects (-invested * factor + factor)
+        for effect_name, element_factors in retirement_effects.items():
+            for element_id, factor in element_factors:
+                invested_elem = invested_var.sel(element=element_id)
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|invest_retire',
+                    expressions={effect_name: -invested_elem * factor + factor},
+                    target='periodic',
+                )
+
+        self._logger.debug('InvestmentsModel created effect shares')
+
+    def get_variable(self, name: str, element_id: str | None = None):
+        """Get a variable, optionally selecting a specific element."""
+        var = self._variables.get(name)
+        if var is None:
+            return None
+        if element_id is not None:
+            if element_id in var.coords.get('element', []):
+                return var.sel(element=element_id)
+            return None
+        return var
+
+    @property
+    def size(self) -> linopy.Variable:
+        """Batched size variable with element dimension."""
+        return self._variables['size']
+
+    @property
+    def invested(self) -> linopy.Variable | None:
+        """Batched invested variable with element dimension (non-mandatory only)."""
+        return self._variables.get('invested')
+
+
 class StatusModel(Submodel):
     """Mathematical model implementation for binary status.
 
