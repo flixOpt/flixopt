@@ -863,56 +863,19 @@ class EffectShareRegistry:
             flow_rate = self.variable_registry.get_full_variable('flow_rate')
             element_ids = self.variable_registry.get_element_ids('flow_rate')
 
-            # Build factors array: factor[i] = spec.factor if element_id matches, else 0
-            # Factors can be scalars or DataArrays (which may be constant-valued)
-            factors = np.zeros(len(element_ids))
-            element_to_idx = {eid: i for i, eid in enumerate(element_ids)}
-            has_time_varying = False
-            matched_count = 0
+            # Build factors: map element_id -> factor (0 for elements without effects)
+            spec_map = {spec.element_id: spec.factor for spec in specs}
+            factors_list = [spec_map.get(eid, 0) for eid in element_ids]
 
-            for spec in specs:
-                if spec.element_id in element_to_idx:
-                    matched_count += 1
-                    idx = element_to_idx[spec.element_id]
-                    factor = spec.factor
-
-                    # Handle different factor types
-                    if isinstance(factor, (int, float)):
-                        factors[idx] = factor
-                    elif isinstance(factor, xr.DataArray):
-                        # Check if the DataArray is essentially constant
-                        values = factor.values.ravel()
-                        if np.allclose(values, values[0], rtol=1e-10, atol=1e-14):
-                            # Constant factor - extract scalar
-                            factors[idx] = values[0]
-                        else:
-                            # Truly time-varying
-                            has_time_varying = True
-                            break
-                    else:
-                        # Unknown type, fall back
-                        has_time_varying = True
-                        break
-                else:
-                    logger.debug(f'element_id NOT FOUND in registry: {spec.element_id}')
-
-            # Fall back if we have time-varying factors
-            if has_time_varying:
-                logger.debug('Time-varying factors detected, falling back to individual creation')
-                for spec in specs:
-                    self._create_individual(effect_name, target, [spec])
-                return
-
-            # Create factors as xarray DataArray aligned with element dimension
-            factors_da = xr.DataArray(
-                factors,
-                dims=['element'],
-                coords={'element': element_ids},
-            )
+            # Stack factors into DataArray with element dimension
+            # xarray handles broadcasting of scalars and DataArrays automatically
+            factors_da = xr.concat(
+                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors_list],
+                dim='element',
+            ).assign_coords(element=element_ids)
 
             # Compute batched expression: flow_rate * timestep_duration * factors
-            # Result shape: (element, time, period, scenario)
-            # This is a SIMPLE expression per element (not a sum!)
+            # Broadcasting handles (element, time, ...) * (element,) or (element, time, ...)
             t1 = time.perf_counter()
             expression = flow_rate * self.model.timestep_duration * factors_da
             t2 = time.perf_counter()
