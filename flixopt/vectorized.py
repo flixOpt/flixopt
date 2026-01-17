@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -630,8 +630,21 @@ class ConstraintRegistry:
             return self._batch_total_flow_hours_eq(specs)
         elif category == 'flow_hours_over_periods_eq':
             return self._batch_flow_hours_over_periods_eq(specs)
+        elif category == 'flow_rate_ub':
+            return self._batch_flow_rate_ub(specs)
+        elif category == 'flow_rate_lb':
+            return self._batch_flow_rate_lb(specs)
 
         return False
+
+    def _get_flow_elements(self) -> dict[str, Any]:
+        """Build a mapping from element_id (label_full) to Flow element."""
+        if not hasattr(self, '_flow_element_map'):
+            self._flow_element_map = {}
+            for comp in self.model.flow_system.components.values():
+                for flow in comp.inputs + comp.outputs:
+                    self._flow_element_map[flow.label_full] = flow
+        return self._flow_element_map
 
     def _batch_total_flow_hours_eq(self, specs: list[ConstraintSpec]) -> bool:
         """Batch create: total_flow_hours = sum_temporal(flow_rate)"""
@@ -672,6 +685,75 @@ class ConstraintRegistry:
             return True
         except Exception as e:
             logger.warning(f'Failed to batch flow_hours_over_periods_eq, falling back: {e}')
+            return False
+
+    def _batch_flow_rate_ub(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: flow_rate <= status * size * relative_max"""
+        try:
+            # Get element_ids from specs (subset of all flows - only those with status)
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            # Get full batched variables and select only relevant elements
+            flow_rate_full = self.variable_registry.get_full_variable('flow_rate')
+            status_full = self.variable_registry.get_full_variable('status')
+
+            flow_rate = flow_rate_full.sel(element=spec_element_ids)
+            status = status_full.sel(element=spec_element_ids)
+
+            # Build upper bounds array from flow elements
+            flow_elements = self._get_flow_elements()
+            upper_bounds = xr.concat(
+                [flow_elements[eid].size * flow_elements[eid].relative_maximum for eid in spec_element_ids],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            # Create vectorized constraint: flow_rate <= status * upper_bounds
+            rhs = status * upper_bounds
+            self.model.add_constraints(flow_rate <= rhs, name='flow_rate_ub')
+
+            logger.debug(f'Batched {len(specs)} flow_rate_ub constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch flow_rate_ub, falling back: {e}')
+            return False
+
+    def _batch_flow_rate_lb(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: flow_rate >= status * epsilon"""
+        try:
+            from .config import CONFIG
+
+            # Get element_ids from specs (subset of all flows - only those with status)
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            # Get full batched variables and select only relevant elements
+            flow_rate_full = self.variable_registry.get_full_variable('flow_rate')
+            status_full = self.variable_registry.get_full_variable('status')
+
+            flow_rate = flow_rate_full.sel(element=spec_element_ids)
+            status = status_full.sel(element=spec_element_ids)
+
+            # Build lower bounds array from flow elements
+            # epsilon = max(CONFIG.Modeling.epsilon, size * relative_minimum)
+            flow_elements = self._get_flow_elements()
+            lower_bounds = xr.concat(
+                [
+                    np.maximum(
+                        CONFIG.Modeling.epsilon,
+                        flow_elements[eid].size * flow_elements[eid].relative_minimum,
+                    )
+                    for eid in spec_element_ids
+                ],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            # Create vectorized constraint: flow_rate >= status * lower_bounds
+            rhs = status * lower_bounds
+            self.model.add_constraints(flow_rate >= rhs, name='flow_rate_lb')
+
+            logger.debug(f'Batched {len(specs)} flow_rate_lb constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch flow_rate_lb, falling back: {e}')
             return False
 
     def _create_individual(self, category: str, specs: list[ConstraintSpec]) -> None:
