@@ -870,6 +870,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('components')
 
+        # Create batched investment constraints for storages (needs investment models from components)
+        if self._storages_model is not None:
+            self._storages_model.create_investment_constraints()
+
+        record('storages_investment')
+
         # Create bus proxy models (for results structure, no variables/constraints)
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
@@ -897,6 +903,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'storages_variables',
                 'storages_constraints',
                 'components',
+                'storages_investment',
                 'buses',
                 'end',
             ]:

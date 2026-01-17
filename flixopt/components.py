@@ -1797,12 +1797,12 @@ class StoragesModel:
         return xr.broadcast(min_bounds, max_bounds)
 
     def create_constraints(self) -> None:
-        """Create constraints for all storages.
+        """Create batched constraints for all storages.
 
-        Creates per-element (since parameters differ):
-        - netto_discharge constraint
-        - energy balance constraint
-        - initial/final constraints (where applicable)
+        Uses vectorized operations for efficiency:
+        - netto_discharge constraint (batched)
+        - energy balance constraint (batched)
+        - initial/final constraints (batched by type)
         """
         if not self.elements:
             return
@@ -1810,72 +1810,214 @@ class StoragesModel:
         flow_rate = self._flows_model._variables['flow_rate']
         charge_state = self._variables['charge_state']
         netto_discharge = self._variables['netto_discharge']
+        timestep_duration = self.model.timestep_duration
+
+        # === Batched netto_discharge constraint ===
+        # Build charge and discharge flow_rate selections aligned with storage element dimension
+        charge_flow_ids = [s.charging.label_full for s in self.elements]
+        discharge_flow_ids = [s.discharging.label_full for s in self.elements]
+
+        # Select and rename element dimension to match storage elements
+        charge_rates = flow_rate.sel(element=charge_flow_ids)
+        charge_rates = charge_rates.assign_coords(element=self.element_ids)
+        discharge_rates = flow_rate.sel(element=discharge_flow_ids)
+        discharge_rates = discharge_rates.assign_coords(element=self.element_ids)
+
+        self.model.add_constraints(
+            netto_discharge == discharge_rates - charge_rates,
+            name='storage|netto_discharge',
+        )
+
+        # === Batched energy balance constraint ===
+        # Stack parameters into DataArrays with element dimension
+        eta_charge = self._stack_parameter([s.eta_charge for s in self.elements])
+        eta_discharge = self._stack_parameter([s.eta_discharge for s in self.elements])
+        rel_loss = self._stack_parameter([s.relative_loss_per_hour for s in self.elements])
+
+        # Energy balance: cs[t+1] = cs[t] * (1-loss)^dt + charge * eta_c * dt - discharge * dt / eta_d
+        # Rearranged: cs[t+1] - cs[t] * (1-loss)^dt - charge * eta_c * dt + discharge * dt / eta_d = 0
+        energy_balance_lhs = (
+            charge_state.isel(time=slice(1, None))
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rates * eta_charge * timestep_duration
+            + discharge_rates * timestep_duration / eta_discharge
+        )
+        self.model.add_constraints(
+            energy_balance_lhs == 0,
+            name='storage|charge_state',
+        )
+
+        # === Initial/final constraints (grouped by type) ===
+        self._add_batched_initial_final_constraints(charge_state)
+
+        # === Cluster cyclic constraints ===
+        self._add_batched_cluster_cyclic_constraints(charge_state)
+
+        logger.debug(f'StoragesModel created batched constraints for {len(self.elements)} storages')
+
+    def _stack_parameter(self, values: list) -> xr.DataArray:
+        """Stack parameter values into DataArray with element dimension."""
+        das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
+        return xr.concat(das, dim='element').assign_coords(element=self.element_ids)
+
+    def _add_batched_initial_final_constraints(self, charge_state) -> None:
+        """Add batched initial and final charge state constraints."""
+        # Group storages by constraint type
+        storages_numeric_initial: list[tuple[Storage, float]] = []
+        storages_equals_final: list[Storage] = []
+        storages_max_final: list[tuple[Storage, float]] = []
+        storages_min_final: list[tuple[Storage, float]] = []
 
         for storage in self.elements:
-            storage_id = storage.label_full
-            cs = charge_state.sel(element=storage_id)
-            nd = netto_discharge.sel(element=storage_id)
+            # Skip for clustered independent/cyclic modes
+            if self.model.flow_system.clusters is not None and storage.cluster_mode in ('independent', 'cyclic'):
+                continue
 
-            # Get flow rates for this storage
-            charge_rate = flow_rate.sel(element=storage.charging.label_full)
-            discharge_rate = flow_rate.sel(element=storage.discharging.label_full)
+            if storage.initial_charge_state is not None:
+                if isinstance(storage.initial_charge_state, str):  # 'equals_final'
+                    storages_equals_final.append(storage)
+                else:
+                    storages_numeric_initial.append((storage, storage.initial_charge_state))
 
-            # netto_discharge constraint
+            if storage.maximal_final_charge_state is not None:
+                storages_max_final.append((storage, storage.maximal_final_charge_state))
+
+            if storage.minimal_final_charge_state is not None:
+                storages_min_final.append((storage, storage.minimal_final_charge_state))
+
+        # Batched numeric initial constraint
+        if storages_numeric_initial:
+            ids = [s.label_full for s, _ in storages_numeric_initial]
+            values = self._stack_parameter([v for _, v in storages_numeric_initial])
+            values = values.assign_coords(element=ids)
+            cs_initial = charge_state.sel(element=ids).isel(time=0)
             self.model.add_constraints(
-                nd == discharge_rate - charge_rate,
-                name=f'storage|{storage.label}|netto_discharge',
+                cs_initial == values,
+                name='storage|initial_charge_state',
             )
 
-            # Energy balance constraint
-            rel_loss = storage.relative_loss_per_hour
-            timestep_duration = self.model.timestep_duration
-            eff_charge = storage.eta_charge
-            eff_discharge = storage.eta_discharge
-
-            energy_balance_lhs = (
-                cs.isel(time=slice(1, None))
-                - cs.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-                - charge_rate * eff_charge * timestep_duration
-                + discharge_rate * timestep_duration / eff_discharge
-            )
+        # Batched equals_final constraint
+        if storages_equals_final:
+            ids = [s.label_full for s in storages_equals_final]
+            cs_subset = charge_state.sel(element=ids)
             self.model.add_constraints(
-                energy_balance_lhs == 0,
-                name=f'storage|{storage.label}|charge_state',
+                cs_subset.isel(time=0) == cs_subset.isel(time=-1),
+                name='storage|initial_equals_final',
             )
 
-            # Cluster cyclic constraint (for 'cyclic' mode)
-            if self.model.flow_system.clusters is not None and storage.cluster_mode == 'cyclic':
+        # Batched max final constraint
+        if storages_max_final:
+            ids = [s.label_full for s, _ in storages_max_final]
+            values = self._stack_parameter([v for _, v in storages_max_final])
+            values = values.assign_coords(element=ids)
+            cs_final = charge_state.sel(element=ids).isel(time=-1)
+            self.model.add_constraints(
+                cs_final <= values,
+                name='storage|final_charge_max',
+            )
+
+        # Batched min final constraint
+        if storages_min_final:
+            ids = [s.label_full for s, _ in storages_min_final]
+            values = self._stack_parameter([v for _, v in storages_min_final])
+            values = values.assign_coords(element=ids)
+            cs_final = charge_state.sel(element=ids).isel(time=-1)
+            self.model.add_constraints(
+                cs_final >= values,
+                name='storage|final_charge_min',
+            )
+
+    def _add_batched_cluster_cyclic_constraints(self, charge_state) -> None:
+        """Add batched cluster cyclic constraints for storages with cyclic mode."""
+        if self.model.flow_system.clusters is None:
+            return
+
+        cyclic_storages = [s for s in self.elements if s.cluster_mode == 'cyclic']
+        if not cyclic_storages:
+            return
+
+        ids = [s.label_full for s in cyclic_storages]
+        cs_subset = charge_state.sel(element=ids)
+        self.model.add_constraints(
+            cs_subset.isel(time=0) == cs_subset.isel(time=-2),
+            name='storage|cluster_cyclic',
+        )
+
+    def create_investment_constraints(self) -> None:
+        """Create scaled bounds for storages with investment.
+
+        Must be called AFTER investment models are created (in component.create_model()).
+
+        Mathematical formulation:
+            charge_state >= size * relative_minimum_charge_state
+            charge_state <= size * relative_maximum_charge_state
+
+        Note:
+            These constraints are created per-element because each storage has its own
+            investment.size variable. True batching would require a batched InvestmentsModel
+            with a shared size variable with element dimension.
+        """
+        if not self.storages_with_investment:
+            return
+
+        charge_state = self._variables['charge_state']
+
+        # Create scaled bounds constraints for each storage with investment
+        for storage in self.storages_with_investment:
+            element_id = storage.label_full
+
+            # Get investment size variable from the storage's submodel
+            size_var = storage.submodel.investment.size
+
+            # Get relative bounds for this storage
+            rel_lower, rel_upper = self._get_relative_charge_state_bounds(storage)
+
+            # Get charge_state for this specific storage
+            cs_element = charge_state.sel(element=element_id)
+
+            # Check if bounds are equal (fixed relative bounds)
+            from .modeling import _xr_allclose
+
+            if _xr_allclose(rel_lower, rel_upper):
+                # Fixed bounds: charge_state == size * relative_bound
                 self.model.add_constraints(
-                    cs.isel(time=0) == cs.isel(time=-2),
-                    name=f'storage|{storage.label}|cluster_cyclic',
+                    cs_element == size_var * rel_lower,
+                    name=f'{element_id}|charge_state|fixed',
+                )
+            else:
+                # Variable bounds: lower <= charge_state <= upper
+                self.model.add_constraints(
+                    cs_element >= size_var * rel_lower,
+                    name=f'{element_id}|charge_state|lb',
+                )
+                self.model.add_constraints(
+                    cs_element <= size_var * rel_upper,
+                    name=f'{element_id}|charge_state|ub',
                 )
 
-            # Initial/final constraints (skip for clustered independent/cyclic modes)
-            skip_initial_final = self.model.flow_system.clusters is not None and storage.cluster_mode in (
-                'independent',
-                'cyclic',
-            )
+        logger.debug(f'StoragesModel created investment constraints for {len(self.storages_with_investment)} storages')
 
-            if not skip_initial_final:
-                if storage.initial_charge_state is not None:
-                    if isinstance(storage.initial_charge_state, str):  # 'equals_final'
-                        self.model.add_constraints(
-                            cs.isel(time=0) == cs.isel(time=-1),
-                            name=f'storage|{storage.label}|initial_charge_state',
-                        )
-                    else:
-                        self.model.add_constraints(
-                            cs.isel(time=0) == storage.initial_charge_state,
-                            name=f'storage|{storage.label}|initial_charge_state',
-                        )
+    def _add_initial_final_constraints_legacy(self, storage, cs) -> None:
+        """Legacy per-element initial/final constraints (kept for reference)."""
+        skip_initial_final = self.model.flow_system.clusters is not None and storage.cluster_mode in (
+            'independent',
+            'cyclic',
+        )
 
-                if storage.maximal_final_charge_state is not None:
+        if not skip_initial_final:
+            if storage.initial_charge_state is not None:
+                if isinstance(storage.initial_charge_state, str):  # 'equals_final'
                     self.model.add_constraints(
-                        cs.isel(time=-1) <= storage.maximal_final_charge_state,
-                        name=f'storage|{storage.label}|final_charge_max',
+                        cs.isel(time=0) == cs.isel(time=-1),
+                        name=f'storage|{storage.label}|initial_charge_state',
+                    )
+                else:
+                    self.model.add_constraints(
+                        cs.isel(time=0) == storage.initial_charge_state,
+                        name=f'storage|{storage.label}|initial_charge_state',
                     )
 
-                if storage.minimal_final_charge_state is not None:
+                if storage.maximal_final_charge_state is not None:
                     self.model.add_constraints(
                         cs.isel(time=-1) >= storage.minimal_final_charge_state,
                         name=f'storage|{storage.label}|final_charge_min',
@@ -1948,6 +2090,9 @@ class StorageModelProxy(ComponentModel):
             self.add_submodels(flow.submodel, short_name=flow.label)
 
         # Handle investment model if applicable
+        # Note: Investment model is created here, but scaled bounds constraints
+        # are created by StoragesModel.create_investment_constraints() which runs
+        # after all component models are created.
         if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             self.add_submodels(
                 InvestmentModel(
@@ -1959,15 +2104,8 @@ class StorageModelProxy(ComponentModel):
                 ),
                 short_name='investment',
             )
-            # Add scaled bounds
-            charge_state = self._storages_model.get_variable('charge_state', self.label_full)
-            if charge_state is not None:
-                BoundingPatterns.scaled_bounds(
-                    self,
-                    variable=charge_state,
-                    scaling_variable=self.investment.size,
-                    relative_bounds=self._storages_model._get_relative_charge_state_bounds(self.element),
-                )
+            # Scaled bounds constraints are created by StoragesModel.create_investment_constraints()
+            # in batched form after all component models are created
 
         # Handle balanced sizes constraint
         if self.element.balanced:
