@@ -11,6 +11,7 @@ import logging
 import pathlib
 import re
 import warnings
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from difflib import get_close_matches
 from enum import Enum
@@ -140,6 +141,376 @@ EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableC
 
 EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
 """Binary events that should appear only at the first timestep of the segment."""
+
+# Alias for clarity - VariableCategory is specifically for segment expansion behavior
+# New code should use ExpansionCategory; VariableCategory is kept for backward compatibility
+ExpansionCategory = VariableCategory
+
+
+# =============================================================================
+# New Categorization Enums for Type-Level Models
+# =============================================================================
+
+
+class ElementType(Enum):
+    """What kind of element creates a variable/constraint.
+
+    Used to group elements by type for batch processing in type-level models.
+    """
+
+    FLOW = 'flow'
+    BUS = 'bus'
+    STORAGE = 'storage'
+    CONVERTER = 'converter'
+    EFFECT = 'effect'
+
+
+class VariableType(Enum):
+    """What role a variable plays in the model.
+
+    Provides semantic meaning for variables beyond just their name.
+    Maps to ExpansionCategory (formerly VariableCategory) for segment expansion.
+    """
+
+    # === Rates/Power ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === State ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Aggregates ===
+    TOTAL = 'total'  # total_flow_hours, active_hours
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Sum across periods
+
+    # === Investment ===
+    SIZE = 'size'  # Investment size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA = 'lambda_weight'  # Interpolation weight
+
+    # === Effects ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # Effect share contribution
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+class ConstraintType(Enum):
+    """What kind of constraint this is.
+
+    Provides semantic meaning for constraints to enable batch processing.
+    """
+
+    # === Tracking equations ===
+    TRACKING = 'tracking'  # var = sum(other) or var = expression
+
+    # === Bounds ===
+    UPPER_BOUND = 'upper_bound'  # var <= bound
+    LOWER_BOUND = 'lower_bound'  # var >= bound
+
+    # === Balance ===
+    BALANCE = 'balance'  # sum(inflows) == sum(outflows)
+
+    # === Linking ===
+    LINKING = 'linking'  # var[t+1] = f(var[t])
+
+    # === State transitions ===
+    STATE_TRANSITION = 'state_transition'  # status, startup, shutdown relationships
+
+    # === Piecewise ===
+    PIECEWISE = 'piecewise'  # SOS2, lambda constraints
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# Mapping from VariableType to ExpansionCategory (for segment expansion)
+# This connects the new enum system to the existing segment expansion logic
+VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
+    VariableType.FLOW_RATE: VariableCategory.FLOW_RATE,
+    VariableType.NETTO_DISCHARGE: VariableCategory.NETTO_DISCHARGE,
+    VariableType.VIRTUAL_FLOW: VariableCategory.VIRTUAL_FLOW,
+    VariableType.CHARGE_STATE: VariableCategory.CHARGE_STATE,
+    VariableType.SOC_BOUNDARY: VariableCategory.SOC_BOUNDARY,
+    VariableType.STATUS: VariableCategory.STATUS,
+    VariableType.INACTIVE: VariableCategory.INACTIVE,
+    VariableType.STARTUP: VariableCategory.STARTUP,
+    VariableType.SHUTDOWN: VariableCategory.SHUTDOWN,
+    VariableType.TOTAL: VariableCategory.TOTAL,
+    VariableType.TOTAL_OVER_PERIODS: VariableCategory.TOTAL_OVER_PERIODS,
+    VariableType.SIZE: VariableCategory.SIZE,
+    VariableType.INVESTED: VariableCategory.INVESTED,
+    VariableType.INSIDE_PIECE: VariableCategory.INSIDE_PIECE,
+    VariableType.LAMBDA: VariableCategory.LAMBDA0,  # Maps to LAMBDA0 for expansion
+    VariableType.PER_TIMESTEP: VariableCategory.PER_TIMESTEP,
+    VariableType.SHARE: VariableCategory.SHARE,
+    VariableType.OTHER: VariableCategory.OTHER,
+}
+
+
+# =============================================================================
+# TypeModel Base Class
+# =============================================================================
+
+
+class TypeModel(ABC):
+    """Base class for type-level models that handle ALL elements of a type.
+
+    Unlike Submodel (one per element instance), TypeModel handles ALL elements
+    of a given type (e.g., FlowsModel for ALL Flows) in a single instance.
+
+    This enables true vectorized batch creation:
+    - One variable with element dimension for all flows
+    - One constraint call for all elements
+
+    Attributes:
+        model: The FlowSystemModel to create variables/constraints in.
+        element_type: The ElementType this model handles.
+        elements: List of elements this model manages.
+        element_ids: List of element identifiers (label_full).
+
+    Example:
+        >>> class FlowsModel(TypeModel):
+        ...     element_type = ElementType.FLOW
+        ...
+        ...     def create_variables(self):
+        ...         self.flow_rate = self.add_variables(
+        ...             'flow_rate',
+        ...             VariableType.FLOW_RATE,
+        ...             lower=self._stack_bounds('lower'),
+        ...             upper=self._stack_bounds('upper'),
+        ...         )
+    """
+
+    element_type: ClassVar[ElementType]
+
+    def __init__(self, model: FlowSystemModel, elements: list):
+        """Initialize the type-level model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of elements of this type to model.
+        """
+        self.model = model
+        self.elements = elements
+        self.element_ids: list[str] = [e.label_full for e in elements]
+
+        # Storage for created variables and constraints
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+
+    @abstractmethod
+    def create_variables(self) -> None:
+        """Create all batched variables for this element type.
+
+        Implementations should use add_variables() to create variables
+        with the element dimension already included.
+        """
+
+    @abstractmethod
+    def create_constraints(self) -> None:
+        """Create all batched constraints for this element type.
+
+        Implementations should create vectorized constraints that operate
+        on the full element dimension at once.
+        """
+
+    def add_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        dims: tuple[str, ...] = ('time',),
+        **kwargs,
+    ) -> linopy.Variable:
+        """Create a batched variable with element dimension.
+
+        Args:
+            name: Variable name (will be prefixed with element type).
+            var_type: Variable type for semantic categorization.
+            lower: Lower bounds (scalar or per-element DataArray).
+            upper: Upper bounds (scalar or per-element DataArray).
+            dims: Additional dimensions beyond 'element'.
+            **kwargs: Additional arguments passed to model.add_variables().
+
+        Returns:
+            The created linopy Variable with element dimension.
+        """
+        # Build coordinates with element dimension first
+        coords = self._build_coords(dims)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=full_name,
+            **kwargs,
+        )
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        # Store reference
+        self._variables[name] = variable
+        return variable
+
+    def add_constraints(
+        self,
+        expression: linopy.expressions.LinearExpression,
+        name: str,
+        **kwargs,
+    ) -> linopy.Constraint:
+        """Create a batched constraint for all elements.
+
+        Args:
+            expression: The constraint expression (e.g., lhs == rhs, lhs <= rhs).
+            name: Constraint name (will be prefixed with element type).
+            **kwargs: Additional arguments passed to model.add_constraints().
+
+        Returns:
+            The created linopy Constraint.
+        """
+        full_name = f'{self.element_type.value}|{name}'
+        constraint = self.model.add_constraints(expression, name=full_name, **kwargs)
+        self._constraints[name] = constraint
+        return constraint
+
+    def _build_coords(self, dims: tuple[str, ...] = ('time',)) -> xr.Coordinates:
+        """Build coordinate dict with element dimension + model dimensions.
+
+        Args:
+            dims: Tuple of dimension names from the model.
+
+        Returns:
+            xarray Coordinates with 'element' + requested dims.
+        """
+        coord_dict: dict[str, Any] = {'element': pd.Index(self.element_ids, name='element')}
+
+        # Add model dimensions
+        model_coords = self.model.get_coords(dims=dims)
+        if model_coords is not None:
+            for dim in dims:
+                if dim in model_coords:
+                    coord_dict[dim] = model_coords[dim]
+
+        return xr.Coordinates(coord_dict)
+
+    def _stack_bounds(
+        self,
+        bounds: list[float | xr.DataArray],
+    ) -> xr.DataArray | float:
+        """Stack per-element bounds into array with element dimension.
+
+        Args:
+            bounds: List of bounds (one per element, same order as self.elements).
+
+        Returns:
+            Stacked DataArray with element dimension, or scalar if all identical.
+        """
+        # Extract scalar values from 0-d DataArrays or plain scalars
+        scalar_values = []
+        has_multidim = False
+
+        for b in bounds:
+            if isinstance(b, xr.DataArray):
+                if b.ndim == 0:
+                    scalar_values.append(float(b.values))
+                else:
+                    has_multidim = True
+                    break
+            else:
+                scalar_values.append(float(b))
+
+        # Fast path: all scalars
+        if not has_multidim:
+            unique_values = set(scalar_values)
+            if len(unique_values) == 1:
+                return scalar_values[0]  # Return scalar - linopy will broadcast
+
+            return xr.DataArray(
+                np.array(scalar_values),
+                coords={'element': self.element_ids},
+                dims=['element'],
+            )
+
+        # Slow path: need full concat for multi-dimensional bounds
+        arrays_to_stack = []
+        for bound, eid in zip(bounds, self.element_ids, strict=False):
+            if isinstance(bound, xr.DataArray):
+                arr = bound.expand_dims(element=[eid])
+            else:
+                arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
+            arrays_to_stack.append(arr)
+
+        stacked = xr.concat(arrays_to_stack, dim='element')
+
+        # Ensure element is first dimension
+        if 'element' in stacked.dims and stacked.dims[0] != 'element':
+            dim_order = ['element'] + [d for d in stacked.dims if d != 'element']
+            stacked = stacked.transpose(*dim_order)
+
+        return stacked
+
+    def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
+        """Get a variable, optionally sliced to a specific element.
+
+        Args:
+            name: Variable name.
+            element_id: If provided, return slice for this element only.
+
+        Returns:
+            Full batched variable or element slice.
+        """
+        variable = self._variables[name]
+        if element_id is not None:
+            return variable.sel(element=element_id)
+        return variable
+
+    def get_constraint(self, name: str) -> linopy.Constraint:
+        """Get a constraint by name.
+
+        Args:
+            name: Constraint name.
+
+        Returns:
+            The constraint.
+        """
+        return self._constraints[name]
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """All variables created by this type model."""
+        return self._variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """All constraints created by this type model."""
+        return self._constraints
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}('
+            f'elements={len(self.elements)}, '
+            f'vars={len(self._variables)}, '
+            f'constraints={len(self._constraints)})'
+        )
 
 
 CLASS_REGISTRY = {}
