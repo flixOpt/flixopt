@@ -154,6 +154,28 @@ class InvestmentModel(Submodel):
         return self._variables['invested']
 
 
+class InvestmentProxy:
+    """Proxy providing access to batched InvestmentsModel for a specific element.
+
+    This class provides the same interface as InvestmentModel.size/invested
+    but returns slices from the batched InvestmentsModel variables.
+    """
+
+    def __init__(self, investments_model: InvestmentsModel, element_id: str):
+        self._investments_model = investments_model
+        self._element_id = element_id
+
+    @property
+    def size(self):
+        """Investment size variable for this element."""
+        return self._investments_model.get_variable('size', self._element_id)
+
+    @property
+    def invested(self):
+        """Binary investment decision variable for this element (if non-mandatory)."""
+        return self._investments_model.get_variable('invested', self._element_id)
+
+
 class InvestmentsModel:
     """Type-level model for batched investment decisions across multiple elements.
 

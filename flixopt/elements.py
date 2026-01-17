@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, StatusModel
+from .features import InvestmentModel, InvestmentProxy, StatusModel
 from .interface import InvestParameters, StatusParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
@@ -786,9 +786,18 @@ class FlowModelProxy(ElementModel):
         return self.submodels['status']
 
     @property
-    def investment(self) -> InvestmentModel | None:
-        """Investment feature - not yet supported in type-level mode."""
-        return None
+    def investment(self) -> InvestmentModel | InvestmentProxy | None:
+        """Investment feature - returns proxy to batched InvestmentsModel."""
+        if not self.with_investment:
+            return None
+
+        # Get the batched investments model from FlowsModel
+        investments_model = self._flows_model._investments_model
+        if investments_model is None:
+            return None
+
+        # Return a proxy that provides size/invested for this specific element
+        return InvestmentProxy(investments_model, self.label_full)
 
     @property
     def previous_status(self) -> xr.DataArray | None:
@@ -1580,6 +1589,9 @@ class FlowsModel(TypeModel):
         self.optional_investment_ids: list[str] = [f.label_full for f in self.flows_with_optional_investment]
         self.flow_hours_over_periods_ids: list[str] = [f.label_full for f in self.flows_with_flow_hours_over_periods]
 
+        # Batched investment model (created via create_investment_model)
+        self._investments_model = None
+
         # Set reference on each flow element for element access pattern
         for flow in elements:
             flow.set_flows_model(self)
@@ -1636,31 +1648,8 @@ class FlowsModel(TypeModel):
                 dims=self.model.temporal_dims,
             )
 
-        # === size: Only flows with investment ===
-        if self.flows_with_investment:
-            size_lower = self._stack_bounds(
-                [f.size.minimum_or_fixed_size if f.size.mandatory else 0 for f in self.flows_with_investment]
-            )
-            size_upper = self._stack_bounds([f.size.maximum_or_fixed_size for f in self.flows_with_investment])
-
-            self._add_subset_variables(
-                name='size',
-                var_type=VariableType.SIZE,
-                element_ids=self.investment_ids,
-                lower=size_lower,
-                upper=size_upper,
-                dims=('period', 'scenario'),
-            )
-
-        # === invested: Only flows with optional investment ===
-        if self.flows_with_optional_investment:
-            self._add_subset_variables(
-                name='invested',
-                var_type=VariableType.INVESTED,
-                element_ids=self.optional_investment_ids,
-                binary=True,
-                dims=('period', 'scenario'),
-            )
+        # Note: Investment variables (size, invested) are created by InvestmentsModel
+        # via create_investment_model(), not inline here
 
         # === flow_hours_over_periods: Only flows that need it ===
         if self.flows_with_flow_hours_over_periods:
@@ -1687,9 +1676,7 @@ class FlowsModel(TypeModel):
             )
 
         logger.debug(
-            f'FlowsModel created variables: {len(self.elements)} flows, '
-            f'{len(self.flows_with_status)} with status, '
-            f'{len(self.flows_with_investment)} with investment'
+            f'FlowsModel created variables: {len(self.elements)} flows, {len(self.flows_with_status)} with status'
         )
 
     def create_constraints(self) -> None:
@@ -1720,9 +1707,8 @@ class FlowsModel(TypeModel):
         # === Flow rate bounds (depends on status/investment) ===
         self._create_flow_rate_bounds()
 
-        # === Investment constraints ===
-        if self.flows_with_optional_investment:
-            self._create_investment_constraints()
+        # Note: Investment constraints (size bounds) are created by InvestmentsModel
+        # via create_investment_model(), not here
 
         logger.debug(f'FlowsModel created {len(self._constraints)} constraint types')
 
@@ -1910,22 +1896,30 @@ class FlowsModel(TypeModel):
         rhs = (status - 1) * big_m + size * rel_min
         self.add_constraints(flow_rate >= rhs, name='flow_rate_status_invest_lb')
 
-    def _create_investment_constraints(self) -> None:
-        """Create investment constraints: size <= invested * max_size, size >= invested * min_size."""
-        size = self._variables['size'].sel(element=self.optional_investment_ids)
-        invested = self._variables['invested']
+    def create_investment_model(self) -> None:
+        """Create batched InvestmentsModel for flows with investment.
 
-        # Upper bound: size <= invested * max_size
-        max_sizes = xr.concat(
-            [xr.DataArray(f.size.maximum_or_fixed_size) for f in self.flows_with_optional_investment], dim='element'
-        ).assign_coords(element=self.optional_investment_ids)
-        self.add_constraints(size <= invested * max_sizes, name='size_invested_ub')
+        This method creates variables (size, invested) and constraints for all
+        flows with InvestParameters using a single batched model.
 
-        # Lower bound: size >= invested * min_size
-        min_sizes = xr.concat(
-            [xr.DataArray(f.size.minimum_or_fixed_size) for f in self.flows_with_optional_investment], dim='element'
-        ).assign_coords(element=self.optional_investment_ids)
-        self.add_constraints(size >= invested * min_sizes, name='size_invested_lb')
+        Must be called AFTER create_variables() and create_constraints().
+        """
+        if not self.flows_with_investment:
+            return
+
+        from .features import InvestmentsModel
+
+        self._investments_model = InvestmentsModel(
+            model=self.model,
+            elements=self.flows_with_investment,
+            parameters_getter=lambda f: f.size,
+            size_category=VariableCategory.FLOW_SIZE,
+        )
+        self._investments_model.create_variables()
+        self._investments_model.create_constraints()
+        self._investments_model.create_effect_shares()
+
+        logger.debug(f'FlowsModel created batched InvestmentsModel for {len(self.flows_with_investment)} flows')
 
     def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
         """Collect effect share specifications for all flows.

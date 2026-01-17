@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, PiecewiseModel
+from .features import InvestmentModel, InvestmentProxy, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
@@ -26,28 +26,6 @@ if TYPE_CHECKING:
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
-
-
-class _InvestmentProxy:
-    """Proxy providing access to batched InvestmentsModel for a specific element.
-
-    This class provides the same interface as InvestmentModel.size/invested
-    but returns slices from the batched InvestmentsModel variables.
-    """
-
-    def __init__(self, investments_model, element_id: str):
-        self._investments_model = investments_model
-        self._element_id = element_id
-
-    @property
-    def size(self):
-        """Investment size variable for this element."""
-        return self._investments_model.get_variable('size', self._element_id)
-
-    @property
-    def invested(self):
-        """Binary investment decision variable for this element (if non-mandatory)."""
-        return self._investments_model.get_variable('invested', self._element_id)
 
 
 @register_class_for_io
@@ -2180,7 +2158,7 @@ class StorageModelProxy(ComponentModel):
             return None
 
         # Return a proxy that provides size/invested for this specific element
-        return _InvestmentProxy(investments_model, self.label_full)
+        return InvestmentProxy(investments_model, self.label_full)
 
     @property
     def charge_state(self) -> linopy.Variable:

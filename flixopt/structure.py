@@ -822,6 +822,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('flows_effects')
 
+        # Create batched investment model for flows (creates size/invested variables, constraints, effects)
+        self._flows_model.create_investment_model()
+
+        record('flows_investment_model')
+
         # Create type-level model for all buses
         all_buses = list(self.flow_system.buses.values())
         self._buses_model = BusesModel(self, all_buses, self._flows_model)
