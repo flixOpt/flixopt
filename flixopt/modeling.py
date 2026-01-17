@@ -76,6 +76,25 @@ def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean'
     return data
 
 
+def _xr_allclose(a: xr.DataArray, b: xr.DataArray, atol: float = 1e-10) -> bool:
+    """Check if two DataArrays are element-wise equal within tolerance.
+
+    Unlike np.allclose, this uses xarray operations that handle broadcasting
+    automatically when arrays have different dimensions.
+
+    Args:
+        a: First DataArray
+        b: Second DataArray
+        atol: Absolute tolerance for comparison
+
+    Returns:
+        True if all elements are close (including matching NaN positions)
+    """
+    diff = a - b  # xarray broadcasts automatically
+    is_close = (abs(diff) <= atol) | (a.isnull() & b.isnull())
+    return bool(is_close.all())
+
+
 class ModelingUtilitiesAbstract:
     """Utility functions for modeling - leveraging xarray for temporal data"""
 
@@ -505,8 +524,6 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
 
         lower_bound, upper_bound = bounds
-        # Ensure bounds have compatible dimensions
-        lower_bound, upper_bound = xr.broadcast(lower_bound, upper_bound)
         name = name or f'{variable.name}'
 
         upper_constraint = model.add_constraints(variable <= upper_bound, name=f'{name}|ub')
@@ -546,11 +563,9 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.bounds_with_state() can only be used with a Submodel')
 
         lower_bound, upper_bound = bounds
-        # Ensure bounds have compatible dimensions
-        lower_bound, upper_bound = xr.broadcast(lower_bound, upper_bound)
         name = name or f'{variable.name}'
 
-        if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
+        if _xr_allclose(lower_bound, upper_bound):
             fix_constraint = model.add_constraints(variable == state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
@@ -590,11 +605,9 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.scaled_bounds() can only be used with a Submodel')
 
         rel_lower, rel_upper = relative_bounds
-        # Ensure bounds have compatible dimensions
-        rel_lower, rel_upper = xr.broadcast(rel_lower, rel_upper)
         name = name or f'{variable.name}'
 
-        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
+        if _xr_allclose(rel_lower, rel_upper):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')
@@ -642,9 +655,6 @@ class BoundingPatterns:
 
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
-        # Ensure bounds have compatible dimensions
-        rel_lower, rel_upper = xr.broadcast(rel_lower, rel_upper)
-        scaling_min, scaling_max = xr.broadcast(scaling_min, scaling_max)
         name = name or f'{variable.name}'
 
         big_m_misc = scaling_max * rel_lower
