@@ -304,7 +304,7 @@ class TransformAccessor:
 
         first_key = (periods[0], scenarios[0])
 
-        if len(non_empty_metrics) == 1 or len(clustering_metrics_all) == 1:
+        if len(clustering_metrics_all) == 1 and len(non_empty_metrics) == 1:
             metrics_df = non_empty_metrics.get(first_key)
             if metrics_df is None:
                 metrics_df = next(iter(non_empty_metrics.values()))
@@ -542,7 +542,7 @@ class TransformAccessor:
                 # No time dimension - wrap Variable in DataArray
                 coords = {d: coord_cache[d] for d in var.dims if d in coord_cache}
                 ds_new_vars[name] = xr.DataArray(var.values, dims=var.dims, coords=coords, attrs=var.attrs, name=name)
-            elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
+            elif name not in typical_das:
                 # Time-dependent but constant: reshape to (cluster, time, ...)
                 # Use numpy slicing instead of .isel()
                 time_idx = var.dims.index('time')
@@ -564,6 +564,44 @@ class TransformAccessor:
                     coords=new_coords,
                     attrs=var.attrs,
                 )
+            elif set(typical_das[name].keys()) != all_keys:
+                # Partial typical slices: fill missing keys with constant values
+                time_idx = var.dims.index('time')
+                slices_list = [slice(None)] * len(var.dims)
+                slices_list[time_idx] = slice(0, n_reduced_timesteps)
+                sliced_values = var.values[tuple(slices_list)]
+
+                other_dims = [d for d in var.dims if d != 'time']
+                other_shape = [var.sizes[d] for d in other_dims]
+                new_shape = [actual_n_clusters, n_time_points] + other_shape
+                reshaped_constant = sliced_values.reshape(new_shape)
+
+                new_coords = {'cluster': cluster_coords, 'time': time_coords}
+                for dim in other_dims:
+                    if dim in coord_cache:
+                        new_coords[dim] = coord_cache[dim]
+
+                # Build filled slices dict: use typical where available, constant otherwise
+                filled_slices = {}
+                for key in all_keys:
+                    if key in typical_das[name]:
+                        filled_slices[key] = typical_das[name][key]
+                    else:
+                        filled_slices[key] = xr.DataArray(
+                            reshaped_constant,
+                            dims=['cluster', 'time'] + other_dims,
+                            coords=new_coords,
+                        )
+
+                da = self._combine_slices_to_dataarray_2d(
+                    slices=filled_slices,
+                    attrs=var.attrs,
+                    periods=periods,
+                    scenarios=scenarios,
+                )
+                if var.attrs.get('__timeseries_data__', False):
+                    da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
+                ds_new_vars[name] = da
             else:
                 # Time-varying: combine per-(period, scenario) slices
                 da = self._combine_slices_to_dataarray_2d(
@@ -1203,6 +1241,14 @@ class TransformAccessor:
 
         # Filter to only time-varying arrays
         result = drop_constant_arrays(ds, dim='time')
+
+        # Guard against empty dataset (all variables are constant)
+        if not result.data_vars:
+            selector_info = f' for {selector}' if selector else ''
+            raise ValueError(
+                f'No time-varying data found{selector_info}. '
+                f'All variables are constant over time. Check your period/scenario filter or input data.'
+            )
 
         # Remove attrs for cleaner output
         result.attrs = {}
@@ -1930,15 +1976,12 @@ class TransformAccessor:
         position_within_segment = clustering.results.position_within_segment
 
         # Decode timestep_mapping into cluster and time indices
-        # For segmented systems:
-        # - Use n_segments for cluster division (matches expand_data/build_expansion_divisor)
-        # - Use timesteps_per_cluster for time position (actual position within original cluster)
-        if clustering.is_segmented and clustering.n_segments is not None:
-            time_dim_size = clustering.n_segments
-        else:
-            time_dim_size = clustering.timesteps_per_cluster
-        cluster_indices = timestep_mapping // time_dim_size
-        time_indices = timestep_mapping % clustering.timesteps_per_cluster
+        # timestep_mapping encodes original timestep -> (cluster, position_within_cluster)
+        # where position_within_cluster indexes into segment_assignments/position_within_segment
+        # which have shape (cluster, timesteps_per_cluster)
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        cluster_indices = timestep_mapping // timesteps_per_cluster
+        time_indices = timestep_mapping % timesteps_per_cluster
 
         # Get segment index and position for each original timestep
         seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
