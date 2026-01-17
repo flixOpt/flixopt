@@ -447,18 +447,19 @@ class Storage(Component):
         self.balanced = balanced
         self.cluster_mode = cluster_mode
 
-    def create_model(self, model: FlowSystemModel) -> StorageModel:
+    def create_model(self, model: FlowSystemModel) -> StorageModel | StorageModelProxy:
         """Create the appropriate storage model based on cluster_mode and flow system state.
 
         For intercluster modes ('intercluster', 'intercluster_cyclic'), uses
         :class:`InterclusterStorageModel` which implements S-N linking.
+        For type-level mode with basic storages, uses :class:`StorageModelProxy`.
         For other modes, uses the base :class:`StorageModel`.
 
         Args:
             model: The FlowSystemModel to add constraints to.
 
         Returns:
-            StorageModel or InterclusterStorageModel instance.
+            StorageModel, InterclusterStorageModel, or StorageModelProxy instance.
         """
         self._plausibility_checks()
 
@@ -470,7 +471,11 @@ class Storage(Component):
         )
 
         if is_intercluster:
+            # Intercluster storages always use traditional approach (too complex to batch)
             self.submodel = InterclusterStorageModel(model, self)
+        elif model._type_level_mode:
+            # Basic storages use proxy in type-level mode
+            self.submodel = StorageModelProxy(model, self)
         else:
             self.submodel = StorageModel(model, self)
 
@@ -1602,6 +1607,391 @@ class InterclusterStorageModel(StorageModel):
                 self.add_constraints(
                     combined <= self.element.capacity_in_flow_hours, short_name=f'soc_ub_{sample_name}'
                 )
+
+
+class StoragesModel:
+    """Type-level model for ALL basic (non-intercluster) storages in a FlowSystem.
+
+    Unlike StorageModel (one per Storage instance), StoragesModel handles ALL
+    basic storages in a single instance with batched variables.
+
+    Note:
+        InterclusterStorageModel storages are excluded and handled traditionally
+        due to their complexity (SOC_boundary linking, etc.).
+
+    This enables:
+    - Batched charge_state and netto_discharge variables with element dimension
+    - Consistent architecture with FlowsModel and BusesModel
+
+    Example:
+        >>> storages_model = StoragesModel(model, basic_storages, flows_model)
+        >>> storages_model.create_variables()
+        >>> storages_model.create_constraints()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        elements: list[Storage],
+        flows_model,  # FlowsModel - avoid circular import
+    ):
+        """Initialize the type-level model for basic storages.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of basic (non-intercluster) Storage elements.
+            flows_model: The FlowsModel containing flow_rate variables.
+        """
+        from .structure import ElementType
+
+        self.model = model
+        self.elements = elements
+        self.element_ids: list[str] = [s.label_full for s in elements]
+        self._flows_model = flows_model
+        self.element_type = ElementType.STORAGE
+
+        # Storage for created variables
+        self._variables: dict[str, linopy.Variable] = {}
+
+        # Categorize by features
+        self.storages_with_investment: list[Storage] = [
+            s for s in elements if isinstance(s.capacity_in_flow_hours, InvestParameters)
+        ]
+        self.investment_ids: list[str] = [s.label_full for s in self.storages_with_investment]
+
+        # Set reference on each storage element
+        for storage in elements:
+            storage._storages_model = self
+
+    def create_variables(self) -> None:
+        """Create batched variables for all storages.
+
+        Creates:
+        - charge_state: For ALL storages (with element dimension, extra timestep)
+        - netto_discharge: For ALL storages (with element dimension)
+        """
+        import pandas as pd
+
+        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
+
+        if not self.elements:
+            return
+
+        # === charge_state: ALL storages (with extra timestep) ===
+        lower_bounds = self._collect_charge_state_bounds('lower')
+        upper_bounds = self._collect_charge_state_bounds('upper')
+
+        # Get coords with extra timestep
+        coords_extra = self.model.get_coords(extra_timestep=True)
+        charge_state_coords = xr.Coordinates(
+            {
+                'element': pd.Index(self.element_ids, name='element'),
+                **{dim: coords_extra[dim] for dim in coords_extra},
+            }
+        )
+
+        charge_state = self.model.add_variables(
+            lower=lower_bounds,
+            upper=upper_bounds,
+            coords=charge_state_coords,
+            name='storage|charge_state',
+        )
+        self._variables['charge_state'] = charge_state
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.CHARGE_STATE)
+        if expansion_category is not None:
+            self.model.variable_categories[charge_state.name] = expansion_category
+
+        # === netto_discharge: ALL storages ===
+        temporal_coords = self.model.get_coords(self.model.temporal_dims)
+        netto_discharge_coords = xr.Coordinates(
+            {
+                'element': pd.Index(self.element_ids, name='element'),
+                **{dim: temporal_coords[dim] for dim in temporal_coords},
+            }
+        )
+
+        netto_discharge = self.model.add_variables(
+            coords=netto_discharge_coords,
+            name='storage|netto_discharge',
+        )
+        self._variables['netto_discharge'] = netto_discharge
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.NETTO_DISCHARGE)
+        if expansion_category is not None:
+            self.model.variable_categories[netto_discharge.name] = expansion_category
+
+        logger.debug(
+            f'StoragesModel created variables: {len(self.elements)} storages, '
+            f'{len(self.storages_with_investment)} with investment'
+        )
+
+    def _collect_charge_state_bounds(self, bound_type: str) -> xr.DataArray:
+        """Collect charge_state bounds from all storages.
+
+        Args:
+            bound_type: 'lower' or 'upper'
+        """
+        bounds_list = []
+        for storage in self.elements:
+            rel_min, rel_max = self._get_relative_charge_state_bounds(storage)
+
+            if storage.capacity_in_flow_hours is None:
+                lb, ub = 0, np.inf
+            elif isinstance(storage.capacity_in_flow_hours, InvestParameters):
+                cap_min = storage.capacity_in_flow_hours.minimum_or_fixed_size
+                cap_max = storage.capacity_in_flow_hours.maximum_or_fixed_size
+                lb = rel_min * cap_min
+                ub = rel_max * cap_max
+            else:
+                cap = storage.capacity_in_flow_hours
+                lb = rel_min * cap
+                ub = rel_max * cap
+
+            if bound_type == 'lower':
+                bounds_list.append(lb if isinstance(lb, xr.DataArray) else xr.DataArray(lb))
+            else:
+                bounds_list.append(ub if isinstance(ub, xr.DataArray) else xr.DataArray(ub))
+
+        return xr.concat(bounds_list, dim='element').assign_coords(element=self.element_ids)
+
+    def _get_relative_charge_state_bounds(self, storage: Storage) -> tuple[xr.DataArray, xr.DataArray]:
+        """Get relative charge state bounds with final timestep values."""
+        timesteps_extra = self.model.flow_system.timesteps_extra
+
+        rel_min = storage.relative_minimum_charge_state
+        rel_max = storage.relative_maximum_charge_state
+
+        # Get final values
+        if storage.relative_minimum_final_charge_state is None:
+            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
+        else:
+            min_final_value = storage.relative_minimum_final_charge_state
+
+        if storage.relative_maximum_final_charge_state is None:
+            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
+        else:
+            max_final_value = storage.relative_maximum_final_charge_state
+
+        # Build bounds arrays for timesteps_extra
+        if 'time' in rel_min.dims:
+            min_final_da = (
+                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+            )
+            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
+            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
+        else:
+            min_bounds = rel_min.expand_dims(time=timesteps_extra)
+
+        if 'time' in rel_max.dims:
+            max_final_da = (
+                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+            )
+            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
+            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
+        else:
+            max_bounds = rel_max.expand_dims(time=timesteps_extra)
+
+        return xr.broadcast(min_bounds, max_bounds)
+
+    def create_constraints(self) -> None:
+        """Create constraints for all storages.
+
+        Creates per-element (since parameters differ):
+        - netto_discharge constraint
+        - energy balance constraint
+        - initial/final constraints (where applicable)
+        """
+        if not self.elements:
+            return
+
+        flow_rate = self._flows_model._variables['flow_rate']
+        charge_state = self._variables['charge_state']
+        netto_discharge = self._variables['netto_discharge']
+
+        for storage in self.elements:
+            storage_id = storage.label_full
+            cs = charge_state.sel(element=storage_id)
+            nd = netto_discharge.sel(element=storage_id)
+
+            # Get flow rates for this storage
+            charge_rate = flow_rate.sel(element=storage.charging.label_full)
+            discharge_rate = flow_rate.sel(element=storage.discharging.label_full)
+
+            # netto_discharge constraint
+            self.model.add_constraints(
+                nd == discharge_rate - charge_rate,
+                name=f'storage|{storage.label}|netto_discharge',
+            )
+
+            # Energy balance constraint
+            rel_loss = storage.relative_loss_per_hour
+            timestep_duration = self.model.timestep_duration
+            eff_charge = storage.eta_charge
+            eff_discharge = storage.eta_discharge
+
+            energy_balance_lhs = (
+                cs.isel(time=slice(1, None))
+                - cs.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+                - charge_rate * eff_charge * timestep_duration
+                + discharge_rate * timestep_duration / eff_discharge
+            )
+            self.model.add_constraints(
+                energy_balance_lhs == 0,
+                name=f'storage|{storage.label}|charge_state',
+            )
+
+            # Cluster cyclic constraint (for 'cyclic' mode)
+            if self.model.flow_system.clusters is not None and storage.cluster_mode == 'cyclic':
+                self.model.add_constraints(
+                    cs.isel(time=0) == cs.isel(time=-2),
+                    name=f'storage|{storage.label}|cluster_cyclic',
+                )
+
+            # Initial/final constraints (skip for clustered independent/cyclic modes)
+            skip_initial_final = self.model.flow_system.clusters is not None and storage.cluster_mode in (
+                'independent',
+                'cyclic',
+            )
+
+            if not skip_initial_final:
+                if storage.initial_charge_state is not None:
+                    if isinstance(storage.initial_charge_state, str):  # 'equals_final'
+                        self.model.add_constraints(
+                            cs.isel(time=0) == cs.isel(time=-1),
+                            name=f'storage|{storage.label}|initial_charge_state',
+                        )
+                    else:
+                        self.model.add_constraints(
+                            cs.isel(time=0) == storage.initial_charge_state,
+                            name=f'storage|{storage.label}|initial_charge_state',
+                        )
+
+                if storage.maximal_final_charge_state is not None:
+                    self.model.add_constraints(
+                        cs.isel(time=-1) <= storage.maximal_final_charge_state,
+                        name=f'storage|{storage.label}|final_charge_max',
+                    )
+
+                if storage.minimal_final_charge_state is not None:
+                    self.model.add_constraints(
+                        cs.isel(time=-1) >= storage.minimal_final_charge_state,
+                        name=f'storage|{storage.label}|final_charge_min',
+                    )
+
+        logger.debug(f'StoragesModel created constraints for {len(self.elements)} storages')
+
+    def get_variable(self, name: str, element_id: str | None = None):
+        """Get a variable, optionally selecting a specific element."""
+        var = self._variables.get(name)
+        if var is None:
+            return None
+        if element_id is not None:
+            return var.sel(element=element_id)
+        return var
+
+
+class StorageModelProxy(ComponentModel):
+    """Lightweight proxy for Storage elements when using type-level modeling.
+
+    Instead of creating its own variables and constraints, this proxy
+    provides access to the variables created by StoragesModel.
+    """
+
+    element: Storage
+
+    def __init__(self, model: FlowSystemModel, element: Storage):
+        # Set _storages_model BEFORE super().__init__() because _do_modeling() may use it
+        self._storages_model = model._storages_model
+        super().__init__(model, element)
+
+        # Register variables from StoragesModel
+        if self._storages_model is not None:
+            charge_state = self._storages_model.get_variable('charge_state', self.label_full)
+            if charge_state is not None:
+                self.register_variable(charge_state, 'charge_state')
+
+            netto_discharge = self._storages_model.get_variable('netto_discharge', self.label_full)
+            if netto_discharge is not None:
+                self.register_variable(netto_discharge, 'netto_discharge')
+
+    def _do_modeling(self):
+        """Skip most modeling - StoragesModel handles variables and constraints.
+
+        Still creates FlowModels for charging/discharging flows and investment model.
+        """
+        # Create flow models for charging/discharging
+        all_flows = self.element.inputs + self.element.outputs
+
+        # Set status_parameters on flows if needed (from ComponentModel)
+        if self.element.status_parameters:
+            for flow in all_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
+
+        if self.element.prevent_simultaneous_flows:
+            for flow in self.element.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._model.flow_system, f'{flow.label_full}|status_parameters'
+                    )
+
+        # Flow models are handled by FlowsModel, just register submodels
+        for flow in all_flows:
+            flow.create_model(self._model)
+            self.add_submodels(flow.submodel, short_name=flow.label)
+
+        # Handle investment model if applicable
+        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
+            self.add_submodels(
+                InvestmentModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=self.label_of_element,
+                    parameters=self.element.capacity_in_flow_hours,
+                    size_category=VariableCategory.STORAGE_SIZE,
+                ),
+                short_name='investment',
+            )
+            # Add scaled bounds
+            charge_state = self._storages_model.get_variable('charge_state', self.label_full)
+            if charge_state is not None:
+                BoundingPatterns.scaled_bounds(
+                    self,
+                    variable=charge_state,
+                    scaling_variable=self.investment.size,
+                    relative_bounds=self._storages_model._get_relative_charge_state_bounds(self.element),
+                )
+
+        # Handle balanced sizes constraint
+        if self.element.balanced:
+            self._model.add_constraints(
+                self.element.charging.submodel.investment.size - self.element.discharging.submodel.investment.size == 0,
+                name=f'{self.label_of_element}|balanced_sizes',
+            )
+
+    @property
+    def investment(self) -> InvestmentModel | None:
+        """Investment feature."""
+        if 'investment' not in self.submodels:
+            return None
+        return self.submodels['investment']
+
+    @property
+    def charge_state(self) -> linopy.Variable:
+        """Charge state variable."""
+        return self['charge_state']
+
+    @property
+    def netto_discharge(self) -> linopy.Variable:
+        """Netto discharge variable."""
+        return self['netto_discharge']
 
 
 @register_class_for_io

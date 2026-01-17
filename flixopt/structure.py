@@ -575,6 +575,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._type_level_mode: bool = False  # When True, Flows and Buses skip Model creation
         self._flows_model: TypeModel | None = None  # Reference to FlowsModel when in type-level mode
         self._buses_model: TypeModel | None = None  # Reference to BusesModel when in type-level mode
+        self._storages_model = None  # Reference to StoragesModel when in type-level mode
 
     def add_variables(
         self,
@@ -777,11 +778,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             timing: If True, print detailed timing breakdown.
 
         Note:
-            This method is experimental. Currently FlowsModel and BusesModel are
-            implemented. Components and storages still use the traditional approach.
+            This method is experimental. FlowsModel, BusesModel, and StoragesModel are
+            implemented. InterclusterStorageModel (for clustered systems with intercluster
+            modes) still uses the traditional approach due to its complexity.
         """
         import time
 
+        from .components import Storage, StoragesModel
         from .elements import BusesModel, FlowsModel
 
         timings = {}
@@ -835,7 +838,30 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('buses_effects')
 
-        # Enable type-level mode - Flows and Buses will use proxy models
+        # Collect basic (non-intercluster) storages for batching
+        # Intercluster storages are handled traditionally
+        basic_storages = []
+        for component in self.flow_system.components.values():
+            if isinstance(component, Storage):
+                clustering = self.flow_system.clustering
+                is_intercluster = clustering is not None and component.cluster_mode in (
+                    'intercluster',
+                    'intercluster_cyclic',
+                )
+                if not is_intercluster:
+                    basic_storages.append(component)
+
+        # Create type-level model for basic storages
+        self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
+        self._storages_model.create_variables()
+
+        record('storages_variables')
+
+        self._storages_model.create_constraints()
+
+        record('storages_constraints')
+
+        # Enable type-level mode - Flows, Buses, and Storages will use proxy models
         self._type_level_mode = True
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
@@ -868,6 +894,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'buses_variables',
                 'buses_constraints',
                 'buses_effects',
+                'storages_variables',
+                'storages_constraints',
                 'components',
                 'buses',
                 'end',

@@ -716,8 +716,9 @@ class FlowModelProxy(ElementModel):
     element: Flow  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Flow):
-        super().__init__(model, element)
+        # Set _flows_model BEFORE super().__init__() because _do_modeling() uses it
         self._flows_model = model._flows_model
+        super().__init__(model, element)
 
         # Register variables from FlowsModel in our local registry
         # so properties like self.flow_rate work
@@ -2270,8 +2271,9 @@ class BusModelProxy(ElementModel):
     def __init__(self, model: FlowSystemModel, element: Bus):
         self.virtual_supply: linopy.Variable | None = None
         self.virtual_demand: linopy.Variable | None = None
-        super().__init__(model, element)
+        # Set _buses_model BEFORE super().__init__() for consistency
         self._buses_model = model._buses_model
+        super().__init__(model, element)
 
         # Register variables from BusesModel in our local registry
         if self._buses_model is not None and self.label_full in self._buses_model.imbalance_ids:
