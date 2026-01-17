@@ -195,15 +195,22 @@ class TransformAccessor:
         for key, tsam_result in tsam_aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
             if is_segmented:
-                # Segmented data: MultiIndex (Segment Step, Segment Duration)
-                # Need to extract by cluster (first level of index)
-                for col in typical_df.columns:
-                    data = np.zeros((actual_n_clusters, n_time_points))
-                    for cluster_id in range(actual_n_clusters):
-                        cluster_data = typical_df.loc[cluster_id, col]
-                        data[cluster_id, :] = cluster_data.values[:n_time_points]
+                # Segmented data: MultiIndex with cluster as first level
+                # Each cluster has exactly n_time_points rows (segments)
+                # Extract all data at once using numpy reshape, avoiding slow .loc calls
+                columns = typical_df.columns.tolist()
+
+                # Get all values as numpy array: (n_clusters * n_time_points, n_columns)
+                all_values = typical_df.values
+
+                # Reshape to (n_clusters, n_time_points, n_columns)
+                reshaped = all_values.reshape(actual_n_clusters, n_time_points, -1)
+
+                for col_idx, col in enumerate(columns):
+                    # reshaped[:, :, col_idx] selects all clusters, all time points, single column
+                    # Result shape: (n_clusters, n_time_points)
                     typical_das.setdefault(col, {})[key] = xr.DataArray(
-                        data,
+                        reshaped[:, :, col_idx],
                         dims=['cluster', 'time'],
                         coords={'cluster': cluster_coords, 'time': time_coords},
                     )
@@ -525,35 +532,48 @@ class TransformAccessor:
         all_keys = {(p, s) for p in periods for s in scenarios}
         ds_new_vars = {}
 
-        for name, original_da in ds.data_vars.items():
-            if 'time' not in original_da.dims:
-                ds_new_vars[name] = original_da.copy()
+        # Use ds.variables to avoid _construct_dataarray overhead
+        variables = ds.variables
+        coord_cache = {k: ds.coords[k].values for k in ds.coords}
+
+        for name in ds.data_vars:
+            var = variables[name]
+            if 'time' not in var.dims:
+                # No time dimension - wrap Variable in DataArray
+                coords = {d: coord_cache[d] for d in var.dims if d in coord_cache}
+                ds_new_vars[name] = xr.DataArray(var.values, dims=var.dims, coords=coords, attrs=var.attrs, name=name)
             elif name not in typical_das or set(typical_das[name].keys()) != all_keys:
                 # Time-dependent but constant: reshape to (cluster, time, ...)
-                sliced = original_da.isel(time=slice(0, n_reduced_timesteps))
-                other_dims = [d for d in sliced.dims if d != 'time']
-                other_shape = [sliced.sizes[d] for d in other_dims]
+                # Use numpy slicing instead of .isel()
+                time_idx = var.dims.index('time')
+                slices = [slice(None)] * len(var.dims)
+                slices[time_idx] = slice(0, n_reduced_timesteps)
+                sliced_values = var.values[tuple(slices)]
+
+                other_dims = [d for d in var.dims if d != 'time']
+                other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
-                reshaped = sliced.values.reshape(new_shape)
+                reshaped = sliced_values.reshape(new_shape)
                 new_coords = {'cluster': cluster_coords, 'time': time_coords}
                 for dim in other_dims:
-                    new_coords[dim] = sliced.coords[dim].values
+                    if dim in coord_cache:
+                        new_coords[dim] = coord_cache[dim]
                 ds_new_vars[name] = xr.DataArray(
                     reshaped,
                     dims=['cluster', 'time'] + other_dims,
                     coords=new_coords,
-                    attrs=original_da.attrs,
+                    attrs=var.attrs,
                 )
             else:
                 # Time-varying: combine per-(period, scenario) slices
                 da = self._combine_slices_to_dataarray_2d(
                     slices=typical_das[name],
-                    original_da=original_da,
+                    attrs=var.attrs,
                     periods=periods,
                     scenarios=scenarios,
                 )
-                if TimeSeriesData.is_timeseries_data(original_da):
-                    da = TimeSeriesData.from_dataarray(da.assign_attrs(original_da.attrs))
+                if var.attrs.get('__timeseries_data__', False):
+                    da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
                 ds_new_vars[name] = da
 
         # Copy attrs but remove cluster_weight
@@ -1381,6 +1401,16 @@ class TransformAccessor:
                     ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
                 )
                 temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
+
+                # Guard against empty dataset after removing constant arrays
+                if not temporaly_changing_ds_for_clustering.data_vars:
+                    filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
+                    selector_info = f', selector={selector}' if selector else ''
+                    raise ValueError(
+                        f'No time-varying data found for clustering ({filter_info}{selector_info}). '
+                        f'All variables are constant over time. Check your data_vars filter or input data.'
+                    )
+
                 df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
 
                 if selector:
@@ -1639,7 +1669,7 @@ class TransformAccessor:
     @staticmethod
     def _combine_slices_to_dataarray_2d(
         slices: dict[tuple, xr.DataArray],
-        original_da: xr.DataArray,
+        attrs: dict,
         periods: list,
         scenarios: list,
     ) -> xr.DataArray:
@@ -1647,7 +1677,7 @@ class TransformAccessor:
 
         Args:
             slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
-            original_da: Original DataArray to get attrs from.
+            attrs: Attributes to assign to the result.
             periods: List of period labels ([None] if no periods dimension).
             scenarios: List of scenario labels ([None] if no scenarios dimension).
 
@@ -1660,7 +1690,7 @@ class TransformAccessor:
 
         # Simple case: no period/scenario dimensions
         if not has_periods and not has_scenarios:
-            return slices[first_key].assign_attrs(original_da.attrs)
+            return slices[first_key].assign_attrs(attrs)
 
         # Multi-dimensional: use xr.concat to stack along period/scenario dims
         if has_periods and has_scenarios:
@@ -1678,7 +1708,7 @@ class TransformAccessor:
         # Put cluster and time first (standard order for clustered data)
         result = result.transpose('cluster', 'time', ...)
 
-        return result.assign_attrs(original_da.attrs)
+        return result.assign_attrs(attrs)
 
     def _validate_for_expansion(self) -> Clustering:
         """Validate FlowSystem can be expanded and return clustering info.
@@ -1900,13 +1930,15 @@ class TransformAccessor:
         position_within_segment = clustering.results.position_within_segment
 
         # Decode timestep_mapping into cluster and time indices
-        # For segmented systems, use n_segments as the divisor (matches expand_data/build_expansion_divisor)
+        # For segmented systems:
+        # - Use n_segments for cluster division (matches expand_data/build_expansion_divisor)
+        # - Use timesteps_per_cluster for time position (actual position within original cluster)
         if clustering.is_segmented and clustering.n_segments is not None:
             time_dim_size = clustering.n_segments
         else:
             time_dim_size = clustering.timesteps_per_cluster
         cluster_indices = timestep_mapping // time_dim_size
-        time_indices = timestep_mapping % time_dim_size
+        time_indices = timestep_mapping % clustering.timesteps_per_cluster
 
         # Get segment index and position for each original timestep
         seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
@@ -2108,14 +2140,24 @@ class TransformAccessor:
 
             return expanded
 
+        # Helper to construct DataArray without slow _construct_dataarray
+        def _fast_get_da(ds: xr.Dataset, name: str, coord_cache: dict) -> xr.DataArray:
+            variable = ds.variables[name]
+            var_dims = set(variable.dims)
+            coords = {k: v for k, v in coord_cache.items() if set(v.dims).issubset(var_dims)}
+            return xr.DataArray(variable, coords=coords, name=name)
+
         # 1. Expand FlowSystem data
         reduced_ds = self._fs.to_dataset(include_solution=False)
         clustering_attrs = {'is_clustered', 'n_clusters', 'timesteps_per_cluster', 'clustering', 'cluster_weight'}
         skip_vars = {'cluster_weight', 'timestep_duration'}  # These have special handling
         data_vars = {}
-        for name, da in reduced_ds.data_vars.items():
+        # Use ds.variables pattern to avoid slow _construct_dataarray calls
+        coord_cache = {k: v for k, v in reduced_ds.coords.items()}
+        for name in reduced_ds.data_vars:
             if name in skip_vars or name.startswith('clustering|'):
                 continue
+            da = _fast_get_da(reduced_ds, name, coord_cache)
             # Skip vars with cluster dim but no time dim - they don't make sense after expansion
             # (e.g., representative_weights with dims ('cluster',) or ('cluster', 'period'))
             if 'cluster' in da.dims and 'time' not in da.dims:
@@ -2132,10 +2174,13 @@ class TransformAccessor:
 
         # 2. Expand solution (with segment total correction for segmented systems)
         reduced_solution = self._fs.solution
-        expanded_fs._solution = xr.Dataset(
-            {name: expand_da(da, name, is_solution=True) for name, da in reduced_solution.data_vars.items()},
-            attrs=reduced_solution.attrs,
-        )
+        # Use ds.variables pattern to avoid slow _construct_dataarray calls
+        sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
+        expanded_sol_vars = {}
+        for name in reduced_solution.data_vars:
+            da = _fast_get_da(reduced_solution, name, sol_coord_cache)
+            expanded_sol_vars[name] = expand_da(da, name, is_solution=True)
+        expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)
         expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
 
         # 3. Combine charge_state with SOC_boundary for intercluster storages

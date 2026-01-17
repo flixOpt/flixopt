@@ -561,14 +561,18 @@ def save_dataset_to_netcdf(
     ds.attrs = {'attrs': json.dumps(ds.attrs)}
 
     # Convert all DataArray attrs to JSON strings
-    for var_name, data_var in ds.data_vars.items():
-        if data_var.attrs:  # Only if there are attrs
-            ds[var_name].attrs = {'attrs': json.dumps(data_var.attrs)}
+    # Use ds.variables to avoid slow _construct_dataarray calls
+    variables = ds.variables
+    for var_name in ds.data_vars:
+        var = variables[var_name]
+        if var.attrs:  # Only if there are attrs
+            var.attrs = {'attrs': json.dumps(var.attrs)}
 
     # Also handle coordinate attrs if they exist
-    for coord_name, coord_var in ds.coords.items():
-        if hasattr(coord_var, 'attrs') and coord_var.attrs:
-            ds[coord_name].attrs = {'attrs': json.dumps(coord_var.attrs)}
+    for coord_name in ds.coords:
+        var = variables[coord_name]
+        if var.attrs:
+            var.attrs = {'attrs': json.dumps(var.attrs)}
 
     # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
     with warnings.catch_warnings():
@@ -602,25 +606,38 @@ def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
         Dataset with constant dimensions reduced.
     """
     new_data_vars = {}
+    variables = ds.variables
 
-    for name, da in ds.data_vars.items():
-        if not da.dims or da.size == 0:
-            new_data_vars[name] = da
+    for name in ds.data_vars:
+        var = variables[name]
+        dims = var.dims
+        data = var.values
+
+        if not dims or data.size == 0:
+            new_data_vars[name] = var
             continue
 
-        # Try to reduce each dimension
-        reduced = da
-        for dim in list(da.dims):
-            if dim not in reduced.dims:
+        # Try to reduce each dimension using numpy operations
+        reduced_data = data
+        reduced_dims = list(dims)
+
+        for _axis, dim in enumerate(dims):
+            if dim not in reduced_dims:
                 continue  # Already removed
-            # Check if constant along this dimension
-            first_slice = reduced.isel({dim: 0})
-            is_constant = (reduced == first_slice).all()
+
+            current_axis = reduced_dims.index(dim)
+            # Check if constant along this axis using numpy
+            first_slice = np.take(reduced_data, 0, axis=current_axis)
+            # Broadcast first_slice to compare
+            expanded = np.expand_dims(first_slice, axis=current_axis)
+            is_constant = np.allclose(reduced_data, expanded, equal_nan=True)
+
             if is_constant:
                 # Remove this dimension by taking first slice
-                reduced = first_slice
+                reduced_data = first_slice
+                reduced_dims.pop(current_axis)
 
-        new_data_vars[name] = reduced
+        new_data_vars[name] = xr.Variable(tuple(reduced_dims), reduced_data, attrs=var.attrs)
 
     return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
 
@@ -754,14 +771,18 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
         ds.attrs = json.loads(ds.attrs['attrs'])
 
     # Restore DataArray attrs (before unstacking, as stacked vars have no individual attrs)
-    for var_name, data_var in ds.data_vars.items():
-        if 'attrs' in data_var.attrs:
-            ds[var_name].attrs = json.loads(data_var.attrs['attrs'])
+    # Use ds.variables to avoid slow _construct_dataarray calls
+    variables = ds.variables
+    for var_name in ds.data_vars:
+        var = variables[var_name]
+        if 'attrs' in var.attrs:
+            var.attrs = json.loads(var.attrs['attrs'])
 
     # Restore coordinate attrs
-    for coord_name, coord_var in ds.coords.items():
-        if hasattr(coord_var, 'attrs') and 'attrs' in coord_var.attrs:
-            ds[coord_name].attrs = json.loads(coord_var.attrs['attrs'])
+    for coord_name in ds.coords:
+        var = variables[coord_name]
+        if 'attrs' in var.attrs:
+            var.attrs = json.loads(var.attrs['attrs'])
 
     # Unstack variables if they were stacked during saving
     # Detection: check if any dataset dimension starts with '__stacked__'
@@ -1577,7 +1598,10 @@ class FlowSystemDatasetIO:
             Constructed DataArray
         """
         variable = ds.variables[name]
-        coords = {k: coord_cache[k] for k in variable.dims if k in coord_cache}
+        var_dims = set(variable.dims)
+        # Include coordinates whose dims are a subset of the variable's dims
+        # This preserves both dimension coordinates and auxiliary coordinates
+        coords = {k: v for k, v in coord_cache.items() if set(v.dims).issubset(var_dims)}
         return xr.DataArray(variable, coords=coords, name=name)
 
     @staticmethod
@@ -1865,9 +1889,10 @@ class FlowSystemDatasetIO:
             clustering_ref, clustering_arrays = clustering._create_reference_structure(
                 include_original_data=include_original_data
             )
-            # Add clustering arrays with prefix
-            for name, arr in clustering_arrays.items():
-                ds[f'{cls.CLUSTERING_PREFIX}{name}'] = arr
+            # Add clustering arrays with prefix using batch assignment
+            # (individual ds[name] = arr assignments are slow)
+            prefixed_arrays = {f'{cls.CLUSTERING_PREFIX}{name}': arr for name, arr in clustering_arrays.items()}
+            ds = ds.assign(prefixed_arrays)
             ds.attrs['clustering'] = json.dumps(clustering_ref)
 
         return ds

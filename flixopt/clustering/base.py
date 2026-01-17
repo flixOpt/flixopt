@@ -1113,12 +1113,17 @@ class Clustering:
         original_data_refs = None
         if include_original_data and self.original_data is not None:
             original_data_refs = []
-            for name, da in self.original_data.data_vars.items():
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            variables = self.original_data.variables
+            for name in self.original_data.data_vars:
+                var = variables[name]
                 ref_name = f'original_data|{name}'
                 # Rename time dim to avoid xarray alignment issues
-                if 'time' in da.dims:
-                    da = da.rename({'time': 'original_time'})
-                arrays[ref_name] = da
+                if 'time' in var.dims:
+                    new_dims = tuple('original_time' if d == 'time' else d for d in var.dims)
+                    arrays[ref_name] = xr.Variable(new_dims, var.values, attrs=var.attrs)
+                else:
+                    arrays[ref_name] = var
                 original_data_refs.append(f':::{ref_name}')
 
         # NOTE: aggregated_data is NOT serialized - it's identical to the FlowSystem's
@@ -1129,9 +1134,11 @@ class Clustering:
         metrics_refs = None
         if self._metrics is not None:
             metrics_refs = []
-            for name, da in self._metrics.data_vars.items():
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            metrics_vars = self._metrics.variables
+            for name in self._metrics.data_vars:
                 ref_name = f'metrics|{name}'
-                arrays[ref_name] = da
+                arrays[ref_name] = metrics_vars[name]
                 metrics_refs.append(f':::{ref_name}')
 
         reference = {
@@ -1415,9 +1422,15 @@ class ClusteringPlotAccessor:
 
         if kind == 'duration_curve':
             sorted_vars = {}
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            variables = ds.variables
+            rep_values = ds.coords['representation'].values
+            rep_idx = {rep: i for i, rep in enumerate(rep_values)}
             for var in ds.data_vars:
-                for rep in ds.coords['representation'].values:
-                    values = np.sort(ds[var].sel(representation=rep).values.flatten())[::-1]
+                data = variables[var].values
+                for rep in rep_values:
+                    # Direct numpy indexing instead of .sel()
+                    values = np.sort(data[rep_idx[rep]].flatten())[::-1]
                     sorted_vars[(var, rep)] = values
             # Get length from first sorted array
             n = len(next(iter(sorted_vars.values())))
