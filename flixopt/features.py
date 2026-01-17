@@ -526,6 +526,436 @@ class InvestmentsModel:
         return self._variables.get('invested')
 
 
+class StatusProxy:
+    """Proxy providing access to batched StatusesModel for a specific element.
+
+    This class provides the same interface as StatusModel properties
+    but returns slices from the batched StatusesModel variables.
+    """
+
+    def __init__(self, statuses_model: StatusesModel, element_id: str):
+        self._statuses_model = statuses_model
+        self._element_id = element_id
+
+    @property
+    def active_hours(self):
+        """Total active hours variable for this element."""
+        return self._statuses_model.get_variable('active_hours', self._element_id)
+
+    @property
+    def startup(self):
+        """Startup variable for this element."""
+        return self._statuses_model.get_variable('startup', self._element_id)
+
+    @property
+    def shutdown(self):
+        """Shutdown variable for this element."""
+        return self._statuses_model.get_variable('shutdown', self._element_id)
+
+    @property
+    def inactive(self):
+        """Inactive variable for this element."""
+        return self._statuses_model.get_variable('inactive', self._element_id)
+
+    @property
+    def startup_count(self):
+        """Startup count variable for this element."""
+        return self._statuses_model.get_variable('startup_count', self._element_id)
+
+
+class StatusesModel:
+    """Type-level model for batched status features across multiple elements.
+
+    Unlike StatusModel (one per element), StatusesModel handles ALL elements
+    with status in a single instance with batched variables.
+
+    This enables:
+    - Batched `active_hours`, `startup`, `shutdown` variables with element dimension
+    - Vectorized constraint creation
+    - Batched effect shares
+
+    The model categorizes elements by their feature flags:
+    - all: Elements that have status (always get active_hours)
+    - with_startup_tracking: Elements needing startup/shutdown variables
+    - with_downtime_tracking: Elements needing inactive variable
+    - with_startup_limit: Elements needing startup_count variable
+
+    Example:
+        >>> statuses_model = StatusesModel(
+        ...     model=flow_system_model,
+        ...     elements=flows_with_status,
+        ...     status_var_getter=lambda f: flows_model.get_variable('status', f.label_full),
+        ...     parameters_getter=lambda f: f.status_parameters,
+        ... )
+        >>> statuses_model.create_variables()
+        >>> statuses_model.create_constraints()
+        >>> statuses_model.create_effect_shares()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        elements: list,
+        status_var_getter: callable,
+        parameters_getter: callable,
+        previous_status_getter: callable = None,
+    ):
+        """Initialize the type-level status model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of elements with StatusParameters.
+            status_var_getter: Function to get status variable for an element.
+                e.g., lambda f: flows_model.get_variable('status', f.label_full)
+            parameters_getter: Function to get StatusParameters from element.
+                e.g., lambda f: f.status_parameters
+            previous_status_getter: Optional function to get previous status for an element.
+                e.g., lambda f: f.previous_status
+        """
+        import logging
+
+        import pandas as pd
+        import xarray as xr
+
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.elements = elements
+        self.element_ids: list[str] = [e.label_full for e in elements]
+        self._status_var_getter = status_var_getter
+        self._parameters_getter = parameters_getter
+        self._previous_status_getter = previous_status_getter or (lambda _: None)
+
+        # Store imports for later use
+        self._pd = pd
+        self._xr = xr
+
+        # Variables dict
+        self._variables: dict[str, linopy.Variable] = {}
+
+        # Categorize elements by their feature flags
+        self._categorize_elements()
+
+        self._logger.debug(
+            f'StatusesModel initialized: {len(elements)} elements, '
+            f'{len(self._with_startup_tracking)} with startup tracking, '
+            f'{len(self._with_downtime_tracking)} with downtime tracking'
+        )
+
+    def _categorize_elements(self) -> None:
+        """Categorize elements by their StatusParameters feature flags."""
+        self._with_startup_tracking: list = []
+        self._with_downtime_tracking: list = []
+        self._with_uptime_tracking: list = []
+        self._with_startup_limit: list = []
+
+        for elem in self.elements:
+            params = self._parameters_getter(elem)
+            if params.use_startup_tracking:
+                self._with_startup_tracking.append(elem)
+            if params.use_downtime_tracking:
+                self._with_downtime_tracking.append(elem)
+            if params.use_uptime_tracking:
+                self._with_uptime_tracking.append(elem)
+            if params.startup_limit is not None:
+                self._with_startup_limit.append(elem)
+
+        # Element ID lists for each category
+        self._startup_tracking_ids = [e.label_full for e in self._with_startup_tracking]
+        self._downtime_tracking_ids = [e.label_full for e in self._with_downtime_tracking]
+        self._uptime_tracking_ids = [e.label_full for e in self._with_uptime_tracking]
+        self._startup_limit_ids = [e.label_full for e in self._with_startup_limit]
+
+    def create_variables(self) -> None:
+        """Create batched status feature variables with element dimension."""
+        pd = self._pd
+        xr = self._xr
+
+        # Get base coordinates (period, scenario if they exist)
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+
+        # === active_hours: ALL elements with status ===
+        # This is a per-period variable (summed over time within each period)
+        active_hours_coords = xr.Coordinates(
+            {
+                'element': pd.Index(self.element_ids, name='element'),
+                **base_coords_dict,
+            }
+        )
+        total_hours = self.model.temporal_weight.sum(self.model.temporal_dims)
+        # Build bounds DataArrays
+        lower_bounds = []
+        upper_bounds = []
+        for elem in self.elements:
+            params = self._parameters_getter(elem)
+            lb = params.active_hours_min if params.active_hours_min is not None else 0
+            ub = params.active_hours_max if params.active_hours_max is not None else total_hours
+            lower_bounds.append(lb)
+            upper_bounds.append(ub)
+
+        lower_da = xr.DataArray(lower_bounds, dims=['element'], coords={'element': self.element_ids})
+        upper_da = xr.DataArray(upper_bounds, dims=['element'], coords={'element': self.element_ids})
+
+        self._variables['active_hours'] = self.model.add_variables(
+            lower=lower_da,
+            upper=upper_da,
+            coords=active_hours_coords,
+            name='status|active_hours',
+        )
+
+        # === startup, shutdown: Elements with startup tracking ===
+        if self._with_startup_tracking:
+            temporal_coords = self.model.get_coords()
+            startup_coords = xr.Coordinates(
+                {
+                    'element': pd.Index(self._startup_tracking_ids, name='element'),
+                    **dict(temporal_coords),
+                }
+            )
+            self._variables['startup'] = self.model.add_variables(
+                binary=True,
+                coords=startup_coords,
+                name='status|startup',
+            )
+            self._variables['shutdown'] = self.model.add_variables(
+                binary=True,
+                coords=startup_coords,
+                name='status|shutdown',
+            )
+
+        # === inactive: Elements with downtime tracking ===
+        if self._with_downtime_tracking:
+            temporal_coords = self.model.get_coords()
+            inactive_coords = xr.Coordinates(
+                {
+                    'element': pd.Index(self._downtime_tracking_ids, name='element'),
+                    **dict(temporal_coords),
+                }
+            )
+            self._variables['inactive'] = self.model.add_variables(
+                binary=True,
+                coords=inactive_coords,
+                name='status|inactive',
+            )
+
+        # === startup_count: Elements with startup limit ===
+        if self._with_startup_limit:
+            startup_count_coords = xr.Coordinates(
+                {
+                    'element': pd.Index(self._startup_limit_ids, name='element'),
+                    **base_coords_dict,
+                }
+            )
+            # Build upper bounds from startup_limit
+            upper_limits = [self._parameters_getter(e).startup_limit for e in self._with_startup_limit]
+            upper_limits_da = xr.DataArray(upper_limits, dims=['element'], coords={'element': self._startup_limit_ids})
+            self._variables['startup_count'] = self.model.add_variables(
+                lower=0,
+                upper=upper_limits_da,
+                coords=startup_count_coords,
+                name='status|startup_count',
+            )
+
+        self._logger.debug(f'StatusesModel created variables for {len(self.elements)} elements')
+
+    def create_constraints(self) -> None:
+        """Create batched status feature constraints."""
+        # === active_hours tracking: sum(status * weight) == active_hours ===
+        for elem in self.elements:
+            status_var = self._status_var_getter(elem)
+            active_hours = self._variables['active_hours'].sel(element=elem.label_full)
+            self.model.add_constraints(
+                active_hours == self.model.sum_temporal(status_var),
+                name=f'{elem.label_full}|active_hours_eq',
+            )
+
+        # === inactive complementary: status + inactive == 1 ===
+        for elem in self._with_downtime_tracking:
+            status_var = self._status_var_getter(elem)
+            inactive = self._variables['inactive'].sel(element=elem.label_full)
+            self.model.add_constraints(
+                status_var + inactive == 1,
+                name=f'{elem.label_full}|status|complementary',
+            )
+
+        # === State transitions: startup, shutdown ===
+        for elem in self._with_startup_tracking:
+            status_var = self._status_var_getter(elem)
+            startup = self._variables['startup'].sel(element=elem.label_full)
+            shutdown = self._variables['shutdown'].sel(element=elem.label_full)
+            previous_status = self._previous_status_getter(elem)
+            previous_state = previous_status.isel(time=-1) if previous_status is not None else None
+
+            BoundingPatterns.state_transition_bounds(
+                self.model,
+                state=status_var,
+                activate=startup,
+                deactivate=shutdown,
+                name=f'{elem.label_full}|status|switch',
+                previous_state=previous_state,
+                coord='time',
+            )
+
+        # === startup_count: sum(startup) == startup_count ===
+        for elem in self._with_startup_limit:
+            startup = self._variables['startup'].sel(element=elem.label_full)
+            startup_count = self._variables['startup_count'].sel(element=elem.label_full)
+            startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario')]
+            self.model.add_constraints(
+                startup_count == startup.sum(startup_temporal_dims),
+                name=f'{elem.label_full}|status|startup_count',
+            )
+
+        # === Uptime tracking (consecutive duration) ===
+        for elem in self._with_uptime_tracking:
+            params = self._parameters_getter(elem)
+            status_var = self._status_var_getter(elem)
+            previous_status = self._previous_status_getter(elem)
+
+            # Calculate previous uptime if needed
+            previous_uptime = None
+            if previous_status is not None and params.min_uptime is not None:
+                # Compute consecutive 1s at the end of previous_status
+                previous_uptime = self._compute_previous_duration(
+                    previous_status, target_state=1, timestep_duration=self.model.timestep_duration
+                )
+
+            ModelingPrimitives.consecutive_duration_tracking(
+                self.model,
+                state=status_var,
+                short_name=f'{elem.label_full}|uptime',
+                minimum_duration=params.min_uptime,
+                maximum_duration=params.max_uptime,
+                duration_per_step=self.model.timestep_duration,
+                duration_dim='time',
+                previous_duration=previous_uptime,
+            )
+
+        # === Downtime tracking (consecutive duration) ===
+        for elem in self._with_downtime_tracking:
+            params = self._parameters_getter(elem)
+            inactive = self._variables['inactive'].sel(element=elem.label_full)
+            previous_status = self._previous_status_getter(elem)
+
+            # Calculate previous downtime if needed
+            previous_downtime = None
+            if previous_status is not None and params.min_downtime is not None:
+                # Compute consecutive 0s (inactive) at the end of previous_status
+                previous_downtime = self._compute_previous_duration(
+                    previous_status, target_state=0, timestep_duration=self.model.timestep_duration
+                )
+
+            ModelingPrimitives.consecutive_duration_tracking(
+                self.model,
+                state=inactive,
+                short_name=f'{elem.label_full}|downtime',
+                minimum_duration=params.min_downtime,
+                maximum_duration=params.max_downtime,
+                duration_per_step=self.model.timestep_duration,
+                duration_dim='time',
+                previous_duration=previous_downtime,
+            )
+
+        # === Cluster cyclic constraints ===
+        if self.model.flow_system.clusters is not None:
+            for elem in self.elements:
+                params = self._parameters_getter(elem)
+                if params.cluster_mode == 'cyclic':
+                    status_var = self._status_var_getter(elem)
+                    self.model.add_constraints(
+                        status_var.isel(time=0) == status_var.isel(time=-1),
+                        name=f'{elem.label_full}|status|cluster_cyclic',
+                    )
+
+        self._logger.debug(f'StatusesModel created constraints for {len(self.elements)} elements')
+
+    def _compute_previous_duration(
+        self, previous_status: xr.DataArray, target_state: int, timestep_duration
+    ) -> xr.DataArray:
+        """Compute consecutive duration of target_state at end of previous_status."""
+        xr = self._xr
+        # Simple implementation: count consecutive target_state values from the end
+        # This is a scalar computation, not vectorized
+        values = previous_status.values
+        count = 0
+        for v in reversed(values):
+            if (target_state == 1 and v > 0) or (target_state == 0 and v == 0):
+                count += 1
+            else:
+                break
+        # Multiply by timestep_duration (which may be time-varying)
+        if hasattr(timestep_duration, 'isel'):
+            # If timestep_duration is xr.DataArray, use mean or last value
+            duration = float(timestep_duration.mean()) * count
+        else:
+            duration = timestep_duration * count
+        return xr.DataArray(duration)
+
+    def create_effect_shares(self) -> None:
+        """Create effect shares for status-related effects."""
+        for elem in self.elements:
+            params = self._parameters_getter(elem)
+            status_var = self._status_var_getter(elem)
+
+            # effects_per_active_hour
+            if params.effects_per_active_hour:
+                self.model.effects.add_share_to_effects(
+                    name=elem.label_full,
+                    expressions={
+                        effect: status_var * factor * self.model.timestep_duration
+                        for effect, factor in params.effects_per_active_hour.items()
+                    },
+                    target='temporal',
+                )
+
+            # effects_per_startup
+            if params.effects_per_startup and elem in self._with_startup_tracking:
+                startup = self._variables['startup'].sel(element=elem.label_full)
+                self.model.effects.add_share_to_effects(
+                    name=elem.label_full,
+                    expressions={effect: startup * factor for effect, factor in params.effects_per_startup.items()},
+                    target='temporal',
+                )
+
+        self._logger.debug(f'StatusesModel created effect shares for {len(self.elements)} elements')
+
+    def get_variable(self, name: str, element_id: str | None = None):
+        """Get a variable, optionally selecting a specific element."""
+        var = self._variables.get(name)
+        if var is None:
+            return None
+        if element_id is not None:
+            if element_id in var.coords.get('element', []):
+                return var.sel(element=element_id)
+            return None
+        return var
+
+    @property
+    def active_hours(self) -> linopy.Variable:
+        """Batched active_hours variable with element dimension."""
+        return self._variables['active_hours']
+
+    @property
+    def startup(self) -> linopy.Variable | None:
+        """Batched startup variable with element dimension."""
+        return self._variables.get('startup')
+
+    @property
+    def shutdown(self) -> linopy.Variable | None:
+        """Batched shutdown variable with element dimension."""
+        return self._variables.get('shutdown')
+
+    @property
+    def inactive(self) -> linopy.Variable | None:
+        """Batched inactive variable with element dimension."""
+        return self._variables.get('inactive')
+
+    @property
+    def startup_count(self) -> linopy.Variable | None:
+        """Batched startup_count variable with element dimension."""
+        return self._variables.get('startup_count')
+
+
 class StatusModel(Submodel):
     """Mathematical model implementation for binary status.
 

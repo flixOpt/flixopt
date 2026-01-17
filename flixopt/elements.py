@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, InvestmentProxy, StatusModel
+from .features import InvestmentModel, InvestmentProxy, StatusModel, StatusProxy
 from .interface import InvestParameters, StatusParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
@@ -744,21 +744,9 @@ class FlowModelProxy(ElementModel):
                 self.register_variable(invested, 'invested')
 
     def _do_modeling(self):
-        """Skip modeling - FlowsModel already created everything."""
-        # Only create StatusModel submodel if needed
-        if self.element.status_parameters is not None and self.label_full in self._flows_model.status_ids:
-            status_var = self._flows_model.get_variable('status', self.label_full)
-            self.add_submodels(
-                StatusModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    parameters=self.element.status_parameters,
-                    status=status_var,
-                    previous_status=self.previous_status,
-                    label_of_model=self.label_of_element,
-                ),
-                short_name='status',
-            )
+        """Skip modeling - FlowsModel and StatusesModel already created everything."""
+        # StatusModel is now handled by StatusesModel in FlowsModel
+        pass
 
     @property
     def with_status(self) -> bool:
@@ -779,11 +767,18 @@ class FlowModelProxy(ElementModel):
         return self['total_flow_hours']
 
     @property
-    def status(self) -> StatusModel | None:
-        """Status feature."""
-        if 'status' not in self.submodels:
+    def status(self) -> StatusModel | StatusProxy | None:
+        """Status feature - returns proxy to batched StatusesModel."""
+        if not self.with_status:
             return None
-        return self.submodels['status']
+
+        # Get the batched statuses model from FlowsModel
+        statuses_model = self._flows_model._statuses_model
+        if statuses_model is None:
+            return None
+
+        # Return a proxy that provides active_hours/startup/etc. for this specific element
+        return StatusProxy(statuses_model, self.label_full)
 
     @property
     def investment(self) -> InvestmentModel | InvestmentProxy | None:
@@ -1592,6 +1587,9 @@ class FlowsModel(TypeModel):
         # Batched investment model (created via create_investment_model)
         self._investments_model = None
 
+        # Batched status model (created via create_status_model)
+        self._statuses_model = None
+
         # Set reference on each flow element for element access pattern
         for flow in elements:
             flow.set_flows_model(self)
@@ -1920,6 +1918,46 @@ class FlowsModel(TypeModel):
         self._investments_model.create_effect_shares()
 
         logger.debug(f'FlowsModel created batched InvestmentsModel for {len(self.flows_with_investment)} flows')
+
+    def create_status_model(self) -> None:
+        """Create batched StatusesModel for flows with status.
+
+        This method creates variables (active_hours, startup, shutdown, etc.) and constraints
+        for all flows with StatusParameters using a single batched model.
+
+        Must be called AFTER create_variables() and create_constraints().
+        """
+        if not self.flows_with_status:
+            return
+
+        from .features import StatusesModel
+
+        def get_previous_status(flow: Flow) -> xr.DataArray | None:
+            """Get previous status for a flow based on its previous_flow_rate."""
+            previous_flow_rate = flow.previous_flow_rate
+            if previous_flow_rate is None:
+                return None
+
+            return ModelingUtilitiesAbstract.to_binary(
+                values=xr.DataArray(
+                    [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
+                ),
+                epsilon=CONFIG.Modeling.epsilon,
+                dims='time',
+            )
+
+        self._statuses_model = StatusesModel(
+            model=self.model,
+            elements=self.flows_with_status,
+            status_var_getter=lambda f: self.get_variable('status', f.label_full),
+            parameters_getter=lambda f: f.status_parameters,
+            previous_status_getter=get_previous_status,
+        )
+        self._statuses_model.create_variables()
+        self._statuses_model.create_constraints()
+        self._statuses_model.create_effect_shares()
+
+        logger.debug(f'FlowsModel created batched StatusesModel for {len(self.flows_with_status)} flows')
 
     def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
         """Collect effect share specifications for all flows.
