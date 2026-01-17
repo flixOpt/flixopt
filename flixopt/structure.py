@@ -455,6 +455,7 @@ class TypeModel(ABC):
             )
 
         # Slow path: need full concat for multi-dimensional bounds
+        # First, collect all arrays with element dimension added
         arrays_to_stack = []
         for bound, eid in zip(bounds, self.element_ids, strict=False):
             if isinstance(bound, xr.DataArray):
@@ -463,10 +464,28 @@ class TypeModel(ABC):
                 arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
             arrays_to_stack.append(arr)
 
-        # Broadcast all arrays to common dimensions before concat
-        # This handles cases where some bounds have period/scenario dims and others don't
-        broadcasted = xr.broadcast(*arrays_to_stack)
-        stacked = xr.concat(broadcasted, dim='element')
+        # Find union of all non-element dimensions
+        all_non_element_dims = set()
+        dim_coords = {}
+        for arr in arrays_to_stack:
+            for dim in arr.dims:
+                if dim != 'element' and dim not in all_non_element_dims:
+                    all_non_element_dims.add(dim)
+                    dim_coords[dim] = arr.coords[dim]
+
+        # Expand each array to have all dimensions, preserving element coordinate
+        expanded = []
+        for arr in arrays_to_stack:
+            for dim in all_non_element_dims:
+                if dim not in arr.dims:
+                    coord_vals = dim_coords[dim]
+                    if hasattr(coord_vals, 'values'):
+                        coord_vals = coord_vals.values
+                    arr = arr.expand_dims({dim: coord_vals})
+            expanded.append(arr)
+
+        # Now concat along element - all arrays have same non-element dimensions
+        stacked = xr.concat(expanded, dim='element')
 
         # Ensure element is first dimension
         if 'element' in stacked.dims and stacked.dims[0] != 'element':
