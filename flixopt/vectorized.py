@@ -385,27 +385,45 @@ class VariableRegistry:
         Returns:
             Stacked DataArray with element dimension, or scalar if all identical.
         """
-        # Check if all bounds are identical scalars (common case: all inf)
-        if all(isinstance(b, (int, float)) and not isinstance(b, xr.DataArray) for b in bounds):
-            if len(set(bounds)) == 1:
-                return bounds[0]  # Return scalar - linopy will broadcast
+        # Extract scalar values from 0-d DataArrays or plain scalars
+        scalar_values = []
+        has_multidim = False
 
-        # Need to stack into DataArray
+        for b in bounds:
+            if isinstance(b, xr.DataArray):
+                if b.ndim == 0:
+                    # 0-d DataArray - extract scalar
+                    scalar_values.append(float(b.values))
+                else:
+                    # Multi-dimensional - need full concat
+                    has_multidim = True
+                    break
+            else:
+                scalar_values.append(float(b))
+
+        # Fast path: all scalars (including 0-d DataArrays)
+        if not has_multidim:
+            # Check if all identical (common case: all 0 or all inf)
+            unique_values = set(scalar_values)
+            if len(unique_values) == 1:
+                return scalar_values[0]  # Return scalar - linopy will broadcast
+
+            # Build array directly from scalars
+            return xr.DataArray(
+                np.array(scalar_values),
+                coords={'element': element_ids},
+                dims=['element'],
+            )
+
+        # Slow path: need full concat for multi-dimensional bounds
         arrays_to_stack = []
         for bound, eid in zip(bounds, element_ids, strict=False):
             if isinstance(bound, xr.DataArray):
-                # Ensure proper dimension order
                 arr = bound.expand_dims(element=[eid])
             else:
-                # Scalar - create DataArray
-                arr = xr.DataArray(
-                    bound,
-                    coords={'element': [eid]},
-                    dims=['element'],
-                )
+                arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
             arrays_to_stack.append(arr)
 
-        # Concatenate along element dimension
         stacked = xr.concat(arrays_to_stack, dim='element')
 
         # Ensure element is first dimension for consistency
