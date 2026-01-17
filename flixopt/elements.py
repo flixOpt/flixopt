@@ -1916,6 +1916,7 @@ class FlowsModel(TypeModel):
             elements=self.flows_with_investment,
             parameters_getter=lambda f: f.size,
             size_category=VariableCategory.FLOW_SIZE,
+            name_prefix='flow_investment',
         )
         self._investments_model.create_variables()
         self._investments_model.create_constraints()
