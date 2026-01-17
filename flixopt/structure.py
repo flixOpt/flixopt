@@ -241,7 +241,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 element._variable_names = list(element.submodel.variables)
                 element._constraint_names = list(element.submodel.constraints)
 
-    def do_modeling_dce(self):
+    def do_modeling_dce(self, timing: bool = False):
         """Build the model using the DCE (Declaration-Collection-Execution) pattern.
 
         This is an alternative to `do_modeling()` that uses vectorized batch creation
@@ -252,12 +252,24 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         2. COLLECTION: Registries group declarations by category
         3. EXECUTION: Batch-create variables/constraints per category
 
+        Args:
+            timing: If True, print detailed timing breakdown.
+
         Note:
             This method is experimental. Use `do_modeling()` for production.
             Not all element types support DCE yet - those that don't will
             fall back to individual creation.
         """
+        import time
+
         from .vectorized import ConstraintRegistry, VariableRegistry
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
 
         # Enable DCE mode - elements will skip _do_modeling() variable creation
         self._dce_mode = True
@@ -266,8 +278,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         variable_registry = VariableRegistry(self)
         self._variable_registry = variable_registry  # Store for later access
 
+        record('registry_init')
+
         # Create effect models first (they don't use DCE yet)
         self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
 
         # Phase 1: DECLARATION
         # Create element models and collect their declarations
@@ -283,9 +299,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                         variable_registry.register(spec)
                     element_models.append(flow.submodel)
 
+        record('components')
+
         for bus in self.flow_system.buses.values():
             bus.create_model(self)
             # Bus doesn't use DCE yet - uses traditional approach
+
+        record('buses')
 
         # Phase 2: COLLECTION (implicit in registries)
         logger.debug(f'DCE Phase 2: Collection - {variable_registry}')
@@ -294,10 +314,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         logger.debug('DCE Phase 3: Execution (Variables)')
         variable_registry.create_all()
 
+        record('var_creation')
+
         # Distribute handles to elements
         for element_model in element_models:
             handles = variable_registry.get_handles_for_element(element_model.label_full)
             element_model.on_variables_created(handles)
+
+        record('handle_distribution')
 
         # Phase 3: EXECUTION (Constraints)
         logger.debug('DCE Phase 3: Execution (Constraints)')
@@ -311,9 +335,32 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         constraint_registry.create_all()
 
+        record('constraint_creation')
+
         # Post-processing
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
+
+        record('end')
+
+        if timing:
+            print('\n  DCE Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'registry_init',
+                'effects',
+                'components',
+                'buses',
+                'var_creation',
+                'handle_distribution',
+                'constraint_creation',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
 
         logger.info(f'DCE modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints')
 

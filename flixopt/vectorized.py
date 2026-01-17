@@ -569,13 +569,76 @@ class ConstraintRegistry:
     def _create_batch(self, category: str, specs: list[ConstraintSpec]) -> None:
         """Create all constraints of a category.
 
-        For now, creates constraints individually but groups them logically.
-        Future optimization: stack compatible constraints into single call.
+        Attempts to use true vectorized batching for known constraint patterns.
+        Falls back to individual creation for complex constraints.
 
         Args:
             category: The constraint category name.
             specs: List of specs for this category.
         """
+        # Try vectorized batching for known patterns
+        if self._try_vectorized_batch(category, specs):
+            return
+
+        # Fall back to individual creation
+        self._create_individual(category, specs)
+
+    def _try_vectorized_batch(self, category: str, specs: list[ConstraintSpec]) -> bool:
+        """Try to create constraints using true vectorized batching.
+
+        Returns True if successful, False to fall back to individual creation.
+        """
+        # Known batchable constraint patterns
+        if category == 'total_flow_hours_eq':
+            return self._batch_total_flow_hours_eq(specs)
+        elif category == 'flow_hours_over_periods_eq':
+            return self._batch_flow_hours_over_periods_eq(specs)
+
+        return False
+
+    def _batch_total_flow_hours_eq(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: total_flow_hours = sum_temporal(flow_rate)"""
+        try:
+            # Get full batched variables
+            flow_rate = self.variable_registry.get_full_variable('flow_rate')
+            total_flow_hours = self.variable_registry.get_full_variable('total_flow_hours')
+
+            # Vectorized sum across time dimension
+            rhs = self.model.sum_temporal(flow_rate)
+
+            # Single constraint call for all elements
+            self.model.add_constraints(total_flow_hours == rhs, name='total_flow_hours_eq')
+
+            logger.debug(f'Batched {len(specs)} total_flow_hours_eq constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch total_flow_hours_eq, falling back: {e}')
+            return False
+
+    def _batch_flow_hours_over_periods_eq(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: flow_hours_over_periods = sum(total_flow_hours * period_weight)"""
+        try:
+            # Get full batched variables
+            total_flow_hours = self.variable_registry.get_full_variable('total_flow_hours')
+            flow_hours_over_periods = self.variable_registry.get_full_variable('flow_hours_over_periods')
+
+            # Vectorized weighted sum
+            period_weights = self.model.flow_system.period_weights
+            if period_weights is None:
+                period_weights = 1.0
+            weighted = (total_flow_hours * period_weights).sum('period')
+
+            # Single constraint call for all elements
+            self.model.add_constraints(flow_hours_over_periods == weighted, name='flow_hours_over_periods_eq')
+
+            logger.debug(f'Batched {len(specs)} flow_hours_over_periods_eq constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch flow_hours_over_periods_eq, falling back: {e}')
+            return False
+
+    def _create_individual(self, category: str, specs: list[ConstraintSpec]) -> None:
+        """Create constraints individually (fallback for complex constraints)."""
         for spec in specs:
             # Get handles for this element
             handles = self.variable_registry.get_handles_for_element(spec.element_id)
