@@ -758,6 +758,106 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         logger.info(f'DCE modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints')
 
+    def do_modeling_type_level(self, timing: bool = False):
+        """Build the model using type-level models (one model per element TYPE).
+
+        This is an alternative to `do_modeling()` and `do_modeling_dce()` that uses
+        TypeModel classes (e.g., FlowsModel) which handle ALL elements of a type
+        in a single instance with true vectorized operations.
+
+        Benefits over DCE:
+        - Cleaner architecture: One model per type, not per instance
+        - Direct variable ownership: FlowsModel owns flow_rate directly
+        - No registry indirection: No specs → registry → variables pipeline
+
+        Args:
+            timing: If True, print detailed timing breakdown.
+
+        Note:
+            This method is experimental. Currently only FlowsModel is implemented.
+            Components and buses still use the traditional approach.
+        """
+        import time
+
+        from .elements import FlowsModel
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
+
+        # Create effect models first
+        self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
+
+        # Collect all flows from all components
+        all_flows = []
+        for component in self.flow_system.components.values():
+            all_flows.extend(component.inputs)
+            all_flows.extend(component.outputs)
+
+        record('collect_flows')
+
+        # Create type-level model for all flows
+        self._flows_model = FlowsModel(self, all_flows)
+        self._flows_model.create_variables()
+
+        record('flows_variables')
+
+        self._flows_model.create_constraints()
+
+        record('flows_constraints')
+
+        # Create effect shares
+        self._flows_model.create_effect_shares()
+
+        record('flows_effects')
+
+        # Create component models (without flow modeling - flows handled by FlowsModel)
+        # For now, still create component models for their internal logic
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+
+        record('components')
+
+        # Create bus models
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
+
+        record('buses')
+
+        # Post-processing
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+
+        record('end')
+
+        if timing:
+            print('\n  Type-Level Modeling Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'effects',
+                'collect_flows',
+                'flows_variables',
+                'flows_constraints',
+                'flows_effects',
+                'components',
+                'buses',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
+
+        logger.info(
+            f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
+        )
+
     def _add_scenario_equality_for_parameter_type(
         self,
         parameter_type: Literal['flow_rate', 'size'],

@@ -9,6 +9,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
@@ -20,8 +21,11 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbs
 from .structure import (
     Element,
     ElementModel,
+    ElementType,
     FlowSystemModel,
+    TypeModel,
     VariableCategory,
+    VariableType,
     register_class_for_io,
 )
 from .vectorized import ConstraintResult, ConstraintSpec, VariableHandle, VariableSpec
@@ -640,6 +644,45 @@ class Flow(Element):
     @property
     def label_full(self) -> str:
         return f'{self.component}({self.label})'
+
+    # =========================================================================
+    # Type-Level Model Access (for FlowsModel integration)
+    # =========================================================================
+
+    _flows_model: FlowsModel | None = None  # Set by FlowsModel during creation
+
+    def set_flows_model(self, flows_model: FlowsModel) -> None:
+        """Set reference to the type-level FlowsModel.
+
+        Called by FlowsModel during initialization to enable element access.
+        """
+        self._flows_model = flows_model
+
+    @property
+    def flow_rate_from_type_model(self) -> linopy.Variable | None:
+        """Get flow_rate from FlowsModel (if using type-level modeling).
+
+        Returns the slice of the batched variable for this specific flow.
+        """
+        if self._flows_model is None:
+            return None
+        return self._flows_model.get_variable('flow_rate', self.label_full)
+
+    @property
+    def total_flow_hours_from_type_model(self) -> linopy.Variable | None:
+        """Get total_flow_hours from FlowsModel (if using type-level modeling)."""
+        if self._flows_model is None:
+            return None
+        return self._flows_model.get_variable('total_flow_hours', self.label_full)
+
+    @property
+    def status_from_type_model(self) -> linopy.Variable | None:
+        """Get status from FlowsModel (if using type-level modeling)."""
+        if self._flows_model is None or 'status' not in self._flows_model.variables:
+            return None
+        if self.label_full not in self._flows_model.status_ids:
+            return None
+        return self._flows_model.get_variable('status', self.label_full)
 
     @property
     def size_is_fixed(self) -> bool:
@@ -1357,6 +1400,444 @@ class FlowModel(ElementModel):
             epsilon=CONFIG.Modeling.epsilon,
             dims='time',
         )
+
+
+# =============================================================================
+# Type-Level Model: FlowsModel
+# =============================================================================
+
+
+class FlowsModel(TypeModel):
+    """Type-level model for ALL flows in a FlowSystem.
+
+    Unlike FlowModel (one per Flow instance), FlowsModel handles ALL flows
+    in a single instance with batched variables and constraints.
+
+    This enables:
+    - One `flow_rate` variable with element dimension for all flows
+    - One constraint call for all flow rate bounds
+    - Efficient batch creation instead of N individual calls
+
+    The model handles heterogeneous flows by creating subsets:
+    - All flows: flow_rate, total_flow_hours
+    - Flows with status: status variable
+    - Flows with investment: size, invested variables
+
+    Example:
+        >>> flows_model = FlowsModel(model, all_flows)
+        >>> flows_model.create_variables()
+        >>> flows_model.create_constraints()
+        >>> # Access individual flow's variable:
+        >>> boiler_rate = flows_model.get_variable('flow_rate', 'Boiler(gas_in)')
+    """
+
+    element_type = ElementType.FLOW
+
+    def __init__(self, model: FlowSystemModel, elements: list[Flow]):
+        """Initialize the type-level model for all flows.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of all Flow elements to model.
+        """
+        super().__init__(model, elements)
+
+        # Categorize flows by their features
+        self.flows_with_status: list[Flow] = [f for f in elements if f.status_parameters is not None]
+        self.flows_with_investment: list[Flow] = [f for f in elements if isinstance(f.size, InvestParameters)]
+        self.flows_with_optional_investment: list[Flow] = [
+            f for f in self.flows_with_investment if not f.size.mandatory
+        ]
+        self.flows_with_flow_hours_over_periods: list[Flow] = [
+            f
+            for f in elements
+            if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
+        ]
+
+        # Element ID lists for subsets
+        self.status_ids: list[str] = [f.label_full for f in self.flows_with_status]
+        self.investment_ids: list[str] = [f.label_full for f in self.flows_with_investment]
+        self.optional_investment_ids: list[str] = [f.label_full for f in self.flows_with_optional_investment]
+        self.flow_hours_over_periods_ids: list[str] = [f.label_full for f in self.flows_with_flow_hours_over_periods]
+
+        # Set reference on each flow element for element access pattern
+        for flow in elements:
+            flow.set_flows_model(self)
+
+        # Cache for bounds computation
+        self._bounds_cache: dict[str, xr.DataArray] = {}
+
+    def create_variables(self) -> None:
+        """Create all batched variables for flows.
+
+        Creates:
+        - flow_rate: For ALL flows (with element dimension)
+        - total_flow_hours: For ALL flows
+        - status: For flows with status_parameters
+        - size: For flows with investment
+        - invested: For flows with optional investment
+        - flow_hours_over_periods: For flows with that constraint
+        """
+        # === flow_rate: ALL flows ===
+        lower_bounds = self._collect_bounds('absolute_lower')
+        upper_bounds = self._collect_bounds('absolute_upper')
+
+        self.add_variables(
+            name='flow_rate',
+            var_type=VariableType.FLOW_RATE,
+            lower=lower_bounds,
+            upper=upper_bounds,
+            dims=self.model.temporal_dims,
+        )
+
+        # === total_flow_hours: ALL flows ===
+        total_lower = self._stack_bounds(
+            [f.flow_hours_min if f.flow_hours_min is not None else 0 for f in self.elements]
+        )
+        total_upper = self._stack_bounds(
+            [f.flow_hours_max if f.flow_hours_max is not None else np.inf for f in self.elements]
+        )
+
+        self.add_variables(
+            name='total_flow_hours',
+            var_type=VariableType.TOTAL,
+            lower=total_lower,
+            upper=total_upper,
+            dims=('period', 'scenario'),
+        )
+
+        # === status: Only flows with status_parameters ===
+        if self.flows_with_status:
+            self._add_subset_variables(
+                name='status',
+                var_type=VariableType.STATUS,
+                element_ids=self.status_ids,
+                binary=True,
+                dims=self.model.temporal_dims,
+            )
+
+        # === size: Only flows with investment ===
+        if self.flows_with_investment:
+            size_lower = self._stack_bounds(
+                [f.size.minimum_or_fixed_size if f.size.mandatory else 0 for f in self.flows_with_investment]
+            )
+            size_upper = self._stack_bounds([f.size.maximum_or_fixed_size for f in self.flows_with_investment])
+
+            self._add_subset_variables(
+                name='size',
+                var_type=VariableType.SIZE,
+                element_ids=self.investment_ids,
+                lower=size_lower,
+                upper=size_upper,
+                dims=('period', 'scenario'),
+            )
+
+        # === invested: Only flows with optional investment ===
+        if self.flows_with_optional_investment:
+            self._add_subset_variables(
+                name='invested',
+                var_type=VariableType.INVESTED,
+                element_ids=self.optional_investment_ids,
+                binary=True,
+                dims=('period', 'scenario'),
+            )
+
+        # === flow_hours_over_periods: Only flows that need it ===
+        if self.flows_with_flow_hours_over_periods:
+            fhop_lower = self._stack_bounds(
+                [
+                    f.flow_hours_min_over_periods if f.flow_hours_min_over_periods is not None else 0
+                    for f in self.flows_with_flow_hours_over_periods
+                ]
+            )
+            fhop_upper = self._stack_bounds(
+                [
+                    f.flow_hours_max_over_periods if f.flow_hours_max_over_periods is not None else np.inf
+                    for f in self.flows_with_flow_hours_over_periods
+                ]
+            )
+
+            self._add_subset_variables(
+                name='flow_hours_over_periods',
+                var_type=VariableType.TOTAL_OVER_PERIODS,
+                element_ids=self.flow_hours_over_periods_ids,
+                lower=fhop_lower,
+                upper=fhop_upper,
+                dims=('scenario',),
+            )
+
+        logger.debug(
+            f'FlowsModel created variables: {len(self.elements)} flows, '
+            f'{len(self.flows_with_status)} with status, '
+            f'{len(self.flows_with_investment)} with investment'
+        )
+
+    def create_constraints(self) -> None:
+        """Create all batched constraints for flows.
+
+        Creates:
+        - total_flow_hours_eq: Tracking constraint for all flows
+        - flow_hours_over_periods_eq: For flows that need it
+        - flow_rate bounds: Depending on status/investment configuration
+        """
+        # === total_flow_hours = sum_temporal(flow_rate) for ALL flows ===
+        flow_rate = self._variables['flow_rate']
+        total_flow_hours = self._variables['total_flow_hours']
+        rhs = self.model.sum_temporal(flow_rate)
+        self.add_constraints(total_flow_hours == rhs, name='total_flow_hours_eq')
+
+        # === flow_hours_over_periods tracking ===
+        if self.flows_with_flow_hours_over_periods:
+            flow_hours_over_periods = self._variables['flow_hours_over_periods']
+            # Select only the relevant elements from total_flow_hours
+            total_flow_hours_subset = total_flow_hours.sel(element=self.flow_hours_over_periods_ids)
+            period_weights = self.model.flow_system.period_weights
+            if period_weights is None:
+                period_weights = 1.0
+            weighted = (total_flow_hours_subset * period_weights).sum('period')
+            self.add_constraints(flow_hours_over_periods == weighted, name='flow_hours_over_periods_eq')
+
+        # === Flow rate bounds (depends on status/investment) ===
+        self._create_flow_rate_bounds()
+
+        # === Investment constraints ===
+        if self.flows_with_optional_investment:
+            self._create_investment_constraints()
+
+        logger.debug(f'FlowsModel created {len(self._constraints)} constraint types')
+
+    def _add_subset_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        element_ids: list[str],
+        dims: tuple[str, ...],
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        binary: bool = False,
+        **kwargs,
+    ) -> None:
+        """Create a variable for a subset of elements.
+
+        Unlike add_variables() which uses self.element_ids, this creates
+        a variable with a custom subset of element IDs.
+        """
+        # Build coordinates with subset element dimension
+        coord_dict = {'element': pd.Index(element_ids, name='element')}
+        model_coords = self.model.get_coords(dims=dims)
+        if model_coords is not None:
+            for dim in dims:
+                if dim in model_coords:
+                    coord_dict[dim] = model_coords[dim]
+        coords = xr.Coordinates(coord_dict)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower if not binary else None,
+            upper=upper if not binary else None,
+            coords=coords,
+            name=full_name,
+            binary=binary,
+            **kwargs,
+        )
+
+        # Register expansion category
+        from .structure import VARIABLE_TYPE_TO_EXPANSION
+
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        self._variables[name] = variable
+
+    def _collect_bounds(self, bound_type: str) -> xr.DataArray | float:
+        """Collect bounds from all flows and stack them.
+
+        Args:
+            bound_type: 'absolute_lower', 'absolute_upper', 'relative_lower', 'relative_upper'
+
+        Returns:
+            Stacked bounds with element dimension.
+        """
+        bounds_list = []
+        for flow in self.elements:
+            if bound_type == 'absolute_lower':
+                bounds_list.append(self._get_absolute_lower_bound(flow))
+            elif bound_type == 'absolute_upper':
+                bounds_list.append(self._get_absolute_upper_bound(flow))
+            elif bound_type == 'relative_lower':
+                bounds_list.append(self._get_relative_bounds(flow)[0])
+            elif bound_type == 'relative_upper':
+                bounds_list.append(self._get_relative_bounds(flow)[1])
+            else:
+                raise ValueError(f'Unknown bound type: {bound_type}')
+
+        return self._stack_bounds(bounds_list)
+
+    def _get_relative_bounds(self, flow: Flow) -> tuple[xr.DataArray, xr.DataArray]:
+        """Get relative flow rate bounds for a flow."""
+        if flow.fixed_relative_profile is not None:
+            return flow.fixed_relative_profile, flow.fixed_relative_profile
+        return xr.broadcast(flow.relative_minimum, flow.relative_maximum)
+
+    def _get_absolute_lower_bound(self, flow: Flow) -> xr.DataArray | float:
+        """Get absolute lower bound for a flow."""
+        lb_relative, _ = self._get_relative_bounds(flow)
+
+        # Flows with status have lb=0 (status controls activation)
+        if flow.status_parameters is not None:
+            return 0
+
+        if not isinstance(flow.size, InvestParameters):
+            # Basic case without investment
+            if flow.size is not None:
+                return lb_relative * flow.size
+            return 0
+        elif flow.size.mandatory:
+            # Mandatory investment
+            return lb_relative * flow.size.minimum_or_fixed_size
+        else:
+            # Optional investment - lower bound is 0
+            return 0
+
+    def _get_absolute_upper_bound(self, flow: Flow) -> xr.DataArray | float:
+        """Get absolute upper bound for a flow."""
+        _, ub_relative = self._get_relative_bounds(flow)
+
+        if isinstance(flow.size, InvestParameters):
+            return ub_relative * flow.size.maximum_or_fixed_size
+        elif flow.size is not None:
+            return ub_relative * flow.size
+        else:
+            return np.inf  # Unbounded
+
+    def _create_flow_rate_bounds(self) -> None:
+        """Create flow rate bounding constraints based on status/investment configuration."""
+        # Group flows by their constraint type
+        # 1. Status only (no investment)
+        status_only_flows = [f for f in self.flows_with_status if f not in self.flows_with_investment]
+        if status_only_flows:
+            self._create_status_bounds(status_only_flows)
+
+        # 2. Investment only (no status)
+        invest_only_flows = [f for f in self.flows_with_investment if f not in self.flows_with_status]
+        if invest_only_flows:
+            self._create_investment_bounds(invest_only_flows)
+
+        # 3. Both status and investment
+        both_flows = [f for f in self.flows_with_status if f in self.flows_with_investment]
+        if both_flows:
+            self._create_status_investment_bounds(both_flows)
+
+    def _create_status_bounds(self, flows: list[Flow]) -> None:
+        """Create bounds: flow_rate <= status * size * relative_max, flow_rate >= status * epsilon."""
+        flow_ids = [f.label_full for f in flows]
+        flow_rate = self._variables['flow_rate'].sel(element=flow_ids)
+        status = self._variables['status'].sel(element=flow_ids)
+
+        # Upper bound: flow_rate <= status * size * relative_max
+        upper_bounds = xr.concat(
+            [self._get_relative_bounds(f)[1] * f.size for f in flows], dim='element'
+        ).assign_coords(element=flow_ids)
+        self.add_constraints(flow_rate <= status * upper_bounds, name='flow_rate_status_ub')
+
+        # Lower bound: flow_rate >= status * max(epsilon, size * relative_min)
+        lower_bounds = xr.concat(
+            [np.maximum(CONFIG.Modeling.epsilon, self._get_relative_bounds(f)[0] * f.size) for f in flows],
+            dim='element',
+        ).assign_coords(element=flow_ids)
+        self.add_constraints(flow_rate >= status * lower_bounds, name='flow_rate_status_lb')
+
+    def _create_investment_bounds(self, flows: list[Flow]) -> None:
+        """Create bounds: flow_rate <= size * relative_max, flow_rate >= size * relative_min."""
+        flow_ids = [f.label_full for f in flows]
+        flow_rate = self._variables['flow_rate'].sel(element=flow_ids)
+        size = self._variables['size'].sel(element=flow_ids)
+
+        # Upper bound: flow_rate <= size * relative_max
+        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim='element').assign_coords(
+            element=flow_ids
+        )
+        self.add_constraints(flow_rate <= size * rel_max, name='flow_rate_invest_ub')
+
+        # Lower bound: flow_rate >= size * relative_min
+        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim='element').assign_coords(
+            element=flow_ids
+        )
+        self.add_constraints(flow_rate >= size * rel_min, name='flow_rate_invest_lb')
+
+    def _create_status_investment_bounds(self, flows: list[Flow]) -> None:
+        """Create bounds for flows with both status and investment."""
+        flow_ids = [f.label_full for f in flows]
+        flow_rate = self._variables['flow_rate'].sel(element=flow_ids)
+        size = self._variables['size'].sel(element=flow_ids)
+        status = self._variables['status'].sel(element=flow_ids)
+
+        # Upper bound: flow_rate <= size * relative_max
+        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim='element').assign_coords(
+            element=flow_ids
+        )
+        self.add_constraints(flow_rate <= size * rel_max, name='flow_rate_status_invest_ub')
+
+        # Lower bound: flow_rate >= (status - 1) * M + size * relative_min
+        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim='element').assign_coords(
+            element=flow_ids
+        )
+        big_m = xr.concat(
+            [f.size.maximum_or_fixed_size * self._get_relative_bounds(f)[0] for f in flows], dim='element'
+        ).assign_coords(element=flow_ids)
+        rhs = (status - 1) * big_m + size * rel_min
+        self.add_constraints(flow_rate >= rhs, name='flow_rate_status_invest_lb')
+
+    def _create_investment_constraints(self) -> None:
+        """Create investment constraints: size <= invested * max_size, size >= invested * min_size."""
+        size = self._variables['size'].sel(element=self.optional_investment_ids)
+        invested = self._variables['invested']
+
+        # Upper bound: size <= invested * max_size
+        max_sizes = xr.concat(
+            [xr.DataArray(f.size.maximum_or_fixed_size) for f in self.flows_with_optional_investment], dim='element'
+        ).assign_coords(element=self.optional_investment_ids)
+        self.add_constraints(size <= invested * max_sizes, name='size_invested_ub')
+
+        # Lower bound: size >= invested * min_size
+        min_sizes = xr.concat(
+            [xr.DataArray(f.size.minimum_or_fixed_size) for f in self.flows_with_optional_investment], dim='element'
+        ).assign_coords(element=self.optional_investment_ids)
+        self.add_constraints(size >= invested * min_sizes, name='size_invested_lb')
+
+    def create_effect_shares(self) -> None:
+        """Create effect shares for all flows with effects_per_flow_hour."""
+        flow_rate = self._variables['flow_rate']
+
+        # Group flows by effect
+        effects_by_name: dict[str, list[tuple[Flow, float | xr.DataArray]]] = {}
+        for flow in self.elements:
+            if flow.effects_per_flow_hour:
+                for effect_name, factor in flow.effects_per_flow_hour.items():
+                    if effect_name not in effects_by_name:
+                        effects_by_name[effect_name] = []
+                    effects_by_name[effect_name].append((flow, factor))
+
+        # Create batched effect shares for each effect
+        for effect_name, flow_factors in effects_by_name.items():
+            flow_ids = [f.label_full for f, _ in flow_factors]
+            factors = [factor for _, factor in flow_factors]
+
+            # Build factors array
+            factors_da = xr.concat(
+                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors], dim='element'
+            ).assign_coords(element=flow_ids)
+
+            # Select relevant flow rates and compute expression
+            flow_rate_subset = flow_rate.sel(element=flow_ids)
+            expression = flow_rate_subset * self.model.timestep_duration * factors_da
+
+            # Add to effect
+            effect = self.model.effects.effects[effect_name]
+            # Sum across elements to get total contribution at each timestep
+            effect.submodel.temporal._eq_total_per_timestep.lhs -= expression.sum('element')
 
 
 class BusModel(ElementModel):
