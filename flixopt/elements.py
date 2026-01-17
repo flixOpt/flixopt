@@ -35,6 +35,7 @@ if TYPE_CHECKING:
         Numeric_TPS,
         Scalar,
     )
+    from .vectorized import EffectShareSpec
 
 logger = logging.getLogger('flixopt')
 
@@ -802,7 +803,8 @@ class FlowModel(ElementModel):
     def on_variables_created(self, handles: dict[str, VariableHandle]) -> None:
         """Called after batch variable creation with handles to our variables.
 
-        Also creates effects since they need the flow_rate variable.
+        Note: Effect shares are NOT created here in DCE mode - they are
+        collected via declare_effect_shares() and batch-created later.
         """
         self._dce_handles = handles
 
@@ -810,8 +812,29 @@ class FlowModel(ElementModel):
         for category, handle in handles.items():
             self.register_variable(handle.variable, category)
 
-        # Now create effects (needs flow_rate to be accessible)
-        self._create_shares()
+        # Effect shares are created via EffectShareRegistry in DCE mode, not here
+
+    def declare_effect_shares(self) -> list[EffectShareSpec]:
+        """Declare effect shares needed by this Flow for batch creation.
+
+        Returns EffectShareSpecs that will be batch-processed by EffectShareRegistry.
+        """
+        from .vectorized import EffectShareSpec
+
+        specs = []
+
+        if self.element.effects_per_flow_hour:
+            for effect_name, factor in self.element.effects_per_flow_hour.items():
+                specs.append(
+                    EffectShareSpec(
+                        element_id=self.label_full,
+                        effect_name=effect_name,
+                        factor=factor,
+                        target='temporal',
+                    )
+                )
+
+        return specs
 
     # =========================================================================
     # DCE Constraint Build Functions

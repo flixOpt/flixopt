@@ -138,6 +138,26 @@ class ConstraintResult:
     sense: Literal['==', '<=', '>='] = '=='
 
 
+@dataclass
+class EffectShareSpec:
+    """Specification of an effect share for batch creation.
+
+    Effect shares link flow rates to effects (costs, emissions, etc.).
+    Instead of creating them one at a time, we collect specs and batch-create.
+
+    Attributes:
+        element_id: The flow's unique identifier (e.g., 'Boiler(gas_in)').
+        effect_name: The effect to add to (e.g., 'costs', 'CO2').
+        factor: Multiplier for flow_rate * timestep_duration.
+        target: 'temporal' for time-varying or 'periodic' for period totals.
+    """
+
+    element_id: str
+    effect_name: str
+    factor: float | xr.DataArray
+    target: Literal['temporal', 'periodic'] = 'temporal'
+
+
 # =============================================================================
 # Variable Handle (Element Access)
 # =============================================================================
@@ -483,6 +503,23 @@ class VariableRegistry:
             raise KeyError(f"Category '{category}' not found. Available: {available}")
         return self._full_variables[category]
 
+    def get_element_ids(self, category: str) -> list[str]:
+        """Get the list of element IDs for a category.
+
+        Args:
+            category: Variable category.
+
+        Returns:
+            List of element IDs in the order they appear in the batched variable.
+
+        Raises:
+            KeyError: If category not found.
+        """
+        if category not in self._handles:
+            available = list(self._handles.keys())
+            raise KeyError(f"Category '{category}' not found. Available: {available}")
+        return list(self._handles[category].keys())
+
     @property
     def categories(self) -> list[str]:
         """List of all registered categories."""
@@ -752,3 +789,231 @@ class SystemConstraintRegistry:
     def __repr__(self) -> str:
         status = 'created' if self._created else 'pending'
         return f'SystemConstraintRegistry(specs={len(self._specs)}, status={status})'
+
+
+# =============================================================================
+# Effect Share Registry (Batch Effect Share Creation)
+# =============================================================================
+
+
+class EffectShareRegistry:
+    """Collects effect share specifications and batch-creates them.
+
+    Effect shares link flow rates to effects (costs, emissions, etc.).
+    Traditional approach creates them one at a time; this batches them.
+
+    The key insight: all flow_rate variables are already batched with an
+    element dimension. We can create ONE effect share variable for all
+    flows contributing to an effect, then ONE constraint.
+
+    Example:
+        >>> registry = EffectShareRegistry(model, var_registry)
+        >>> registry.register(EffectShareSpec('Boiler(gas_in)', 'costs', 30.0))
+        >>> registry.register(EffectShareSpec('HeatPump(elec_in)', 'costs', 100.0))
+        >>> registry.create_all()  # One batched call instead of two!
+    """
+
+    def __init__(self, model: FlowSystemModel, variable_registry: VariableRegistry):
+        self.model = model
+        self.variable_registry = variable_registry
+        # Group by (effect_name, target) for batching
+        self._specs_by_effect: dict[tuple[str, str], list[EffectShareSpec]] = defaultdict(list)
+        self._created = False
+
+    def register(self, spec: EffectShareSpec) -> None:
+        """Register an effect share specification."""
+        if self._created:
+            raise RuntimeError('Cannot register specs after shares have been created')
+        key = (spec.effect_name, spec.target)
+        self._specs_by_effect[key].append(spec)
+
+    def create_all(self) -> None:
+        """Batch-create all registered effect shares.
+
+        For each (effect, target) combination:
+        1. Build a factors array aligned with element dimension
+        2. Compute batched expression: flow_rate * timestep_duration * factors
+        3. Add ONE share to the effect with the sum across elements
+        """
+        if self._created:
+            raise RuntimeError('Effect shares have already been created')
+
+        for (effect_name, target), specs in self._specs_by_effect.items():
+            self._create_batch(effect_name, target, specs)
+
+        self._created = True
+        logger.debug(f'EffectShareRegistry created shares for {len(self._specs_by_effect)} effect/target combinations')
+
+    def _create_batch(self, effect_name: str, target: str, specs: list[EffectShareSpec]) -> None:
+        """Create batched effect shares for one effect/target combination.
+
+        The key insight: instead of creating one complex constraint with a sum
+        of 200+ terms, we create a BATCHED share variable with element dimension,
+        then ONE simple vectorized constraint where each entry is just:
+            share_var[e,t] = flow_rate[e,t] * timestep_duration * factor[e]
+
+        This is much faster because linopy can process the simple per-element
+        constraint efficiently.
+        """
+        import time
+
+        logger.debug(f'_create_batch called for {effect_name}/{target} with {len(specs)} specs')
+        try:
+            # Get the full batched flow_rate variable
+            flow_rate = self.variable_registry.get_full_variable('flow_rate')
+            element_ids = self.variable_registry.get_element_ids('flow_rate')
+
+            # Build factors array: factor[i] = spec.factor if element_id matches, else 0
+            # Factors can be scalars or DataArrays (which may be constant-valued)
+            factors = np.zeros(len(element_ids))
+            element_to_idx = {eid: i for i, eid in enumerate(element_ids)}
+            has_time_varying = False
+            matched_count = 0
+
+            for spec in specs:
+                if spec.element_id in element_to_idx:
+                    matched_count += 1
+                    idx = element_to_idx[spec.element_id]
+                    factor = spec.factor
+
+                    # Handle different factor types
+                    if isinstance(factor, (int, float)):
+                        factors[idx] = factor
+                    elif isinstance(factor, xr.DataArray):
+                        # Check if the DataArray is essentially constant
+                        values = factor.values.ravel()
+                        if np.allclose(values, values[0], rtol=1e-10, atol=1e-14):
+                            # Constant factor - extract scalar
+                            factors[idx] = values[0]
+                        else:
+                            # Truly time-varying
+                            has_time_varying = True
+                            break
+                    else:
+                        # Unknown type, fall back
+                        has_time_varying = True
+                        break
+                else:
+                    logger.debug(f'element_id NOT FOUND in registry: {spec.element_id}')
+
+            # Fall back if we have time-varying factors
+            if has_time_varying:
+                logger.debug('Time-varying factors detected, falling back to individual creation')
+                for spec in specs:
+                    self._create_individual(effect_name, target, [spec])
+                return
+
+            # Create factors as xarray DataArray aligned with element dimension
+            factors_da = xr.DataArray(
+                factors,
+                dims=['element'],
+                coords={'element': element_ids},
+            )
+
+            # Compute batched expression: flow_rate * timestep_duration * factors
+            # Result shape: (element, time, period, scenario)
+            # This is a SIMPLE expression per element (not a sum!)
+            t1 = time.perf_counter()
+            expression = flow_rate * self.model.timestep_duration * factors_da
+            t2 = time.perf_counter()
+
+            # Get the effect model
+            effect = self.model.effects.effects[effect_name]
+
+            if target == 'temporal':
+                # Create ONE batched share variable with element dimension
+                # Combine element coord with temporal coords
+                temporal_coords = self.model.get_coords(self.model.temporal_dims)
+                share_var = self.model.add_variables(
+                    coords=xr.Coordinates(
+                        {'element': element_ids, **{dim: temporal_coords[dim] for dim in temporal_coords}}
+                    ),
+                    name=f'flow_effects->{effect_name}(temporal)',
+                )
+                t3 = time.perf_counter()
+
+                # ONE vectorized constraint (simple per-element equality)
+                self.model.add_constraints(
+                    share_var == expression,
+                    name=f'flow_effects->{effect_name}(temporal)',
+                )
+                t4 = time.perf_counter()
+
+                # Add sum of shares to the effect's total_per_timestep equation
+                # Sum across elements to get contribution at each timestep
+                effect.submodel.temporal._eq_total_per_timestep.lhs -= share_var.sum('element')
+                t5 = time.perf_counter()
+
+                logger.debug(
+                    f'{effect_name}: expr={(t2 - t1) * 1000:.1f}ms var={(t3 - t2) * 1000:.1f}ms con={(t4 - t3) * 1000:.1f}ms mod={(t5 - t4) * 1000:.1f}ms'
+                )
+
+            elif target == 'periodic':
+                # Similar for periodic, but sum over time first
+                all_coords = self.model.get_coords()
+                periodic_coords = {dim: all_coords[dim] for dim in ['period', 'scenario'] if dim in all_coords}
+                if periodic_coords:
+                    periodic_coords['element'] = element_ids
+
+                    share_var = self.model.add_variables(
+                        coords=xr.Coordinates(periodic_coords),
+                        name=f'flow_effects->{effect_name}(periodic)',
+                    )
+
+                    # Sum expression over time
+                    periodic_expression = expression.sum(self.model.temporal_dims)
+
+                    self.model.add_constraints(
+                        share_var == periodic_expression,
+                        name=f'flow_effects->{effect_name}(periodic)',
+                    )
+
+                    effect.submodel.periodic._eq_total.lhs -= share_var.sum('element')
+
+            logger.debug(f'Batched {len(specs)} effect shares for {effect_name}/{target}')
+
+        except Exception as e:
+            logger.warning(f'Failed to batch effect shares for {effect_name}/{target}: {e}')
+            # Fall back to individual creation
+            for spec in specs:
+                self._create_individual(effect_name, target, [spec])
+
+    def _create_individual(self, effect_name: str, target: str, specs: list[EffectShareSpec]) -> None:
+        """Fall back to individual effect share creation."""
+        logger.debug(f'_create_individual called for {effect_name}/{target} with {len(specs)} specs')
+        for spec in specs:
+            handles = self.variable_registry.get_handles_for_element(spec.element_id)
+            if 'flow_rate' not in handles:
+                continue
+
+            flow_rate = handles['flow_rate'].variable
+            expression = flow_rate * self.model.timestep_duration * spec.factor
+
+            effect = self.model.effects.effects[effect_name]
+            if target == 'temporal':
+                effect.submodel.temporal.add_share(
+                    spec.element_id,
+                    expression,
+                    dims=('time', 'period', 'scenario'),
+                )
+            elif target == 'periodic':
+                periodic_expression = expression.sum(self.model.temporal_dims)
+                effect.submodel.periodic.add_share(
+                    spec.element_id,
+                    periodic_expression,
+                    dims=('period', 'scenario'),
+                )
+
+    @property
+    def effect_count(self) -> int:
+        """Number of distinct effect/target combinations."""
+        return len(self._specs_by_effect)
+
+    @property
+    def total_specs(self) -> int:
+        """Total number of registered specs."""
+        return sum(len(specs) for specs in self._specs_by_effect.values())
+
+    def __repr__(self) -> str:
+        status = 'created' if self._created else 'pending'
+        return f'EffectShareRegistry(effects={self.effect_count}, specs={self.total_specs}, status={status})'

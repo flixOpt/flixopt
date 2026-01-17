@@ -262,7 +262,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         import time
 
-        from .vectorized import ConstraintRegistry, VariableRegistry
+        from .vectorized import ConstraintRegistry, EffectShareRegistry, VariableRegistry
 
         timings = {}
 
@@ -323,6 +323,20 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('handle_distribution')
 
+        # Phase 3: EXECUTION (Effect Shares)
+        logger.debug('DCE Phase 3: Execution (Effect Shares)')
+        effect_share_registry = EffectShareRegistry(self, variable_registry)
+        self._effect_share_registry = effect_share_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_effect_shares'):
+                for spec in element_model.declare_effect_shares():
+                    effect_share_registry.register(spec)
+
+        effect_share_registry.create_all()
+
+        record('effect_shares')
+
         # Phase 3: EXECUTION (Constraints)
         logger.debug('DCE Phase 3: Execution (Constraints)')
         constraint_registry = ConstraintRegistry(self, variable_registry)
@@ -353,6 +367,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'buses',
                 'var_creation',
                 'handle_distribution',
+                'effect_shares',
                 'constraint_creation',
                 'end',
             ]:
