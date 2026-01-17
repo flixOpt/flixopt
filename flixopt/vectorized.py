@@ -652,6 +652,14 @@ class ConstraintRegistry:
             return self._batch_flow_rate_ub(specs)
         elif category == 'flow_rate_lb':
             return self._batch_flow_rate_lb(specs)
+        elif category == 'flow_rate_scaled_ub':
+            return self._batch_flow_rate_scaled_ub(specs)
+        elif category == 'flow_rate_scaled_lb':
+            return self._batch_flow_rate_scaled_lb(specs)
+        elif category == 'size_invested_ub':
+            return self._batch_size_invested_ub(specs)
+        elif category == 'size_invested_lb':
+            return self._batch_size_invested_lb(specs)
 
         return False
 
@@ -772,6 +780,114 @@ class ConstraintRegistry:
             return True
         except Exception as e:
             logger.warning(f'Failed to batch flow_rate_lb, falling back: {e}')
+            return False
+
+    def _batch_flow_rate_scaled_ub(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: flow_rate <= size * relative_max (investment-scaled bounds)"""
+        try:
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            flow_rate_full = self.variable_registry.get_full_variable('flow_rate')
+            size_full = self.variable_registry.get_full_variable('size')
+
+            flow_rate = flow_rate_full.sel(element=spec_element_ids)
+            size = size_full.sel(element=spec_element_ids)
+
+            # Build relative_max array from flow elements
+            flow_elements = self._get_flow_elements()
+            rel_max = xr.concat(
+                [flow_elements[eid].relative_maximum for eid in spec_element_ids],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            rhs = size * rel_max
+            self.model.add_constraints(flow_rate <= rhs, name='flow_rate_scaled_ub')
+
+            logger.debug(f'Batched {len(specs)} flow_rate_scaled_ub constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch flow_rate_scaled_ub, falling back: {e}')
+            return False
+
+    def _batch_flow_rate_scaled_lb(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: flow_rate >= size * relative_min (investment-scaled bounds)"""
+        try:
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            flow_rate_full = self.variable_registry.get_full_variable('flow_rate')
+            size_full = self.variable_registry.get_full_variable('size')
+
+            flow_rate = flow_rate_full.sel(element=spec_element_ids)
+            size = size_full.sel(element=spec_element_ids)
+
+            # Build relative_min array from flow elements
+            flow_elements = self._get_flow_elements()
+            rel_min = xr.concat(
+                [flow_elements[eid].relative_minimum for eid in spec_element_ids],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            rhs = size * rel_min
+            self.model.add_constraints(flow_rate >= rhs, name='flow_rate_scaled_lb')
+
+            logger.debug(f'Batched {len(specs)} flow_rate_scaled_lb constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch flow_rate_scaled_lb, falling back: {e}')
+            return False
+
+    def _batch_size_invested_ub(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: size <= invested * maximum_size"""
+        try:
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            size_full = self.variable_registry.get_full_variable('size')
+            invested_full = self.variable_registry.get_full_variable('invested')
+
+            size = size_full.sel(element=spec_element_ids)
+            invested = invested_full.sel(element=spec_element_ids)
+
+            # Build max_size array from flow elements
+            flow_elements = self._get_flow_elements()
+            max_sizes = xr.concat(
+                [flow_elements[eid].size.maximum_or_fixed_size for eid in spec_element_ids],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            rhs = invested * max_sizes
+            self.model.add_constraints(size <= rhs, name='size_invested_ub')
+
+            logger.debug(f'Batched {len(specs)} size_invested_ub constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch size_invested_ub, falling back: {e}')
+            return False
+
+    def _batch_size_invested_lb(self, specs: list[ConstraintSpec]) -> bool:
+        """Batch create: size >= invested * minimum_size"""
+        try:
+            spec_element_ids = [spec.element_id for spec in specs]
+
+            size_full = self.variable_registry.get_full_variable('size')
+            invested_full = self.variable_registry.get_full_variable('invested')
+
+            size = size_full.sel(element=spec_element_ids)
+            invested = invested_full.sel(element=spec_element_ids)
+
+            # Build min_size array from flow elements
+            flow_elements = self._get_flow_elements()
+            min_sizes = xr.concat(
+                [flow_elements[eid].size.minimum_or_fixed_size for eid in spec_element_ids],
+                dim='element',
+            ).assign_coords(element=spec_element_ids)
+
+            rhs = invested * min_sizes
+            self.model.add_constraints(size >= rhs, name='size_invested_lb')
+
+            logger.debug(f'Batched {len(specs)} size_invested_lb constraints')
+            return True
+        except Exception as e:
+            logger.warning(f'Failed to batch size_invested_lb, falling back: {e}')
             return False
 
     def _create_individual(self, category: str, specs: list[ConstraintSpec]) -> None:

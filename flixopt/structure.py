@@ -351,6 +351,13 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('constraint_creation')
 
+        # Finalize DCE - create submodels that weren't batch-created (e.g., StatusModel)
+        for element_model in element_models:
+            if hasattr(element_model, 'finalize_dce'):
+                element_model.finalize_dce()
+
+        record('finalize_dce')
+
         # Post-processing
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
@@ -369,6 +376,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'handle_distribution',
                 'effect_shares',
                 'constraint_creation',
+                'finalize_dce',
                 'end',
             ]:
                 elapsed = (timings[name] - prev) * 1000
