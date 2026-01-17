@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import linopy
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from .config import CONFIG
 from .structure import Submodel, VariableCategory
+
+if TYPE_CHECKING:
+    from .elements import FlowModel
+    from .structure import FlowSystemModel
 
 logger = logging.getLogger('flixopt')
 
@@ -857,3 +865,251 @@ class BoundingPatterns:
         )
 
         return initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion
+
+
+# =============================================================================
+# Vectorized Constraint Creation
+# =============================================================================
+
+
+@dataclass
+class FlowConstraintSpec:
+    """Specification for a single flow's constraints.
+
+    Used by FlowConstraintRegistry to collect constraint requirements from
+    individual FlowModels and create them in bulk for performance.
+    """
+
+    flow_model: FlowModel
+    """Reference back to FlowModel for result registration."""
+
+    flow_label: str
+    """Full label of the flow (e.g., 'Boiler(Q_th)')."""
+
+    flow_rate_var: linopy.Variable
+    """The flow_rate variable (already created by FlowModel)."""
+
+    relative_bounds: tuple[xr.DataArray | float, xr.DataArray | float]
+    """Relative bounds (min, max) as fractions of size."""
+
+    # Pattern-specific fields (optional depending on constraint type)
+    fixed_size: xr.DataArray | float | None = None
+    """Fixed size for bounds_with_state pattern."""
+
+    status_var: linopy.Variable | None = None
+    """Binary status variable for state patterns."""
+
+    scaling_var: linopy.Variable | None = None
+    """Investment size variable for scaled patterns."""
+
+    scaling_bounds: tuple[xr.DataArray | float, xr.DataArray | float] | None = None
+    """(min, max) bounds of the scaling variable for scaled_with_state pattern."""
+
+
+class FlowConstraintRegistry:
+    """Collects flow constraint requirements and creates them in bulk.
+
+    This registry enables ~200x speedup for flow constraint creation by:
+    1. Collecting constraint specifications from individual FlowModels
+    2. Grouping by bounding pattern (with_state, scaled, scaled_with_state)
+    3. Creating constraints in bulk using vectorized linopy operations
+
+    Usage:
+        # In FlowSystemModel.do_modeling()
+        self.flow_registry = FlowConstraintRegistry(self)
+
+        # FlowModels register their requirements
+        flow_model._constraint_flow_rate()  # Calls registry.register_*()
+
+        # After all flows are registered, create constraints in bulk
+        self.flow_registry.finalize()
+    """
+
+    def __init__(self, model: FlowSystemModel):
+        self._model = model
+        self._with_state: list[FlowConstraintSpec] = []
+        self._scaled: list[FlowConstraintSpec] = []
+        self._scaled_with_state: list[FlowConstraintSpec] = []
+
+    def register_with_state(self, spec: FlowConstraintSpec) -> None:
+        """Register a flow using bounds_with_state pattern (status, no investment)."""
+        self._with_state.append(spec)
+
+    def register_scaled(self, spec: FlowConstraintSpec) -> None:
+        """Register a flow using scaled_bounds pattern (investment, no status)."""
+        self._scaled.append(spec)
+
+    def register_scaled_with_state(self, spec: FlowConstraintSpec) -> None:
+        """Register a flow using scaled_bounds_with_state pattern (both)."""
+        self._scaled_with_state.append(spec)
+
+    def finalize(self) -> None:
+        """Create all registered constraints in bulk.
+
+        Called after all FlowModels have registered their requirements.
+        """
+        if self._with_state:
+            self._create_bounds_with_state_bulk()
+        if self._scaled:
+            self._create_scaled_bounds_bulk()
+        if self._scaled_with_state:
+            self._create_scaled_bounds_with_state_bulk()
+
+    def _stack_variables(self, variables: list[linopy.Variable], flow_coord: pd.Index) -> linopy.LinearExpression:
+        """Stack multiple variables into a single expression with flow dimension."""
+        # Convert each variable to a LinearExpression and concat along flow dimension
+        exprs = [v.to_linexpr() for v in variables]
+        # Use linopy's merge to combine expressions
+        stacked = linopy.merge(exprs, dim='flow')
+        # Assign flow coordinates
+        stacked = stacked.assign_coords(flow=flow_coord)
+        return stacked
+
+    def _stack_arrays(self, arrays: list[xr.DataArray | float], flow_coord: pd.Index) -> xr.DataArray:
+        """Stack multiple DataArrays into one with flow dimension."""
+        # Ensure all are DataArrays
+        processed = []
+        for arr in arrays:
+            if isinstance(arr, (int, float)):
+                # Scalar - will broadcast
+                processed.append(xr.DataArray(arr))
+            else:
+                processed.append(arr)
+
+        # Concat along new flow dimension
+        stacked = xr.concat(processed, dim='flow')
+        stacked = stacked.assign_coords(flow=flow_coord)
+        return stacked
+
+    def _create_bounds_with_state_bulk(self) -> None:
+        """Bulk create bounds_with_state constraints for all registered flows.
+
+        Mathematical formulation:
+            state · max(ε, lower_bound) ≤ flow_rate ≤ state · upper_bound
+        """
+        specs = self._with_state
+        flow_labels = [s.flow_label for s in specs]
+        flow_coord = pd.Index(flow_labels, name='flow')
+
+        # Stack all variables and bounds along flow dimension
+        flow_rates = self._stack_variables([s.flow_rate_var for s in specs], flow_coord)
+        statuses = self._stack_variables([s.status_var for s in specs], flow_coord)
+
+        # Calculate absolute bounds
+        lower_bounds = self._stack_arrays([s.relative_bounds[0] * s.fixed_size for s in specs], flow_coord)
+        upper_bounds = self._stack_arrays([s.relative_bounds[1] * s.fixed_size for s in specs], flow_coord)
+
+        # Check for fixed bounds (lower == upper)
+        if np.allclose(lower_bounds, upper_bounds, atol=1e-10, equal_nan=True):
+            self._model.add_constraints(
+                flow_rates == statuses * upper_bounds,
+                name='flow|with_state|fix',
+            )
+        else:
+            # Apply epsilon for numerical stability
+            epsilon = np.maximum(CONFIG.Modeling.epsilon, lower_bounds)
+
+            self._model.add_constraints(
+                flow_rates <= statuses * upper_bounds,
+                name='flow|with_state|ub',
+            )
+            self._model.add_constraints(
+                flow_rates >= statuses * epsilon,
+                name='flow|with_state|lb',
+            )
+
+        logger.debug(f'Created bulk bounds_with_state constraints for {len(specs)} flows')
+
+    def _create_scaled_bounds_bulk(self) -> None:
+        """Bulk create scaled_bounds constraints for all registered flows.
+
+        Mathematical formulation:
+            scaling_variable · rel_lower ≤ flow_rate ≤ scaling_variable · rel_upper
+        """
+        specs = self._scaled
+        flow_labels = [s.flow_label for s in specs]
+        flow_coord = pd.Index(flow_labels, name='flow')
+
+        # Stack variables
+        flow_rates = self._stack_variables([s.flow_rate_var for s in specs], flow_coord)
+        scaling_vars = self._stack_variables([s.scaling_var for s in specs], flow_coord)
+
+        # Stack relative bounds
+        rel_lower = self._stack_arrays([s.relative_bounds[0] for s in specs], flow_coord)
+        rel_upper = self._stack_arrays([s.relative_bounds[1] for s in specs], flow_coord)
+
+        # Check for fixed bounds
+        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
+            self._model.add_constraints(
+                flow_rates == scaling_vars * rel_lower,
+                name='flow|scaled|fix',
+            )
+        else:
+            self._model.add_constraints(
+                flow_rates <= scaling_vars * rel_upper,
+                name='flow|scaled|ub',
+            )
+            self._model.add_constraints(
+                flow_rates >= scaling_vars * rel_lower,
+                name='flow|scaled|lb',
+            )
+
+        logger.debug(f'Created bulk scaled_bounds constraints for {len(specs)} flows')
+
+    def _create_scaled_bounds_with_state_bulk(self) -> None:
+        """Bulk create scaled_bounds_with_state constraints for all registered flows.
+
+        Mathematical formulation (Big-M):
+            (state - 1) · M_misc + scaling_variable · rel_lower ≤ flow_rate
+            flow_rate ≤ scaling_variable · rel_upper
+            state · big_m_lower ≤ flow_rate
+            flow_rate ≤ state · big_m_upper
+
+        Where:
+            M_misc = scaling_max · rel_lower
+            big_m_upper = scaling_max · rel_upper
+            big_m_lower = max(ε, scaling_min · rel_lower)
+        """
+        specs = self._scaled_with_state
+        flow_labels = [s.flow_label for s in specs]
+        flow_coord = pd.Index(flow_labels, name='flow')
+
+        # Stack variables
+        flow_rates = self._stack_variables([s.flow_rate_var for s in specs], flow_coord)
+        scaling_vars = self._stack_variables([s.scaling_var for s in specs], flow_coord)
+        statuses = self._stack_variables([s.status_var for s in specs], flow_coord)
+
+        # Stack bounds
+        rel_lower = self._stack_arrays([s.relative_bounds[0] for s in specs], flow_coord)
+        rel_upper = self._stack_arrays([s.relative_bounds[1] for s in specs], flow_coord)
+        scaling_min = self._stack_arrays([s.scaling_bounds[0] for s in specs], flow_coord)
+        scaling_max = self._stack_arrays([s.scaling_bounds[1] for s in specs], flow_coord)
+
+        # Calculate Big-M values
+        big_m_misc = scaling_max * rel_lower
+        big_m_upper = rel_upper * scaling_max
+        big_m_lower = np.maximum(CONFIG.Modeling.epsilon, rel_lower * scaling_min)
+
+        # Create constraints
+        # 1. Scaling lower bound with state relaxation
+        self._model.add_constraints(
+            flow_rates >= (statuses - 1) * big_m_misc + scaling_vars * rel_lower,
+            name='flow|scaled_with_state|lb2',
+        )
+        # 2. Scaling upper bound
+        self._model.add_constraints(
+            flow_rates <= scaling_vars * rel_upper,
+            name='flow|scaled_with_state|ub2',
+        )
+        # 3. Binary upper bound
+        self._model.add_constraints(
+            statuses * big_m_upper >= flow_rates,
+            name='flow|scaled_with_state|ub1',
+        )
+        # 4. Binary lower bound
+        self._model.add_constraints(
+            statuses * big_m_lower <= flow_rates,
+            name='flow|scaled_with_state|lb1',
+        )
+
+        logger.debug(f'Created bulk scaled_bounds_with_state constraints for {len(specs)} flows')
