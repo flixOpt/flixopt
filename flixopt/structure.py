@@ -843,16 +843,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('flows_variables')
 
-        self._flows_model.create_constraints()
-
-        record('flows_constraints')
-
-        # Create effect shares for flows
-        self._flows_model.create_effect_shares()
-
-        record('flows_effects')
-
-        # Create batched investment model for flows (creates size/invested variables, constraints, effects)
+        # Create batched investment model for flows (creates size/invested variables)
+        # Must be before create_constraints() since bounds depend on size variable
         self._flows_model.create_investment_model()
 
         record('flows_investment_model')
@@ -861,6 +853,15 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._flows_model.create_status_model()
 
         record('flows_status_model')
+
+        self._flows_model.create_constraints()
+
+        record('flows_constraints')
+
+        # Create effect shares for flows
+        self._flows_model.create_effect_shares()
+
+        record('flows_effects')
 
         # Create type-level model for all buses
         all_buses = list(self.flow_system.buses.values())

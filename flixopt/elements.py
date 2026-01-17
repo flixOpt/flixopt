@@ -734,14 +734,18 @@ class FlowModelProxy(ElementModel):
                 status = self._flows_model.get_variable('status', self.label_full)
                 self.register_variable(status, 'status')
 
-            # Investment variables if applicable
+            # Investment variables if applicable (from InvestmentsModel)
             if self.label_full in self._flows_model.investment_ids:
-                size = self._flows_model.get_variable('size', self.label_full)
-                self.register_variable(size, 'size')
+                investments_model = self._flows_model._investments_model
+                if investments_model is not None:
+                    size = investments_model.get_variable('size', self.label_full)
+                    if size is not None:
+                        self.register_variable(size, 'size')
 
-            if self.label_full in self._flows_model.optional_investment_ids:
-                invested = self._flows_model.get_variable('invested', self.label_full)
-                self.register_variable(invested, 'invested')
+                    if self.label_full in self._flows_model.optional_investment_ids:
+                        invested = investments_model.get_variable('invested', self.label_full)
+                        if invested is not None:
+                            self.register_variable(invested, 'invested')
 
     def _do_modeling(self):
         """Skip modeling - FlowsModel and StatusesModel already created everything."""
@@ -1857,7 +1861,7 @@ class FlowsModel(TypeModel):
         """Create bounds: flow_rate <= size * relative_max, flow_rate >= size * relative_min."""
         flow_ids = [f.label_full for f in flows]
         flow_rate = self._variables['flow_rate'].sel(element=flow_ids)
-        size = self._variables['size'].sel(element=flow_ids)
+        size = self._investments_model.size.sel(element=flow_ids)
 
         # Upper bound: flow_rate <= size * relative_max
         rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim='element').assign_coords(
@@ -1875,7 +1879,7 @@ class FlowsModel(TypeModel):
         """Create bounds for flows with both status and investment."""
         flow_ids = [f.label_full for f in flows]
         flow_rate = self._variables['flow_rate'].sel(element=flow_ids)
-        size = self._variables['size'].sel(element=flow_ids)
+        size = self._investments_model.size.sel(element=flow_ids)
         status = self._variables['status'].sel(element=flow_ids)
 
         # Upper bound: flow_rate <= size * relative_max
@@ -2232,9 +2236,13 @@ class BusesModel(TypeModel):
         # Stack into a single constraint with bus dimension
         # Note: For efficiency, we create one constraint per bus but they share a name prefix
         for i, bus in enumerate(self.elements):
+            lhs, rhs = lhs_list[i], rhs_list[i]
+            # Skip if both sides are scalar zeros (no flows connected)
+            if isinstance(lhs, (int, float)) and isinstance(rhs, (int, float)):
+                continue
             constraint_name = f'{self.element_type.value}|{bus.label}|balance'
             self.model.add_constraints(
-                lhs_list[i] == rhs_list[i],
+                lhs == rhs,
                 name=constraint_name,
             )
 

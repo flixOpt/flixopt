@@ -758,13 +758,15 @@ class EffectCollectionModel(Submodel):
             flow_rate_subset = flow_rate.sel(element=element_ids)
             expression = flow_rate_subset * self._model.timestep_duration * factors_da
 
-            # Create batched share variable with element dimension (preserves per-element info)
-            temporal_coords = self._model.get_coords(self._model.temporal_dims)
+            # Create batched share variable with same dims as flow_rate (element + temporal + scenario)
+            # Get all dims from flow_rate_subset except '_term' (linopy internal)
+            flow_dims = [d for d in flow_rate_subset.dims if d != '_term']
+            all_coords = self._model.get_coords(flow_dims)
             share_var = self._model.add_variables(
                 coords=xr.Coordinates(
                     {
                         'element': pd.Index(element_ids, name='element'),
-                        **{dim: temporal_coords[dim] for dim in temporal_coords},
+                        **{dim: all_coords[dim] for dim in all_coords if dim != 'element'},
                     }
                 ),
                 name=f'flow_effects->{effect_name}(temporal)',

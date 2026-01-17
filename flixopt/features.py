@@ -779,6 +779,7 @@ class StatusesModel:
             )
 
         # === State transitions: startup, shutdown ===
+        # Creates: startup[t] - shutdown[t] == status[t] - status[t-1]
         for elem in self._with_startup_tracking:
             status_var = self._status_var_getter(elem)
             startup = self._variables['startup'].sel(element=elem.label_full)
@@ -786,14 +787,24 @@ class StatusesModel:
             previous_status = self._previous_status_getter(elem)
             previous_state = previous_status.isel(time=-1) if previous_status is not None else None
 
-            BoundingPatterns.state_transition_bounds(
-                self.model,
-                state=status_var,
-                activate=startup,
-                deactivate=shutdown,
-                name=f'{elem.label_full}|status|switch',
-                previous_state=previous_state,
-                coord='time',
+            # Transition constraint for t > 0
+            self.model.add_constraints(
+                startup.isel(time=slice(1, None)) - shutdown.isel(time=slice(1, None))
+                == status_var.isel(time=slice(1, None)) - status_var.isel(time=slice(None, -1)),
+                name=f'{elem.label_full}|status|switch|transition',
+            )
+
+            # Initial constraint for t = 0 (if previous_state provided)
+            if previous_state is not None:
+                self.model.add_constraints(
+                    startup.isel(time=0) - shutdown.isel(time=0) == status_var.isel(time=0) - previous_state,
+                    name=f'{elem.label_full}|status|switch|initial',
+                )
+
+            # Mutex constraint: can't startup and shutdown at same time
+            self.model.add_constraints(
+                startup + shutdown <= 1,
+                name=f'{elem.label_full}|status|switch|mutex',
             )
 
         # === startup_count: sum(startup) == startup_count ===
