@@ -523,8 +523,15 @@ class Flow(Element):
             )
         self.bus = bus
 
-    def create_model(self, model: FlowSystemModel) -> FlowModel:
+    def create_model(self, model: FlowSystemModel) -> FlowModel | None:
         self._plausibility_checks()
+
+        # In type-level mode, FlowsModel already created variables/constraints
+        # Create a lightweight FlowModel that uses FlowsModel's variables
+        if model._type_level_mode:
+            self.submodel = FlowModelProxy(model, self)
+            return self.submodel
+
         self.submodel = FlowModel(model, self)
         return self.submodel
 
@@ -692,6 +699,115 @@ class Flow(Element):
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
         return f'size: {params.format_for_repr()}'
+
+
+class FlowModelProxy(ElementModel):
+    """Lightweight proxy for Flow elements when using type-level modeling.
+
+    Instead of creating its own variables and constraints, this proxy
+    provides access to the variables created by FlowsModel. This enables
+    the same interface (flow_rate, total_flow_hours, etc.) while avoiding
+    duplicate variable/constraint creation.
+    """
+
+    element: Flow  # Type hint
+
+    def __init__(self, model: FlowSystemModel, element: Flow):
+        super().__init__(model, element)
+        self._flows_model = model._flows_model
+
+        # Register variables from FlowsModel in our local registry
+        # so properties like self.flow_rate work
+        if self._flows_model is not None:
+            flow_rate = self._flows_model.get_variable('flow_rate', self.label_full)
+            self.register_variable(flow_rate, 'flow_rate')
+
+            total_flow_hours = self._flows_model.get_variable('total_flow_hours', self.label_full)
+            self.register_variable(total_flow_hours, 'total_flow_hours')
+
+            # Status if applicable
+            if self.label_full in self._flows_model.status_ids:
+                status = self._flows_model.get_variable('status', self.label_full)
+                self.register_variable(status, 'status')
+
+            # Investment variables if applicable
+            if self.label_full in self._flows_model.investment_ids:
+                size = self._flows_model.get_variable('size', self.label_full)
+                self.register_variable(size, 'size')
+
+            if self.label_full in self._flows_model.optional_investment_ids:
+                invested = self._flows_model.get_variable('invested', self.label_full)
+                self.register_variable(invested, 'invested')
+
+    def _do_modeling(self):
+        """Skip modeling - FlowsModel already created everything."""
+        # Only create StatusModel submodel if needed
+        if self.element.status_parameters is not None and self.label_full in self._flows_model.status_ids:
+            status_var = self._flows_model.get_variable('status', self.label_full)
+            self.add_submodels(
+                StatusModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    parameters=self.element.status_parameters,
+                    status=status_var,
+                    previous_status=self.previous_status,
+                    label_of_model=self.label_of_element,
+                ),
+                short_name='status',
+            )
+
+    @property
+    def with_status(self) -> bool:
+        return self.element.status_parameters is not None
+
+    @property
+    def with_investment(self) -> bool:
+        return isinstance(self.element.size, InvestParameters)
+
+    @property
+    def flow_rate(self) -> linopy.Variable:
+        """Main flow rate variable from FlowsModel."""
+        return self['flow_rate']
+
+    @property
+    def total_flow_hours(self) -> linopy.Variable:
+        """Total flow hours variable from FlowsModel."""
+        return self['total_flow_hours']
+
+    @property
+    def status(self) -> StatusModel | None:
+        """Status feature."""
+        if 'status' not in self.submodels:
+            return None
+        return self.submodels['status']
+
+    @property
+    def investment(self) -> InvestmentModel | None:
+        """Investment feature - not yet supported in type-level mode."""
+        return None
+
+    @property
+    def previous_status(self) -> xr.DataArray | None:
+        """Previous status of the flow rate."""
+        previous_flow_rate = self.element.previous_flow_rate
+        if previous_flow_rate is None:
+            return None
+
+        return ModelingUtilitiesAbstract.to_binary(
+            values=xr.DataArray(
+                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
+            ),
+            epsilon=CONFIG.Modeling.epsilon,
+            dims='time',
+        )
+
+    def results_structure(self):
+        return {
+            **super().results_structure(),
+            'start': self.element.bus if self.element.is_input_in_component else self.element.component,
+            'end': self.element.component if self.element.is_input_in_component else self.element.bus,
+            'component': self.element.component,
+        }
 
 
 class FlowModel(ElementModel):

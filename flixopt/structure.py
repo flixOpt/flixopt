@@ -572,6 +572,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
         self._dce_mode: bool = False  # When True, elements skip _do_modeling()
+        self._type_level_mode: bool = False  # When True, Flows skip FlowModel creation
+        self._flows_model: TypeModel | None = None  # Reference to FlowsModel when in type-level mode
 
     def add_variables(
         self,
@@ -816,8 +818,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('flows_effects')
 
+        # Enable type-level mode - Flows will skip FlowModel creation
+        self._type_level_mode = True
+
         # Create component models (without flow modeling - flows handled by FlowsModel)
-        # For now, still create component models for their internal logic
         for component in self.flow_system.components.values():
             component.create_model(self)
 
