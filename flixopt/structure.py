@@ -240,6 +240,79 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 element._variable_names = list(element.submodel.variables)
                 element._constraint_names = list(element.submodel.constraints)
 
+    def do_modeling_dce(self):
+        """Build the model using the DCE (Declaration-Collection-Execution) pattern.
+
+        This is an alternative to `do_modeling()` that uses vectorized batch creation
+        of variables and constraints for better performance with large systems.
+
+        The DCE pattern has three phases:
+        1. DECLARATION: Elements declare what variables/constraints they need
+        2. COLLECTION: Registries group declarations by category
+        3. EXECUTION: Batch-create variables/constraints per category
+
+        Note:
+            This method is experimental. Use `do_modeling()` for production.
+            Not all element types support DCE yet - those that don't will
+            fall back to individual creation.
+        """
+        from .vectorized import ConstraintRegistry, VariableRegistry
+
+        # Initialize registries
+        variable_registry = VariableRegistry(self)
+        self._variable_registry = variable_registry  # Store for later access
+
+        # Create effect models first (they don't use DCE yet)
+        self.effects = self.flow_system.effects.create_model(self)
+
+        # Phase 1: DECLARATION
+        # Create element models and collect their declarations
+        logger.debug('DCE Phase 1: Declaration')
+        element_models = []
+
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+            # Component creates flow models as submodels
+            for flow in component.inputs + component.outputs:
+                if hasattr(flow.submodel, 'declare_variables'):
+                    for spec in flow.submodel.declare_variables():
+                        variable_registry.register(spec)
+                    element_models.append(flow.submodel)
+
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
+            # Bus doesn't use DCE yet - uses traditional approach
+
+        # Phase 2: COLLECTION (implicit in registries)
+        logger.debug(f'DCE Phase 2: Collection - {variable_registry}')
+
+        # Phase 3: EXECUTION (Variables)
+        logger.debug('DCE Phase 3: Execution (Variables)')
+        variable_registry.create_all()
+
+        # Distribute handles to elements
+        for element_model in element_models:
+            handles = variable_registry.get_handles_for_element(element_model.label_full)
+            element_model.on_variables_created(handles)
+
+        # Phase 3: EXECUTION (Constraints)
+        logger.debug('DCE Phase 3: Execution (Constraints)')
+        constraint_registry = ConstraintRegistry(self, variable_registry)
+        self._constraint_registry = constraint_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_constraints'):
+                for spec in element_model.declare_constraints():
+                    constraint_registry.register(spec)
+
+        constraint_registry.create_all()
+
+        # Post-processing
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+
+        logger.info(f'DCE modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints')
+
     def _add_scenario_equality_for_parameter_type(
         self,
         parameter_type: Literal['flow_rate', 'size'],
@@ -2000,3 +2073,40 @@ class ElementModel(Submodel):
             'variables': list(self.variables),
             'constraints': list(self.constraints),
         }
+
+    # =========================================================================
+    # DCE Pattern: Declaration-Collection-Execution
+    # Override these methods in subclasses to use the DCE pattern
+    # =========================================================================
+
+    def declare_variables(self) -> list:
+        """Declare variables needed by this element for batch creation.
+
+        Override in subclasses to return a list of VariableSpec objects.
+        These specs will be collected by VariableRegistry and batch-created.
+
+        Returns:
+            List of VariableSpec objects (empty by default).
+        """
+        return []
+
+    def declare_constraints(self) -> list:
+        """Declare constraints needed by this element for batch creation.
+
+        Override in subclasses to return a list of ConstraintSpec objects.
+        The build_fn in each spec will be called after variables exist.
+
+        Returns:
+            List of ConstraintSpec objects (empty by default).
+        """
+        return []
+
+    def on_variables_created(self, handles: dict) -> None:
+        """Called after batch variable creation with handles to element's variables.
+
+        Override in subclasses to store handles for use in constraint building.
+
+        Args:
+            handles: Dict mapping category name to VariableHandle.
+        """
+        pass
