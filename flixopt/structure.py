@@ -62,9 +62,13 @@ def _ensure_coords(
     else:
         coord_dims = list(coords.dims)
 
+    # Handle None (no bound specified)
+    if data is None:
+        return data
+
     # Keep infinity values as scalars (linopy uses them for special checks)
     if not isinstance(data, xr.DataArray):
-        if np.isinf(data):
+        if np.isscalar(data) and np.isinf(data):
             return data
         # Finite scalar - create full DataArray
         return xr.DataArray(data, coords=coords, dims=coord_dims)
@@ -579,9 +583,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     def add_variables(
         self,
-        lower: xr.DataArray | float = -np.inf,
-        upper: xr.DataArray | float = np.inf,
+        lower: xr.DataArray | float | None = None,
+        upper: xr.DataArray | float | None = None,
         coords: xr.Coordinates | None = None,
+        binary: bool = False,
         **kwargs,
     ) -> linopy.Variable:
         """Override to ensure bounds are broadcasted to coords shape.
@@ -590,6 +595,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         This override ensures at least one bound has all target dimensions when coords
         is provided, allowing internal data to remain compact (scalars, 1D arrays).
         """
+        # Binary variables cannot have bounds in linopy
+        if binary:
+            return super().add_variables(coords=coords, binary=True, **kwargs)
+
+        # Apply default bounds for non-binary variables
+        if lower is None:
+            lower = -np.inf
+        if upper is None:
+            upper = np.inf
+
         if coords is not None:
             lower = _ensure_coords(lower, coords)
             upper = _ensure_coords(upper, coords)
