@@ -200,6 +200,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
+        self._dce_mode: bool = False  # When True, elements skip _do_modeling()
 
     def add_variables(
         self,
@@ -239,6 +240,152 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             if element.submodel is not None:
                 element._variable_names = list(element.submodel.variables)
                 element._constraint_names = list(element.submodel.constraints)
+
+    def do_modeling_dce(self, timing: bool = False):
+        """Build the model using the DCE (Declaration-Collection-Execution) pattern.
+
+        This is an alternative to `do_modeling()` that uses vectorized batch creation
+        of variables and constraints for better performance with large systems.
+
+        The DCE pattern has three phases:
+        1. DECLARATION: Elements declare what variables/constraints they need
+        2. COLLECTION: Registries group declarations by category
+        3. EXECUTION: Batch-create variables/constraints per category
+
+        Args:
+            timing: If True, print detailed timing breakdown.
+
+        Note:
+            This method is experimental. Use `do_modeling()` for production.
+            Not all element types support DCE yet - those that don't will
+            fall back to individual creation.
+        """
+        import time
+
+        from .vectorized import ConstraintRegistry, EffectShareRegistry, VariableRegistry
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
+
+        # Enable DCE mode - elements will skip _do_modeling() variable creation
+        self._dce_mode = True
+
+        # Initialize registries
+        variable_registry = VariableRegistry(self)
+        self._variable_registry = variable_registry  # Store for later access
+
+        record('registry_init')
+
+        # Create effect models first (they don't use DCE yet)
+        self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
+
+        # Phase 1: DECLARATION
+        # Create element models and collect their declarations
+        logger.debug('DCE Phase 1: Declaration')
+        element_models = []
+
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+            # Component creates flow models as submodels
+            for flow in component.inputs + component.outputs:
+                if hasattr(flow.submodel, 'declare_variables'):
+                    for spec in flow.submodel.declare_variables():
+                        variable_registry.register(spec)
+                    element_models.append(flow.submodel)
+
+        record('components')
+
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
+            # Bus doesn't use DCE yet - uses traditional approach
+
+        record('buses')
+
+        # Phase 2: COLLECTION (implicit in registries)
+        logger.debug(f'DCE Phase 2: Collection - {variable_registry}')
+
+        # Phase 3: EXECUTION (Variables)
+        logger.debug('DCE Phase 3: Execution (Variables)')
+        variable_registry.create_all()
+
+        record('var_creation')
+
+        # Distribute handles to elements
+        for element_model in element_models:
+            handles = variable_registry.get_handles_for_element(element_model.label_full)
+            element_model.on_variables_created(handles)
+
+        record('handle_distribution')
+
+        # Phase 3: EXECUTION (Effect Shares)
+        logger.debug('DCE Phase 3: Execution (Effect Shares)')
+        effect_share_registry = EffectShareRegistry(self, variable_registry)
+        self._effect_share_registry = effect_share_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_effect_shares'):
+                for spec in element_model.declare_effect_shares():
+                    effect_share_registry.register(spec)
+
+        effect_share_registry.create_all()
+
+        record('effect_shares')
+
+        # Phase 3: EXECUTION (Constraints)
+        logger.debug('DCE Phase 3: Execution (Constraints)')
+        constraint_registry = ConstraintRegistry(self, variable_registry)
+        self._constraint_registry = constraint_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_constraints'):
+                for spec in element_model.declare_constraints():
+                    constraint_registry.register(spec)
+
+        constraint_registry.create_all()
+
+        record('constraint_creation')
+
+        # Finalize DCE - create submodels that weren't batch-created (e.g., StatusModel)
+        for element_model in element_models:
+            if hasattr(element_model, 'finalize_dce'):
+                element_model.finalize_dce()
+
+        record('finalize_dce')
+
+        # Post-processing
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+
+        record('end')
+
+        if timing:
+            print('\n  DCE Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'registry_init',
+                'effects',
+                'components',
+                'buses',
+                'var_creation',
+                'handle_distribution',
+                'effect_shares',
+                'constraint_creation',
+                'finalize_dce',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
+
+        logger.info(f'DCE modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints')
 
     def _add_scenario_equality_for_parameter_type(
         self,
@@ -2000,3 +2147,40 @@ class ElementModel(Submodel):
             'variables': list(self.variables),
             'constraints': list(self.constraints),
         }
+
+    # =========================================================================
+    # DCE Pattern: Declaration-Collection-Execution
+    # Override these methods in subclasses to use the DCE pattern
+    # =========================================================================
+
+    def declare_variables(self) -> list:
+        """Declare variables needed by this element for batch creation.
+
+        Override in subclasses to return a list of VariableSpec objects.
+        These specs will be collected by VariableRegistry and batch-created.
+
+        Returns:
+            List of VariableSpec objects (empty by default).
+        """
+        return []
+
+    def declare_constraints(self) -> list:
+        """Declare constraints needed by this element for batch creation.
+
+        Override in subclasses to return a list of ConstraintSpec objects.
+        The build_fn in each spec will be called after variables exist.
+
+        Returns:
+            List of ConstraintSpec objects (empty by default).
+        """
+        return []
+
+    def on_variables_created(self, handles: dict) -> None:
+        """Called after batch variable creation with handles to element's variables.
+
+        Override in subclasses to store handles for use in constraint building.
+
+        Args:
+            handles: Dict mapping category name to VariableHandle.
+        """
+        pass

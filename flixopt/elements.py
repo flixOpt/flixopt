@@ -24,6 +24,7 @@ from .structure import (
     VariableCategory,
     register_class_for_io,
 )
+from .vectorized import ConstraintResult, ConstraintSpec, VariableHandle, VariableSpec
 
 if TYPE_CHECKING:
     import linopy
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
         Numeric_TPS,
         Scalar,
     )
+    from .vectorized import EffectShareSpec
 
 logger = logging.getLogger('flixopt')
 
@@ -663,10 +665,429 @@ class FlowModel(ElementModel):
 
     def __init__(self, model: FlowSystemModel, element: Flow):
         super().__init__(model, element)
+        self._dce_handles: dict[str, VariableHandle] = {}
+
+    # =========================================================================
+    # DCE Pattern: Declaration-Collection-Execution
+    # =========================================================================
+
+    def declare_variables(self) -> list[VariableSpec]:
+        """Declare variables needed by this Flow for batch creation.
+
+        Returns VariableSpecs that will be collected by VariableRegistry
+        and batch-created with other Flows' variables.
+        """
+        specs = []
+
+        # Main flow rate variable (always needed)
+        specs.append(
+            VariableSpec(
+                category='flow_rate',
+                element_id=self.label_full,
+                lower=self.absolute_flow_rate_bounds[0],
+                upper=self.absolute_flow_rate_bounds[1],
+                dims=self._model.temporal_dims,
+                var_category=VariableCategory.FLOW_RATE,
+            )
+        )
+
+        # Status variable (if using status_parameters)
+        if self.with_status:
+            specs.append(
+                VariableSpec(
+                    category='status',
+                    element_id=self.label_full,
+                    binary=True,
+                    dims=self._model.temporal_dims,
+                    var_category=VariableCategory.STATUS,
+                )
+            )
+
+        # Total flow hours variable (per period)
+        # Bounds from flow_hours_min/max
+        specs.append(
+            VariableSpec(
+                category='total_flow_hours',
+                element_id=self.label_full,
+                lower=self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
+                upper=self.element.flow_hours_max if self.element.flow_hours_max is not None else np.inf,
+                dims=('period', 'scenario'),
+                var_category=VariableCategory.TOTAL,
+            )
+        )
+
+        # Flow hours over periods (if constrained)
+        if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
+            specs.append(
+                VariableSpec(
+                    category='flow_hours_over_periods',
+                    element_id=self.label_full,
+                    lower=self.element.flow_hours_min_over_periods
+                    if self.element.flow_hours_min_over_periods is not None
+                    else 0,
+                    upper=self.element.flow_hours_max_over_periods
+                    if self.element.flow_hours_max_over_periods is not None
+                    else np.inf,
+                    dims=('scenario',),
+                    var_category=VariableCategory.TOTAL_OVER_PERIODS,
+                )
+            )
+
+        # Investment variables (if using InvestParameters for size)
+        if self.with_investment:
+            invest_params = self.element.size  # InvestParameters
+            size_min = invest_params.minimum_or_fixed_size
+            size_max = invest_params.maximum_or_fixed_size
+
+            # Handle linked_periods masking
+            if invest_params.linked_periods is not None:
+                size_min = size_min * invest_params.linked_periods
+                size_max = size_max * invest_params.linked_periods
+
+            specs.append(
+                VariableSpec(
+                    category='size',
+                    element_id=self.label_full,
+                    lower=size_min if invest_params.mandatory else 0,
+                    upper=size_max,
+                    dims=('period', 'scenario'),
+                    var_category=VariableCategory.FLOW_SIZE,
+                )
+            )
+
+            # Binary investment decision (only if not mandatory)
+            if not invest_params.mandatory:
+                specs.append(
+                    VariableSpec(
+                        category='invested',
+                        element_id=self.label_full,
+                        binary=True,
+                        dims=('period', 'scenario'),
+                        var_category=VariableCategory.INVESTED,
+                    )
+                )
+
+        return specs
+
+    def declare_constraints(self) -> list[ConstraintSpec]:
+        """Declare constraints needed by this Flow for batch creation.
+
+        Returns ConstraintSpecs with build functions that will be called
+        after variables are created.
+        """
+        specs = []
+
+        # Flow rate bounds (depends on status/investment configuration)
+        if self.with_status and not self.with_investment:
+            # Status-controlled bounds (no investment)
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_ub',
+                    element_id=self.label_full,
+                    build_fn=self._build_status_upper_bound,
+                )
+            )
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_lb',
+                    element_id=self.label_full,
+                    build_fn=self._build_status_lower_bound,
+                )
+            )
+        elif self.with_investment and not self.with_status:
+            # Investment-scaled bounds (no status)
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_scaled_ub',
+                    element_id=self.label_full,
+                    build_fn=self._build_investment_upper_bound,
+                )
+            )
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_scaled_lb',
+                    element_id=self.label_full,
+                    build_fn=self._build_investment_lower_bound,
+                )
+            )
+        elif self.with_investment and self.with_status:
+            # Both investment and status - most complex case
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_scaled_status_ub',
+                    element_id=self.label_full,
+                    build_fn=self._build_investment_status_upper_bound,
+                )
+            )
+            specs.append(
+                ConstraintSpec(
+                    category='flow_rate_scaled_status_lb',
+                    element_id=self.label_full,
+                    build_fn=self._build_investment_status_lower_bound,
+                )
+            )
+
+        # Investment-specific constraints
+        if self.with_investment:
+            invest_params = self.element.size
+            # Size/invested linkage (only if not mandatory)
+            if not invest_params.mandatory:
+                specs.append(
+                    ConstraintSpec(
+                        category='size_invested_ub',
+                        element_id=self.label_full,
+                        build_fn=self._build_size_invested_upper_bound,
+                    )
+                )
+                specs.append(
+                    ConstraintSpec(
+                        category='size_invested_lb',
+                        element_id=self.label_full,
+                        build_fn=self._build_size_invested_lower_bound,
+                    )
+                )
+
+        # Total flow hours tracking constraint
+        specs.append(
+            ConstraintSpec(
+                category='total_flow_hours_eq',
+                element_id=self.label_full,
+                build_fn=self._build_total_flow_hours_tracking,
+            )
+        )
+
+        # Flow hours over periods tracking (if needed)
+        if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
+            specs.append(
+                ConstraintSpec(
+                    category='flow_hours_over_periods_eq',
+                    element_id=self.label_full,
+                    build_fn=self._build_flow_hours_over_periods_tracking,
+                )
+            )
+
+        # Load factor constraints
+        if self.element.load_factor_max is not None:
+            specs.append(
+                ConstraintSpec(
+                    category='load_factor_max',
+                    element_id=self.label_full,
+                    build_fn=self._build_load_factor_max,
+                )
+            )
+
+        if self.element.load_factor_min is not None:
+            specs.append(
+                ConstraintSpec(
+                    category='load_factor_min',
+                    element_id=self.label_full,
+                    build_fn=self._build_load_factor_min,
+                )
+            )
+
+        return specs
+
+    def on_variables_created(self, handles: dict[str, VariableHandle]) -> None:
+        """Called after batch variable creation with handles to our variables.
+
+        Note: Effect shares are NOT created here in DCE mode - they are
+        collected via declare_effect_shares() and batch-created later.
+        """
+        self._dce_handles = handles
+
+        # Register the DCE variables in our local registry so properties like self.flow_rate work
+        for category, handle in handles.items():
+            self.register_variable(handle.variable, category)
+
+        # Effect shares are created via EffectShareRegistry in DCE mode, not here
+
+    def finalize_dce(self) -> None:
+        """Finalize DCE by creating submodels that weren't batch-created.
+
+        Called after all DCE variables and constraints are created.
+        Creates StatusModel submodel if needed, using the already-created status variable.
+        """
+        if not self.with_status:
+            return
+
+        # Status variable was already created via DCE, get it from handles
+        status_var = self._dce_handles['status'].variable
+
+        # Create StatusModel with the existing status variable
+        self.add_submodels(
+            StatusModel(
+                model=self._model,
+                label_of_element=self.label_of_element,
+                parameters=self.element.status_parameters,
+                status=status_var,
+                previous_status=self.previous_status,
+                label_of_model=self.label_of_element,
+            ),
+            short_name='status',
+        )
+
+    def declare_effect_shares(self) -> list[EffectShareSpec]:
+        """Declare effect shares needed by this Flow for batch creation.
+
+        Returns EffectShareSpecs that will be batch-processed by EffectShareRegistry.
+        """
+        from .vectorized import EffectShareSpec
+
+        specs = []
+
+        if self.element.effects_per_flow_hour:
+            for effect_name, factor in self.element.effects_per_flow_hour.items():
+                specs.append(
+                    EffectShareSpec(
+                        element_id=self.label_full,
+                        effect_name=effect_name,
+                        factor=factor,
+                        target='temporal',
+                    )
+                )
+
+        return specs
+
+    # =========================================================================
+    # DCE Constraint Build Functions
+    # =========================================================================
+
+    def _build_status_upper_bound(self, model: FlowSystemModel, handles: dict[str, VariableHandle]) -> ConstraintResult:
+        """Build: flow_rate <= status * size * relative_max"""
+        flow_rate = handles['flow_rate'].variable
+        status = handles['status'].variable
+        _, ub_relative = self.relative_flow_rate_bounds
+        upper = status * ub_relative * self.element.size
+        return ConstraintResult(lhs=flow_rate, rhs=upper, sense='<=')
+
+    def _build_status_lower_bound(self, model: FlowSystemModel, handles: dict[str, VariableHandle]) -> ConstraintResult:
+        """Build: flow_rate >= status * max(epsilon, size * relative_min)"""
+        flow_rate = handles['flow_rate'].variable
+        status = handles['status'].variable
+        lb_relative, _ = self.relative_flow_rate_bounds
+        lower_bound = lb_relative * self.element.size
+        epsilon = np.maximum(CONFIG.Modeling.epsilon, lower_bound)
+        lower = status * epsilon
+        return ConstraintResult(lhs=flow_rate, rhs=lower, sense='>=')
+
+    def _build_total_flow_hours_tracking(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: total_flow_hours = sum(flow_rate * dt)"""
+        flow_rate = handles['flow_rate'].variable
+        total_flow_hours = handles['total_flow_hours'].variable
+        rhs = self._model.sum_temporal(flow_rate)
+        return ConstraintResult(lhs=total_flow_hours, rhs=rhs, sense='==')
+
+    def _build_flow_hours_over_periods_tracking(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: flow_hours_over_periods = sum(total_flow_hours * period_weight)"""
+        total_flow_hours = handles['total_flow_hours'].variable
+        flow_hours_over_periods = handles['flow_hours_over_periods'].variable
+        weighted = (total_flow_hours * self._model.flow_system.period_weights).sum('period')
+        return ConstraintResult(lhs=flow_hours_over_periods, rhs=weighted, sense='==')
+
+    def _build_load_factor_max(self, model: FlowSystemModel, handles: dict[str, VariableHandle]) -> ConstraintResult:
+        """Build: total_flow_hours <= size * load_factor_max * total_hours"""
+        total_flow_hours = handles['total_flow_hours'].variable
+        # Get size (from investment handle if available, else from element)
+        if self.with_investment and 'size' in handles:
+            size = handles['size'].variable
+        else:
+            size = self.element.size
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
+        rhs = size * self.element.load_factor_max * total_hours
+        return ConstraintResult(lhs=total_flow_hours, rhs=rhs, sense='<=')
+
+    def _build_load_factor_min(self, model: FlowSystemModel, handles: dict[str, VariableHandle]) -> ConstraintResult:
+        """Build: total_flow_hours >= size * load_factor_min * total_hours"""
+        total_flow_hours = handles['total_flow_hours'].variable
+        if self.with_investment and 'size' in handles:
+            size = handles['size'].variable
+        else:
+            size = self.element.size
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
+        rhs = size * self.element.load_factor_min * total_hours
+        return ConstraintResult(lhs=total_flow_hours, rhs=rhs, sense='>=')
+
+    def _build_investment_upper_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: flow_rate <= size * relative_max"""
+        flow_rate = handles['flow_rate'].variable
+        size = handles['size'].variable
+        _, ub_relative = self.relative_flow_rate_bounds
+        return ConstraintResult(lhs=flow_rate, rhs=size * ub_relative, sense='<=')
+
+    def _build_investment_lower_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: flow_rate >= size * relative_min"""
+        flow_rate = handles['flow_rate'].variable
+        size = handles['size'].variable
+        lb_relative, _ = self.relative_flow_rate_bounds
+        return ConstraintResult(lhs=flow_rate, rhs=size * lb_relative, sense='>=')
+
+    def _build_investment_status_upper_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: flow_rate <= size * relative_max (investment + status case)"""
+        flow_rate = handles['flow_rate'].variable
+        size = handles['size'].variable
+        _, ub_relative = self.relative_flow_rate_bounds
+        return ConstraintResult(lhs=flow_rate, rhs=size * ub_relative, sense='<=')
+
+    def _build_investment_status_lower_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: flow_rate >= (status - 1) * M + size * relative_min"""
+        flow_rate = handles['flow_rate'].variable
+        size = handles['size'].variable
+        status = handles['status'].variable
+        lb_relative, _ = self.relative_flow_rate_bounds
+        invest_params = self.element.size
+        big_m = invest_params.maximum_or_fixed_size * lb_relative
+        rhs = (status - 1) * big_m + size * lb_relative
+        return ConstraintResult(lhs=flow_rate, rhs=rhs, sense='>=')
+
+    def _build_size_invested_upper_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: size <= invested * maximum_size"""
+        size = handles['size'].variable
+        invested = handles['invested'].variable
+        invest_params = self.element.size
+        return ConstraintResult(lhs=size, rhs=invested * invest_params.maximum_or_fixed_size, sense='<=')
+
+    def _build_size_invested_lower_bound(
+        self, model: FlowSystemModel, handles: dict[str, VariableHandle]
+    ) -> ConstraintResult:
+        """Build: size >= invested * minimum_size"""
+        size = handles['size'].variable
+        invested = handles['invested'].variable
+        invest_params = self.element.size
+        return ConstraintResult(lhs=size, rhs=invested * invest_params.minimum_or_fixed_size, sense='>=')
+
+    # =========================================================================
+    # Original Implementation (kept for backward compatibility)
+    # =========================================================================
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create variables, constraints, and nested submodels.
+
+        When FlowSystemModel._dce_mode is True, this method skips variable/constraint
+        creation since those will be handled by the DCE registries. Only effects
+        are still created here since they don't use DCE yet.
+        """
         super()._do_modeling()
+
+        # In DCE mode, skip all variable/constraint creation - handled by registries
+        # Effects are created after variables exist via on_variables_created()
+        if self._model._dce_mode:
+            return
+
+        # === Traditional (non-DCE) variable/constraint creation ===
 
         # Main flow rate variable
         self.add_variables(
@@ -958,6 +1379,11 @@ class BusModel(ElementModel):
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
+
         # inputs == outputs
         for flow in self.element.inputs + self.element.outputs:
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
@@ -1044,6 +1470,10 @@ class ComponentModel(ElementModel):
         # Create FlowModels (which creates their variables and constraints)
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
+
+        # In DCE mode, skip constraint creation - constraints will be added later
+        if self._model._dce_mode:
+            return
 
         # Create component status variable and StatusModel if needed
         if self.element.status_parameters:
