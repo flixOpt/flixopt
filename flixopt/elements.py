@@ -1926,37 +1926,31 @@ class FlowsModel(TypeModel):
         ).assign_coords(element=self.optional_investment_ids)
         self.add_constraints(size >= invested * min_sizes, name='size_invested_lb')
 
-    def create_effect_shares(self) -> None:
-        """Create effect shares for all flows with effects_per_flow_hour."""
-        flow_rate = self._variables['flow_rate']
+    def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
+        """Collect effect share specifications for all flows.
 
-        # Group flows by effect
-        effects_by_name: dict[str, list[tuple[Flow, float | xr.DataArray]]] = {}
+        Returns:
+            Dict mapping effect_name to list of (element_id, factor) tuples.
+            Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
+        """
+        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]] = {}
         for flow in self.elements:
             if flow.effects_per_flow_hour:
                 for effect_name, factor in flow.effects_per_flow_hour.items():
-                    if effect_name not in effects_by_name:
-                        effects_by_name[effect_name] = []
-                    effects_by_name[effect_name].append((flow, factor))
+                    if effect_name not in effect_specs:
+                        effect_specs[effect_name] = []
+                    effect_specs[effect_name].append((flow.label_full, factor))
+        return effect_specs
 
-        # Create batched effect shares for each effect
-        for effect_name, flow_factors in effects_by_name.items():
-            flow_ids = [f.label_full for f, _ in flow_factors]
-            factors = [factor for _, factor in flow_factors]
+    def create_effect_shares(self) -> None:
+        """Create effect shares for all flows with effects_per_flow_hour.
 
-            # Build factors array
-            factors_da = xr.concat(
-                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors], dim='element'
-            ).assign_coords(element=flow_ids)
-
-            # Select relevant flow rates and compute expression
-            flow_rate_subset = flow_rate.sel(element=flow_ids)
-            expression = flow_rate_subset * self.model.timestep_duration * factors_da
-
-            # Add to effect
-            effect = self.model.effects.effects[effect_name]
-            # Sum across elements to get total contribution at each timestep
-            effect.submodel.temporal._eq_total_per_timestep.lhs -= expression.sum('element')
+        Collects specs and delegates to EffectCollectionModel for batched application.
+        """
+        effect_specs = self.collect_effect_share_specs()
+        if effect_specs:
+            flow_rate = self._variables['flow_rate']
+            self.model.effects.apply_batched_flow_effect_shares(flow_rate, effect_specs)
 
 
 class BusModel(ElementModel):
@@ -2213,13 +2207,16 @@ class BusesModel(TypeModel):
 
         logger.debug(f'BusesModel created {len(self.elements)} balance constraints')
 
-    def create_effect_shares(self) -> None:
-        """Create penalty effect shares for buses with imbalance."""
+    def collect_penalty_share_specs(self) -> list[tuple[str, xr.DataArray]]:
+        """Collect penalty effect share specifications for buses with imbalance.
+
+        Returns:
+            List of (element_label, penalty_expression) tuples.
+        """
         if not self.buses_with_imbalance:
-            return
+            return []
 
-        from .effects import PENALTY_EFFECT_LABEL
-
+        penalty_specs = []
         for bus in self.buses_with_imbalance:
             bus_label = bus.label_full
             imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
@@ -2228,12 +2225,18 @@ class BusesModel(TypeModel):
             virtual_demand = self._variables['virtual_demand'].sel(element=bus_label)
 
             total_imbalance_penalty = (virtual_supply + virtual_demand) * imbalance_penalty
+            penalty_specs.append((bus_label, total_imbalance_penalty))
 
-            self.model.effects.add_share_to_effects(
-                name=bus_label,
-                expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
-                target='temporal',
-            )
+        return penalty_specs
+
+    def create_effect_shares(self) -> None:
+        """Create penalty effect shares for buses with imbalance.
+
+        Collects specs and delegates to EffectCollectionModel for application.
+        """
+        penalty_specs = self.collect_penalty_share_specs()
+        if penalty_specs:
+            self.model.effects.apply_batched_penalty_shares(penalty_specs)
 
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element.

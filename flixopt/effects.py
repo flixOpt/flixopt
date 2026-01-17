@@ -717,6 +717,61 @@ class EffectCollectionModel(Submodel):
                     dims=('period', 'scenario'),
                 )
 
+    def apply_batched_flow_effect_shares(
+        self,
+        flow_rate: linopy.Variable,
+        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]],
+    ) -> None:
+        """Apply batched effect shares for flows to all relevant effects.
+
+        This method receives pre-grouped effect specifications and applies them
+        efficiently using vectorized operations. The batching happens in one place
+        (the effect system) rather than scattered across TypeModels.
+
+        Args:
+            flow_rate: The batched flow_rate variable with element dimension.
+            effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
+                Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
+
+        Note:
+            This directly modifies the effect's temporal constraint (no intermediate
+            share variable) for efficiency. The expression is:
+                flow_rate[elements] * timestep_duration * factors
+        """
+        for effect_name, element_factors in effect_specs.items():
+            if effect_name not in self.effects:
+                logger.warning(f'Effect {effect_name} not found, skipping shares')
+                continue
+
+            element_ids = [eid for eid, _ in element_factors]
+            factors = [factor for _, factor in element_factors]
+
+            # Build factors array with element dimension
+            factors_da = xr.concat(
+                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
+                dim='element',
+            ).assign_coords(element=element_ids)
+
+            # Select relevant flow rates and compute expression
+            flow_rate_subset = flow_rate.sel(element=element_ids)
+            expression = flow_rate_subset * self._model.timestep_duration * factors_da
+
+            # Add to effect's temporal total (sum across elements)
+            effect = self.effects[effect_name]
+            effect.submodel.temporal._eq_total_per_timestep.lhs -= expression.sum('element')
+
+    def apply_batched_penalty_shares(
+        self,
+        penalty_expressions: list[tuple[str, linopy.LinearExpression]],
+    ) -> None:
+        """Apply batched penalty effect shares.
+
+        Args:
+            penalty_expressions: List of (element_label, penalty_expression) tuples.
+        """
+        for _element_label, expression in penalty_expressions:
+            self.effects[PENALTY_EFFECT_LABEL].submodel.temporal._eq_total_per_timestep.lhs -= expression
+
 
 def calculate_all_conversion_paths(
     conversion_dict: dict[str, dict[str, Scalar | xr.DataArray]],
