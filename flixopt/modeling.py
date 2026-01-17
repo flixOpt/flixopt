@@ -505,6 +505,8 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
 
         lower_bound, upper_bound = bounds
+        # Ensure bounds have compatible dimensions
+        lower_bound, upper_bound = xr.broadcast(lower_bound, upper_bound)
         name = name or f'{variable.name}'
 
         upper_constraint = model.add_constraints(variable <= upper_bound, name=f'{name}|ub')
@@ -544,6 +546,8 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.bounds_with_state() can only be used with a Submodel')
 
         lower_bound, upper_bound = bounds
+        # Ensure bounds have compatible dimensions
+        lower_bound, upper_bound = xr.broadcast(lower_bound, upper_bound)
         name = name or f'{variable.name}'
 
         if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
@@ -586,6 +590,8 @@ class BoundingPatterns:
             raise ValueError('BoundingPatterns.scaled_bounds() can only be used with a Submodel')
 
         rel_lower, rel_upper = relative_bounds
+        # Ensure bounds have compatible dimensions
+        rel_lower, rel_upper = xr.broadcast(rel_lower, rel_upper)
         name = name or f'{variable.name}'
 
         if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
@@ -636,6 +642,9 @@ class BoundingPatterns:
 
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
+        # Ensure bounds have compatible dimensions
+        rel_lower, rel_upper = xr.broadcast(rel_lower, rel_upper)
+        scaling_min, scaling_max = xr.broadcast(scaling_min, scaling_max)
         name = name or f'{variable.name}'
 
         big_m_misc = scaling_max * rel_lower

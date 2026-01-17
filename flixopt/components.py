@@ -1152,6 +1152,10 @@ class StorageModel(ComponentModel):
             # Original is scalar - broadcast to full time range (constant value)
             max_bounds = rel_max.expand_dims(time=timesteps_extra)
 
+        # Ensure both bounds have compatible dimensions (handles case where one is
+        # scalar-expanded while the other has additional dimensions like 'cluster')
+        min_bounds, max_bounds = xr.broadcast(min_bounds, max_bounds)
+
         return min_bounds, max_bounds
 
     @property
