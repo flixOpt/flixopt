@@ -1982,6 +1982,7 @@ class StoragesModel:
             parameters_getter=lambda s: s.capacity_in_flow_hours,
             size_category=VariableCategory.STORAGE_SIZE,
             name_prefix='storage_investment',
+            dim_name=self.dim_name,  # Use 'storage' dimension to match StoragesModel
         )
         self._investments_model.create_variables()
         self._investments_model.create_constraints()

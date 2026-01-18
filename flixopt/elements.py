@@ -1836,8 +1836,10 @@ class FlowsModel(TypeModel):
     def _create_flow_rate_bounds(self) -> None:
         """Create flow rate bounding constraints based on status/investment configuration."""
         # Group flows by their constraint type
-        # 1. Status only (no investment)
-        status_only_flows = [f for f in self.flows_with_status if f not in self.flows_with_investment]
+        # 1. Status only (no investment) - exclude flows with size=None (bounds come from converter)
+        status_only_flows = [
+            f for f in self.flows_with_status if f not in self.flows_with_investment and f.size is not None
+        ]
         if status_only_flows:
             self._create_status_bounds(status_only_flows)
 

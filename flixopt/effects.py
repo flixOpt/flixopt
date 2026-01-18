@@ -1182,9 +1182,11 @@ class EffectCollectionModel(Submodel):
             factors = [factor for _, factor in element_factors]
 
             # Build factors array with element dimension
+            # Use coords='minimal' since factors may have different dimensions (e.g., some have period, others don't)
             factors_da = xr.concat(
                 [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
                 dim=dim,
+                coords='minimal',
             ).assign_coords({dim: element_ids})
 
             # Select relevant flow rates and compute expression per element
