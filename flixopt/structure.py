@@ -937,6 +937,10 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
 
+        # Create unified share variables with (element, effect) dimensions
+        if self.effects._batched_model is not None:
+            self.effects._batched_model.create_share_variables()
+
         record('end')
 
         if timing:
