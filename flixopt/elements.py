@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, InvestmentProxy, StatusModel, StatusProxy
+from .features import InvestmentModel, InvestmentProxy, StatusesModel, StatusModel, StatusProxy
 from .interface import InvestParameters, StatusParameters
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
 from .structure import (
@@ -2014,6 +2014,29 @@ class FlowsModel(TypeModel):
             flow_rate = self._variables['rate']
             self.model.effects.apply_batched_flow_effect_shares(flow_rate, effect_specs)
 
+    def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
+        """Get previous status for a flow based on its previous_flow_rate.
+
+        This is used by ComponentStatusesModel to compute component previous status.
+
+        Args:
+            flow: The flow to get previous status for.
+
+        Returns:
+            Binary DataArray with 1 where previous flow was active, None if no previous data.
+        """
+        previous_flow_rate = flow.previous_flow_rate
+        if previous_flow_rate is None:
+            return None
+
+        return ModelingUtilitiesAbstract.to_binary(
+            values=xr.DataArray(
+                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
+            ),
+            epsilon=CONFIG.Modeling.epsilon,
+            dims='time',
+        )
+
 
 class BusModel(ElementModel):
     """Mathematical model implementation for Bus elements.
@@ -2407,8 +2430,8 @@ class ComponentModel(ElementModel):
         for flow in all_flows:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
 
-        # In DCE mode, skip constraint creation - constraints will be added later
-        if self._model._dce_mode:
+        # In DCE or type_level mode, skip status/constraint creation - handled by type-level models
+        if self._model._dce_mode or self._model._type_level_mode:
             return
 
         # Create component status variable and StatusModel if needed
@@ -2477,3 +2500,241 @@ class ComponentModel(ElementModel):
             for da in previous_status
         ]
         return xr.concat(padded_previous_status, dim='flow').any(dim='flow').astype(int)
+
+
+class ComponentStatusesModel:
+    """Type-level model for batched component status across multiple components.
+
+    This handles component-level status variables and constraints for ALL components
+    with status_parameters in a single instance with batched variables.
+
+    Component status is derived from flow statuses:
+    - Single-flow component: status == flow_status
+    - Multi-flow component: status is 1 if ANY flow is active
+
+    This enables:
+    - Batched `component|status` variable with component dimension
+    - Batched constraints linking component status to flow statuses
+    - Integration with StatusesModel for startup/shutdown/active_hours features
+
+    The model also handles prevent_simultaneous_flows constraints using batched
+    mutual exclusivity constraints.
+
+    Example:
+        >>> component_statuses = ComponentStatusesModel(
+        ...     model=flow_system_model,
+        ...     components=components_with_status,
+        ...     flows_model=flows_model,
+        ... )
+        >>> component_statuses.create_variables()
+        >>> component_statuses.create_constraints()
+        >>> component_statuses.create_status_features()
+        >>> component_statuses.create_effect_shares()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        components: list[Component],
+        flows_model: FlowsModel,
+    ):
+        """Initialize the type-level component status model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            components: List of components with status_parameters.
+            flows_model: The FlowsModel that owns flow status variables.
+        """
+
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.components = components
+        self._flows_model = flows_model
+        self.element_ids: list[str] = [c.label for c in components]
+        self.dim_name = 'component'
+
+        # Variables dict
+        self._variables: dict[str, linopy.Variable] = {}
+
+        # StatusesModel for status features (startup, shutdown, active_hours, etc.)
+        self._statuses_model: StatusesModel | None = None
+
+        self._logger.debug(f'ComponentStatusesModel initialized: {len(components)} components with status')
+
+    def create_variables(self) -> None:
+        """Create batched component status variable with component dimension."""
+        if not self.components:
+            return
+
+        dim = self.dim_name
+
+        # Create component status binary variable
+        temporal_coords = self.model.get_coords()
+        status_coords = xr.Coordinates(
+            {
+                dim: pd.Index(self.element_ids, name=dim),
+                **dict(temporal_coords),
+            }
+        )
+
+        self._variables['status'] = self.model.add_variables(
+            binary=True,
+            coords=status_coords,
+            name='component|status',
+        )
+
+        self._logger.debug(f'ComponentStatusesModel created status variable for {len(self.components)} components')
+
+    def create_constraints(self) -> None:
+        """Create batched constraints linking component status to flow statuses."""
+        if not self.components:
+            return
+
+        dim = self.dim_name
+
+        for component in self.components:
+            all_flows = component.inputs + component.outputs
+            comp_status = self._variables['status'].sel({dim: component.label})
+
+            if len(all_flows) == 1:
+                # Single-flow: component status == flow status
+                flow = all_flows[0]
+                flow_status = self._flows_model.get_variable('status', flow.label_full)
+                self.model.add_constraints(
+                    comp_status == flow_status,
+                    name=f'{component.label}|status|eq',
+                )
+            else:
+                # Multi-flow: component status is 1 if ANY flow is active
+                # status <= sum(flow_statuses)
+                # status >= sum(flow_statuses) / N (approximately, with epsilon)
+                flow_statuses = [self._flows_model.get_variable('status', flow.label_full) for flow in all_flows]
+                n_flows = len(flow_statuses)
+
+                # Upper bound: status <= sum(flow_statuses) + epsilon
+                self.model.add_constraints(
+                    comp_status <= sum(flow_statuses) + CONFIG.Modeling.epsilon,
+                    name=f'{component.label}|status|ub',
+                )
+
+                # Lower bound: status >= sum(flow_statuses) / (N + epsilon)
+                self.model.add_constraints(
+                    comp_status >= sum(flow_statuses) / (n_flows + CONFIG.Modeling.epsilon),
+                    name=f'{component.label}|status|lb',
+                )
+
+        self._logger.debug(f'ComponentStatusesModel created constraints for {len(self.components)} components')
+
+    def create_status_features(self) -> None:
+        """Create StatusesModel for status features (startup, shutdown, active_hours, etc.)."""
+        if not self.components:
+            return
+
+        from .features import StatusesModel
+
+        dim = self.dim_name
+
+        def get_previous_status(component: Component) -> xr.DataArray | None:
+            """Get previous status for component, derived from its flows."""
+            all_flows = component.inputs + component.outputs
+            previous_status = []
+            for flow in all_flows:
+                prev = self._flows_model.get_previous_status(flow)
+                if prev is not None:
+                    previous_status.append(prev)
+
+            if not previous_status:
+                return None
+
+            max_len = max(da.sizes['time'] for da in previous_status)
+            padded = [
+                da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
+                for da in previous_status
+            ]
+            return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+
+        self._statuses_model = StatusesModel(
+            model=self.model,
+            elements=self.components,
+            status_var_getter=lambda c: self._variables['status'].sel({dim: c.label}),
+            parameters_getter=lambda c: c.status_parameters,
+            previous_status_getter=get_previous_status,
+            dim_name=dim,
+            name_prefix='component',
+        )
+
+        self._statuses_model.create_variables()
+        self._statuses_model.create_constraints()
+
+        self._logger.debug(f'ComponentStatusesModel created status features for {len(self.components)} components')
+
+    def create_effect_shares(self) -> None:
+        """Create effect shares for component status (startup costs, etc.)."""
+        if not self.components or self._statuses_model is None:
+            return
+
+        self._statuses_model.create_effect_shares()
+
+        self._logger.debug(f'ComponentStatusesModel created effect shares for {len(self.components)} components')
+
+    def get_variable(self, var_name: str, component_id: str):
+        """Get variable slice for a specific component."""
+        dim = self.dim_name
+        if var_name in self._variables:
+            return self._variables[var_name].sel({dim: component_id})
+        elif self._statuses_model is not None:
+            # Try to get from StatusesModel
+            return self._statuses_model.get_variable(var_name, component_id)
+        else:
+            raise KeyError(f'Variable {var_name} not found in ComponentStatusesModel')
+
+
+class PreventSimultaneousFlowsModel:
+    """Type-level model for batched prevent_simultaneous_flows constraints.
+
+    Handles mutual exclusivity constraints for components where flows cannot
+    be active simultaneously (e.g., Storage charge/discharge, SourceAndSink buy/sell).
+
+    Each constraint enforces: sum(flow_statuses) <= 1
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        components: list[Component],
+        flows_model: FlowsModel,
+    ):
+        """Initialize the prevent simultaneous flows model.
+
+        Args:
+            model: The FlowSystemModel to create constraints in.
+            components: List of components with prevent_simultaneous_flows set.
+            flows_model: The FlowsModel that owns flow status variables.
+        """
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.components = components
+        self._flows_model = flows_model
+
+        self._logger.debug(f'PreventSimultaneousFlowsModel initialized: {len(components)} components')
+
+    def create_constraints(self) -> None:
+        """Create mutual exclusivity constraints for each component's flows."""
+        if not self.components:
+            return
+
+        for component in self.components:
+            flows = component.prevent_simultaneous_flows
+            if not flows:
+                continue
+
+            # Get flow status variables
+            flow_statuses = [self._flows_model.get_variable('status', flow.label_full) for flow in flows]
+
+            # Mutual exclusivity: sum(statuses) <= 1
+            self.model.add_constraints(
+                sum(flow_statuses) <= 1,
+                name=f'{component.label}|prevent_simultaneous_use',
+            )
+
+        self._logger.debug(f'PreventSimultaneousFlowsModel created constraints for {len(self.components)} components')

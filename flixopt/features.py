@@ -678,6 +678,7 @@ class StatusesModel:
         parameters_getter: callable,
         previous_status_getter: callable = None,
         dim_name: str = 'element',
+        name_prefix: str = 'status',
     ):
         """Initialize the type-level status model.
 
@@ -691,6 +692,7 @@ class StatusesModel:
             previous_status_getter: Optional function to get previous status for an element.
                 e.g., lambda f: f.previous_status
             dim_name: Dimension name for the element type (e.g., 'flow', 'component').
+            name_prefix: Prefix for variable names (e.g., 'status', 'component_status').
         """
         import logging
 
@@ -705,6 +707,7 @@ class StatusesModel:
         self._parameters_getter = parameters_getter
         self._previous_status_getter = previous_status_getter or (lambda _: None)
         self.dim_name = dim_name
+        self.name_prefix = name_prefix
 
         # Store imports for later use
         self._pd = pd
@@ -783,7 +786,7 @@ class StatusesModel:
             lower=lower_da,
             upper=upper_da,
             coords=active_hours_coords,
-            name='status|active_hours',
+            name=f'{self.name_prefix}|active_hours',
         )
 
         # === startup, shutdown: Elements with startup tracking ===
@@ -798,12 +801,12 @@ class StatusesModel:
             self._variables['startup'] = self.model.add_variables(
                 binary=True,
                 coords=startup_coords,
-                name='status|startup',
+                name=f'{self.name_prefix}|startup',
             )
             self._variables['shutdown'] = self.model.add_variables(
                 binary=True,
                 coords=startup_coords,
-                name='status|shutdown',
+                name=f'{self.name_prefix}|shutdown',
             )
 
         # === inactive: Elements with downtime tracking ===
@@ -818,7 +821,7 @@ class StatusesModel:
             self._variables['inactive'] = self.model.add_variables(
                 binary=True,
                 coords=inactive_coords,
-                name='status|inactive',
+                name=f'{self.name_prefix}|inactive',
             )
 
         # === startup_count: Elements with startup limit ===
@@ -836,7 +839,7 @@ class StatusesModel:
                 lower=0,
                 upper=upper_limits_da,
                 coords=startup_count_coords,
-                name='status|startup_count',
+                name=f'{self.name_prefix}|startup_count',
             )
 
         self._logger.debug(f'StatusesModel created variables for {len(self.elements)} elements')

@@ -955,11 +955,48 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('storages_investment_constraints')
 
+        # Collect components with status_parameters for batched status handling
+        from .elements import ComponentStatusesModel, PreventSimultaneousFlowsModel
+
+        components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+
+        # Create type-level model for component status
+        self._component_statuses_model = ComponentStatusesModel(self, components_with_status, self._flows_model)
+        self._component_statuses_model.create_variables()
+
+        record('component_status_variables')
+
+        self._component_statuses_model.create_constraints()
+
+        record('component_status_constraints')
+
+        self._component_statuses_model.create_status_features()
+
+        record('component_status_features')
+
+        self._component_statuses_model.create_effect_shares()
+
+        record('component_status_effects')
+
+        # Collect components with prevent_simultaneous_flows
+        components_with_prevent_simultaneous = [
+            c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows
+        ]
+
+        # Create type-level model for prevent simultaneous flows
+        self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
+            self, components_with_prevent_simultaneous, self._flows_model
+        )
+        self._prevent_simultaneous_model.create_constraints()
+
+        record('prevent_simultaneous')
+
         # Enable type-level mode - Flows, Buses, and Storages will use proxy models
         self._type_level_mode = True
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
+        # Note: ComponentModel will skip status creation since ComponentStatusesModel handles it
         for component in self.flow_system.components.values():
             component.create_model(self)
 
@@ -997,6 +1034,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'storages_constraints',
                 'storages_investment_model',
                 'storages_investment_constraints',
+                'component_status_variables',
+                'component_status_constraints',
+                'component_status_features',
+                'component_status_effects',
+                'prevent_simultaneous',
                 'components',
                 'buses',
                 'end',
