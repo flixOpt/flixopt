@@ -1855,8 +1855,9 @@ class FlowsModel(TypeModel):
         status = self._variables['status'].sel(element=flow_ids)
 
         # Upper bound: flow_rate <= status * size * relative_max
+        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
         upper_bounds = xr.concat(
-            [self._get_relative_bounds(f)[1] * f.size for f in flows], dim='element'
+            [self._get_relative_bounds(f)[1] * f.size for f in flows], dim='element', coords='minimal'
         ).assign_coords(element=flow_ids)
         self.add_constraints(flow_rate <= status * upper_bounds, name='flow_rate_status_ub')
 
@@ -1864,6 +1865,7 @@ class FlowsModel(TypeModel):
         lower_bounds = xr.concat(
             [np.maximum(CONFIG.Modeling.epsilon, self._get_relative_bounds(f)[0] * f.size) for f in flows],
             dim='element',
+            coords='minimal',
         ).assign_coords(element=flow_ids)
         self.add_constraints(flow_rate >= status * lower_bounds, name='flow_rate_status_lb')
 
@@ -1874,15 +1876,16 @@ class FlowsModel(TypeModel):
         size = self._investments_model.size.sel(element=flow_ids)
 
         # Upper bound: flow_rate <= size * relative_max
-        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim='element').assign_coords(
-            element=flow_ids
-        )
+        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
+        rel_max = xr.concat(
+            [self._get_relative_bounds(f)[1] for f in flows], dim='element', coords='minimal'
+        ).assign_coords(element=flow_ids)
         self.add_constraints(flow_rate <= size * rel_max, name='flow_rate_invest_ub')
 
         # Lower bound: flow_rate >= size * relative_min
-        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim='element').assign_coords(
-            element=flow_ids
-        )
+        rel_min = xr.concat(
+            [self._get_relative_bounds(f)[0] for f in flows], dim='element', coords='minimal'
+        ).assign_coords(element=flow_ids)
         self.add_constraints(flow_rate >= size * rel_min, name='flow_rate_invest_lb')
 
     def _create_status_investment_bounds(self, flows: list[Flow]) -> None:
@@ -1893,17 +1896,20 @@ class FlowsModel(TypeModel):
         status = self._variables['status'].sel(element=flow_ids)
 
         # Upper bound: flow_rate <= size * relative_max
-        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim='element').assign_coords(
-            element=flow_ids
-        )
+        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
+        rel_max = xr.concat(
+            [self._get_relative_bounds(f)[1] for f in flows], dim='element', coords='minimal'
+        ).assign_coords(element=flow_ids)
         self.add_constraints(flow_rate <= size * rel_max, name='flow_rate_status_invest_ub')
 
         # Lower bound: flow_rate >= (status - 1) * M + size * relative_min
-        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim='element').assign_coords(
-            element=flow_ids
-        )
+        rel_min = xr.concat(
+            [self._get_relative_bounds(f)[0] for f in flows], dim='element', coords='minimal'
+        ).assign_coords(element=flow_ids)
         big_m = xr.concat(
-            [f.size.maximum_or_fixed_size * self._get_relative_bounds(f)[0] for f in flows], dim='element'
+            [f.size.maximum_or_fixed_size * self._get_relative_bounds(f)[0] for f in flows],
+            dim='element',
+            coords='minimal',
         ).assign_coords(element=flow_ids)
         rhs = (status - 1) * big_m + size * rel_min
         self.add_constraints(flow_rate >= rhs, name='flow_rate_status_invest_lb')

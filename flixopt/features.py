@@ -293,7 +293,7 @@ class InvestmentsModel:
                     arr = arr.expand_dims({dim: coords})
             expanded.append(arr)
 
-        return xr.concat(expanded, dim='element')
+        return xr.concat(expanded, dim='element', coords='minimal')
 
     def _stack_bounds_for_subset(self, bounds_list: list, element_ids: list[str], xr) -> xr.DataArray:
         """Stack bounds for a subset of elements (convenience wrapper)."""

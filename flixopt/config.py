@@ -153,7 +153,7 @@ _DEFAULTS = MappingProxyType(
                 'big': 10_000_000,
                 'epsilon': 1e-5,
                 'big_binary_bound': 100_000,
-                'mode': 'traditional',  # 'traditional' or 'type_level'
+                'mode': 'type_level',  # 'traditional' or 'type_level'
             }
         ),
         'plotting': MappingProxyType(

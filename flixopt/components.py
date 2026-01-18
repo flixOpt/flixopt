@@ -1761,7 +1761,7 @@ class StoragesModel:
             else:
                 bounds_list.append(ub if isinstance(ub, xr.DataArray) else xr.DataArray(ub))
 
-        return xr.concat(bounds_list, dim='element').assign_coords(element=self.element_ids)
+        return xr.concat(bounds_list, dim='element', coords='minimal').assign_coords(element=self.element_ids)
 
     def _get_relative_charge_state_bounds(self, storage: Storage) -> tuple[xr.DataArray, xr.DataArray]:
         """Get relative charge state bounds with final timestep values."""
@@ -1864,7 +1864,7 @@ class StoragesModel:
     def _stack_parameter(self, values: list) -> xr.DataArray:
         """Stack parameter values into DataArray with element dimension."""
         das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
-        return xr.concat(das, dim='element').assign_coords(element=self.element_ids)
+        return xr.concat(das, dim='element', coords='minimal').assign_coords(element=self.element_ids)
 
     def _add_batched_initial_final_constraints(self, charge_state) -> None:
         """Add batched initial and final charge state constraints."""
@@ -2005,8 +2005,13 @@ class StoragesModel:
             rel_uppers.append(rel_upper)
 
         # Stack relative bounds with element dimension
-        rel_lower_stacked = xr.concat(rel_lowers, dim='element').assign_coords(element=self.investment_ids)
-        rel_upper_stacked = xr.concat(rel_uppers, dim='element').assign_coords(element=self.investment_ids)
+        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
+        rel_lower_stacked = xr.concat(rel_lowers, dim='element', coords='minimal').assign_coords(
+            element=self.investment_ids
+        )
+        rel_upper_stacked = xr.concat(rel_uppers, dim='element', coords='minimal').assign_coords(
+            element=self.investment_ids
+        )
 
         # Select charge_state for investment storages only
         cs_investment = charge_state.sel(element=self.investment_ids)
