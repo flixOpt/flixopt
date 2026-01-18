@@ -610,19 +610,16 @@ class EffectsModel:
                 name='effect|total_over_periods',
             )
 
-            # Create constraint: total_over_periods == weighted sum
-            # Need to handle per-effect weights
-            weighted_totals = []
+            # Create constraint: total_over_periods == weighted sum for each effect
+            # Can't use xr.concat with LinearExpression objects, so create individual constraints
             for e in effects_with_over_periods:
                 total_e = self.total.sel(effect=e.label)
                 weights_e = self._get_period_weights(e)
-                weighted_totals.append((total_e * weights_e).sum('period'))
-
-            weighted_sum = xr.concat(weighted_totals, dim='effect').assign_coords(effect=over_periods_ids)
-            self.model.add_constraints(
-                self.total_over_periods == weighted_sum,
-                name='effect|total_over_periods',
-            )
+                weighted_total = (total_e * weights_e).sum('period')
+                self.model.add_constraints(
+                    self.total_over_periods.sel(effect=e.label) == weighted_total,
+                    name=f'effect|total_over_periods|{e.label}',
+                )
 
     def add_share_periodic(
         self,
@@ -684,8 +681,17 @@ class EffectsModel:
 
         # === Temporal shares ===
         if self._temporal_contributions:
+            # Combine contributions with the same (element_id, effect_id) pair
+            combined_temporal: dict[tuple[str, str], linopy.LinearExpression] = {}
+            for element_id, effect_id, expression in self._temporal_contributions:
+                key = (element_id, effect_id)
+                if key in combined_temporal:
+                    combined_temporal[key] = combined_temporal[key] + expression
+                else:
+                    combined_temporal[key] = expression
+
             # Collect unique element IDs
-            element_ids = sorted(set(name for name, _, _ in self._temporal_contributions))
+            element_ids = sorted(set(elem_id for elem_id, _ in combined_temporal.keys()))
             element_index = pd.Index(element_ids, name='element')
 
             # Build coordinates
@@ -699,14 +705,14 @@ class EffectsModel:
 
             # Create share variable (initialized to 0, contributions add to it)
             self.share_temporal = self.model.add_variables(
-                lower=0,
+                lower=-np.inf,  # Can be negative if contributions cancel
                 upper=np.inf,
                 coords=temporal_coords,
                 name='effect_share|temporal',
             )
 
-            # Add constraints for each contribution
-            for element_id, effect_id, expression in self._temporal_contributions:
+            # Add constraints for each combined contribution
+            for (element_id, effect_id), expression in combined_temporal.items():
                 share_slice = self.share_temporal.sel(element=element_id, effect=effect_id)
                 self.model.add_constraints(
                     share_slice == expression,
@@ -715,8 +721,17 @@ class EffectsModel:
 
         # === Periodic shares ===
         if self._periodic_contributions:
+            # Combine contributions with the same (element_id, effect_id) pair
+            combined_periodic: dict[tuple[str, str], linopy.LinearExpression] = {}
+            for element_id, effect_id, expression in self._periodic_contributions:
+                key = (element_id, effect_id)
+                if key in combined_periodic:
+                    combined_periodic[key] = combined_periodic[key] + expression
+                else:
+                    combined_periodic[key] = expression
+
             # Collect unique element IDs
-            element_ids = sorted(set(name for name, _, _ in self._periodic_contributions))
+            element_ids = sorted(set(elem_id for elem_id, _ in combined_periodic.keys()))
             element_index = pd.Index(element_ids, name='element')
 
             # Build coordinates
@@ -736,8 +751,8 @@ class EffectsModel:
                 name='effect_share|periodic',
             )
 
-            # Add constraints for each contribution
-            for element_id, effect_id, expression in self._periodic_contributions:
+            # Add constraints for each combined contribution
+            for (element_id, effect_id), expression in combined_periodic.items():
                 share_slice = self.share_periodic.sel(element=element_id, effect=effect_id)
                 self.model.add_constraints(
                     share_slice == expression,

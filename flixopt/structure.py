@@ -834,6 +834,27 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('effects')
 
+        # Propagate component status_parameters to flows BEFORE collecting them
+        # This matches the behavior in ComponentModel._do_modeling() but happens earlier
+        # so FlowsModel knows which flows need status variables
+        from .interface import StatusParameters
+
+        for component in self.flow_system.components.values():
+            if component.status_parameters:
+                for flow in component.inputs + component.outputs:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(
+                            self.flow_system, f'{flow.label_full}|status_parameters'
+                        )
+            if component.prevent_simultaneous_flows:
+                for flow in component.prevent_simultaneous_flows:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(
+                            self.flow_system, f'{flow.label_full}|status_parameters'
+                        )
+
         # Collect all flows from all components
         all_flows = []
         for component in self.flow_system.components.values():

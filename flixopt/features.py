@@ -587,6 +587,11 @@ class StatusProxy:
         self._element_id = element_id
 
     @property
+    def status(self):
+        """Binary status variable for this element (from FlowsModel)."""
+        return self._statuses_model.get_status_variable(self._element_id)
+
+    @property
     def active_hours(self):
         """Total active hours variable for this element."""
         return self._statuses_model.get_variable('active_hours', self._element_id)
@@ -610,6 +615,11 @@ class StatusProxy:
     def startup_count(self):
         """Startup count variable for this element."""
         return self._statuses_model.get_variable('startup_count', self._element_id)
+
+    @property
+    def _previous_status(self):
+        """Previous status for this element (from StatusesModel)."""
+        return self._statuses_model.get_previous_status(self._element_id)
 
 
 class StatusesModel:
@@ -1059,6 +1069,39 @@ class StatusesModel:
                 return var.sel(element=element_id)
             return None
         return var
+
+    def get_status_variable(self, element_id: str):
+        """Get the binary status variable for a specific element.
+
+        The status variable is stored in FlowsModel, not StatusesModel.
+        This method provides access to it via the status_var_getter callable.
+
+        Args:
+            element_id: The element identifier (e.g., 'CHP(P_el)').
+
+        Returns:
+            The binary status variable for the specified element.
+        """
+        # Find the element by ID
+        for elem in self.elements:
+            if elem.label_full == element_id:
+                return self._status_var_getter(elem)
+        return None
+
+    def get_previous_status(self, element_id: str):
+        """Get the previous status for a specific element.
+
+        Args:
+            element_id: The element identifier (e.g., 'CHP(P_el)').
+
+        Returns:
+            The previous status DataArray for the specified element, or None.
+        """
+        # Find the element by ID
+        for elem in self.elements:
+            if elem.label_full == element_id:
+                return self._previous_status_getter(elem)
+        return None
 
     @property
     def active_hours(self) -> linopy.Variable:
