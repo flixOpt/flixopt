@@ -1042,6 +1042,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 {
                     bus.label_full: bus.submodel.results_structure()
                     for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                    if bus.submodel is not None  # Skip buses without submodels (type_level mode)
                 }
             ),
             'Effects': json.dumps(
@@ -1050,12 +1051,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for effect in sorted(
                         self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
                     )
+                    if effect.submodel is not None  # Skip effects without submodels (type_level mode)
                 }
             ),
             'Flows': json.dumps(
                 {
                     flow.label_full: flow.submodel.results_structure()
                     for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                    if flow.submodel is not None  # Skip flows without submodels (type_level mode)
                 }
             ),
         }
@@ -1136,9 +1139,22 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         Objective weights of model (period_weights × scenario_weights).
         """
-        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
-        scenario_weights = self.scenario_weights
+        obj_effect = self.flow_system.effects.objective_effect
+        # In type_level mode, individual effects don't have submodels - get weights directly
+        if obj_effect.submodel is not None:
+            period_weights = obj_effect.submodel.period_weights
+        else:
+            # Type-level mode: compute period_weights directly from effect
+            effect_weights = obj_effect.period_weights
+            default_weights = self.flow_system.period_weights
+            if effect_weights is not None:
+                period_weights = effect_weights
+            elif default_weights is not None:
+                period_weights = default_weights
+            else:
+                period_weights = obj_effect._fit_coords(name='period_weights', data=1, dims=['period'])
 
+        scenario_weights = self.scenario_weights
         return period_weights * scenario_weights
 
     def get_coords(
