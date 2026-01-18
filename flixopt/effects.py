@@ -39,6 +39,122 @@ logger = logging.getLogger('flixopt')
 PENALTY_EFFECT_LABEL = 'Penalty'
 
 
+class SharesModel:
+    """Accumulates all effect shares into batched temporal/periodic variables.
+
+    This class collects share contributions from different sources (flows, components,
+    investments) and creates ONE batched variable and constraint per share type.
+
+    The key insight is that we build factor arrays with (contributor, effect) dimensions
+    and multiply by variables with (contributor, time/period) dimensions. The result
+    is summed over the contributor dimension to get (effect, time/period) shares.
+
+    Example:
+        >>> shares = SharesModel(model, effect_ids=['costs', 'CO2'])
+        >>> # FlowsModel registers flow effect shares
+        >>> shares.register_temporal(
+        ...     variable=flow_rate,  # (flow, time)
+        ...     factors=flow_factors,  # (flow, effect)
+        ...     contributor_dim='flow',
+        ... )
+        >>> # StatusesModel registers running hour shares
+        >>> shares.register_temporal(
+        ...     variable=status,  # (component, time)
+        ...     factors=running_factors,  # (component, effect)
+        ...     contributor_dim='component',
+        ... )
+        >>> # Creates share|temporal variable with (effect, time) dims
+        >>> shares.create_variables_and_constraints()
+    """
+
+    def __init__(self, model: FlowSystemModel, effect_ids: list[str]):
+        self.model = model
+        self.effect_ids = effect_ids
+        self._temporal_exprs: list[linopy.LinearExpression] = []
+        self._periodic_exprs: list[linopy.LinearExpression] = []
+
+        # Created variables (for external access)
+        self.share_temporal: linopy.Variable | None = None
+        self.share_periodic: linopy.Variable | None = None
+
+    def register_temporal(
+        self,
+        variable: linopy.Variable,
+        factors: xr.DataArray,
+        contributor_dim: str,
+    ) -> None:
+        """Register a temporal share contribution.
+
+        Args:
+            variable: Optimization variable with (contributor_dim, time, ...) dims
+            factors: Factor array with (contributor_dim, effect) dims.
+                     Can also have time dimension for time-varying factors.
+            contributor_dim: Name of the contributor dimension ('flow', 'component', etc.)
+        """
+        # Multiply and sum over contributor dimension
+        # (contributor, time) * (contributor, effect) → (contributor, effect, time)
+        # .sum(contributor) → (effect, time)
+        expr = (variable * factors).sum(contributor_dim)
+        self._temporal_exprs.append(expr)
+
+    def register_periodic(
+        self,
+        variable: linopy.Variable,
+        factors: xr.DataArray,
+        contributor_dim: str,
+    ) -> None:
+        """Register a periodic share contribution.
+
+        Args:
+            variable: Optimization variable with (contributor_dim,) or (contributor_dim, period) dims
+            factors: Factor array with (contributor_dim, effect) dims
+            contributor_dim: Name of the contributor dimension
+        """
+        expr = (variable * factors).sum(contributor_dim)
+        self._periodic_exprs.append(expr)
+
+    def create_variables_and_constraints(self) -> None:
+        """Create ONE temporal and ONE periodic share variable with their constraints."""
+
+        if self._temporal_exprs:
+            # Sum all temporal contributions → (effect, time, ...)
+            total = sum(self._temporal_exprs)
+
+            # Get coordinates, excluding linopy's internal '_term' dimension
+            # Extract raw values from DataArray coordinates (xr.Coordinates expects arrays, not DataArrays)
+            var_coords = {k: v.values for k, v in total.coords.items() if k != '_term'}
+
+            self.share_temporal = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=xr.Coordinates(var_coords),
+                name='share|temporal',
+            )
+            self.model.add_constraints(
+                self.share_temporal == total,
+                name='share|temporal',
+            )
+
+        if self._periodic_exprs:
+            # Sum all periodic contributions → (effect, period, ...)
+            total = sum(self._periodic_exprs)
+
+            # Get coordinates, excluding linopy's internal '_term' dimension
+            # Extract raw values from DataArray coordinates (xr.Coordinates expects arrays, not DataArrays)
+            var_coords = {k: v.values for k, v in total.coords.items() if k != '_term'}
+
+            self.share_periodic = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=xr.Coordinates(var_coords),
+                name='share|periodic',
+            )
+            self.model.add_constraints(
+                self.share_periodic == total,
+                name='share|periodic',
+            )
+
+
 def _stack_expressions(expressions: list[linopy.LinearExpression], model: linopy.Model) -> linopy.LinearExpression:
     """Stack a list of LinearExpressions into a single expression with a 'pair' dimension.
 
@@ -51,6 +167,9 @@ def _stack_expressions(expressions: list[linopy.LinearExpression], model: linopy
 
     Returns:
         A single LinearExpression with an additional 'pair' dimension
+
+    Note:
+        This function is deprecated and will be removed once SharesModel is fully adopted.
     """
     if not expressions:
         raise ValueError('Cannot stack empty list of expressions')
@@ -450,13 +569,20 @@ class EffectsModel:
     instance with batched variables. This provides:
     - Compact model structure with 'effect' dimension
     - Vectorized constraint creation
-    - Efficient effect share handling
+    - Efficient effect share handling via SharesModel
 
     Variables created (all with 'effect' dimension):
         - effect|periodic: Periodic (investment) contributions per effect
         - effect|temporal: Temporal (operation) total per effect
         - effect|per_timestep: Per-timestep contributions per effect
         - effect|total: Total effect (periodic + temporal)
+        - share|temporal: Sum of all temporal shares (effect, time)
+        - share|periodic: Sum of all periodic shares (effect, period)
+
+    Usage:
+        1. Call create_variables() to create effect variables
+        2. Type-level models register shares via self.shares.register_temporal/periodic
+        3. Call finalize_shares() to create share variables and link constraints
     """
 
     def __init__(self, model: FlowSystemModel, effects: list[Effect]):
@@ -467,6 +593,9 @@ class EffectsModel:
         self.effect_ids = [e.label for e in effects]
         self._effect_index = pd.Index(self.effect_ids, name='effect')
 
+        # SharesModel for collecting and batching all effect contributions
+        self.shares = SharesModel(model, self.effect_ids)
+
         # Variables (set during create_variables)
         self.periodic: linopy.Variable | None = None
         self.temporal: linopy.Variable | None = None
@@ -474,23 +603,20 @@ class EffectsModel:
         self.total: linopy.Variable | None = None
         self.total_over_periods: linopy.Variable | None = None
 
-        # Unified share variables with (element, effect) dims
-        self.share_temporal: linopy.Variable | None = None  # dims: (element, effect, time, ...)
-        self.share_periodic: linopy.Variable | None = None  # dims: (element, effect, ...)
-
-        # Constraints for share accumulation
+        # Constraints for effect tracking (created in create_variables and finalize_shares)
         self._eq_periodic: linopy.Constraint | None = None
         self._eq_temporal: linopy.Constraint | None = None
-        self._eq_per_timestep: linopy.Constraint | None = None
         self._eq_total: linopy.Constraint | None = None
 
-        # Track element contributions for share variable creation
+        # Legacy: Keep for backwards compatibility during transition
+        # TODO: Remove once all callers use SharesModel directly
         self._temporal_contributions: list[
             tuple[str, str, linopy.LinearExpression]
         ] = []  # (element_id, effect_id, expr)
         self._periodic_contributions: list[
             tuple[str, str, linopy.LinearExpression]
         ] = []  # (element_id, effect_id, expr)
+        self._eq_per_timestep: linopy.Constraint | None = None  # Legacy constraint
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
@@ -833,6 +959,34 @@ class EffectsModel:
                 share_stacked == expr_stacked,
                 name='share|periodic',
             )
+
+    def finalize_shares(self) -> None:
+        """Finalize share variables and link them to effect constraints.
+
+        This method:
+        1. Creates share variables via SharesModel (if any registrations exist)
+        2. Links the share sums to per_timestep and periodic constraints
+
+        Should be called after all type-level models have registered their shares.
+        """
+        # Check if SharesModel has any registrations
+        has_temporal = bool(self.shares._temporal_exprs)
+        has_periodic = bool(self.shares._periodic_exprs)
+
+        if has_temporal or has_periodic:
+            # Create share variables and constraints via SharesModel
+            self.shares.create_variables_and_constraints()
+
+            # Link share sums to effect constraints
+            if has_temporal and self.shares.share_temporal is not None:
+                # Update per_timestep constraint: per_timestep == share_temporal
+                # Since _eq_per_timestep starts as `per_timestep == 0`,
+                # we subtract share_temporal from LHS to get `per_timestep - share_temporal == 0`
+                self._eq_per_timestep.lhs -= self.shares.share_temporal
+
+            if has_periodic and self.shares.share_periodic is not None:
+                # Update periodic constraint: periodic == share_periodic
+                self._eq_periodic.lhs -= self.shares.share_periodic
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""

@@ -1014,6 +1014,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         # Create unified share variables with (element, effect) dimensions
         if self.effects._batched_model is not None:
+            # New SharesModel approach: finalize shares registered via register_temporal/periodic
+            self.effects._batched_model.finalize_shares()
+            # Legacy approach: create share variables from _temporal_contributions/_periodic_contributions
             self.effects._batched_model.create_share_variables()
 
         record('end')

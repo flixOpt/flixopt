@@ -2009,12 +2009,121 @@ class FlowsModel(TypeModel):
     def create_effect_shares(self) -> None:
         """Create effect shares for all flows with effects_per_flow_hour.
 
-        Collects specs and delegates to EffectCollectionModel for batched application.
+        Builds a factor array with (flow, effect) dimensions and registers
+        with the SharesModel for batched constraint creation.
         """
-        effect_specs = self.collect_effect_share_specs()
-        if effect_specs:
-            flow_rate = self._variables['rate']
-            self.model.effects.apply_batched_flow_effect_shares(flow_rate, effect_specs)
+        # Check if we have an EffectsModel with SharesModel
+        effects_model = getattr(self.model.effects, '_batched_model', None)
+        if effects_model is None or not hasattr(effects_model, 'shares'):
+            # Fall back to legacy approach
+            effect_specs = self.collect_effect_share_specs()
+            if effect_specs:
+                flow_rate = self._variables['rate']
+                self.model.effects.apply_batched_flow_effect_shares(flow_rate, effect_specs)
+            return
+
+        # Build factor array with (flow, effect) dimensions
+        factors, flow_ids_with_effects = self._build_effect_factors(effects_model.effect_ids)
+        if factors is None:
+            return  # No flows have effects
+
+        # Register with SharesModel
+        flow_rate = self._variables['rate']  # (flow, time)
+        # Select only flows that have effects
+        flow_rate_subset = flow_rate.sel({self.dim_name: flow_ids_with_effects})
+        # Multiply by timestep_duration to get flow-hours
+        flow_hours = flow_rate_subset * self.model.timestep_duration
+        effects_model.shares.register_temporal(
+            variable=flow_hours,
+            factors=factors,
+            contributor_dim=self.dim_name,
+        )
+
+    def _build_effect_factors(self, effect_ids: list[str]) -> tuple[xr.DataArray | None, list[str] | None]:
+        """Build factor array with (flow, effect) dimensions.
+
+        Args:
+            effect_ids: List of all effect IDs in the model.
+
+        Returns:
+            Tuple of (factors, flow_ids) where:
+            - factors: DataArray with dims (flow, effect) containing factors.
+              Flows without a particular effect get 0.
+            - flow_ids: List of flow IDs that have effects.
+            Returns (None, None) if no flows have any effects.
+        """
+
+        # Collect all flows that have effects
+        flows_with_effects = [f for f in self.elements if f.effects_per_flow_hour]
+        if not flows_with_effects:
+            return None, None
+
+        flow_ids = [f.label_full for f in flows_with_effects]
+
+        # Build 2D factor array
+        # Check if any factors are time-varying
+        has_time_varying = any(
+            isinstance(factor, xr.DataArray) and 'time' in factor.dims
+            for f in flows_with_effects
+            for factor in f.effects_per_flow_hour.values()
+        )
+
+        if has_time_varying:
+            # Need to build (flow, effect, time) array
+            time_coords = self.model.get_coords(['time'])
+            n_time = len(time_coords['time'])
+
+            factors_list = []
+            for flow in flows_with_effects:
+                flow_factors = []
+                for effect_id in effect_ids:
+                    factor = flow.effects_per_flow_hour.get(effect_id, 0)
+                    if isinstance(factor, xr.DataArray):
+                        if 'time' not in factor.dims:
+                            # Broadcast to time
+                            factor = factor.expand_dims(time=time_coords['time'])
+                        flow_factors.append(factor.values)
+                    else:
+                        # Scalar - broadcast to time
+                        flow_factors.append(np.full(n_time, factor))
+                factors_list.append(flow_factors)
+
+            # Shape: (n_flows, n_effects, n_time)
+            factors_array = np.array(factors_list)
+            return (
+                xr.DataArray(
+                    factors_array,
+                    dims=[self.dim_name, 'effect', 'time'],
+                    coords={
+                        self.dim_name: flow_ids,
+                        'effect': effect_ids,
+                        'time': time_coords['time'],
+                    },
+                ),
+                flow_ids,
+            )
+        else:
+            # All factors are scalars - build (flow, effect) array
+            factors_array = np.zeros((len(flow_ids), len(effect_ids)))
+            for i, flow in enumerate(flows_with_effects):
+                for j, effect_id in enumerate(effect_ids):
+                    factor = flow.effects_per_flow_hour.get(effect_id, 0)
+                    if isinstance(factor, xr.DataArray):
+                        factors_array[i, j] = float(factor.values)
+                    else:
+                        factors_array[i, j] = factor
+
+            return (
+                xr.DataArray(
+                    factors_array,
+                    dims=[self.dim_name, 'effect'],
+                    coords={
+                        self.dim_name: flow_ids,
+                        'effect': effect_ids,
+                    },
+                ),
+                flow_ids,
+            )
 
     def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
         """Get previous status for a flow based on its previous_flow_rate.
