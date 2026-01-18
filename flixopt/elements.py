@@ -1983,6 +1983,7 @@ class FlowsModel(TypeModel):
             parameters_getter=lambda f: f.status_parameters,
             previous_status_getter=get_previous_status,
             dim_name='flow',
+            batched_status_var=self._variables.get('status'),
         )
         self._statuses_model.create_variables()
         self._statuses_model.create_constraints()
