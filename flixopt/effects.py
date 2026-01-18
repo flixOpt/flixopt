@@ -39,6 +39,39 @@ logger = logging.getLogger('flixopt')
 PENALTY_EFFECT_LABEL = 'Penalty'
 
 
+def _stack_expressions(expressions: list[linopy.LinearExpression], model: linopy.Model) -> linopy.LinearExpression:
+    """Stack a list of LinearExpressions into a single expression with a 'pair' dimension.
+
+    This handles the case where expressions may have inconsistent underlying data types
+    (some Dataset-backed, some DataArray-backed) by converting all to a consistent format.
+
+    Args:
+        expressions: List of LinearExpressions to stack
+        model: The linopy model (for creating the result expression)
+
+    Returns:
+        A single LinearExpression with an additional 'pair' dimension
+    """
+    if not expressions:
+        raise ValueError('Cannot stack empty list of expressions')
+
+    # Convert all expression data to datasets for consistency
+    datasets = []
+    for i, expr in enumerate(expressions):
+        data = expr.data
+        if isinstance(data, xr.DataArray):
+            # Convert DataArray to Dataset
+            data = data.to_dataset()
+        # Expand with pair index
+        data = data.expand_dims(pair=[i])
+        datasets.append(data)
+
+    # Concatenate along the pair dimension
+    # Use compat='override' to handle conflicting coordinate values
+    stacked_data = xr.concat(datasets, dim='pair', coords='minimal', compat='override')
+    return linopy.LinearExpression(stacked_data, model)
+
+
 @register_class_for_io
 class Effect(Element):
     """Represents system-wide impacts like costs, emissions, or resource consumption.
@@ -672,10 +705,11 @@ class EffectsModel:
         self._eq_per_timestep.lhs -= expanded_expr
 
     def create_share_variables(self) -> None:
-        """Create unified share variables with (element, effect) dimensions.
+        """Create unified share variables with (contributor, effect) dimensions.
 
         Called after all shares have been added to create the batched share variables.
-        Elements that don't contribute to an effect will have 0 in that slice.
+        Creates ONE batched constraint per share type (temporal/periodic) instead of
+        individual constraints per contributor-effect pair.
         """
         import pandas as pd
 
@@ -711,13 +745,36 @@ class EffectsModel:
                 name='share|temporal',
             )
 
-            # Add constraints for each combined contribution
-            for (contributor_id, effect_id), expression in combined_temporal.items():
+            # Build batched expression array for ONE constraint
+            # Only include (contributor, effect) pairs that have contributions
+            # Create constraint: share[contributor, effect] == expression[contributor, effect]
+
+            # Get all populated (contributor, effect) pairs
+            populated_pairs = list(combined_temporal.keys())
+
+            # Select share variable slices and convert to expressions (var * 1)
+            share_exprs = []
+            expr_slices = []
+            for contributor_id, effect_id in populated_pairs:
+                # Convert Variable slice to LinearExpression
                 share_slice = self.share_temporal.sel(contributor=contributor_id, effect=effect_id)
-                self.model.add_constraints(
-                    share_slice == expression,
-                    name=f'{contributor_id}->{effect_id}(temporal)',
-                )
+                share_exprs.append(1 * share_slice)  # Convert to expression
+                expr = combined_temporal[(contributor_id, effect_id)]
+                # Ensure expression is a LinearExpression (not a Variable)
+                if isinstance(expr, linopy.Variable):
+                    expr = 1 * expr
+                expr_slices.append(expr)
+
+            # Stack into batched arrays with a 'pair' dimension
+            # Use concat directly to handle potential type inconsistencies
+            share_stacked = _stack_expressions(share_exprs, self.model)
+            expr_stacked = _stack_expressions(expr_slices, self.model)
+
+            # ONE batched constraint for all temporal shares
+            self.model.add_constraints(
+                share_stacked == expr_stacked,
+                name='share|temporal',
+            )
 
         # === Periodic shares ===
         if self._periodic_contributions:
@@ -751,13 +808,31 @@ class EffectsModel:
                 name='share|periodic',
             )
 
-            # Add constraints for each combined contribution
-            for (contributor_id, effect_id), expression in combined_periodic.items():
+            # Build batched expression array for ONE constraint
+            # Only include (contributor, effect) pairs that have contributions
+            populated_pairs = list(combined_periodic.keys())
+
+            # Select share variable slices and convert to expressions
+            share_exprs = []
+            expr_slices = []
+            for contributor_id, effect_id in populated_pairs:
                 share_slice = self.share_periodic.sel(contributor=contributor_id, effect=effect_id)
-                self.model.add_constraints(
-                    share_slice == expression,
-                    name=f'{contributor_id}->{effect_id}(periodic)',
-                )
+                share_exprs.append(1 * share_slice)  # Convert to expression
+                expr = combined_periodic[(contributor_id, effect_id)]
+                # Ensure expression is a LinearExpression (not a Variable)
+                if isinstance(expr, linopy.Variable):
+                    expr = 1 * expr
+                expr_slices.append(expr)
+
+            # Stack into batched arrays with a 'pair' dimension
+            share_stacked = _stack_expressions(share_exprs, self.model)
+            expr_stacked = _stack_expressions(expr_slices, self.model)
+
+            # ONE batched constraint for all periodic shares
+            self.model.add_constraints(
+                share_stacked == expr_stacked,
+                name='share|periodic',
+            )
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""
