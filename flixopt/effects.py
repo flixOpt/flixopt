@@ -681,23 +681,23 @@ class EffectsModel:
 
         # === Temporal shares ===
         if self._temporal_contributions:
-            # Combine contributions with the same (element_id, effect_id) pair
+            # Combine contributions with the same (contributor_id, effect_id) pair
             combined_temporal: dict[tuple[str, str], linopy.LinearExpression] = {}
-            for element_id, effect_id, expression in self._temporal_contributions:
-                key = (element_id, effect_id)
+            for contributor_id, effect_id, expression in self._temporal_contributions:
+                key = (contributor_id, effect_id)
                 if key in combined_temporal:
                     combined_temporal[key] = combined_temporal[key] + expression
                 else:
                     combined_temporal[key] = expression
 
-            # Collect unique element IDs
-            element_ids = sorted(set(elem_id for elem_id, _ in combined_temporal.keys()))
-            element_index = pd.Index(element_ids, name='element')
+            # Collect unique contributor IDs
+            contributor_ids = sorted(set(c_id for c_id, _ in combined_temporal.keys()))
+            contributor_index = pd.Index(contributor_ids, name='contributor')
 
             # Build coordinates
             temporal_coords = xr.Coordinates(
                 {
-                    'element': element_index,
+                    'contributor': contributor_index,
                     'effect': self._effect_index,
                     **{k: v for k, v in (self.model.get_coords(None) or {}).items()},
                 }
@@ -712,32 +712,32 @@ class EffectsModel:
             )
 
             # Add constraints for each combined contribution
-            for (element_id, effect_id), expression in combined_temporal.items():
-                share_slice = self.share_temporal.sel(element=element_id, effect=effect_id)
+            for (contributor_id, effect_id), expression in combined_temporal.items():
+                share_slice = self.share_temporal.sel(contributor=contributor_id, effect=effect_id)
                 self.model.add_constraints(
                     share_slice == expression,
-                    name=f'{element_id}->{effect_id}(temporal)',
+                    name=f'{contributor_id}->{effect_id}(temporal)',
                 )
 
         # === Periodic shares ===
         if self._periodic_contributions:
-            # Combine contributions with the same (element_id, effect_id) pair
+            # Combine contributions with the same (contributor_id, effect_id) pair
             combined_periodic: dict[tuple[str, str], linopy.LinearExpression] = {}
-            for element_id, effect_id, expression in self._periodic_contributions:
-                key = (element_id, effect_id)
+            for contributor_id, effect_id, expression in self._periodic_contributions:
+                key = (contributor_id, effect_id)
                 if key in combined_periodic:
                     combined_periodic[key] = combined_periodic[key] + expression
                 else:
                     combined_periodic[key] = expression
 
-            # Collect unique element IDs
-            element_ids = sorted(set(elem_id for elem_id, _ in combined_periodic.keys()))
-            element_index = pd.Index(element_ids, name='element')
+            # Collect unique contributor IDs
+            contributor_ids = sorted(set(c_id for c_id, _ in combined_periodic.keys()))
+            contributor_index = pd.Index(contributor_ids, name='contributor')
 
             # Build coordinates
             periodic_coords = xr.Coordinates(
                 {
-                    'element': element_index,
+                    'contributor': contributor_index,
                     'effect': self._effect_index,
                     **{k: v for k, v in (self.model.get_coords(['period', 'scenario']) or {}).items()},
                 }
@@ -752,11 +752,11 @@ class EffectsModel:
             )
 
             # Add constraints for each combined contribution
-            for (element_id, effect_id), expression in combined_periodic.items():
-                share_slice = self.share_periodic.sel(element=element_id, effect=effect_id)
+            for (contributor_id, effect_id), expression in combined_periodic.items():
+                share_slice = self.share_periodic.sel(contributor=contributor_id, effect=effect_id)
                 self.model.add_constraints(
                     share_slice == expression,
-                    name=f'{element_id}->{effect_id}(periodic)',
+                    name=f'{contributor_id}->{effect_id}(periodic)',
                 )
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
@@ -1230,7 +1230,7 @@ class EffectCollectionModel(Submodel):
                 )
 
                 effect = self.effects[effect_name]
-                effect.submodel.temporal._eq_total_per_timestep.lhs -= share_var.sum('element')
+                effect.submodel.temporal._eq_total_per_timestep.lhs -= share_var.sum(dim)
 
     def apply_batched_penalty_shares(
         self,
