@@ -708,7 +708,7 @@ class EffectsModel:
                 lower=-np.inf,  # Can be negative if contributions cancel
                 upper=np.inf,
                 coords=temporal_coords,
-                name='effect_share|temporal',
+                name='share|temporal',
             )
 
             # Add constraints for each combined contribution
@@ -748,7 +748,7 @@ class EffectsModel:
                 lower=-np.inf,  # Periodic can be negative (retirement effects)
                 upper=np.inf,
                 coords=periodic_coords,
-                name='effect_share|periodic',
+                name='share|periodic',
             )
 
             # Add constraints for each combined contribution
@@ -1163,11 +1163,15 @@ class EffectCollectionModel(Submodel):
             - Adds sum to effect's total_per_timestep
 
         Args:
-            flow_rate: The batched flow_rate variable with element dimension.
+            flow_rate: The batched flow_rate variable with flow dimension.
             effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
                 Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
         """
         import pandas as pd
+
+        # Detect the element dimension name from flow_rate (e.g., 'flow')
+        flow_rate_dims = [d for d in flow_rate.dims if d not in ('time', 'period', 'scenario', '_term')]
+        dim = flow_rate_dims[0] if flow_rate_dims else 'flow'
 
         for effect_name, element_factors in effect_specs.items():
             if effect_name not in self.effects:
@@ -1180,23 +1184,23 @@ class EffectCollectionModel(Submodel):
             # Build factors array with element dimension
             factors_da = xr.concat(
                 [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
-                dim='element',
-            ).assign_coords(element=element_ids)
+                dim=dim,
+            ).assign_coords({dim: element_ids})
 
             # Select relevant flow rates and compute expression per element
-            flow_rate_subset = flow_rate.sel(element=element_ids)
+            flow_rate_subset = flow_rate.sel({dim: element_ids})
 
             if self.is_type_level and self._batched_model is not None:
                 # Type-level mode: track contributions for unified share variable
                 for element_id, factor in element_factors:
-                    flow_rate_elem = flow_rate.sel(element=element_id)
+                    flow_rate_elem = flow_rate.sel({dim: element_id})
                     factor_da = xr.DataArray(factor) if not isinstance(factor, xr.DataArray) else factor
                     expression = flow_rate_elem * self._model.timestep_duration * factor_da
                     self._batched_model._temporal_contributions.append((element_id, effect_name, expression))
 
                 # Add sum of shares to effect's per_timestep constraint
                 expression_all = flow_rate_subset * self._model.timestep_duration * factors_da
-                share_sum = expression_all.sum('element')
+                share_sum = expression_all.sum(dim)
                 effect_mask = xr.DataArray(
                     [1 if eid == effect_name else 0 for eid in self._batched_model.effect_ids],
                     coords={'effect': self._batched_model.effect_ids},
@@ -1213,8 +1217,8 @@ class EffectCollectionModel(Submodel):
                 share_var = self._model.add_variables(
                     coords=xr.Coordinates(
                         {
-                            'element': pd.Index(element_ids, name='element'),
-                            **{dim: all_coords[dim] for dim in all_coords if dim != 'element'},
+                            dim: pd.Index(element_ids, name=dim),
+                            **{d: all_coords[d] for d in all_coords if d != dim},
                         }
                     ),
                     name=f'flow_effects->{effect_name}(temporal)',

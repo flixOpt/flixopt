@@ -276,22 +276,31 @@ class TypeModel(ABC):
     of a given type (e.g., FlowsModel for ALL Flows) in a single instance.
 
     This enables true vectorized batch creation:
-    - One variable with element dimension for all flows
+    - One variable with 'flow' dimension for all flows
     - One constraint call for all elements
+
+    Variable/Constraint Naming Convention:
+        - Variables: '{element_type}|{var_name}' e.g., 'flow|rate', 'storage|charge'
+        - Constraints: '{element_type}|{constraint_name}' e.g., 'flow|rate_ub'
+
+    Dimension Naming:
+        - Each element type uses its own dimension name: 'flow', 'storage', 'effect', 'component'
+        - This prevents unwanted broadcasting when merging into solution Dataset
 
     Attributes:
         model: The FlowSystemModel to create variables/constraints in.
         element_type: The ElementType this model handles.
         elements: List of elements this model manages.
         element_ids: List of element identifiers (label_full).
+        dim_name: Dimension name for this element type (e.g., 'flow', 'storage').
 
     Example:
         >>> class FlowsModel(TypeModel):
         ...     element_type = ElementType.FLOW
         ...
         ...     def create_variables(self):
-        ...         self.flow_rate = self.add_variables(
-        ...             'flow_rate',
+        ...         self.add_variables(
+        ...             'rate',  # Creates 'flow|rate' with 'flow' dimension
         ...             VariableType.FLOW_RATE,
         ...             lower=self._stack_bounds('lower'),
         ...             upper=self._stack_bounds('upper'),
@@ -314,6 +323,11 @@ class TypeModel(ABC):
         # Storage for created variables and constraints
         self._variables: dict[str, linopy.Variable] = {}
         self._constraints: dict[str, linopy.Constraint] = {}
+
+    @property
+    def dim_name(self) -> str:
+        """Dimension name for this element type (e.g., 'flow', 'storage')."""
+        return self.element_type.value
 
     @abstractmethod
     def create_variables(self) -> None:
@@ -397,15 +411,16 @@ class TypeModel(ABC):
         return constraint
 
     def _build_coords(self, dims: tuple[str, ...] | None = ('time',)) -> xr.Coordinates:
-        """Build coordinate dict with element dimension + model dimensions.
+        """Build coordinate dict with element-type dimension + model dimensions.
 
         Args:
             dims: Tuple of dimension names from the model. If None, includes ALL model dimensions.
 
         Returns:
-            xarray Coordinates with 'element' + requested dims.
+            xarray Coordinates with element-type dim (e.g., 'flow') + requested dims.
         """
-        coord_dict: dict[str, Any] = {'element': pd.Index(self.element_ids, name='element')}
+        # Use element-type-specific dimension name (e.g., 'flow', 'storage')
+        coord_dict: dict[str, Any] = {self.dim_name: pd.Index(self.element_ids, name=self.dim_name)}
 
         # Add model dimensions
         model_coords = self.model.get_coords(dims=dims)
@@ -425,14 +440,16 @@ class TypeModel(ABC):
         self,
         bounds: list[float | xr.DataArray],
     ) -> xr.DataArray | float:
-        """Stack per-element bounds into array with element dimension.
+        """Stack per-element bounds into array with element-type dimension.
 
         Args:
             bounds: List of bounds (one per element, same order as self.elements).
 
         Returns:
-            Stacked DataArray with element dimension, or scalar if all identical.
+            Stacked DataArray with element-type dimension (e.g., 'flow'), or scalar if all identical.
         """
+        dim = self.dim_name  # e.g., 'flow', 'storage'
+
         # Extract scalar values from 0-d DataArrays or plain scalars
         scalar_values = []
         has_multidim = False
@@ -455,39 +472,39 @@ class TypeModel(ABC):
 
             return xr.DataArray(
                 np.array(scalar_values),
-                coords={'element': self.element_ids},
-                dims=['element'],
+                coords={dim: self.element_ids},
+                dims=[dim],
             )
 
         # Slow path: need full concat for multi-dimensional bounds
         arrays_to_stack = []
         for bound, eid in zip(bounds, self.element_ids, strict=False):
             if isinstance(bound, xr.DataArray):
-                arr = bound.expand_dims(element=[eid])
+                arr = bound.expand_dims({dim: [eid]})
             else:
-                arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
+                arr = xr.DataArray(bound, coords={dim: [eid]}, dims=[dim])
             arrays_to_stack.append(arr)
 
         # Find union of all non-element dimensions and their coords
         all_dims = {}  # dim -> coords
         for arr in arrays_to_stack:
-            for dim in arr.dims:
-                if dim != 'element' and dim not in all_dims:
-                    all_dims[dim] = arr.coords[dim].values
+            for d in arr.dims:
+                if d != dim and d not in all_dims:
+                    all_dims[d] = arr.coords[d].values
 
         # Expand each array to have all non-element dimensions
         expanded = []
         for arr in arrays_to_stack:
-            for dim, coords in all_dims.items():
-                if dim not in arr.dims:
-                    arr = arr.expand_dims({dim: coords})
+            for d, coords in all_dims.items():
+                if d not in arr.dims:
+                    arr = arr.expand_dims({d: coords})
             expanded.append(arr)
 
-        stacked = xr.concat(expanded, dim='element')
+        stacked = xr.concat(expanded, dim=dim, coords='minimal')
 
-        # Ensure element is first dimension
-        if 'element' in stacked.dims and stacked.dims[0] != 'element':
-            dim_order = ['element'] + [d for d in stacked.dims if d != 'element']
+        # Ensure element-type dim is first dimension
+        if dim in stacked.dims and stacked.dims[0] != dim:
+            dim_order = [dim] + [d for d in stacked.dims if d != dim]
             stacked = stacked.transpose(*dim_order)
 
         return stacked
@@ -504,7 +521,7 @@ class TypeModel(ABC):
         """
         variable = self._variables[name]
         if element_id is not None:
-            return variable.sel(element=element_id)
+            return variable.sel({self.dim_name: element_id})
         return variable
 
     def get_constraint(self, name: str) -> linopy.Constraint:

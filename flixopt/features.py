@@ -183,9 +183,17 @@ class InvestmentsModel:
     with investment in a single instance with batched variables.
 
     This enables:
-    - Batched `size` and `invested` variables with element dimension
+    - Batched `size` and `invested` variables with element-type dimension (e.g., 'flow')
     - Vectorized constraint creation
     - Batched effect shares
+
+    Variable Naming Convention:
+        - '{name_prefix}|size' e.g., 'flow|size', 'storage|size'
+        - '{name_prefix}|invested' e.g., 'flow|invested', 'storage|invested'
+
+    Dimension Naming:
+        - Uses element-type-specific dimension (e.g., 'flow', 'storage')
+        - Prevents unwanted broadcasting when merging into solution Dataset
 
     The model categorizes elements by investment type:
     - mandatory: Required investment (only size variable, with bounds)
@@ -194,9 +202,11 @@ class InvestmentsModel:
     Example:
         >>> investments_model = InvestmentsModel(
         ...     model=flow_system_model,
-        ...     elements=storages_with_investment,
-        ...     parameters_getter=lambda s: s.capacity_in_flow_hours,
-        ...     size_category=VariableCategory.STORAGE_SIZE,
+        ...     elements=flows_with_investment,
+        ...     parameters_getter=lambda f: f.size,
+        ...     size_category=VariableCategory.FLOW_SIZE,
+        ...     name_prefix='flow',
+        ...     dim_name='flow',
         ... )
         >>> investments_model.create_variables()
         >>> investments_model.create_constraints()
@@ -210,6 +220,7 @@ class InvestmentsModel:
         parameters_getter: callable,
         size_category: VariableCategory = VariableCategory.SIZE,
         name_prefix: str = 'investment',
+        dim_name: str = 'element',
     ):
         """Initialize the type-level investment model.
 
@@ -219,7 +230,8 @@ class InvestmentsModel:
             parameters_getter: Function to get InvestParameters from element.
                 e.g., lambda storage: storage.capacity_in_flow_hours
             size_category: Category for size variable expansion.
-            name_prefix: Prefix for variable names (e.g., 'flow_investment', 'storage_investment').
+            name_prefix: Prefix for variable names (e.g., 'flow', 'storage').
+            dim_name: Dimension name for element grouping (e.g., 'flow', 'storage').
         """
         import logging
 
@@ -233,6 +245,7 @@ class InvestmentsModel:
         self._parameters_getter = parameters_getter
         self._size_category = size_category
         self._name_prefix = name_prefix
+        self.dim_name = dim_name
 
         # Storage for created variables
         self._variables: dict[str, linopy.Variable] = {}
@@ -266,34 +279,35 @@ class InvestmentsModel:
             xr: xarray module
             element_ids: Optional list of element IDs (defaults to self.element_ids)
         """
+        dim = self.dim_name  # e.g., 'flow', 'storage'
         if element_ids is None:
             element_ids = self.element_ids
 
         # Check if all are scalars
         if all(arr.dims == () for arr in bounds_list):
             values = [float(arr.values) for arr in bounds_list]
-            return xr.DataArray(values, coords={'element': element_ids}, dims=['element'])
+            return xr.DataArray(values, coords={dim: element_ids}, dims=[dim])
 
         # Find union of all non-element dimensions and their coords
         all_dims: dict[str, any] = {}
         for arr in bounds_list:
-            for dim in arr.dims:
-                if dim != 'element' and dim not in all_dims:
-                    all_dims[dim] = arr.coords[dim].values
+            for d in arr.dims:
+                if d != dim and d not in all_dims:
+                    all_dims[d] = arr.coords[d].values
 
         # Expand each array to have all dimensions
         expanded = []
         for arr, eid in zip(bounds_list, element_ids, strict=False):
             # Add element dimension
-            if 'element' not in arr.dims:
-                arr = arr.expand_dims(element=[eid])
+            if dim not in arr.dims:
+                arr = arr.expand_dims({dim: [eid]})
             # Add missing dimensions
-            for dim, coords in all_dims.items():
-                if dim not in arr.dims:
-                    arr = arr.expand_dims({dim: coords})
+            for d, coords in all_dims.items():
+                if d not in arr.dims:
+                    arr = arr.expand_dims({d: coords})
             expanded.append(arr)
 
-        return xr.concat(expanded, dim='element', coords='minimal')
+        return xr.concat(expanded, dim=dim, coords='minimal')
 
     def _stack_bounds_for_subset(self, bounds_list: list, element_ids: list[str], xr) -> xr.DataArray:
         """Stack bounds for a subset of elements (convenience wrapper)."""
@@ -340,15 +354,16 @@ class InvestmentsModel:
             lower_bounds_list.append(size_min if isinstance(size_min, xr.DataArray) else xr.DataArray(size_min))
             upper_bounds_list.append(size_max if isinstance(size_max, xr.DataArray) else xr.DataArray(size_max))
 
-        # Stack bounds into DataArrays with element dimension
+        # Stack bounds into DataArrays with element-type dimension
         # Handle arrays with different dimensions by expanding to common dims
         lower_bounds = self._stack_bounds(lower_bounds_list, xr)
         upper_bounds = self._stack_bounds(upper_bounds_list, xr)
 
-        # Build coords with element dimension
+        # Build coords with element-type dimension (e.g., 'flow', 'storage')
+        dim = self.dim_name
         size_coords = xr.Coordinates(
             {
-                'element': pd.Index(self.element_ids, name='element'),
+                dim: pd.Index(self.element_ids, name=dim),
                 **base_coords_dict,
             }
         )
@@ -370,7 +385,7 @@ class InvestmentsModel:
         if self._non_mandatory_elements:
             invested_coords = xr.Coordinates(
                 {
-                    'element': pd.Index(self._non_mandatory_ids, name='element'),
+                    dim: pd.Index(self._non_mandatory_ids, name=dim),
                     **base_coords_dict,
                 }
             )
@@ -385,7 +400,7 @@ class InvestmentsModel:
             # Register category
             expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.INVESTED)
             if expansion_category is not None:
-                self.model.variable_categories[invested_var.name] = expansion_category
+                self.model.variable_categories[invested_var.name] = invested_var.name
 
         self._logger.debug(
             f'InvestmentsModel created variables: {len(self.elements)} elements '
@@ -429,7 +444,8 @@ class InvestmentsModel:
         max_bounds = self._stack_bounds_for_subset(max_bounds_list, self._non_mandatory_ids, xr)
 
         # Select size for non-mandatory elements
-        size_non_mandatory = size_var.sel(element=self._non_mandatory_ids)
+        dim = self.dim_name
+        size_non_mandatory = size_var.sel({dim: self._non_mandatory_ids})
 
         # State-controlled bounds: invested * min <= size <= invested * max
         # Lower bound with epsilon to force non-zero when invested
@@ -457,11 +473,12 @@ class InvestmentsModel:
     def _add_linked_periods_constraints(self) -> None:
         """Add linked periods constraints for elements that have them."""
         size_var = self._variables['size']
+        dim = self.dim_name
 
         for element in self.elements:
             params = self._parameters_getter(element)
             if params.linked_periods is not None:
-                element_size = size_var.sel(element=element.label_full)
+                element_size = size_var.sel({dim: element.label_full})
                 masked_size = element_size.where(params.linked_periods, drop=True)
                 if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
                     self.model.add_constraints(
@@ -510,6 +527,7 @@ class InvestmentsModel:
                     retirement_effects[effect_name].append((element_id, factor))
 
         # Apply fixed effects (factor * invested or factor if mandatory)
+        dim = self.dim_name
         for effect_name, element_factors in fix_effects.items():
             expressions = {}
             for element_id, factor in element_factors:
@@ -520,7 +538,7 @@ class InvestmentsModel:
                     expressions[element_id] = factor
                 else:
                     # Only if invested
-                    invested_elem = invested_var.sel(element=element_id)
+                    invested_elem = invested_var.sel({dim: element_id})
                     expressions[element_id] = invested_elem * factor
 
             # Add to effects (per-element for now, could be batched further)
@@ -534,7 +552,7 @@ class InvestmentsModel:
         # Apply per-size effects (size * factor)
         for effect_name, element_factors in per_size_effects.items():
             for element_id, factor in element_factors:
-                size_elem = size_var.sel(element=element_id)
+                size_elem = size_var.sel({dim: element_id})
                 self.model.effects.add_share_to_effects(
                     name=f'{element_id}|invest_per_size',
                     expressions={effect_name: size_elem * factor},
@@ -544,7 +562,7 @@ class InvestmentsModel:
         # Apply retirement effects (-invested * factor + factor)
         for effect_name, element_factors in retirement_effects.items():
             for element_id, factor in element_factors:
-                invested_elem = invested_var.sel(element=element_id)
+                invested_elem = invested_var.sel({dim: element_id})
                 self.model.effects.add_share_to_effects(
                     name=f'{element_id}|invest_retire',
                     expressions={effect_name: -invested_elem * factor + factor},
@@ -559,19 +577,20 @@ class InvestmentsModel:
         if var is None:
             return None
         if element_id is not None:
-            if element_id in var.coords.get('element', []):
-                return var.sel(element=element_id)
+            dim = self.dim_name
+            if element_id in var.coords.get(dim, []):
+                return var.sel({dim: element_id})
             return None
         return var
 
     @property
     def size(self) -> linopy.Variable:
-        """Batched size variable with element dimension."""
+        """Batched size variable with element-type dimension (e.g., 'flow', 'storage')."""
         return self._variables['size']
 
     @property
     def invested(self) -> linopy.Variable | None:
-        """Batched invested variable with element dimension (non-mandatory only)."""
+        """Batched invested variable with element-type dimension (non-mandatory only)."""
         return self._variables.get('invested')
 
 
@@ -658,6 +677,7 @@ class StatusesModel:
         status_var_getter: callable,
         parameters_getter: callable,
         previous_status_getter: callable = None,
+        dim_name: str = 'element',
     ):
         """Initialize the type-level status model.
 
@@ -670,6 +690,7 @@ class StatusesModel:
                 e.g., lambda f: f.status_parameters
             previous_status_getter: Optional function to get previous status for an element.
                 e.g., lambda f: f.previous_status
+            dim_name: Dimension name for the element type (e.g., 'flow', 'component').
         """
         import logging
 
@@ -683,6 +704,7 @@ class StatusesModel:
         self._status_var_getter = status_var_getter
         self._parameters_getter = parameters_getter
         self._previous_status_getter = previous_status_getter or (lambda _: None)
+        self.dim_name = dim_name
 
         # Store imports for later use
         self._pd = pd
@@ -733,11 +755,13 @@ class StatusesModel:
         base_coords = self.model.get_coords(['period', 'scenario'])
         base_coords_dict = dict(base_coords) if base_coords is not None else {}
 
+        dim = self.dim_name
+
         # === active_hours: ALL elements with status ===
         # This is a per-period variable (summed over time within each period)
         active_hours_coords = xr.Coordinates(
             {
-                'element': pd.Index(self.element_ids, name='element'),
+                dim: pd.Index(self.element_ids, name=dim),
                 **base_coords_dict,
             }
         )
@@ -752,8 +776,8 @@ class StatusesModel:
             lower_bounds.append(lb)
             upper_bounds.append(ub)
 
-        lower_da = xr.DataArray(lower_bounds, dims=['element'], coords={'element': self.element_ids})
-        upper_da = xr.DataArray(upper_bounds, dims=['element'], coords={'element': self.element_ids})
+        lower_da = xr.DataArray(lower_bounds, dims=[dim], coords={dim: self.element_ids})
+        upper_da = xr.DataArray(upper_bounds, dims=[dim], coords={dim: self.element_ids})
 
         self._variables['active_hours'] = self.model.add_variables(
             lower=lower_da,
@@ -767,7 +791,7 @@ class StatusesModel:
             temporal_coords = self.model.get_coords()
             startup_coords = xr.Coordinates(
                 {
-                    'element': pd.Index(self._startup_tracking_ids, name='element'),
+                    dim: pd.Index(self._startup_tracking_ids, name=dim),
                     **dict(temporal_coords),
                 }
             )
@@ -787,7 +811,7 @@ class StatusesModel:
             temporal_coords = self.model.get_coords()
             inactive_coords = xr.Coordinates(
                 {
-                    'element': pd.Index(self._downtime_tracking_ids, name='element'),
+                    dim: pd.Index(self._downtime_tracking_ids, name=dim),
                     **dict(temporal_coords),
                 }
             )
@@ -801,13 +825,13 @@ class StatusesModel:
         if self._with_startup_limit:
             startup_count_coords = xr.Coordinates(
                 {
-                    'element': pd.Index(self._startup_limit_ids, name='element'),
+                    dim: pd.Index(self._startup_limit_ids, name=dim),
                     **base_coords_dict,
                 }
             )
             # Build upper bounds from startup_limit
             upper_limits = [self._parameters_getter(e).startup_limit for e in self._with_startup_limit]
-            upper_limits_da = xr.DataArray(upper_limits, dims=['element'], coords={'element': self._startup_limit_ids})
+            upper_limits_da = xr.DataArray(upper_limits, dims=[dim], coords={dim: self._startup_limit_ids})
             self._variables['startup_count'] = self.model.add_variables(
                 lower=0,
                 upper=upper_limits_da,
@@ -819,10 +843,12 @@ class StatusesModel:
 
     def create_constraints(self) -> None:
         """Create batched status feature constraints."""
+        dim = self.dim_name
+
         # === active_hours tracking: sum(status * weight) == active_hours ===
         for elem in self.elements:
             status_var = self._status_var_getter(elem)
-            active_hours = self._variables['active_hours'].sel(element=elem.label_full)
+            active_hours = self._variables['active_hours'].sel({dim: elem.label_full})
             self.model.add_constraints(
                 active_hours == self.model.sum_temporal(status_var),
                 name=f'{elem.label_full}|active_hours_eq',
@@ -831,7 +857,7 @@ class StatusesModel:
         # === inactive complementary: status + inactive == 1 ===
         for elem in self._with_downtime_tracking:
             status_var = self._status_var_getter(elem)
-            inactive = self._variables['inactive'].sel(element=elem.label_full)
+            inactive = self._variables['inactive'].sel({dim: elem.label_full})
             self.model.add_constraints(
                 status_var + inactive == 1,
                 name=f'{elem.label_full}|status|complementary',
@@ -841,8 +867,8 @@ class StatusesModel:
         # Creates: startup[t] - shutdown[t] == status[t] - status[t-1]
         for elem in self._with_startup_tracking:
             status_var = self._status_var_getter(elem)
-            startup = self._variables['startup'].sel(element=elem.label_full)
-            shutdown = self._variables['shutdown'].sel(element=elem.label_full)
+            startup = self._variables['startup'].sel({dim: elem.label_full})
+            shutdown = self._variables['shutdown'].sel({dim: elem.label_full})
             previous_status = self._previous_status_getter(elem)
             previous_state = previous_status.isel(time=-1) if previous_status is not None else None
 
@@ -868,8 +894,8 @@ class StatusesModel:
 
         # === startup_count: sum(startup) == startup_count ===
         for elem in self._with_startup_limit:
-            startup = self._variables['startup'].sel(element=elem.label_full)
-            startup_count = self._variables['startup_count'].sel(element=elem.label_full)
+            startup = self._variables['startup'].sel({dim: elem.label_full})
+            startup_count = self._variables['startup_count'].sel({dim: elem.label_full})
             startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario')]
             self.model.add_constraints(
                 startup_count == startup.sum(startup_temporal_dims),
@@ -901,7 +927,7 @@ class StatusesModel:
         # === Downtime tracking (consecutive duration) ===
         for elem in self._with_downtime_tracking:
             params = self._parameters_getter(elem)
-            inactive = self._variables['inactive'].sel(element=elem.label_full)
+            inactive = self._variables['inactive'].sel({dim: elem.label_full})
             previous_status = self._previous_status_getter(elem)
 
             # Calculate previous downtime if needed
@@ -1050,7 +1076,7 @@ class StatusesModel:
 
             # effects_per_startup
             if params.effects_per_startup and elem in self._with_startup_tracking:
-                startup = self._variables['startup'].sel(element=elem.label_full)
+                startup = self._variables['startup'].sel({self.dim_name: elem.label_full})
                 self.model.effects.add_share_to_effects(
                     name=elem.label_full,
                     expressions={effect: startup * factor for effect, factor in params.effects_per_startup.items()},
@@ -1065,8 +1091,9 @@ class StatusesModel:
         if var is None:
             return None
         if element_id is not None:
-            if element_id in var.coords.get('element', []):
-                return var.sel(element=element_id)
+            dim = self.dim_name
+            if element_id in var.coords.get(dim, []):
+                return var.sel({dim: element_id})
             return None
         return var
 

@@ -1669,12 +1669,17 @@ class StoragesModel:
         for storage in elements:
             storage._storages_model = self
 
+    @property
+    def dim_name(self) -> str:
+        """Dimension name for storage elements."""
+        return self.element_type.value  # 'storage'
+
     def create_variables(self) -> None:
         """Create batched variables for all storages.
 
         Creates:
-        - charge_state: For ALL storages (with element dimension, extra timestep)
-        - netto_discharge: For ALL storages (with element dimension)
+        - storage|charge: For ALL storages (with storage dimension, extra timestep)
+        - storage|netto: For ALL storages (with storage dimension)
         """
         import pandas as pd
 
@@ -1683,7 +1688,9 @@ class StoragesModel:
         if not self.elements:
             return
 
-        # === charge_state: ALL storages (with extra timestep) ===
+        dim = self.dim_name  # 'storage'
+
+        # === storage|charge: ALL storages (with extra timestep) ===
         lower_bounds = self._collect_charge_state_bounds('lower')
         upper_bounds = self._collect_charge_state_bounds('upper')
 
@@ -1691,8 +1698,8 @@ class StoragesModel:
         coords_extra = self.model.get_coords(extra_timestep=True)
         charge_state_coords = xr.Coordinates(
             {
-                'element': pd.Index(self.element_ids, name='element'),
-                **{dim: coords_extra[dim] for dim in coords_extra},
+                dim: pd.Index(self.element_ids, name=dim),
+                **{d: coords_extra[d] for d in coords_extra},
             }
         )
 
@@ -1700,29 +1707,29 @@ class StoragesModel:
             lower=lower_bounds,
             upper=upper_bounds,
             coords=charge_state_coords,
-            name='storage|charge_state',
+            name='storage|charge',
         )
-        self._variables['charge_state'] = charge_state
+        self._variables['charge'] = charge_state
 
         # Register category for segment expansion
         expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.CHARGE_STATE)
         if expansion_category is not None:
             self.model.variable_categories[charge_state.name] = expansion_category
 
-        # === netto_discharge: ALL storages ===
+        # === storage|netto: ALL storages ===
         temporal_coords = self.model.get_coords(self.model.temporal_dims)
         netto_discharge_coords = xr.Coordinates(
             {
-                'element': pd.Index(self.element_ids, name='element'),
-                **{dim: temporal_coords[dim] for dim in temporal_coords},
+                dim: pd.Index(self.element_ids, name=dim),
+                **{d: temporal_coords[d] for d in temporal_coords},
             }
         )
 
         netto_discharge = self.model.add_variables(
             coords=netto_discharge_coords,
-            name='storage|netto_discharge',
+            name='storage|netto',
         )
-        self._variables['netto_discharge'] = netto_discharge
+        self._variables['netto'] = netto_discharge
 
         # Register category for segment expansion
         expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.NETTO_DISCHARGE)
@@ -1740,6 +1747,7 @@ class StoragesModel:
         Args:
             bound_type: 'lower' or 'upper'
         """
+        dim = self.dim_name  # 'storage'
         bounds_list = []
         for storage in self.elements:
             rel_min, rel_max = self._get_relative_charge_state_bounds(storage)
@@ -1761,7 +1769,7 @@ class StoragesModel:
             else:
                 bounds_list.append(ub if isinstance(ub, xr.DataArray) else xr.DataArray(ub))
 
-        return xr.concat(bounds_list, dim='element', coords='minimal').assign_coords(element=self.element_ids)
+        return xr.concat(bounds_list, dim=dim, coords='minimal').assign_coords({dim: self.element_ids})
 
     def _get_relative_charge_state_bounds(self, storage: Storage) -> tuple[xr.DataArray, xr.DataArray]:
         """Get relative charge state bounds with final timestep values."""
@@ -1813,25 +1821,29 @@ class StoragesModel:
         if not self.elements:
             return
 
-        flow_rate = self._flows_model._variables['flow_rate']
-        charge_state = self._variables['charge_state']
-        netto_discharge = self._variables['netto_discharge']
+        flow_rate = self._flows_model._variables['rate']
+        charge_state = self._variables['charge']
+        netto_discharge = self._variables['netto']
         timestep_duration = self.model.timestep_duration
 
         # === Batched netto_discharge constraint ===
-        # Build charge and discharge flow_rate selections aligned with storage element dimension
+        # Build charge and discharge flow_rate selections aligned with storage dimension
         charge_flow_ids = [s.charging.label_full for s in self.elements]
         discharge_flow_ids = [s.discharging.label_full for s in self.elements]
 
-        # Select and rename element dimension to match storage elements
-        charge_rates = flow_rate.sel(element=charge_flow_ids)
-        charge_rates = charge_rates.assign_coords(element=self.element_ids)
-        discharge_rates = flow_rate.sel(element=discharge_flow_ids)
-        discharge_rates = discharge_rates.assign_coords(element=self.element_ids)
+        # Detect flow dimension name from flow_rate variable
+        flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
+        dim = self.dim_name
+
+        # Select from flow dimension and rename to storage dimension
+        charge_rates = flow_rate.sel({flow_dim: charge_flow_ids})
+        charge_rates = charge_rates.rename({flow_dim: dim}).assign_coords({dim: self.element_ids})
+        discharge_rates = flow_rate.sel({flow_dim: discharge_flow_ids})
+        discharge_rates = discharge_rates.rename({flow_dim: dim}).assign_coords({dim: self.element_ids})
 
         self.model.add_constraints(
             netto_discharge == discharge_rates - charge_rates,
-            name='storage|netto_discharge',
+            name='storage|netto_eq',
         )
 
         # === Batched energy balance constraint ===
@@ -1850,7 +1862,7 @@ class StoragesModel:
         )
         self.model.add_constraints(
             energy_balance_lhs == 0,
-            name='storage|charge_state',
+            name='storage|balance',
         )
 
         # === Initial/final constraints (grouped by type) ===
@@ -1861,10 +1873,12 @@ class StoragesModel:
 
         logger.debug(f'StoragesModel created batched constraints for {len(self.elements)} storages')
 
-    def _stack_parameter(self, values: list) -> xr.DataArray:
-        """Stack parameter values into DataArray with element dimension."""
+    def _stack_parameter(self, values: list, element_ids: list | None = None) -> xr.DataArray:
+        """Stack parameter values into DataArray with storage dimension."""
+        dim = self.dim_name
+        ids = element_ids if element_ids is not None else self.element_ids
         das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
-        return xr.concat(das, dim='element', coords='minimal').assign_coords(element=self.element_ids)
+        return xr.concat(das, dim=dim, coords='minimal').assign_coords({dim: ids})
 
     def _add_batched_initial_final_constraints(self, charge_state) -> None:
         """Add batched initial and final charge state constraints."""
@@ -1891,12 +1905,13 @@ class StoragesModel:
             if storage.minimal_final_charge_state is not None:
                 storages_min_final.append((storage, storage.minimal_final_charge_state))
 
+        dim = self.dim_name
+
         # Batched numeric initial constraint
         if storages_numeric_initial:
             ids = [s.label_full for s, _ in storages_numeric_initial]
-            values = self._stack_parameter([v for _, v in storages_numeric_initial])
-            values = values.assign_coords(element=ids)
-            cs_initial = charge_state.sel(element=ids).isel(time=0)
+            values = self._stack_parameter([v for _, v in storages_numeric_initial], ids)
+            cs_initial = charge_state.sel({dim: ids}).isel(time=0)
             self.model.add_constraints(
                 cs_initial == values,
                 name='storage|initial_charge_state',
@@ -1905,7 +1920,7 @@ class StoragesModel:
         # Batched equals_final constraint
         if storages_equals_final:
             ids = [s.label_full for s in storages_equals_final]
-            cs_subset = charge_state.sel(element=ids)
+            cs_subset = charge_state.sel({dim: ids})
             self.model.add_constraints(
                 cs_subset.isel(time=0) == cs_subset.isel(time=-1),
                 name='storage|initial_equals_final',
@@ -1914,9 +1929,8 @@ class StoragesModel:
         # Batched max final constraint
         if storages_max_final:
             ids = [s.label_full for s, _ in storages_max_final]
-            values = self._stack_parameter([v for _, v in storages_max_final])
-            values = values.assign_coords(element=ids)
-            cs_final = charge_state.sel(element=ids).isel(time=-1)
+            values = self._stack_parameter([v for _, v in storages_max_final], ids)
+            cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
                 cs_final <= values,
                 name='storage|final_charge_max',
@@ -1925,9 +1939,8 @@ class StoragesModel:
         # Batched min final constraint
         if storages_min_final:
             ids = [s.label_full for s, _ in storages_min_final]
-            values = self._stack_parameter([v for _, v in storages_min_final])
-            values = values.assign_coords(element=ids)
-            cs_final = charge_state.sel(element=ids).isel(time=-1)
+            values = self._stack_parameter([v for _, v in storages_min_final], ids)
+            cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
                 cs_final >= values,
                 name='storage|final_charge_min',
@@ -1943,7 +1956,7 @@ class StoragesModel:
             return
 
         ids = [s.label_full for s in cyclic_storages]
-        cs_subset = charge_state.sel(element=ids)
+        cs_subset = charge_state.sel({self.dim_name: ids})
         self.model.add_constraints(
             cs_subset.isel(time=0) == cs_subset.isel(time=-2),
             name='storage|cluster_cyclic',
@@ -1993,8 +2006,8 @@ class StoragesModel:
         if not self.storages_with_investment or self._investments_model is None:
             return
 
-        charge_state = self._variables['charge_state']
-        size_var = self._investments_model.size  # Batched size with element dimension
+        charge_state = self._variables['charge']
+        size_var = self._investments_model.size  # Batched size with storage dimension
 
         # Collect relative bounds for all investment storages
         rel_lowers = []
@@ -2004,20 +2017,17 @@ class StoragesModel:
             rel_lowers.append(rel_lower)
             rel_uppers.append(rel_upper)
 
-        # Stack relative bounds with element dimension
+        # Stack relative bounds with storage dimension
         # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
-        rel_lower_stacked = xr.concat(rel_lowers, dim='element', coords='minimal').assign_coords(
-            element=self.investment_ids
-        )
-        rel_upper_stacked = xr.concat(rel_uppers, dim='element', coords='minimal').assign_coords(
-            element=self.investment_ids
-        )
+        dim = self.dim_name
+        rel_lower_stacked = xr.concat(rel_lowers, dim=dim, coords='minimal').assign_coords({dim: self.investment_ids})
+        rel_upper_stacked = xr.concat(rel_uppers, dim=dim, coords='minimal').assign_coords({dim: self.investment_ids})
 
         # Select charge_state for investment storages only
-        cs_investment = charge_state.sel(element=self.investment_ids)
+        cs_investment = charge_state.sel({dim: self.investment_ids})
 
-        # Select size for these storages (it already has element dimension)
-        size_investment = size_var.sel(element=self.investment_ids)
+        # Select size for these storages (it already has storage dimension)
+        size_investment = size_var.sel({dim: self.investment_ids})
 
         # Check if all bounds are equal (fixed relative bounds)
         from .modeling import _xr_allclose
@@ -2026,17 +2036,17 @@ class StoragesModel:
             # Fixed bounds: charge_state == size * relative_bound
             self.model.add_constraints(
                 cs_investment == size_investment * rel_lower_stacked,
-                name='storage|charge_state|investment|fixed',
+                name='storage|charge|investment|fixed',
             )
         else:
             # Variable bounds: lower <= charge_state <= upper
             self.model.add_constraints(
                 cs_investment >= size_investment * rel_lower_stacked,
-                name='storage|charge_state|investment|lb',
+                name='storage|charge|investment|lb',
             )
             self.model.add_constraints(
                 cs_investment <= size_investment * rel_upper_stacked,
-                name='storage|charge_state|investment|ub',
+                name='storage|charge|investment|ub',
             )
 
         logger.debug(
@@ -2077,7 +2087,7 @@ class StoragesModel:
         if var is None:
             return None
         if element_id is not None:
-            return var.sel(element=element_id)
+            return var.sel({self.dim_name: element_id})
         return var
 
 
@@ -2097,11 +2107,11 @@ class StorageModelProxy(ComponentModel):
 
         # Register variables from StoragesModel
         if self._storages_model is not None:
-            charge_state = self._storages_model.get_variable('charge_state', self.label_full)
+            charge_state = self._storages_model.get_variable('charge', self.label_full)
             if charge_state is not None:
                 self.register_variable(charge_state, 'charge_state')
 
-            netto_discharge = self._storages_model.get_variable('netto_discharge', self.label_full)
+            netto_discharge = self._storages_model.get_variable('netto', self.label_full)
             if netto_discharge is not None:
                 self.register_variable(netto_discharge, 'netto_discharge')
 
