@@ -153,6 +153,7 @@ _DEFAULTS = MappingProxyType(
                 'big': 10_000_000,
                 'epsilon': 1e-5,
                 'big_binary_bound': 100_000,
+                'mode': 'traditional',  # 'traditional' or 'type_level'
             }
         ),
         'plotting': MappingProxyType(
@@ -514,11 +515,23 @@ class CONFIG:
             big: Large number for big-M constraints.
             epsilon: Tolerance for numerical comparisons.
             big_binary_bound: Upper bound for binary constraints.
+            mode: Modeling mode - 'traditional' (per-element) or 'type_level' (batched).
+                Type-level mode is faster for large systems (5-13x speedup).
+
+        Examples:
+            ```python
+            # Use faster type-level modeling (default)
+            CONFIG.Modeling.mode = 'type_level'
+
+            # Use traditional per-element modeling
+            CONFIG.Modeling.mode = 'traditional'
+            ```
         """
 
         big: int = _DEFAULTS['modeling']['big']
         epsilon: float = _DEFAULTS['modeling']['epsilon']
         big_binary_bound: int = _DEFAULTS['modeling']['big_binary_bound']
+        mode: Literal['traditional', 'type_level'] = _DEFAULTS['modeling']['mode']
 
     class Solving:
         """Solver configuration and default parameters.

@@ -11,6 +11,7 @@ import logging
 import pathlib
 import re
 import warnings
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from difflib import get_close_matches
 from enum import Enum
@@ -61,9 +62,13 @@ def _ensure_coords(
     else:
         coord_dims = list(coords.dims)
 
+    # Handle None (no bound specified)
+    if data is None:
+        return data
+
     # Keep infinity values as scalars (linopy uses them for special checks)
     if not isinstance(data, xr.DataArray):
-        if np.isinf(data):
+        if np.isscalar(data) and np.isinf(data):
             return data
         # Finite scalar - create full DataArray
         return xr.DataArray(data, coords=coords, dims=coord_dims)
@@ -141,6 +146,396 @@ EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableC
 EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
 """Binary events that should appear only at the first timestep of the segment."""
 
+# Alias for clarity - VariableCategory is specifically for segment expansion behavior
+# New code should use ExpansionCategory; VariableCategory is kept for backward compatibility
+ExpansionCategory = VariableCategory
+
+
+# =============================================================================
+# New Categorization Enums for Type-Level Models
+# =============================================================================
+
+
+class ElementType(Enum):
+    """What kind of element creates a variable/constraint.
+
+    Used to group elements by type for batch processing in type-level models.
+    """
+
+    FLOW = 'flow'
+    BUS = 'bus'
+    STORAGE = 'storage'
+    CONVERTER = 'converter'
+    EFFECT = 'effect'
+
+
+class VariableType(Enum):
+    """What role a variable plays in the model.
+
+    Provides semantic meaning for variables beyond just their name.
+    Maps to ExpansionCategory (formerly VariableCategory) for segment expansion.
+    """
+
+    # === Rates/Power ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === State ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Aggregates ===
+    TOTAL = 'total'  # total_flow_hours, active_hours
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Sum across periods
+
+    # === Investment ===
+    SIZE = 'size'  # Investment size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA = 'lambda_weight'  # Interpolation weight
+
+    # === Effects ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # Effect share contribution
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+class ConstraintType(Enum):
+    """What kind of constraint this is.
+
+    Provides semantic meaning for constraints to enable batch processing.
+    """
+
+    # === Tracking equations ===
+    TRACKING = 'tracking'  # var = sum(other) or var = expression
+
+    # === Bounds ===
+    UPPER_BOUND = 'upper_bound'  # var <= bound
+    LOWER_BOUND = 'lower_bound'  # var >= bound
+
+    # === Balance ===
+    BALANCE = 'balance'  # sum(inflows) == sum(outflows)
+
+    # === Linking ===
+    LINKING = 'linking'  # var[t+1] = f(var[t])
+
+    # === State transitions ===
+    STATE_TRANSITION = 'state_transition'  # status, startup, shutdown relationships
+
+    # === Piecewise ===
+    PIECEWISE = 'piecewise'  # SOS2, lambda constraints
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# Mapping from VariableType to ExpansionCategory (for segment expansion)
+# This connects the new enum system to the existing segment expansion logic
+VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
+    VariableType.FLOW_RATE: VariableCategory.FLOW_RATE,
+    VariableType.NETTO_DISCHARGE: VariableCategory.NETTO_DISCHARGE,
+    VariableType.VIRTUAL_FLOW: VariableCategory.VIRTUAL_FLOW,
+    VariableType.CHARGE_STATE: VariableCategory.CHARGE_STATE,
+    VariableType.SOC_BOUNDARY: VariableCategory.SOC_BOUNDARY,
+    VariableType.STATUS: VariableCategory.STATUS,
+    VariableType.INACTIVE: VariableCategory.INACTIVE,
+    VariableType.STARTUP: VariableCategory.STARTUP,
+    VariableType.SHUTDOWN: VariableCategory.SHUTDOWN,
+    VariableType.TOTAL: VariableCategory.TOTAL,
+    VariableType.TOTAL_OVER_PERIODS: VariableCategory.TOTAL_OVER_PERIODS,
+    VariableType.SIZE: VariableCategory.SIZE,
+    VariableType.INVESTED: VariableCategory.INVESTED,
+    VariableType.INSIDE_PIECE: VariableCategory.INSIDE_PIECE,
+    VariableType.LAMBDA: VariableCategory.LAMBDA0,  # Maps to LAMBDA0 for expansion
+    VariableType.PER_TIMESTEP: VariableCategory.PER_TIMESTEP,
+    VariableType.SHARE: VariableCategory.SHARE,
+    VariableType.OTHER: VariableCategory.OTHER,
+}
+
+
+# =============================================================================
+# TypeModel Base Class
+# =============================================================================
+
+
+class TypeModel(ABC):
+    """Base class for type-level models that handle ALL elements of a type.
+
+    Unlike Submodel (one per element instance), TypeModel handles ALL elements
+    of a given type (e.g., FlowsModel for ALL Flows) in a single instance.
+
+    This enables true vectorized batch creation:
+    - One variable with element dimension for all flows
+    - One constraint call for all elements
+
+    Attributes:
+        model: The FlowSystemModel to create variables/constraints in.
+        element_type: The ElementType this model handles.
+        elements: List of elements this model manages.
+        element_ids: List of element identifiers (label_full).
+
+    Example:
+        >>> class FlowsModel(TypeModel):
+        ...     element_type = ElementType.FLOW
+        ...
+        ...     def create_variables(self):
+        ...         self.flow_rate = self.add_variables(
+        ...             'flow_rate',
+        ...             VariableType.FLOW_RATE,
+        ...             lower=self._stack_bounds('lower'),
+        ...             upper=self._stack_bounds('upper'),
+        ...         )
+    """
+
+    element_type: ClassVar[ElementType]
+
+    def __init__(self, model: FlowSystemModel, elements: list):
+        """Initialize the type-level model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of elements of this type to model.
+        """
+        self.model = model
+        self.elements = elements
+        self.element_ids: list[str] = [e.label_full for e in elements]
+
+        # Storage for created variables and constraints
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+
+    @abstractmethod
+    def create_variables(self) -> None:
+        """Create all batched variables for this element type.
+
+        Implementations should use add_variables() to create variables
+        with the element dimension already included.
+        """
+
+    @abstractmethod
+    def create_constraints(self) -> None:
+        """Create all batched constraints for this element type.
+
+        Implementations should create vectorized constraints that operate
+        on the full element dimension at once.
+        """
+
+    def add_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        dims: tuple[str, ...] | None = ('time',),
+        **kwargs,
+    ) -> linopy.Variable:
+        """Create a batched variable with element dimension.
+
+        Args:
+            name: Variable name (will be prefixed with element type).
+            var_type: Variable type for semantic categorization.
+            lower: Lower bounds (scalar or per-element DataArray).
+            upper: Upper bounds (scalar or per-element DataArray).
+            dims: Dimensions beyond 'element'. None means ALL model dimensions.
+            **kwargs: Additional arguments passed to model.add_variables().
+
+        Returns:
+            The created linopy Variable with element dimension.
+        """
+        # Build coordinates with element dimension first
+        coords = self._build_coords(dims)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=full_name,
+            **kwargs,
+        )
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        # Store reference
+        self._variables[name] = variable
+        return variable
+
+    def add_constraints(
+        self,
+        expression: linopy.expressions.LinearExpression,
+        name: str,
+        **kwargs,
+    ) -> linopy.Constraint:
+        """Create a batched constraint for all elements.
+
+        Args:
+            expression: The constraint expression (e.g., lhs == rhs, lhs <= rhs).
+            name: Constraint name (will be prefixed with element type).
+            **kwargs: Additional arguments passed to model.add_constraints().
+
+        Returns:
+            The created linopy Constraint.
+        """
+        full_name = f'{self.element_type.value}|{name}'
+        constraint = self.model.add_constraints(expression, name=full_name, **kwargs)
+        self._constraints[name] = constraint
+        return constraint
+
+    def _build_coords(self, dims: tuple[str, ...] | None = ('time',)) -> xr.Coordinates:
+        """Build coordinate dict with element dimension + model dimensions.
+
+        Args:
+            dims: Tuple of dimension names from the model. If None, includes ALL model dimensions.
+
+        Returns:
+            xarray Coordinates with 'element' + requested dims.
+        """
+        coord_dict: dict[str, Any] = {'element': pd.Index(self.element_ids, name='element')}
+
+        # Add model dimensions
+        model_coords = self.model.get_coords(dims=dims)
+        if model_coords is not None:
+            if dims is None:
+                # Include all model coords
+                for dim, coord in model_coords.items():
+                    coord_dict[dim] = coord
+            else:
+                for dim in dims:
+                    if dim in model_coords:
+                        coord_dict[dim] = model_coords[dim]
+
+        return xr.Coordinates(coord_dict)
+
+    def _stack_bounds(
+        self,
+        bounds: list[float | xr.DataArray],
+    ) -> xr.DataArray | float:
+        """Stack per-element bounds into array with element dimension.
+
+        Args:
+            bounds: List of bounds (one per element, same order as self.elements).
+
+        Returns:
+            Stacked DataArray with element dimension, or scalar if all identical.
+        """
+        # Extract scalar values from 0-d DataArrays or plain scalars
+        scalar_values = []
+        has_multidim = False
+
+        for b in bounds:
+            if isinstance(b, xr.DataArray):
+                if b.ndim == 0:
+                    scalar_values.append(float(b.values))
+                else:
+                    has_multidim = True
+                    break
+            else:
+                scalar_values.append(float(b))
+
+        # Fast path: all scalars
+        if not has_multidim:
+            unique_values = set(scalar_values)
+            if len(unique_values) == 1:
+                return scalar_values[0]  # Return scalar - linopy will broadcast
+
+            return xr.DataArray(
+                np.array(scalar_values),
+                coords={'element': self.element_ids},
+                dims=['element'],
+            )
+
+        # Slow path: need full concat for multi-dimensional bounds
+        arrays_to_stack = []
+        for bound, eid in zip(bounds, self.element_ids, strict=False):
+            if isinstance(bound, xr.DataArray):
+                arr = bound.expand_dims(element=[eid])
+            else:
+                arr = xr.DataArray(bound, coords={'element': [eid]}, dims=['element'])
+            arrays_to_stack.append(arr)
+
+        # Find union of all non-element dimensions and their coords
+        all_dims = {}  # dim -> coords
+        for arr in arrays_to_stack:
+            for dim in arr.dims:
+                if dim != 'element' and dim not in all_dims:
+                    all_dims[dim] = arr.coords[dim].values
+
+        # Expand each array to have all non-element dimensions
+        expanded = []
+        for arr in arrays_to_stack:
+            for dim, coords in all_dims.items():
+                if dim not in arr.dims:
+                    arr = arr.expand_dims({dim: coords})
+            expanded.append(arr)
+
+        stacked = xr.concat(expanded, dim='element')
+
+        # Ensure element is first dimension
+        if 'element' in stacked.dims and stacked.dims[0] != 'element':
+            dim_order = ['element'] + [d for d in stacked.dims if d != 'element']
+            stacked = stacked.transpose(*dim_order)
+
+        return stacked
+
+    def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
+        """Get a variable, optionally sliced to a specific element.
+
+        Args:
+            name: Variable name.
+            element_id: If provided, return slice for this element only.
+
+        Returns:
+            Full batched variable or element slice.
+        """
+        variable = self._variables[name]
+        if element_id is not None:
+            return variable.sel(element=element_id)
+        return variable
+
+    def get_constraint(self, name: str) -> linopy.Constraint:
+        """Get a constraint by name.
+
+        Args:
+            name: Constraint name.
+
+        Returns:
+            The constraint.
+        """
+        return self._constraints[name]
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """All variables created by this type model."""
+        return self._variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """All constraints created by this type model."""
+        return self._constraints
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}('
+            f'elements={len(self.elements)}, '
+            f'vars={len(self._variables)}, '
+            f'constraints={len(self._constraints)})'
+        )
+
 
 CLASS_REGISTRY = {}
 
@@ -200,12 +595,18 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
+        self._dce_mode: bool = False  # When True, elements skip _do_modeling()
+        self._type_level_mode: bool = False  # When True, Flows and Buses skip Model creation
+        self._flows_model: TypeModel | None = None  # Reference to FlowsModel when in type-level mode
+        self._buses_model: TypeModel | None = None  # Reference to BusesModel when in type-level mode
+        self._storages_model = None  # Reference to StoragesModel when in type-level mode
 
     def add_variables(
         self,
-        lower: xr.DataArray | float = -np.inf,
-        upper: xr.DataArray | float = np.inf,
+        lower: xr.DataArray | float | None = None,
+        upper: xr.DataArray | float | None = None,
         coords: xr.Coordinates | None = None,
+        binary: bool = False,
         **kwargs,
     ) -> linopy.Variable:
         """Override to ensure bounds are broadcasted to coords shape.
@@ -214,6 +615,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         This override ensures at least one bound has all target dimensions when coords
         is provided, allowing internal data to remain compact (scalars, 1D arrays).
         """
+        # Binary variables cannot have bounds in linopy
+        if binary:
+            return super().add_variables(coords=coords, binary=True, **kwargs)
+
+        # Apply default bounds for non-binary variables
+        if lower is None:
+            lower = -np.inf
+        if upper is None:
+            upper = np.inf
+
         if coords is not None:
             lower = _ensure_coords(lower, coords)
             upper = _ensure_coords(upper, coords)
@@ -239,6 +650,328 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             if element.submodel is not None:
                 element._variable_names = list(element.submodel.variables)
                 element._constraint_names = list(element.submodel.constraints)
+
+    def do_modeling_dce(self, timing: bool = False):
+        """Build the model using the DCE (Declaration-Collection-Execution) pattern.
+
+        This is an alternative to `do_modeling()` that uses vectorized batch creation
+        of variables and constraints for better performance with large systems.
+
+        The DCE pattern has three phases:
+        1. DECLARATION: Elements declare what variables/constraints they need
+        2. COLLECTION: Registries group declarations by category
+        3. EXECUTION: Batch-create variables/constraints per category
+
+        Args:
+            timing: If True, print detailed timing breakdown.
+
+        Note:
+            This method is experimental. Use `do_modeling()` for production.
+            Not all element types support DCE yet - those that don't will
+            fall back to individual creation.
+        """
+        import time
+
+        from .vectorized import ConstraintRegistry, EffectShareRegistry, VariableRegistry
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
+
+        # Enable DCE mode - elements will skip _do_modeling() variable creation
+        self._dce_mode = True
+
+        # Initialize registries
+        variable_registry = VariableRegistry(self)
+        self._variable_registry = variable_registry  # Store for later access
+
+        record('registry_init')
+
+        # Create effect models first (they don't use DCE yet)
+        self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
+
+        # Phase 1: DECLARATION
+        # Create element models and collect their declarations
+        logger.debug('DCE Phase 1: Declaration')
+        element_models = []
+
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+            # Component creates flow models as submodels
+            for flow in component.inputs + component.outputs:
+                if hasattr(flow.submodel, 'declare_variables'):
+                    for spec in flow.submodel.declare_variables():
+                        variable_registry.register(spec)
+                    element_models.append(flow.submodel)
+
+        record('components')
+
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
+            # Bus doesn't use DCE yet - uses traditional approach
+
+        record('buses')
+
+        # Phase 2: COLLECTION (implicit in registries)
+        logger.debug(f'DCE Phase 2: Collection - {variable_registry}')
+
+        # Phase 3: EXECUTION (Variables)
+        logger.debug('DCE Phase 3: Execution (Variables)')
+        variable_registry.create_all()
+
+        record('var_creation')
+
+        # Distribute handles to elements
+        for element_model in element_models:
+            handles = variable_registry.get_handles_for_element(element_model.label_full)
+            element_model.on_variables_created(handles)
+
+        record('handle_distribution')
+
+        # Phase 3: EXECUTION (Effect Shares)
+        logger.debug('DCE Phase 3: Execution (Effect Shares)')
+        effect_share_registry = EffectShareRegistry(self, variable_registry)
+        self._effect_share_registry = effect_share_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_effect_shares'):
+                for spec in element_model.declare_effect_shares():
+                    effect_share_registry.register(spec)
+
+        effect_share_registry.create_all()
+
+        record('effect_shares')
+
+        # Phase 3: EXECUTION (Constraints)
+        logger.debug('DCE Phase 3: Execution (Constraints)')
+        constraint_registry = ConstraintRegistry(self, variable_registry)
+        self._constraint_registry = constraint_registry
+
+        for element_model in element_models:
+            if hasattr(element_model, 'declare_constraints'):
+                for spec in element_model.declare_constraints():
+                    constraint_registry.register(spec)
+
+        constraint_registry.create_all()
+
+        record('constraint_creation')
+
+        # Finalize DCE - create submodels that weren't batch-created (e.g., StatusModel)
+        for element_model in element_models:
+            if hasattr(element_model, 'finalize_dce'):
+                element_model.finalize_dce()
+
+        record('finalize_dce')
+
+        # Post-processing
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+
+        record('end')
+
+        if timing:
+            print('\n  DCE Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'registry_init',
+                'effects',
+                'components',
+                'buses',
+                'var_creation',
+                'handle_distribution',
+                'effect_shares',
+                'constraint_creation',
+                'finalize_dce',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
+
+        logger.info(f'DCE modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints')
+
+    def do_modeling_type_level(self, timing: bool = False):
+        """Build the model using type-level models (one model per element TYPE).
+
+        This is an alternative to `do_modeling()` and `do_modeling_dce()` that uses
+        TypeModel classes (e.g., FlowsModel, BusesModel) which handle ALL elements
+        of a type in a single instance with true vectorized operations.
+
+        Benefits over DCE:
+        - Cleaner architecture: One model per type, not per instance
+        - Direct variable ownership: FlowsModel owns flow_rate directly
+        - No registry indirection: No specs → registry → variables pipeline
+
+        Args:
+            timing: If True, print detailed timing breakdown.
+
+        Note:
+            This method is experimental. FlowsModel, BusesModel, and StoragesModel are
+            implemented. InterclusterStorageModel (for clustered systems with intercluster
+            modes) still uses the traditional approach due to its complexity.
+        """
+        import time
+
+        from .components import Storage, StoragesModel
+        from .elements import BusesModel, FlowsModel
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
+
+        # Create effect models first
+        self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
+
+        # Collect all flows from all components
+        all_flows = []
+        for component in self.flow_system.components.values():
+            all_flows.extend(component.inputs)
+            all_flows.extend(component.outputs)
+
+        record('collect_flows')
+
+        # Create type-level model for all flows
+        self._flows_model = FlowsModel(self, all_flows)
+        self._flows_model.create_variables()
+
+        record('flows_variables')
+
+        # Create batched investment model for flows (creates size/invested variables)
+        # Must be before create_constraints() since bounds depend on size variable
+        self._flows_model.create_investment_model()
+
+        record('flows_investment_model')
+
+        # Create batched status model for flows (creates active_hours, startup, shutdown, etc.)
+        self._flows_model.create_status_model()
+
+        record('flows_status_model')
+
+        self._flows_model.create_constraints()
+
+        record('flows_constraints')
+
+        # Create effect shares for flows
+        self._flows_model.create_effect_shares()
+
+        record('flows_effects')
+
+        # Create type-level model for all buses
+        all_buses = list(self.flow_system.buses.values())
+        self._buses_model = BusesModel(self, all_buses, self._flows_model)
+        self._buses_model.create_variables()
+
+        record('buses_variables')
+
+        self._buses_model.create_constraints()
+
+        record('buses_constraints')
+
+        # Create effect shares for buses (imbalance penalties)
+        self._buses_model.create_effect_shares()
+
+        record('buses_effects')
+
+        # Collect basic (non-intercluster) storages for batching
+        # Intercluster storages are handled traditionally
+        basic_storages = []
+        for component in self.flow_system.components.values():
+            if isinstance(component, Storage):
+                clustering = self.flow_system.clustering
+                is_intercluster = clustering is not None and component.cluster_mode in (
+                    'intercluster',
+                    'intercluster_cyclic',
+                )
+                if not is_intercluster:
+                    basic_storages.append(component)
+
+        # Create type-level model for basic storages
+        self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
+        self._storages_model.create_variables()
+
+        record('storages_variables')
+
+        self._storages_model.create_constraints()
+
+        record('storages_constraints')
+
+        # Create batched investment model for storages (creates size/invested variables, constraints, effects)
+        self._storages_model.create_investment_model()
+
+        record('storages_investment_model')
+
+        # Create batched investment constraints linking charge_state to investment size
+        self._storages_model.create_investment_constraints()
+
+        record('storages_investment_constraints')
+
+        # Enable type-level mode - Flows, Buses, and Storages will use proxy models
+        self._type_level_mode = True
+
+        # Create component models (without flow modeling - flows handled by FlowsModel)
+        # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
+        for component in self.flow_system.components.values():
+            component.create_model(self)
+
+        record('components')
+
+        # Create bus proxy models (for results structure, no variables/constraints)
+        for bus in self.flow_system.buses.values():
+            bus.create_model(self)
+
+        record('buses')
+
+        # Post-processing
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+
+        # Create unified share variables with (element, effect) dimensions
+        if self.effects._batched_model is not None:
+            self.effects._batched_model.create_share_variables()
+
+        record('end')
+
+        if timing:
+            print('\n  Type-Level Modeling Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'effects',
+                'collect_flows',
+                'flows_variables',
+                'flows_constraints',
+                'flows_effects',
+                'buses_variables',
+                'buses_constraints',
+                'buses_effects',
+                'storages_variables',
+                'storages_constraints',
+                'storages_investment_model',
+                'storages_investment_constraints',
+                'components',
+                'buses',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
+
+        logger.info(
+            f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
+        )
 
     def _add_scenario_equality_for_parameter_type(
         self,
@@ -313,6 +1046,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 {
                     bus.label_full: bus.submodel.results_structure()
                     for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                    if bus.submodel is not None  # Skip buses without submodels (type_level mode)
                 }
             ),
             'Effects': json.dumps(
@@ -321,12 +1055,14 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     for effect in sorted(
                         self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
                     )
+                    if effect.submodel is not None  # Skip effects without submodels (type_level mode)
                 }
             ),
             'Flows': json.dumps(
                 {
                     flow.label_full: flow.submodel.results_structure()
                     for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                    if flow.submodel is not None  # Skip flows without submodels (type_level mode)
                 }
             ),
         }
@@ -407,9 +1143,22 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         Objective weights of model (period_weights × scenario_weights).
         """
-        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
-        scenario_weights = self.scenario_weights
+        obj_effect = self.flow_system.effects.objective_effect
+        # In type_level mode, individual effects don't have submodels - get weights directly
+        if obj_effect.submodel is not None:
+            period_weights = obj_effect.submodel.period_weights
+        else:
+            # Type-level mode: compute period_weights directly from effect
+            effect_weights = obj_effect.period_weights
+            default_weights = self.flow_system.period_weights
+            if effect_weights is not None:
+                period_weights = effect_weights
+            elif default_weights is not None:
+                period_weights = default_weights
+            else:
+                period_weights = obj_effect._fit_coords(name='period_weights', data=1, dims=['period'])
 
+        scenario_weights = self.scenario_weights
         return period_weights * scenario_weights
 
     def get_coords(
@@ -2000,3 +2749,40 @@ class ElementModel(Submodel):
             'variables': list(self.variables),
             'constraints': list(self.constraints),
         }
+
+    # =========================================================================
+    # DCE Pattern: Declaration-Collection-Execution
+    # Override these methods in subclasses to use the DCE pattern
+    # =========================================================================
+
+    def declare_variables(self) -> list:
+        """Declare variables needed by this element for batch creation.
+
+        Override in subclasses to return a list of VariableSpec objects.
+        These specs will be collected by VariableRegistry and batch-created.
+
+        Returns:
+            List of VariableSpec objects (empty by default).
+        """
+        return []
+
+    def declare_constraints(self) -> list:
+        """Declare constraints needed by this element for batch creation.
+
+        Override in subclasses to return a list of ConstraintSpec objects.
+        The build_fn in each spec will be called after variables exist.
+
+        Returns:
+            List of ConstraintSpec objects (empty by default).
+        """
+        return []
+
+    def on_variables_created(self, handles: dict) -> None:
+        """Called after batch variable creation with handles to element's variables.
+
+        Override in subclasses to store handles for use in constraint building.
+
+        Args:
+            handles: Dict mapping category name to VariableHandle.
+        """
+        pass
