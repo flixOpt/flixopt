@@ -768,17 +768,13 @@ class FlowModelProxy(ElementModel):
 
     @property
     def status(self) -> StatusModel | StatusProxy | None:
-        """Status feature - returns proxy to batched StatusesModel."""
+        """Status feature - returns proxy to FlowsModel's batched status variables."""
         if not self.with_status:
             return None
 
-        # Get the batched statuses model from FlowsModel
-        statuses_model = self._flows_model._statuses_model
-        if statuses_model is None:
-            return None
-
         # Return a proxy that provides active_hours/startup/etc. for this specific element
-        return StatusProxy(statuses_model, self.label_full)
+        # FlowsModel has get_variable and _previous_status that StatusProxy needs
+        return StatusProxy(self._flows_model, self.label_full)
 
     @property
     def investment(self) -> InvestmentModel | InvestmentProxy | None:
@@ -874,8 +870,9 @@ class FlowsModel(TypeModel):
         # Investment params dict (populated in create_investment_model)
         self._invest_params: dict[str, InvestParameters] = {}
 
-        # Batched status model (created via create_status_model)
-        self._statuses_model = None
+        # Status params and previous status (populated in create_status_model)
+        self._status_params: dict[str, StatusParameters] = {}
+        self._previous_status: dict[str, xr.DataArray] = {}
 
         # Set reference on each flow element for element access pattern
         for flow in elements:
@@ -1363,75 +1360,258 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    def add_constant_investment_shares(self) -> None:
-        """Add constant (non-variable) investment shares directly to effect constraints.
+    @property
+    def status_effects_per_active_hour(self) -> xr.DataArray | None:
+        """Combined effects_per_active_hour with (flow, effect) dims."""
+        if not hasattr(self, '_status_params') or not self._status_params:
+            return None
+        from .features import InvestmentHelpers, StatusHelpers
 
-        This handles:
-        - Mandatory fixed effects (always incurred)
-        - Retirement constant parts (the +factor in -invested*factor + factor)
-        """
-        if not hasattr(self, '_invest_params'):
-            return
+        element_ids = [eid for eid in self.status_ids if self._status_params[eid].effects_per_active_hour]
+        if not element_ids:
+            return None
+        effects_dict = StatusHelpers.collect_status_effects(
+            self._status_params, element_ids, 'effects_per_active_hour', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-        # Mandatory fixed effects
-        mandatory_with_effects = [
-            eid
-            for eid in self.investment_ids
-            if self._invest_params[eid].mandatory and self._invest_params[eid].effects_of_investment
-        ]
-        for element_id in mandatory_with_effects:
-            elem_effects = self._invest_params[element_id].effects_of_investment or {}
-            effects_dict = {
-                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-            }
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_fix',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
+    @property
+    def status_effects_per_startup(self) -> xr.DataArray | None:
+        """Combined effects_per_startup with (flow, effect) dims."""
+        if not hasattr(self, '_status_params') or not self._status_params:
+            return None
+        from .features import InvestmentHelpers, StatusHelpers
 
-        # Retirement constant parts
-        non_mandatory_with_retirement = [
-            eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement
-        ]
-        for element_id in non_mandatory_with_retirement:
-            elem_effects = self._invest_params[element_id].effects_of_retirement or {}
-            effects_dict = {
-                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-            }
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_retire_const',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
+        element_ids = [eid for eid in self.status_ids if self._status_params[eid].effects_per_startup]
+        if not element_ids:
+            return None
+        effects_dict = StatusHelpers.collect_status_effects(
+            self._status_params, element_ids, 'effects_per_startup', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     def create_status_model(self) -> None:
-        """Create batched FlowStatusesModel for flows with status.
+        """Create status variables and constraints for flows with status.
 
-        This method creates variables (active_hours, startup, shutdown, etc.) and constraints
-        for all flows with StatusParameters using a single batched model.
+        Creates:
+        - status|active_hours: For all flows with status
+        - status|startup, status|shutdown: For flows needing startup tracking
+        - status|inactive: For flows needing downtime tracking
+        - status|startup_count: For flows with startup limit
 
         Must be called AFTER create_variables() and create_constraints().
         """
         if not self.flows_with_status:
             return
 
-        from .features import FlowStatusesModel
+        import pandas as pd
 
-        self._statuses_model = FlowStatusesModel(
-            model=self.model,
-            status=self._variables.get('status'),
-            flows=self.flows_with_status,
-            previous_status_getter=self.get_previous_status,
-            name_prefix='status',
+        from .features import StatusHelpers
+
+        # Build params and previous_status dicts
+        self._status_params = {f.label_full: f.status_parameters for f in self.flows_with_status}
+        for flow in self.flows_with_status:
+            prev = self.get_previous_status(flow)
+            if prev is not None:
+                self._previous_status[flow.label_full] = prev
+
+        dim = self.dim_name
+        status = self._variables.get('status')
+
+        # Compute category lists
+        startup_tracking_ids = [
+            eid
+            for eid in self.status_ids
+            if (
+                self._status_params[eid].effects_per_startup
+                or self._status_params[eid].min_uptime is not None
+                or self._status_params[eid].max_uptime is not None
+                or self._status_params[eid].startup_limit is not None
+                or self._status_params[eid].force_startup_tracking
+            )
+        ]
+        downtime_tracking_ids = [
+            eid
+            for eid in self.status_ids
+            if self._status_params[eid].min_downtime is not None or self._status_params[eid].max_downtime is not None
+        ]
+        uptime_tracking_ids = [
+            eid
+            for eid in self.status_ids
+            if self._status_params[eid].min_uptime is not None or self._status_params[eid].max_uptime is not None
+        ]
+        startup_limit_ids = [eid for eid in self.status_ids if self._status_params[eid].startup_limit is not None]
+
+        # Get base coords
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+
+        total_hours = self.model.temporal_weight.sum(self.model.temporal_dims)
+
+        # === status|active_hours: ALL flows with status ===
+        active_hours_min = self._stack_bounds(
+            [self._status_params[eid].active_hours_min or 0 for eid in self.status_ids]
         )
-        self._statuses_model.create_variables()
-        self._statuses_model.create_constraints()
-        # Effect shares are collected by EffectsModel.finalize_shares()
+        active_hours_max_list = [self._status_params[eid].active_hours_max for eid in self.status_ids]
+        # Replace None with total_hours
+        active_hours_max = xr.where(
+            xr.DataArray([v is not None for v in active_hours_max_list], dims=[dim], coords={dim: self.status_ids}),
+            self._stack_bounds([v if v is not None else 0 for v in active_hours_max_list]),
+            total_hours,
+        )
 
-        logger.debug(f'FlowsModel created batched FlowStatusesModel for {len(self.flows_with_status)} flows')
+        active_hours_coords = xr.Coordinates({dim: pd.Index(self.status_ids, name=dim), **base_coords_dict})
+        self._variables['active_hours'] = self.model.add_variables(
+            lower=active_hours_min,
+            upper=active_hours_max,
+            coords=active_hours_coords,
+            name='status|active_hours',
+        )
+
+        # === status|startup, status|shutdown: Elements with startup tracking ===
+        if startup_tracking_ids:
+            temporal_coords = self.model.get_coords()
+            startup_coords = xr.Coordinates({dim: pd.Index(startup_tracking_ids, name=dim), **dict(temporal_coords)})
+            self._variables['startup'] = self.model.add_variables(
+                binary=True, coords=startup_coords, name='status|startup'
+            )
+            self._variables['shutdown'] = self.model.add_variables(
+                binary=True, coords=startup_coords, name='status|shutdown'
+            )
+
+        # === status|inactive: Elements with downtime tracking ===
+        if downtime_tracking_ids:
+            temporal_coords = self.model.get_coords()
+            inactive_coords = xr.Coordinates({dim: pd.Index(downtime_tracking_ids, name=dim), **dict(temporal_coords)})
+            self._variables['inactive'] = self.model.add_variables(
+                binary=True, coords=inactive_coords, name='status|inactive'
+            )
+
+        # === status|startup_count: Elements with startup limit ===
+        if startup_limit_ids:
+            startup_limit = self._stack_bounds(
+                [self._status_params[eid].startup_limit for eid in startup_limit_ids],
+            )
+            # Need to fix stack_bounds for subset
+            if not isinstance(startup_limit, (int, float)):
+                startup_limit = startup_limit.sel({dim: startup_limit_ids})
+            startup_count_coords = xr.Coordinates({dim: pd.Index(startup_limit_ids, name=dim), **base_coords_dict})
+            self._variables['startup_count'] = self.model.add_variables(
+                lower=0, upper=startup_limit, coords=startup_count_coords, name='status|startup_count'
+            )
+
+        # === CONSTRAINTS ===
+
+        # active_hours tracking: sum(status * weight) == active_hours
+        self.model.add_constraints(
+            self._variables['active_hours'] == self.model.sum_temporal(status),
+            name='status|active_hours',
+        )
+
+        # inactive complementary: status + inactive == 1
+        if downtime_tracking_ids:
+            status_subset = status.sel({dim: downtime_tracking_ids})
+            inactive = self._variables['inactive']
+            self.model.add_constraints(status_subset + inactive == 1, name='status|complementary')
+
+        # State transitions: startup, shutdown
+        if startup_tracking_ids:
+            status_subset = status.sel({dim: startup_tracking_ids})
+            startup = self._variables['startup']
+            shutdown = self._variables['shutdown']
+
+            # Transition constraint for t > 0
+            self.model.add_constraints(
+                startup.isel(time=slice(1, None)) - shutdown.isel(time=slice(1, None))
+                == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
+                name='status|switch|transition',
+            )
+
+            # Mutex constraint
+            self.model.add_constraints(startup + shutdown <= 1, name='status|switch|mutex')
+
+            # Initial constraint for t = 0 (if previous_status available)
+            if self._previous_status:
+                elements_with_initial = [eid for eid in startup_tracking_ids if eid in self._previous_status]
+                if elements_with_initial:
+                    prev_arrays = [
+                        self._previous_status[eid].expand_dims({dim: [eid]}) for eid in elements_with_initial
+                    ]
+                    prev_status_batched = xr.concat(prev_arrays, dim=dim)
+                    prev_state = prev_status_batched.isel(time=-1)
+                    startup_subset = startup.sel({dim: elements_with_initial})
+                    shutdown_subset = shutdown.sel({dim: elements_with_initial})
+                    status_initial = status_subset.sel({dim: elements_with_initial}).isel(time=0)
+
+                    self.model.add_constraints(
+                        startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
+                        name='status|switch|initial',
+                    )
+
+        # startup_count: sum(startup) == startup_count
+        if startup_limit_ids:
+            startup = self._variables['startup'].sel({dim: startup_limit_ids})
+            startup_count = self._variables['startup_count']
+            startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario', dim)]
+            self.model.add_constraints(startup_count == startup.sum(startup_temporal_dims), name='status|startup_count')
+
+        # Uptime tracking (per-element)
+        timestep_duration = self.model.timestep_duration
+        for elem_id in uptime_tracking_ids:
+            params = self._status_params[elem_id]
+            status_elem = status.sel({dim: elem_id})
+
+            previous_uptime = None
+            if elem_id in self._previous_status and params.min_uptime is not None:
+                previous_uptime = StatusHelpers.compute_previous_duration(
+                    self._previous_status[elem_id], target_state=1, timestep_duration=timestep_duration
+                )
+
+            StatusHelpers.add_consecutive_duration_tracking(
+                model=self.model,
+                state=status_elem,
+                name=f'{elem_id}|uptime',
+                timestep_duration=timestep_duration,
+                minimum_duration=params.min_uptime,
+                maximum_duration=params.max_uptime,
+                previous_duration=previous_uptime,
+            )
+
+        # Downtime tracking (per-element)
+        for elem_id in downtime_tracking_ids:
+            params = self._status_params[elem_id]
+            inactive = self._variables['inactive'].sel({dim: elem_id})
+
+            previous_downtime = None
+            if elem_id in self._previous_status and params.min_downtime is not None:
+                previous_downtime = StatusHelpers.compute_previous_duration(
+                    self._previous_status[elem_id], target_state=0, timestep_duration=timestep_duration
+                )
+
+            StatusHelpers.add_consecutive_duration_tracking(
+                model=self.model,
+                state=inactive,
+                name=f'{elem_id}|downtime',
+                timestep_duration=timestep_duration,
+                minimum_duration=params.min_downtime,
+                maximum_duration=params.max_downtime,
+                previous_duration=previous_downtime,
+            )
+
+        # Cluster cyclic constraints
+        if self.model.flow_system.clusters is not None:
+            cyclic_ids = [eid for eid in self.status_ids if self._status_params[eid].cluster_mode == 'cyclic']
+            if cyclic_ids:
+                status_cyclic = status.sel({dim: cyclic_ids})
+                self.model.add_constraints(
+                    status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
+                    name='status|cluster_cyclic',
+                )
+
+        logger.debug(
+            f'FlowsModel created status variables: {len(self.status_ids)} flows, '
+            f'{len(startup_tracking_ids)} with startup tracking'
+        )
 
     def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
         """Collect effect share specifications for all flows.

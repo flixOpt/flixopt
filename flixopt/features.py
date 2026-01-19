@@ -245,6 +245,164 @@ class InvestmentHelpers:
         return xr.concat(expanded, dim=dim_name, coords='minimal')
 
 
+class StatusHelpers:
+    """Static helper methods for status constraint creation.
+
+    These helpers contain the shared math for status constraints,
+    used by FlowsModel and ComponentStatusesModel.
+    """
+
+    @staticmethod
+    def add_consecutive_duration_tracking(
+        model: FlowSystemModel,
+        state: linopy.Variable,
+        name: str,
+        timestep_duration: xr.DataArray,
+        minimum_duration: float | xr.DataArray | None = None,
+        maximum_duration: float | xr.DataArray | None = None,
+        previous_duration: float | xr.DataArray | None = None,
+    ) -> linopy.Variable:
+        """Add consecutive duration tracking constraints for a binary state variable.
+
+        Creates:
+        - duration variable: tracks consecutive time in state
+        - upper bound: duration[t] <= state[t] * M
+        - forward constraint: duration[t+1] <= duration[t] + dt[t]
+        - backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
+        - optional initial constraints if previous_duration provided
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            state: Binary state variable (element, time).
+            name: Base name for the duration variable and constraints.
+            timestep_duration: Duration per timestep.
+            minimum_duration: Optional minimum duration constraint.
+            maximum_duration: Optional maximum duration constraint.
+            previous_duration: Optional previous duration for initial state.
+
+        Returns:
+            The created duration variable.
+        """
+        duration_dim = 'time'
+
+        # Big-M value
+        mega = timestep_duration.sum(duration_dim) + (previous_duration if previous_duration is not None else 0)
+
+        # Duration variable
+        upper_bound = maximum_duration if maximum_duration is not None else mega
+        duration = model.add_variables(
+            lower=0,
+            upper=upper_bound,
+            coords=state.coords,
+            name=f'{name}|duration',
+        )
+
+        # Upper bound: duration[t] <= state[t] * M
+        model.add_constraints(duration <= state * mega, name=f'{name}|duration|ub')
+
+        # Forward constraint: duration[t+1] <= duration[t] + duration_per_step[t]
+        model.add_constraints(
+            duration.isel({duration_dim: slice(1, None)})
+            <= duration.isel({duration_dim: slice(None, -1)}) + timestep_duration.isel({duration_dim: slice(None, -1)}),
+            name=f'{name}|duration|forward',
+        )
+
+        # Backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
+        model.add_constraints(
+            duration.isel({duration_dim: slice(1, None)})
+            >= duration.isel({duration_dim: slice(None, -1)})
+            + timestep_duration.isel({duration_dim: slice(None, -1)})
+            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
+            name=f'{name}|duration|backward',
+        )
+
+        # Initial constraints if previous_duration provided
+        if previous_duration is not None:
+            model.add_constraints(
+                duration.isel({duration_dim: 0})
+                <= state.isel({duration_dim: 0}) * (previous_duration + timestep_duration.isel({duration_dim: 0})),
+                name=f'{name}|duration|initial_ub',
+            )
+            model.add_constraints(
+                duration.isel({duration_dim: 0})
+                >= (state.isel({duration_dim: 0}) - 1) * mega
+                + previous_duration
+                + state.isel({duration_dim: 0}) * timestep_duration.isel({duration_dim: 0}),
+                name=f'{name}|duration|initial_lb',
+            )
+
+        return duration
+
+    @staticmethod
+    def compute_previous_duration(
+        previous_status: xr.DataArray,
+        target_state: int,
+        timestep_duration: xr.DataArray | float,
+    ) -> float:
+        """Compute consecutive duration of target_state at end of previous_status.
+
+        Args:
+            previous_status: Previous status DataArray (time dimension).
+            target_state: 1 for active (uptime), 0 for inactive (downtime).
+            timestep_duration: Duration per timestep.
+
+        Returns:
+            Total duration in state at end of previous period.
+        """
+        values = previous_status.values
+        count = 0
+        for v in reversed(values):
+            if (target_state == 1 and v > 0) or (target_state == 0 and v == 0):
+                count += 1
+            else:
+                break
+
+        # Multiply by timestep_duration
+        if hasattr(timestep_duration, 'mean'):
+            duration = float(timestep_duration.mean()) * count
+        else:
+            duration = timestep_duration * count
+        return duration
+
+    @staticmethod
+    def collect_status_effects(
+        params: dict[str, StatusParameters],
+        element_ids: list[str],
+        attr: str,
+        dim_name: str,
+    ) -> dict[str, xr.DataArray]:
+        """Collect status effects from params into a dict of DataArrays.
+
+        Args:
+            params: Dict mapping element_id -> StatusParameters.
+            element_ids: List of element IDs to collect from.
+            attr: Attribute name on StatusParameters (e.g., 'effects_per_active_hour').
+            dim_name: Dimension name for the DataArrays.
+
+        Returns:
+            Dict mapping effect_name -> DataArray with element dimension.
+        """
+        # Find all effect names across all elements
+        all_effects: set[str] = set()
+        for eid in element_ids:
+            effects = getattr(params[eid], attr) or {}
+            all_effects.update(effects.keys())
+
+        if not all_effects:
+            return {}
+
+        # Build DataArray for each effect
+        result = {}
+        for effect_name in all_effects:
+            values = []
+            for eid in element_ids:
+                effects = getattr(params[eid], attr) or {}
+                values.append(effects.get(effect_name, np.nan))
+            result[effect_name] = xr.DataArray(values, dims=[dim_name], coords={dim_name: element_ids})
+
+        return result
+
+
 class InvestmentModel(Submodel):
     """Mathematical model implementation for investment decisions.
 
@@ -419,50 +577,59 @@ class InvestmentProxy:
 
 
 class StatusProxy:
-    """Proxy providing access to batched StatusesModel for a specific element.
+    """Proxy providing access to batched status variables for a specific element.
 
     This class provides the same interface as StatusModel properties
-    but returns slices from the batched StatusesModel variables.
+    but returns slices from batched variables. Works with both FlowsModel
+    (for flows) and StatusesModel (for components).
     """
 
-    def __init__(self, statuses_model: StatusesModel, element_id: str):
-        self._statuses_model = statuses_model
+    def __init__(self, model, element_id: str):
+        """Initialize proxy.
+
+        Args:
+            model: FlowsModel or StatusesModel with get_variable method and _previous_status dict.
+            element_id: Element identifier for selecting from batched variables.
+        """
+        self._model = model
         self._element_id = element_id
 
     @property
     def status(self):
-        """Binary status variable for this element (from FlowsModel)."""
-        return self._statuses_model.get_status_variable(self._element_id)
+        """Binary status variable for this element."""
+        return self._model.get_variable('status', self._element_id)
 
     @property
     def active_hours(self):
         """Total active hours variable for this element."""
-        return self._statuses_model.get_variable('active_hours', self._element_id)
+        return self._model.get_variable('active_hours', self._element_id)
 
     @property
     def startup(self):
         """Startup variable for this element."""
-        return self._statuses_model.get_variable('startup', self._element_id)
+        return self._model.get_variable('startup', self._element_id)
 
     @property
     def shutdown(self):
         """Shutdown variable for this element."""
-        return self._statuses_model.get_variable('shutdown', self._element_id)
+        return self._model.get_variable('shutdown', self._element_id)
 
     @property
     def inactive(self):
         """Inactive variable for this element."""
-        return self._statuses_model.get_variable('inactive', self._element_id)
+        return self._model.get_variable('inactive', self._element_id)
 
     @property
     def startup_count(self):
         """Startup count variable for this element."""
-        return self._statuses_model.get_variable('startup_count', self._element_id)
+        return self._model.get_variable('startup_count', self._element_id)
 
     @property
     def _previous_status(self):
-        """Previous status for this element (from StatusesModel)."""
-        return self._statuses_model.get_previous_status(self._element_id)
+        """Previous status for this element."""
+        # Handle both FlowsModel (_previous_status) and StatusesModel (previous_status)
+        prev_dict = getattr(self._model, '_previous_status', None) or getattr(self._model, 'previous_status', {})
+        return prev_dict.get(self._element_id)
 
 
 class StatusesModel:
@@ -482,8 +649,8 @@ class StatusesModel:
     - with_downtime_tracking: Elements needing inactive variable
     - with_startup_limit: Elements needing startup_count variable
 
-    This is a base class. Use child classes (FlowStatusesModel, ComponentStatusesModel)
-    that know how to access element-specific status parameters.
+    This is a base class. Use ComponentStatusFeaturesModel for component-level status.
+    Flow-level status is now handled directly by FlowsModel.create_status_model().
     """
 
     # These must be set by child classes in their __init__
@@ -1097,45 +1264,6 @@ class StatusesModel:
     def startup_count(self) -> linopy.Variable | None:
         """Batched startup_count variable with element dimension."""
         return self._variables.get('startup_count')
-
-
-class FlowStatusesModel(StatusesModel):
-    """Type-level status model for flows."""
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        status: linopy.Variable,
-        flows: list,
-        previous_status_getter: callable | None = None,
-        name_prefix: str = 'status',
-    ):
-        """Initialize the flow status model.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            status: Batched status variable with flow dimension.
-            flows: List of Flow objects with status_parameters.
-            previous_status_getter: Optional function (flow) -> DataArray for previous status.
-            name_prefix: Prefix for variable names.
-        """
-        super().__init__(
-            model=model,
-            status=status,
-            dim_name='flow',
-            name_prefix=name_prefix,
-        )
-        self.flows = flows
-        self.element_ids = [f.label_full for f in flows]
-        self.params = {f.label_full: f.status_parameters for f in flows}
-        # Build previous_status dict
-        self.previous_status = {}
-        if previous_status_getter is not None:
-            for f in flows:
-                prev = previous_status_getter(f)
-                if prev is not None:
-                    self.previous_status[f.label_full] = prev
-        self._log_init()
 
 
 class ComponentStatusFeaturesModel(StatusesModel):
