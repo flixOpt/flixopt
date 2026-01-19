@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from .core import FlowSystemDimensions
     from .interface import (
         InvestParameters,
-        InvestParametersBatched,
         Piecewise,
         StatusParameters,
     )
@@ -203,15 +202,14 @@ class InvestmentsModel:
     - mandatory: Required investment (only size variable, with bounds)
     - non_mandatory: Optional investment (size + invested variables, state-controlled bounds)
 
+    This is a base class. Use child classes (FlowInvestmentsModel, StorageInvestmentsModel)
+    that know how to access element-specific investment parameters.
+
     Example:
-        >>> from flixopt.interface import InvestParametersBatched
-        >>> params = InvestParametersBatched.from_elements(flows_with_investment, ...)
-        >>> investments_model = InvestmentsModel(
+        >>> investments_model = FlowInvestmentsModel(
         ...     model=flow_system_model,
-        ...     parameters=params,
+        ...     flows=flows_with_investment,
         ...     size_category=VariableCategory.FLOW_SIZE,
-        ...     name_prefix='flow',
-        ...     dim_name='flow',
         ... )
         >>> investments_model.create_variables()
         >>> investments_model.create_constraints()
@@ -220,7 +218,7 @@ class InvestmentsModel:
     def __init__(
         self,
         model: FlowSystemModel,
-        parameters: InvestParametersBatched,
+        elements: list,
         size_category: VariableCategory = VariableCategory.SIZE,
         name_prefix: str = 'investment',
         dim_name: str = 'element',
@@ -229,7 +227,7 @@ class InvestmentsModel:
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            parameters: InvestParametersBatched with concatenated parameters.
+            elements: List of elements with investment parameters.
             size_category: Category for size variable expansion.
             name_prefix: Prefix for variable names (e.g., 'flow', 'storage').
             dim_name: Dimension name for element grouping (e.g., 'flow', 'storage').
@@ -241,8 +239,7 @@ class InvestmentsModel:
 
         self._logger = logging.getLogger('flixopt')
         self.model = model
-        self._batched_parameters = parameters
-        self.element_ids = parameters.element_ids
+        self.elements = elements
         self._size_category = size_category
         self._name_prefix = name_prefix
         self.dim_name = dim_name
@@ -259,17 +256,98 @@ class InvestmentsModel:
             f'({len(self.mandatory_ids)} mandatory, {len(self.non_mandatory_ids)} non-mandatory)'
         )
 
+    # === Abstract methods - child classes must implement ===
+
+    def _get_params(self, element) -> InvestParameters:
+        """Get InvestParameters from an element. Override in child classes."""
+        raise NotImplementedError('Child classes must implement _get_params')
+
+    def _get_element_id(self, element) -> str:
+        """Get element identifier. Override in child classes."""
+        raise NotImplementedError('Child classes must implement _get_element_id')
+
     # === Properties for element categorization ===
 
     @property
+    def element_ids(self) -> list[str]:
+        """IDs of all elements with investment."""
+        return [self._get_element_id(e) for e in self.elements]
+
+    @property
     def mandatory_ids(self) -> list[str]:
-        """IDs of mandatory elements (derived from batched parameters)."""
-        return self._batched_parameters.get_elements_for_mask(self._batched_parameters.mandatory)
+        """IDs of mandatory elements."""
+        return [self._get_element_id(e) for e in self.elements if self._get_params(e).mandatory]
 
     @property
     def non_mandatory_ids(self) -> list[str]:
-        """IDs of non-mandatory elements (derived from batched parameters)."""
-        return self._batched_parameters.get_elements_for_mask(self._batched_parameters.is_non_mandatory)
+        """IDs of non-mandatory elements."""
+        return [self._get_element_id(e) for e in self.elements if not self._get_params(e).mandatory]
+
+    def _get_element_by_id(self, element_id: str):
+        """Get element by its ID."""
+        for e in self.elements:
+            if self._get_element_id(e) == element_id:
+                return e
+        return None
+
+    # === Parameter collection helpers ===
+
+    def _collect_param(self, attr: str, element_ids: list[str] | None = None) -> xr.DataArray:
+        """Collect a scalar or DataArray parameter from elements."""
+        xr = self._xr
+        if element_ids is None:
+            elements = self.elements
+            ids = self.element_ids
+        else:
+            id_set = set(element_ids)
+            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
+            ids = element_ids
+
+        values = []
+        for e in elements:
+            val = getattr(self._get_params(e), attr)
+            if val is None:
+                values.append(np.nan)
+            else:
+                values.append(val)
+
+        # Handle mixed scalar/DataArray values
+        if all(np.isscalar(v) or (isinstance(v, float) and np.isnan(v)) for v in values):
+            return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
+        else:
+            # Convert scalars to DataArrays and concatenate
+            return self._stack_bounds([xr.DataArray(v) if np.isscalar(v) else v for v in values], xr, element_ids=ids)
+
+    def _collect_effects(self, attr: str, element_ids: list[str] | None = None) -> dict[str, xr.DataArray]:
+        """Collect effects dict from elements into a dict of DataArrays."""
+        xr = self._xr
+        if element_ids is None:
+            elements = self.elements
+            ids = self.element_ids
+        else:
+            id_set = set(element_ids)
+            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
+            ids = element_ids
+
+        # Find all effect names across all elements
+        all_effects: set[str] = set()
+        for e in elements:
+            effects = getattr(self._get_params(e), attr) or {}
+            all_effects.update(effects.keys())
+
+        if not all_effects:
+            return {}
+
+        # Build DataArray for each effect
+        result = {}
+        for effect_name in all_effects:
+            values = []
+            for e in elements:
+                effects = getattr(self._get_params(e), attr) or {}
+                values.append(effects.get(effect_name, np.nan))
+            result[effect_name] = xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
+
+        return result
 
     def _stack_bounds(self, bounds_list: list, xr, element_ids: list[str] | None = None) -> xr.DataArray:
         """Stack bounds arrays with different dimensions into single DataArray.
@@ -329,7 +407,6 @@ class InvestmentsModel:
 
         xr = self._xr
         pd = self._pd
-        params = self._batched_parameters
 
         # Get base coords (period, scenario) - may be None if neither exist
         base_coords = self.model.get_coords(['period', 'scenario'])
@@ -338,19 +415,26 @@ class InvestmentsModel:
         dim = self.dim_name
 
         # === size: ALL elements ===
-        # Get bounds from batched parameters
-        size_min = params.minimum_or_fixed_size
-        size_max = params.maximum_or_fixed_size
+        # Collect bounds from elements
+        size_min = self._collect_param('minimum_or_fixed_size')
+        size_max = self._collect_param('maximum_or_fixed_size')
+        linked_periods = self._collect_param('linked_periods')
 
         # Handle linked_periods masking
-        if params.linked_periods is not None:
-            linked = params.linked_periods.fillna(1.0)  # NaN means no linking, treat as 1
+        if linked_periods.notnull().any():
+            linked = linked_periods.fillna(1.0)  # NaN means no linking, treat as 1
             size_min = size_min * linked
             size_max = size_max * linked
 
+        # Build mandatory mask
+        mandatory_mask = xr.DataArray(
+            [self._get_params(e).mandatory for e in self.elements],
+            dims=[dim],
+            coords={dim: self.element_ids},
+        )
+
         # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
-        # Use where to set lower bound to 0 for non-mandatory elements
-        lower_bounds = xr.where(params.mandatory, size_min, 0)
+        lower_bounds = xr.where(mandatory_mask, size_min, 0)
         upper_bounds = size_max
 
         # Build coords with element-type dimension (e.g., 'flow', 'storage')
@@ -410,15 +494,14 @@ class InvestmentsModel:
             return
 
         xr = self._xr
-        params = self._batched_parameters
         dim = self.dim_name
 
         size_var = self._variables['size']
         invested_var = self._variables['invested']
 
-        # Get bounds for non-mandatory elements from batched parameters
-        min_bounds = params.minimum_or_fixed_size.sel({dim: self.non_mandatory_ids})
-        max_bounds = params.maximum_or_fixed_size.sel({dim: self.non_mandatory_ids})
+        # Collect bounds for non-mandatory elements
+        min_bounds = self._collect_param('minimum_or_fixed_size', self.non_mandatory_ids)
+        max_bounds = self._collect_param('maximum_or_fixed_size', self.non_mandatory_ids)
 
         # Select size for non-mandatory elements
         size_non_mandatory = size_var.sel({dim: self.non_mandatory_ids})
@@ -448,21 +531,20 @@ class InvestmentsModel:
 
     def _add_linked_periods_constraints(self) -> None:
         """Add linked periods constraints for elements that have them."""
-        params = self._batched_parameters
-        if params.linked_periods is None:
-            return
-
         size_var = self._variables['size']
         dim = self.dim_name
 
         # Get elements with linked periods
-        element_ids_with_linking = params.get_elements_for_mask(params.has_linked_periods)
+        element_ids_with_linking = [
+            self._get_element_id(e) for e in self.elements if self._get_params(e).linked_periods is not None
+        ]
         if not element_ids_with_linking:
             return
 
         for element_id in element_ids_with_linking:
+            elem = self._get_element_by_id(element_id)
+            linked = self._get_params(elem).linked_periods
             element_size = size_var.sel({dim: element_id})
-            linked = params.linked_periods.sel({dim: element_id})
             masked_size = element_size.where(linked, drop=True)
             if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
                 self.model.add_constraints(
@@ -475,29 +557,34 @@ class InvestmentsModel:
     @property
     def elements_with_per_size_effects_ids(self) -> list[str]:
         """IDs of elements with effects_of_investment_per_size."""
-        params = self._batched_parameters
-        return params.get_elements_for_mask(params.has_effects_of_investment_per_size)
+        return [self._get_element_id(e) for e in self.elements if self._get_params(e).effects_of_investment_per_size]
 
     @property
     def non_mandatory_with_fix_effects_ids(self) -> list[str]:
         """IDs of non-mandatory elements with effects_of_investment."""
-        params = self._batched_parameters
-        mask = params.is_non_mandatory & params.has_effects_of_investment
-        return params.get_elements_for_mask(mask)
+        return [
+            self._get_element_id(e)
+            for e in self.elements
+            if not self._get_params(e).mandatory and self._get_params(e).effects_of_investment
+        ]
 
     @property
     def non_mandatory_with_retirement_effects_ids(self) -> list[str]:
         """IDs of non-mandatory elements with effects_of_retirement."""
-        params = self._batched_parameters
-        mask = params.is_non_mandatory & params.has_effects_of_retirement
-        return params.get_elements_for_mask(mask)
+        return [
+            self._get_element_id(e)
+            for e in self.elements
+            if not self._get_params(e).mandatory and self._get_params(e).effects_of_retirement
+        ]
 
     @property
     def mandatory_with_fix_effects_ids(self) -> list[str]:
         """IDs of mandatory elements with effects_of_investment."""
-        params = self._batched_parameters
-        mask = params.mandatory & params.has_effects_of_investment
-        return params.get_elements_for_mask(mask)
+        return [
+            self._get_element_id(e)
+            for e in self.elements
+            if self._get_params(e).mandatory and self._get_params(e).effects_of_investment
+        ]
 
     # === Effect DataArray properties ===
 
@@ -511,10 +598,8 @@ class InvestmentsModel:
         element_ids = self.elements_with_per_size_effects_ids
         if not element_ids:
             return None
-        return self._build_factors_from_batched(
-            self._batched_parameters.effects_of_investment_per_size,
-            element_ids,
-        )
+        effects_dict = self._collect_effects('effects_of_investment_per_size', element_ids)
+        return self._build_factors_from_dict(effects_dict, element_ids)
 
     @property
     def effects_of_investment(self) -> xr.DataArray | None:
@@ -526,10 +611,8 @@ class InvestmentsModel:
         element_ids = self.non_mandatory_with_fix_effects_ids
         if not element_ids:
             return None
-        return self._build_factors_from_batched(
-            self._batched_parameters.effects_of_investment,
-            element_ids,
-        )
+        effects_dict = self._collect_effects('effects_of_investment', element_ids)
+        return self._build_factors_from_dict(effects_dict, element_ids)
 
     @property
     def effects_of_retirement(self) -> xr.DataArray | None:
@@ -541,19 +624,17 @@ class InvestmentsModel:
         element_ids = self.non_mandatory_with_retirement_effects_ids
         if not element_ids:
             return None
-        return self._build_factors_from_batched(
-            self._batched_parameters.effects_of_retirement,
-            element_ids,
-        )
+        effects_dict = self._collect_effects('effects_of_retirement', element_ids)
+        return self._build_factors_from_dict(effects_dict, element_ids)
 
-    def _build_factors_from_batched(
+    def _build_factors_from_dict(
         self, effects_dict: dict[str, xr.DataArray], element_ids: list[str]
     ) -> xr.DataArray | None:
-        """Build factor array with (element, effect) dims from batched effects dict.
+        """Build factor array with (element, effect) dims from effects dict.
 
         Args:
             effects_dict: Dict mapping effect_name -> DataArray(element_dim)
-            element_ids: Element IDs to include (subset selection)
+            element_ids: Element IDs to include
 
         Returns:
             DataArray with (element, effect) dims, NaN for missing effects.
@@ -561,11 +642,12 @@ class InvestmentsModel:
         if not effects_dict:
             return None
 
+        xr = self._xr
         dim = self.dim_name
         effect_ids = list(effects_dict.keys())
 
         # Stack effects into (element, effect) array
-        effect_arrays = [effects_dict[eff].sel({dim: element_ids}) for eff in effect_ids]
+        effect_arrays = [effects_dict[eff] for eff in effect_ids]
         result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
 
         # Transpose to (element, effect) order
@@ -578,15 +660,13 @@ class InvestmentsModel:
         - Mandatory fixed effects (always incurred, not dependent on invested variable)
         - Retirement constant parts (the +factor in -invested*factor + factor)
         """
-        params = self._batched_parameters
-        dim = self.dim_name
-
         # Mandatory fixed effects
         for element_id in self.mandatory_with_fix_effects_ids:
+            elem = self._get_element_by_id(element_id)
+            elem_effects = self._get_params(elem).effects_of_investment or {}
             effects_dict = {}
-            for effect_name, effect_arr in params.effects_of_investment.items():
-                val = effect_arr.sel({dim: element_id})
-                if not np.isnan(val).all():
+            for effect_name, val in elem_effects.items():
+                if val is not None and not (np.isscalar(val) and np.isnan(val)):
                     effects_dict[effect_name] = val
             if effects_dict:
                 self.model.effects.add_share_to_effects(
@@ -597,10 +677,11 @@ class InvestmentsModel:
 
         # Retirement constant parts
         for element_id in self.non_mandatory_with_retirement_effects_ids:
+            elem = self._get_element_by_id(element_id)
+            elem_effects = self._get_params(elem).effects_of_retirement or {}
             effects_dict = {}
-            for effect_name, effect_arr in params.effects_of_retirement.items():
-                val = effect_arr.sel({dim: element_id})
-                if not np.isnan(val).all():
+            for effect_name, val in elem_effects.items():
+                if val is not None and not (np.isscalar(val) and np.isnan(val)):
                     effects_dict[effect_name] = val
             if effects_dict:
                 self.model.effects.add_share_to_effects(
@@ -630,6 +711,86 @@ class InvestmentsModel:
     def invested(self) -> linopy.Variable | None:
         """Batched invested variable with element-type dimension (non-mandatory only)."""
         return self._variables.get('invested')
+
+
+class FlowInvestmentsModel(InvestmentsModel):
+    """Type-level investment model for flows.
+
+    Implements the abstract methods from InvestmentsModel to access
+    flow-specific investment parameters directly.
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        flows: list,
+        size_category: VariableCategory = VariableCategory.FLOW_SIZE,
+        name_prefix: str = 'flow',
+    ):
+        """Initialize the flow investment model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            flows: List of Flow objects with invest_parameters.
+            size_category: Category for size variable expansion.
+            name_prefix: Prefix for variable names.
+        """
+        super().__init__(
+            model=model,
+            elements=flows,
+            size_category=size_category,
+            name_prefix=name_prefix,
+            dim_name='flow',
+        )
+
+    def _get_params(self, flow) -> InvestParameters:
+        """Get InvestParameters from a flow."""
+        return flow.invest_parameters
+
+    def _get_element_id(self, flow) -> str:
+        """Get flow identifier (label_full)."""
+        return flow.label_full
+
+
+class StorageInvestmentsModel(InvestmentsModel):
+    """Type-level investment model for storages.
+
+    Implements the abstract methods from InvestmentsModel to access
+    storage-specific investment parameters directly.
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        storages: list,
+        size_category: VariableCategory = VariableCategory.STORAGE_SIZE,
+        name_prefix: str = 'storage_investment',
+        dim_name: str = 'storage',
+    ):
+        """Initialize the storage investment model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            storages: List of Storage objects with invest_parameters.
+            size_category: Category for size variable expansion.
+            name_prefix: Prefix for variable names.
+            dim_name: Dimension name for storage grouping.
+        """
+        super().__init__(
+            model=model,
+            elements=storages,
+            size_category=size_category,
+            name_prefix=name_prefix,
+            dim_name=dim_name,
+        )
+
+    def _get_params(self, storage) -> InvestParameters:
+        """Get InvestParameters from a storage."""
+        return storage.invest_parameters
+
+    def _get_element_id(self, storage) -> str:
+        """Get storage identifier (label)."""
+        return storage.label
 
 
 class StatusProxy:

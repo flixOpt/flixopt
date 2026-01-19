@@ -1825,25 +1825,6 @@ class StoragesModel:
             name='storage|cluster_cyclic',
         )
 
-    @property
-    def invest_parameters_batched(self):
-        """Concatenated investment parameters from all storages with investment.
-
-        Returns:
-            InvestParametersBatched with all investment parameters stacked by storage dimension.
-            Returns None if no storages have investment parameters.
-        """
-        if not self.storages_with_investment:
-            return None
-
-        from .interface import InvestParametersBatched
-
-        return InvestParametersBatched.from_elements(
-            elements=self.storages_with_investment,
-            parameters_getter=lambda s: s.capacity_in_flow_hours,
-            dim_name=self.dim_name,
-        )
-
     def create_investment_model(self) -> None:
         """Create batched InvestmentsModel for storages with investment.
 
@@ -1855,12 +1836,12 @@ class StoragesModel:
         if not self.storages_with_investment:
             return
 
-        from .features import InvestmentsModel
+        from .features import StorageInvestmentsModel
         from .structure import VariableCategory
 
-        self._investments_model = InvestmentsModel(
+        self._investments_model = StorageInvestmentsModel(
             model=self.model,
-            parameters=self.invest_parameters_batched,
+            storages=self.storages_with_investment,
             size_category=VariableCategory.STORAGE_SIZE,
             name_prefix='storage_investment',
             dim_name=self.dim_name,  # Use 'storage' dimension to match StoragesModel
@@ -1869,9 +1850,7 @@ class StoragesModel:
         self._investments_model.create_constraints()
         # Effect shares are collected centrally in EffectsModel.finalize_shares()
 
-        logger.debug(
-            f'StoragesModel created batched InvestmentsModel for {len(self.storages_with_investment)} storages'
-        )
+        logger.debug(f'StoragesModel created StorageInvestmentsModel for {len(self.storages_with_investment)} storages')
 
     def create_investment_constraints(self) -> None:
         """Create batched scaled bounds linking charge_state to investment size.

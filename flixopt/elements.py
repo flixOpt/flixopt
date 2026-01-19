@@ -1222,20 +1222,19 @@ class FlowsModel(TypeModel):
         if not self.flows_with_investment:
             return
 
-        from .features import InvestmentsModel
+        from .features import FlowInvestmentsModel
 
-        self._investments_model = InvestmentsModel(
+        self._investments_model = FlowInvestmentsModel(
             model=self.model,
-            parameters=self.invest_parameters_batched,
+            flows=self.flows_with_investment,
             size_category=VariableCategory.FLOW_SIZE,
             name_prefix='flow',
-            dim_name='flow',
         )
         self._investments_model.create_variables()
         self._investments_model.create_constraints()
         # Effect shares are collected by EffectsModel.finalize_shares()
 
-        logger.debug(f'FlowsModel created batched InvestmentsModel for {len(self.flows_with_investment)} flows')
+        logger.debug(f'FlowsModel created FlowInvestmentsModel for {len(self.flows_with_investment)} flows')
 
     def create_status_model(self) -> None:
         """Create batched FlowStatusesModel for flows with status.
@@ -1373,25 +1372,6 @@ class FlowsModel(TypeModel):
             previous_arrays.append(previous_status)
 
         return xr.concat(previous_arrays, dim=self.dim_name)
-
-    @property
-    def invest_parameters_batched(self):
-        """Concatenated investment parameters from all flows with investment.
-
-        Returns:
-            InvestParametersBatched with all investment parameters stacked by flow dimension.
-            Returns None if no flows have investment parameters.
-        """
-        if not self.flows_with_investment:
-            return None
-
-        from .interface import InvestParametersBatched
-
-        return InvestParametersBatched.from_elements(
-            elements=self.flows_with_investment,
-            parameters_getter=lambda f: f.size,
-            dim_name=self.dim_name,
-        )
 
 
 class BusesModel(TypeModel):
