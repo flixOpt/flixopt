@@ -49,20 +49,30 @@ class SharesModel:
     and multiply by variables with (contributor, time/period) dimensions. The result
     is summed over the contributor dimension to get (effect, time/period) shares.
 
+    Registration Pattern:
+        1. Build factor array: `factors = shares.build_factors(elements, effects_getter, dim_name)`
+        2. Get batched variable: `variable = self._variables['rate']`
+        3. Register: `shares.register_temporal(variable, factors, dim_name)`
+
     Example:
         >>> shares = SharesModel(model, effect_ids=['costs', 'CO2'])
+        >>>
         >>> # FlowsModel registers flow effect shares
-        >>> shares.register_temporal(
-        ...     variable=flow_rate,  # (flow, time)
-        ...     factors=flow_factors,  # (flow, effect)
+        >>> factors = shares.build_factors(
+        ...     elements=flows_with_effects,
+        ...     effects_getter=lambda f: f.effects_per_flow_hour,
         ...     contributor_dim='flow',
         ... )
+        >>> shares.register_temporal(flow_hours, factors, 'flow')
+        >>>
         >>> # StatusesModel registers running hour shares
-        >>> shares.register_temporal(
-        ...     variable=status,  # (component, time)
-        ...     factors=running_factors,  # (component, effect)
-        ...     contributor_dim='component',
+        >>> factors = shares.build_factors(
+        ...     elements=flows_with_status,
+        ...     effects_getter=lambda f: f.status_parameters.effects_per_active_hour,
+        ...     contributor_dim='flow',
         ... )
+        >>> shares.register_temporal(status_hours, factors, 'flow')
+        >>>
         >>> # Creates share|temporal variable with (effect, time) dims
         >>> shares.create_variables_and_constraints()
     """
@@ -76,6 +86,70 @@ class SharesModel:
         # Created variables (for external access)
         self.share_temporal: linopy.Variable | None = None
         self.share_periodic: linopy.Variable | None = None
+
+    def build_factors(
+        self,
+        elements: list,
+        effects_getter: callable,
+        contributor_dim: str,
+        id_getter: callable | None = None,
+    ) -> tuple[xr.DataArray | None, list[str] | None]:
+        """Build factor array with (contributor, effect) dimensions.
+
+        This is a helper method for building the factor array needed for registration.
+        It handles sparse effects (elements without a particular effect get 0).
+
+        Args:
+            elements: List of elements with effects (e.g., flows, components)
+            effects_getter: Function to get effects dict from element.
+                e.g., `lambda f: f.effects_per_flow_hour`
+                Should return dict[effect_id, factor] or None
+            contributor_dim: Name of the contributor dimension ('flow', 'component', etc.)
+            id_getter: Optional function to get element ID. Defaults to `e.label_full`
+
+        Returns:
+            Tuple of (factors DataArray, contributor_ids list) or (None, None) if no factors.
+            The factors DataArray has shape (n_contributors, n_effects) with dims
+            [contributor_dim, 'effect'].
+
+        Example:
+            >>> factors, ids = shares.build_factors(
+            ...     elements=flows_with_effects,
+            ...     effects_getter=lambda f: f.effects_per_flow_hour,
+            ...     contributor_dim='flow',
+            ... )
+            >>> # factors: DataArray with dims ['flow', 'effect']
+            >>> # ids: ['Boiler(gas_in)', 'HP(elec_in)', ...]
+        """
+        if not elements:
+            return None, None
+
+        def default_id_getter(e):
+            return e.label_full
+
+        if id_getter is None:
+            id_getter = default_id_getter
+
+        contributor_ids = [id_getter(e) for e in elements]
+
+        # Build 2D factor array: (contributor, effect)
+        # Initialize with zeros for sparse handling
+        factor_data = {effect_id: [] for effect_id in self.effect_ids}
+
+        for elem in elements:
+            effects_dict = effects_getter(elem)
+            for effect_id in self.effect_ids:
+                factor = effects_dict.get(effect_id, 0) if effects_dict else 0
+                factor_data[effect_id].append(factor)
+
+        # Convert to DataArray with (contributor, effect) dims
+        factors = xr.DataArray(
+            [[factor_data[eid][i] for eid in self.effect_ids] for i in range(len(contributor_ids))],
+            coords={contributor_dim: contributor_ids, 'effect': self.effect_ids},
+            dims=[contributor_dim, 'effect'],
+        )
+
+        return factors, contributor_ids
 
     def register_temporal(
         self,
