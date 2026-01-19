@@ -1263,18 +1263,18 @@ class FlowsModel(TypeModel):
         base_coords_dict = dict(base_coords) if base_coords is not None else {}
 
         # Use cached properties for bounds
-        size_min = self._investment_size_minimum_subset
-        size_max = self._investment_size_maximum_subset
+        size_min = self._size_lower
+        size_max = self._size_upper
 
         # Handle linked_periods masking
-        linked_periods = self._investment_linked_periods_subset
+        linked_periods = self._linked_periods_mask
         if linked_periods is not None:
             linked = linked_periods.fillna(1.0)
             size_min = size_min * linked
             size_max = size_max * linked
 
         # Use cached mandatory mask
-        mandatory_mask = self._investment_mandatory_mask
+        mandatory_mask = self._mandatory_mask
 
         # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
         lower_bounds = xr.where(mandatory_mask, size_min, 0)
@@ -1310,8 +1310,8 @@ class FlowsModel(TypeModel):
                 model=self.model,
                 size_var=size_var,
                 invested_var=invested_var,
-                min_bounds=self._optional_investment_size_minimum,
-                max_bounds=self._optional_investment_size_maximum,
+                min_bounds=self._optional_lower,
+                max_bounds=self._optional_upper,
                 element_ids=non_mandatory_ids,
                 dim_name=dim,
                 name_prefix='flow',
@@ -1759,8 +1759,8 @@ class FlowsModel(TypeModel):
         return [f.label_full for f in self.flows_with_investment if f.size.mandatory]
 
     @cached_property
-    def _investment_size_minimum_subset(self) -> xr.DataArray:
-        """(flow,) - minimum size for investment flows only. Uses investment_ids coordinate."""
+    def _size_lower(self) -> xr.DataArray:
+        """(flow,) - minimum size for investment flows."""
         from .features import InvestmentHelpers
 
         element_ids = self.investment_ids
@@ -1768,8 +1768,8 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @cached_property
-    def _investment_size_maximum_subset(self) -> xr.DataArray:
-        """(flow,) - maximum size for investment flows only. Uses investment_ids coordinate."""
+    def _size_upper(self) -> xr.DataArray:
+        """(flow,) - maximum size for investment flows."""
         from .features import InvestmentHelpers
 
         element_ids = self.investment_ids
@@ -1777,7 +1777,7 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @cached_property
-    def _investment_linked_periods_subset(self) -> xr.DataArray | None:
+    def _linked_periods_mask(self) -> xr.DataArray | None:
         """(flow, period) - linked periods for investment flows. None if no linking."""
         from .features import InvestmentHelpers
 
@@ -1790,15 +1790,15 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @cached_property
-    def _investment_mandatory_mask(self) -> xr.DataArray:
-        """(flow,) bool - True if mandatory, False if optional. Uses investment_ids coordinate."""
+    def _mandatory_mask(self) -> xr.DataArray:
+        """(flow,) bool - True if mandatory, False if optional."""
         element_ids = self.investment_ids
         values = [f.size.mandatory for f in self.flows_with_investment]
         return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: element_ids})
 
     @cached_property
-    def _optional_investment_size_minimum(self) -> xr.DataArray | None:
-        """(flow,) - minimum size for optional investment flows only."""
+    def _optional_lower(self) -> xr.DataArray | None:
+        """(flow,) - minimum size for optional investment flows."""
         if not self.optional_investment_ids:
             return None
         from .features import InvestmentHelpers
@@ -1809,8 +1809,8 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @cached_property
-    def _optional_investment_size_maximum(self) -> xr.DataArray | None:
-        """(flow,) - maximum size for optional investment flows only."""
+    def _optional_upper(self) -> xr.DataArray | None:
+        """(flow,) - maximum size for optional investment flows."""
         if not self.optional_investment_ids:
             return None
         from .features import InvestmentHelpers
