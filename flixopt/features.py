@@ -26,6 +26,225 @@ if TYPE_CHECKING:
     from .types import Numeric_PS, Numeric_TPS
 
 
+# =============================================================================
+# Helper functions for shared constraint math
+# =============================================================================
+
+
+class InvestmentHelpers:
+    """Static helper methods for investment constraint creation.
+
+    These helpers contain the shared math for investment constraints,
+    used by FlowsModel and StoragesModel.
+    """
+
+    @staticmethod
+    def add_optional_size_bounds(
+        model: FlowSystemModel,
+        size_var: linopy.Variable,
+        invested_var: linopy.Variable,
+        min_bounds: xr.DataArray,
+        max_bounds: xr.DataArray,
+        element_ids: list[str],
+        dim_name: str,
+        name_prefix: str,
+    ) -> None:
+        """Add state-controlled bounds for optional (non-mandatory) investments.
+
+        Creates constraints: invested * min <= size <= invested * max
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            size_var: Size variable (already selected to non-mandatory elements).
+            invested_var: Binary invested variable.
+            min_bounds: Minimum size bounds DataArray.
+            max_bounds: Maximum size bounds DataArray.
+            element_ids: List of element IDs for these constraints.
+            dim_name: Dimension name (e.g., 'flow', 'storage').
+            name_prefix: Prefix for constraint names (e.g., 'flow', 'storage').
+        """
+        from .config import CONFIG
+
+        epsilon = CONFIG.Modeling.epsilon
+        effective_min = xr.where(min_bounds > epsilon, min_bounds, epsilon)
+
+        size_subset = size_var.sel({dim_name: element_ids})
+
+        model.add_constraints(
+            size_subset >= invested_var * effective_min,
+            name=f'{name_prefix}|size|lb',
+        )
+        model.add_constraints(
+            size_subset <= invested_var * max_bounds,
+            name=f'{name_prefix}|size|ub',
+        )
+
+    @staticmethod
+    def add_linked_periods_constraints(
+        model: FlowSystemModel,
+        size_var: linopy.Variable,
+        params: dict[str, InvestParameters],
+        element_ids: list[str],
+        dim_name: str,
+    ) -> None:
+        """Add linked periods constraints for elements that have them.
+
+        For elements with linked_periods, constrains size to be equal
+        across linked periods.
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            size_var: Size variable.
+            params: Dict mapping element_id -> InvestParameters.
+            element_ids: List of all element IDs.
+            dim_name: Dimension name (e.g., 'flow', 'storage').
+        """
+        element_ids_with_linking = [eid for eid in element_ids if params[eid].linked_periods is not None]
+        if not element_ids_with_linking:
+            return
+
+        for element_id in element_ids_with_linking:
+            linked = params[element_id].linked_periods
+            element_size = size_var.sel({dim_name: element_id})
+            masked_size = element_size.where(linked, drop=True)
+            if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
+                model.add_constraints(
+                    masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                    name=f'{element_id}|linked_periods',
+                )
+
+    @staticmethod
+    def collect_effects(
+        params: dict[str, InvestParameters],
+        element_ids: list[str],
+        attr: str,
+        dim_name: str,
+    ) -> dict[str, xr.DataArray]:
+        """Collect effects dict from params into a dict of DataArrays.
+
+        Args:
+            params: Dict mapping element_id -> InvestParameters.
+            element_ids: List of element IDs to collect from.
+            attr: Attribute name on InvestParameters (e.g., 'effects_of_investment_per_size').
+            dim_name: Dimension name for the DataArrays.
+
+        Returns:
+            Dict mapping effect_name -> DataArray with element dimension.
+        """
+        # Find all effect names across all elements
+        all_effects: set[str] = set()
+        for eid in element_ids:
+            effects = getattr(params[eid], attr) or {}
+            all_effects.update(effects.keys())
+
+        if not all_effects:
+            return {}
+
+        # Build DataArray for each effect
+        result = {}
+        for effect_name in all_effects:
+            values = []
+            for eid in element_ids:
+                effects = getattr(params[eid], attr) or {}
+                values.append(effects.get(effect_name, np.nan))
+            result[effect_name] = xr.DataArray(values, dims=[dim_name], coords={dim_name: element_ids})
+
+        return result
+
+    @staticmethod
+    def build_effect_factors(
+        effects_dict: dict[str, xr.DataArray],
+        element_ids: list[str],
+        dim_name: str,
+    ) -> xr.DataArray | None:
+        """Build factor array with (element, effect) dims from effects dict.
+
+        Args:
+            effects_dict: Dict mapping effect_name -> DataArray(element_dim).
+            element_ids: Element IDs (for ordering).
+            dim_name: Element dimension name.
+
+        Returns:
+            DataArray with (element, effect) dims, or None if empty.
+        """
+        if not effects_dict:
+            return None
+
+        effect_ids = list(effects_dict.keys())
+        effect_arrays = [effects_dict[eff] for eff in effect_ids]
+        result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
+
+        return result.transpose(dim_name, 'effect')
+
+    @staticmethod
+    def stack_bounds(
+        bounds: list[float | xr.DataArray],
+        element_ids: list[str],
+        dim_name: str,
+    ) -> xr.DataArray | float:
+        """Stack per-element bounds into array with element dimension.
+
+        Args:
+            bounds: List of bounds (one per element).
+            element_ids: List of element IDs (same order as bounds).
+            dim_name: Dimension name (e.g., 'flow', 'storage').
+
+        Returns:
+            Stacked DataArray with element dimension, or scalar if all identical.
+        """
+        # Extract scalar values from 0-d DataArrays or plain scalars
+        scalar_values = []
+        has_multidim = False
+
+        for b in bounds:
+            if isinstance(b, xr.DataArray):
+                if b.ndim == 0:
+                    scalar_values.append(float(b.values))
+                else:
+                    has_multidim = True
+                    break
+            else:
+                scalar_values.append(float(b))
+
+        # Fast path: all scalars
+        if not has_multidim:
+            unique_values = set(scalar_values)
+            if len(unique_values) == 1:
+                return scalar_values[0]  # Return scalar - linopy will broadcast
+
+            return xr.DataArray(
+                np.array(scalar_values),
+                coords={dim_name: element_ids},
+                dims=[dim_name],
+            )
+
+        # Slow path: need full concat for multi-dimensional bounds
+        arrays_to_stack = []
+        for bound, eid in zip(bounds, element_ids, strict=False):
+            if isinstance(bound, xr.DataArray):
+                arr = bound.expand_dims({dim_name: [eid]})
+            else:
+                arr = xr.DataArray(bound, coords={dim_name: [eid]}, dims=[dim_name])
+            arrays_to_stack.append(arr)
+
+        # Find union of all non-element dimensions and their coords
+        all_dims = {}
+        for arr in arrays_to_stack:
+            for d in arr.dims:
+                if d != dim_name and d not in all_dims:
+                    all_dims[d] = arr.coords[d].values
+
+        # Expand each array to have all dimensions
+        expanded = []
+        for arr in arrays_to_stack:
+            for d, coords in all_dims.items():
+                if d not in arr.dims:
+                    arr = arr.expand_dims({d: coords})
+            expanded.append(arr)
+
+        return xr.concat(expanded, dim=dim_name, coords='minimal')
+
+
 class InvestmentModel(Submodel):
     """Mathematical model implementation for investment decisions.
 
@@ -158,581 +377,45 @@ class InvestmentModel(Submodel):
 
 
 class InvestmentProxy:
-    """Proxy providing access to batched InvestmentsModel for a specific element.
+    """Proxy providing access to investment variables for a specific element.
 
     This class provides the same interface as InvestmentModel.size/invested
-    but returns slices from the batched InvestmentsModel variables.
+    but returns slices from the batched variables in FlowsModel/StoragesModel.
     """
 
-    def __init__(self, investments_model: InvestmentsModel, element_id: str):
-        self._investments_model = investments_model
+    def __init__(self, parent_model, element_id: str, dim_name: str = 'flow'):
+        self._parent_model = parent_model
         self._element_id = element_id
+        self._dim_name = dim_name
 
     @property
     def size(self):
         """Investment size variable for this element."""
-        return self._investments_model.get_variable('size', self._element_id)
+        size_var = self._parent_model._variables.get('size')
+        if size_var is None:
+            return None
+        if self._element_id in size_var.coords.get(self._dim_name, []):
+            return size_var.sel({self._dim_name: self._element_id})
+        return None
 
     @property
     def invested(self):
         """Binary investment decision variable for this element (if non-mandatory)."""
-        return self._investments_model.get_variable('invested', self._element_id)
-
-
-class InvestmentsModel:
-    """Type-level model for batched investment decisions across multiple elements.
-
-    Unlike InvestmentModel (one per element), InvestmentsModel handles ALL elements
-    with investment in a single instance with batched variables.
-
-    This enables:
-    - Batched `size` and `invested` variables with element-type dimension (e.g., 'flow')
-    - Vectorized constraint creation
-    - Batched effect shares
-
-    Variable Naming Convention:
-        - '{name_prefix}|size' e.g., 'flow|size', 'storage|size'
-        - '{name_prefix}|invested' e.g., 'flow|invested', 'storage|invested'
-
-    Dimension Naming:
-        - Uses element-type-specific dimension (e.g., 'flow', 'storage')
-        - Prevents unwanted broadcasting when merging into solution Dataset
-
-    The model categorizes elements by investment type:
-    - mandatory: Required investment (only size variable, with bounds)
-    - non_mandatory: Optional investment (size + invested variables, state-controlled bounds)
-
-    This is a base class. Use child classes (FlowInvestmentsModel, StorageInvestmentsModel)
-    that know how to access element-specific investment parameters.
-
-    Example:
-        >>> investments_model = FlowInvestmentsModel(
-        ...     model=flow_system_model,
-        ...     flows=flows_with_investment,
-        ...     size_category=VariableCategory.FLOW_SIZE,
-        ... )
-        >>> investments_model.create_variables()
-        >>> investments_model.create_constraints()
-    """
-
-    # These must be set by child classes in their __init__
-    element_ids: list[str]
-    params: dict[str, InvestParameters]  # Maps element_id -> InvestParameters
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        size_category: VariableCategory = VariableCategory.SIZE,
-        name_prefix: str = 'investment',
-        dim_name: str = 'element',
-    ):
-        """Initialize the type-level investment model.
-
-        Child classes must set `element_ids` and `params` after calling super().__init__.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            size_category: Category for size variable expansion.
-            name_prefix: Prefix for variable names (e.g., 'flow', 'storage').
-            dim_name: Dimension name for element grouping (e.g., 'flow', 'storage').
-        """
-        import logging
-
-        import pandas as pd
-        import xarray as xr
-
-        self._logger = logging.getLogger('flixopt')
-        self.model = model
-        self._size_category = size_category
-        self._name_prefix = name_prefix
-        self.dim_name = dim_name
-
-        # Storage for created variables
-        self._variables: dict[str, linopy.Variable] = {}
-
-        # Store xr and pd for use in methods
-        self._xr = xr
-        self._pd = pd
-
-    def _log_init(self) -> None:
-        """Log initialization info. Call after setting element_ids and params."""
-        self._logger.debug(
-            f'InvestmentsModel initialized: {len(self.element_ids)} elements '
-            f'({len(self.mandatory_ids)} mandatory, {len(self.non_mandatory_ids)} non-mandatory)'
-        )
-
-    # === Properties for element categorization ===
-
-    @property
-    def mandatory_ids(self) -> list[str]:
-        """IDs of mandatory elements."""
-        return [eid for eid in self.element_ids if self.params[eid].mandatory]
-
-    @property
-    def non_mandatory_ids(self) -> list[str]:
-        """IDs of non-mandatory elements."""
-        return [eid for eid in self.element_ids if not self.params[eid].mandatory]
-
-    # === Parameter collection helpers ===
-
-    def _collect_param(self, attr: str, element_ids: list[str] | None = None) -> xr.DataArray:
-        """Collect a scalar or DataArray parameter from elements."""
-        xr = self._xr
-        ids = element_ids if element_ids is not None else self.element_ids
-
-        values = []
-        for eid in ids:
-            val = getattr(self.params[eid], attr)
-            if val is None:
-                values.append(np.nan)
-            else:
-                values.append(val)
-
-        # Handle mixed scalar/DataArray values
-        if all(np.isscalar(v) or (isinstance(v, float) and np.isnan(v)) for v in values):
-            return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
-        else:
-            # Convert scalars to DataArrays and concatenate
-            return self._stack_bounds([xr.DataArray(v) if np.isscalar(v) else v for v in values], xr, element_ids=ids)
-
-    def _collect_effects(self, attr: str, element_ids: list[str] | None = None) -> dict[str, xr.DataArray]:
-        """Collect effects dict from elements into a dict of DataArrays."""
-        xr = self._xr
-        ids = element_ids if element_ids is not None else self.element_ids
-
-        # Find all effect names across all elements
-        all_effects: set[str] = set()
-        for eid in ids:
-            effects = getattr(self.params[eid], attr) or {}
-            all_effects.update(effects.keys())
-
-        if not all_effects:
-            return {}
-
-        # Build DataArray for each effect
-        result = {}
-        for effect_name in all_effects:
-            values = []
-            for eid in ids:
-                effects = getattr(self.params[eid], attr) or {}
-                values.append(effects.get(effect_name, np.nan))
-            result[effect_name] = xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
-
-        return result
-
-    def _stack_bounds(self, bounds_list: list, xr, element_ids: list[str] | None = None) -> xr.DataArray:
-        """Stack bounds arrays with different dimensions into single DataArray.
-
-        Handles the case where some bounds have period/scenario dims and others don't.
-
-        Args:
-            bounds_list: List of DataArrays (one per element)
-            xr: xarray module
-            element_ids: Optional list of element IDs (defaults to self.element_ids)
-        """
-        dim = self.dim_name  # e.g., 'flow', 'storage'
-        if element_ids is None:
-            element_ids = self.element_ids
-
-        # Check if all are scalars
-        if all(arr.dims == () for arr in bounds_list):
-            values = [float(arr.values) for arr in bounds_list]
-            return xr.DataArray(values, coords={dim: element_ids}, dims=[dim])
-
-        # Find union of all non-element dimensions and their coords
-        all_dims: dict[str, any] = {}
-        for arr in bounds_list:
-            for d in arr.dims:
-                if d != dim and d not in all_dims:
-                    all_dims[d] = arr.coords[d].values
-
-        # Expand each array to have all dimensions
-        expanded = []
-        for arr, eid in zip(bounds_list, element_ids, strict=False):
-            # Add element dimension
-            if dim not in arr.dims:
-                arr = arr.expand_dims({dim: [eid]})
-            # Add missing dimensions
-            for d, coords in all_dims.items():
-                if d not in arr.dims:
-                    arr = arr.expand_dims({d: coords})
-            expanded.append(arr)
-
-        return xr.concat(expanded, dim=dim, coords='minimal')
-
-    def _stack_bounds_for_subset(self, bounds_list: list, element_ids: list[str], xr) -> xr.DataArray:
-        """Stack bounds for a subset of elements (convenience wrapper)."""
-        return self._stack_bounds(bounds_list, xr, element_ids=element_ids)
-
-    def create_variables(self) -> None:
-        """Create batched investment variables with element dimension.
-
-        Creates:
-        - size: For ALL elements (with element dimension)
-        - invested: For non-mandatory elements only (binary, with element dimension)
-        """
-        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
-
-        if not self.element_ids:
-            return
-
-        xr = self._xr
-        pd = self._pd
-
-        # Get base coords (period, scenario) - may be None if neither exist
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        base_coords_dict = dict(base_coords) if base_coords is not None else {}
-
-        dim = self.dim_name
-
-        # === size: ALL elements ===
-        # Collect bounds from elements
-        size_min = self._collect_param('minimum_or_fixed_size')
-        size_max = self._collect_param('maximum_or_fixed_size')
-        linked_periods = self._collect_param('linked_periods')
-
-        # Handle linked_periods masking
-        if linked_periods.notnull().any():
-            linked = linked_periods.fillna(1.0)  # NaN means no linking, treat as 1
-            size_min = size_min * linked
-            size_max = size_max * linked
-
-        # Build mandatory mask
-        mandatory_mask = xr.DataArray(
-            [self.params[eid].mandatory for eid in self.element_ids],
-            dims=[dim],
-            coords={dim: self.element_ids},
-        )
-
-        # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
-        lower_bounds = xr.where(mandatory_mask, size_min, 0)
-        upper_bounds = size_max
-
-        # Build coords with element-type dimension (e.g., 'flow', 'storage')
-        size_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **base_coords_dict,
-            }
-        )
-
-        size_var = self.model.add_variables(
-            lower=lower_bounds,
-            upper=upper_bounds,
-            coords=size_coords,
-            name=f'{self._name_prefix}|size',
-        )
-        self._variables['size'] = size_var
-
-        # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
-        if expansion_category is not None:
-            self.model.variable_categories[size_var.name] = expansion_category
-
-        # === invested: non-mandatory elements only ===
-        if self.non_mandatory_ids:
-            invested_coords = xr.Coordinates(
-                {
-                    dim: pd.Index(self.non_mandatory_ids, name=dim),
-                    **base_coords_dict,
-                }
-            )
-
-            invested_var = self.model.add_variables(
-                binary=True,
-                coords=invested_coords,
-                name=f'{self._name_prefix}|invested',
-            )
-            self._variables['invested'] = invested_var
-
-            # Register category
-            expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.INVESTED)
-            if expansion_category is not None:
-                self.model.variable_categories[invested_var.name] = invested_var.name
-
-        self._logger.debug(
-            f'InvestmentsModel created variables: {len(self.element_ids)} elements '
-            f'({len(self.mandatory_ids)} mandatory, {len(self.non_mandatory_ids)} non-mandatory)'
-        )
-
-    def create_constraints(self) -> None:
-        """Create batched investment constraints.
-
-        For non-mandatory investments, creates state-controlled bounds:
-            invested * min_size <= size <= invested * max_size
-        """
-        if not self.non_mandatory_ids:
-            return
-
-        xr = self._xr
-        dim = self.dim_name
-
-        size_var = self._variables['size']
-        invested_var = self._variables['invested']
-
-        # Collect bounds for non-mandatory elements
-        min_bounds = self._collect_param('minimum_or_fixed_size', self.non_mandatory_ids)
-        max_bounds = self._collect_param('maximum_or_fixed_size', self.non_mandatory_ids)
-
-        # Select size for non-mandatory elements
-        size_non_mandatory = size_var.sel({dim: self.non_mandatory_ids})
-
-        # State-controlled bounds: invested * min <= size <= invested * max
-        # Lower bound with epsilon to force non-zero when invested
-        from .config import CONFIG
-
-        epsilon = CONFIG.Modeling.epsilon
-        effective_min = xr.where(min_bounds > epsilon, min_bounds, epsilon)
-
-        self.model.add_constraints(
-            size_non_mandatory >= invested_var * effective_min,
-            name=f'{self._name_prefix}|size|lb',
-        )
-        self.model.add_constraints(
-            size_non_mandatory <= invested_var * max_bounds,
-            name=f'{self._name_prefix}|size|ub',
-        )
-
-        # Handle linked_periods constraints
-        self._add_linked_periods_constraints()
-
-        self._logger.debug(
-            f'InvestmentsModel created constraints for {len(self.non_mandatory_ids)} non-mandatory elements'
-        )
-
-    def _add_linked_periods_constraints(self) -> None:
-        """Add linked periods constraints for elements that have them."""
-        size_var = self._variables['size']
-        dim = self.dim_name
-
-        # Get elements with linked periods
-        element_ids_with_linking = [eid for eid in self.element_ids if self.params[eid].linked_periods is not None]
-        if not element_ids_with_linking:
-            return
-
-        for element_id in element_ids_with_linking:
-            linked = self.params[element_id].linked_periods
-            element_size = size_var.sel({dim: element_id})
-            masked_size = element_size.where(linked, drop=True)
-            if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
-                self.model.add_constraints(
-                    masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                    name=f'{element_id}|linked_periods',
-                )
-
-    # === Effect factor properties (used by EffectsModel.finalize_shares) ===
-
-    @property
-    def elements_with_per_size_effects_ids(self) -> list[str]:
-        """IDs of elements with effects_of_investment_per_size."""
-        return [eid for eid in self.element_ids if self.params[eid].effects_of_investment_per_size]
-
-    @property
-    def non_mandatory_with_fix_effects_ids(self) -> list[str]:
-        """IDs of non-mandatory elements with effects_of_investment."""
-        return [
-            eid for eid in self.element_ids if not self.params[eid].mandatory and self.params[eid].effects_of_investment
-        ]
-
-    @property
-    def non_mandatory_with_retirement_effects_ids(self) -> list[str]:
-        """IDs of non-mandatory elements with effects_of_retirement."""
-        return [
-            eid for eid in self.element_ids if not self.params[eid].mandatory and self.params[eid].effects_of_retirement
-        ]
-
-    @property
-    def mandatory_with_fix_effects_ids(self) -> list[str]:
-        """IDs of mandatory elements with effects_of_investment."""
-        return [
-            eid for eid in self.element_ids if self.params[eid].mandatory and self.params[eid].effects_of_investment
-        ]
-
-    # === Effect DataArray properties ===
-
-    @property
-    def effects_of_investment_per_size(self) -> xr.DataArray | None:
-        """Combined effects_of_investment_per_size with (element, effect) dims.
-
-        Stacks effects from all elements into a single DataArray.
-        Returns None if no elements have effects defined.
-        """
-        element_ids = self.elements_with_per_size_effects_ids
-        if not element_ids:
+        invested_var = self._parent_model._variables.get('invested')
+        if invested_var is None:
             return None
-        effects_dict = self._collect_effects('effects_of_investment_per_size', element_ids)
-        return self._build_factors_from_dict(effects_dict, element_ids)
-
-    @property
-    def effects_of_investment(self) -> xr.DataArray | None:
-        """Combined effects_of_investment with (element, effect) dims.
-
-        Stacks effects from non-mandatory elements into a single DataArray.
-        Returns None if no elements have effects defined.
-        """
-        element_ids = self.non_mandatory_with_fix_effects_ids
-        if not element_ids:
-            return None
-        effects_dict = self._collect_effects('effects_of_investment', element_ids)
-        return self._build_factors_from_dict(effects_dict, element_ids)
-
-    @property
-    def effects_of_retirement(self) -> xr.DataArray | None:
-        """Combined effects_of_retirement with (element, effect) dims.
-
-        Stacks effects from non-mandatory elements into a single DataArray.
-        Returns None if no elements have effects defined.
-        """
-        element_ids = self.non_mandatory_with_retirement_effects_ids
-        if not element_ids:
-            return None
-        effects_dict = self._collect_effects('effects_of_retirement', element_ids)
-        return self._build_factors_from_dict(effects_dict, element_ids)
-
-    def _build_factors_from_dict(
-        self, effects_dict: dict[str, xr.DataArray], element_ids: list[str]
-    ) -> xr.DataArray | None:
-        """Build factor array with (element, effect) dims from effects dict.
-
-        Args:
-            effects_dict: Dict mapping effect_name -> DataArray(element_dim)
-            element_ids: Element IDs to include
-
-        Returns:
-            DataArray with (element, effect) dims, NaN for missing effects.
-        """
-        if not effects_dict:
-            return None
-
-        xr = self._xr
-        dim = self.dim_name
-        effect_ids = list(effects_dict.keys())
-
-        # Stack effects into (element, effect) array
-        effect_arrays = [effects_dict[eff] for eff in effect_ids]
-        result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
-
-        # Transpose to (element, effect) order
-        return result.transpose(dim, 'effect')
-
-    def add_constant_shares_to_effects(self, effects_model) -> None:
-        """Add constant (non-variable) shares directly to effect constraints.
-
-        This handles:
-        - Mandatory fixed effects (always incurred, not dependent on invested variable)
-        - Retirement constant parts (the +factor in -invested*factor + factor)
-        """
-        # Mandatory fixed effects
-        for element_id in self.mandatory_with_fix_effects_ids:
-            elem_effects = self.params[element_id].effects_of_investment or {}
-            effects_dict = {}
-            for effect_name, val in elem_effects.items():
-                if val is not None and not (np.isscalar(val) and np.isnan(val)):
-                    effects_dict[effect_name] = val
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_fix',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
-
-        # Retirement constant parts
-        for element_id in self.non_mandatory_with_retirement_effects_ids:
-            elem_effects = self.params[element_id].effects_of_retirement or {}
-            effects_dict = {}
-            for effect_name, val in elem_effects.items():
-                if val is not None and not (np.isscalar(val) and np.isnan(val)):
-                    effects_dict[effect_name] = val
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_retire_const',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
-
-    def get_variable(self, name: str, element_id: str | None = None):
-        """Get a variable, optionally selecting a specific element."""
-        var = self._variables.get(name)
-        if var is None:
-            return None
-        if element_id is not None:
-            dim = self.dim_name
-            if element_id in var.coords.get(dim, []):
-                return var.sel({dim: element_id})
-            return None
-        return var
-
-    @property
-    def size(self) -> linopy.Variable:
-        """Batched size variable with element-type dimension (e.g., 'flow', 'storage')."""
-        return self._variables['size']
-
-    @property
-    def invested(self) -> linopy.Variable | None:
-        """Batched invested variable with element-type dimension (non-mandatory only)."""
-        return self._variables.get('invested')
+        if self._element_id in invested_var.coords.get(self._dim_name, []):
+            return invested_var.sel({self._dim_name: self._element_id})
+        return None
 
 
-class FlowInvestmentsModel(InvestmentsModel):
-    """Type-level investment model for flows."""
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        flows: list,
-        size_category: VariableCategory = VariableCategory.FLOW_SIZE,
-        name_prefix: str = 'flow',
-    ):
-        """Initialize the flow investment model.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            flows: List of Flow objects with investment (InvestParameters in size).
-            size_category: Category for size variable expansion.
-            name_prefix: Prefix for variable names.
-        """
-        super().__init__(
-            model=model,
-            size_category=size_category,
-            name_prefix=name_prefix,
-            dim_name='flow',
-        )
-        self.flows = flows
-        self.element_ids = [f.label_full for f in flows]
-        self.params = {f.label_full: f.size for f in flows}
-        self._log_init()
-
-
-class StorageInvestmentsModel(InvestmentsModel):
-    """Type-level investment model for storages."""
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        storages: list,
-        size_category: VariableCategory = VariableCategory.STORAGE_SIZE,
-        name_prefix: str = 'storage_investment',
-        dim_name: str = 'storage',
-    ):
-        """Initialize the storage investment model.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            storages: List of Storage objects with invest_parameters.
-            size_category: Category for size variable expansion.
-            name_prefix: Prefix for variable names.
-            dim_name: Dimension name for storage grouping.
-        """
-        super().__init__(
-            model=model,
-            size_category=size_category,
-            name_prefix=name_prefix,
-            dim_name=dim_name,
-        )
-        self.storages = storages
-        self.element_ids = [s.label for s in storages]
-        self.params = {s.label: s.invest_parameters for s in storages}
-        self._log_init()
+# =============================================================================
+# DEPRECATED: InvestmentsModel classes have been inlined into FlowsModel and StoragesModel
+# The investment logic now lives directly in:
+# - FlowsModel.create_investment_model() in elements.py
+# - StoragesModel.create_investment_model() in components.py
+# Using InvestmentHelpers for shared constraint math.
+# =============================================================================
 
 
 class StatusProxy:
@@ -1257,18 +940,12 @@ class StatusesModel:
         Returns:
             Dict mapping effect_name -> DataArray with element dimension.
         """
-        if element_ids is None:
-            elements = self.elements
-            ids = self.element_ids
-        else:
-            id_set = set(element_ids)
-            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
-            ids = element_ids
+        ids = element_ids if element_ids is not None else self.element_ids
 
         # Find all effect names across all elements
         all_effects: set[str] = set()
-        for e in elements:
-            effects = getattr(self._get_params(e), attr) or {}
+        for eid in ids:
+            effects = getattr(self.params[eid], attr) or {}
             all_effects.update(effects.keys())
 
         if not all_effects:
@@ -1278,8 +955,8 @@ class StatusesModel:
         result = {}
         for effect_name in all_effects:
             values = []
-            for e in elements:
-                effects = getattr(self._get_params(e), attr) or {}
+            for eid in ids:
+                effects = getattr(self.params[eid], attr) or {}
                 values.append(effects.get(effect_name, np.nan))
             result[effect_name] = xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
 

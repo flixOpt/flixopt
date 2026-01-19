@@ -23,7 +23,6 @@ from .structure import (
     ElementType,
     FlowSystemModel,
     TypeModel,
-    VariableCategory,
     VariableType,
     register_class_for_io,
 )
@@ -733,18 +732,16 @@ class FlowModelProxy(ElementModel):
                 status = self._flows_model.get_variable('status', self.label_full)
                 self.register_variable(status, 'status')
 
-            # Investment variables if applicable (from InvestmentsModel)
+            # Investment variables if applicable (from FlowsModel)
             if self.label_full in self._flows_model.investment_ids:
-                investments_model = self._flows_model._investments_model
-                if investments_model is not None:
-                    size = investments_model.get_variable('size', self.label_full)
-                    if size is not None:
-                        self.register_variable(size, 'size')
+                size = self._flows_model.get_variable('size', self.label_full)
+                if size is not None:
+                    self.register_variable(size, 'size')
 
-                    if self.label_full in self._flows_model.optional_investment_ids:
-                        invested = investments_model.get_variable('invested', self.label_full)
-                        if invested is not None:
-                            self.register_variable(invested, 'invested')
+                if self.label_full in self._flows_model.optional_investment_ids:
+                    invested = self._flows_model.get_variable('invested', self.label_full)
+                    if invested is not None:
+                        self.register_variable(invested, 'invested')
 
     def _do_modeling(self):
         """Skip modeling - FlowsModel and StatusesModel already created everything."""
@@ -785,17 +782,12 @@ class FlowModelProxy(ElementModel):
 
     @property
     def investment(self) -> InvestmentModel | InvestmentProxy | None:
-        """Investment feature - returns proxy to batched InvestmentsModel."""
+        """Investment feature - returns proxy to access investment variables."""
         if not self.with_investment:
             return None
 
-        # Get the batched investments model from FlowsModel
-        investments_model = self._flows_model._investments_model
-        if investments_model is None:
-            return None
-
-        # Return a proxy that provides size/invested for this specific element
-        return InvestmentProxy(investments_model, self.label_full)
+        # Return a proxy that provides size/invested for this specific element from FlowsModel
+        return InvestmentProxy(self._flows_model, self.label_full, dim_name='flow')
 
     @property
     def previous_status(self) -> xr.DataArray | None:
@@ -879,8 +871,8 @@ class FlowsModel(TypeModel):
         self.optional_investment_ids: list[str] = [f.label_full for f in self.flows_with_optional_investment]
         self.flow_hours_over_periods_ids: list[str] = [f.label_full for f in self.flows_with_flow_hours_over_periods]
 
-        # Batched investment model (created via create_investment_model)
-        self._investments_model = None
+        # Investment params dict (populated in create_investment_model)
+        self._invest_params: dict[str, InvestParameters] = {}
 
         # Batched status model (created via create_status_model)
         self._statuses_model = None
@@ -1169,7 +1161,7 @@ class FlowsModel(TypeModel):
         dim = self.dim_name  # 'flow'
         flow_ids = [f.label_full for f in flows]
         flow_rate = self._variables['rate'].sel({dim: flow_ids})
-        size = self._investments_model.size.sel({dim: flow_ids})
+        size = self._variables['size'].sel({dim: flow_ids})
 
         # Upper bound: rate <= size * relative_max
         # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
@@ -1189,7 +1181,7 @@ class FlowsModel(TypeModel):
         dim = self.dim_name  # 'flow'
         flow_ids = [f.label_full for f in flows]
         flow_rate = self._variables['rate'].sel({dim: flow_ids})
-        size = self._investments_model.size.sel({dim: flow_ids})
+        size = self._variables['size'].sel({dim: flow_ids})
         status = self._variables['status'].sel({dim: flow_ids})
 
         # Upper bound: rate <= size * relative_max
@@ -1212,29 +1204,208 @@ class FlowsModel(TypeModel):
         self.add_constraints(flow_rate >= rhs, name='rate_status_invest_lb')
 
     def create_investment_model(self) -> None:
-        """Create batched InvestmentsModel for flows with investment.
+        """Create investment variables and constraints for flows with investment.
 
-        This method creates variables (size, invested) and constraints for all
-        flows with InvestParameters using a single batched model.
+        Creates:
+        - flow|size: For all flows with investment
+        - flow|invested: For flows with optional (non-mandatory) investment
 
         Must be called AFTER create_variables() and create_constraints().
         """
         if not self.flows_with_investment:
             return
 
-        from .features import FlowInvestmentsModel
+        from .features import InvestmentHelpers
+        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
 
-        self._investments_model = FlowInvestmentsModel(
-            model=self.model,
-            flows=self.flows_with_investment,
-            size_category=VariableCategory.FLOW_SIZE,
-            name_prefix='flow',
+        # Build params dict for easy access
+        self._invest_params = {f.label_full: f.size for f in self.flows_with_investment}
+
+        dim = self.dim_name
+        element_ids = self.investment_ids
+        non_mandatory_ids = self.optional_investment_ids
+        mandatory_ids = [eid for eid in element_ids if self._invest_params[eid].mandatory]
+
+        # Get base coords
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+
+        # Collect bounds
+        size_min = self._stack_bounds([self._invest_params[eid].minimum_or_fixed_size for eid in element_ids])
+        size_max = self._stack_bounds([self._invest_params[eid].maximum_or_fixed_size for eid in element_ids])
+        linked_periods_list = [self._invest_params[eid].linked_periods for eid in element_ids]
+
+        # Handle linked_periods masking
+        if any(lp is not None for lp in linked_periods_list):
+            linked_periods = self._stack_bounds([lp if lp is not None else np.nan for lp in linked_periods_list])
+            linked = linked_periods.fillna(1.0)
+            size_min = size_min * linked
+            size_max = size_max * linked
+
+        # Build mandatory mask
+        mandatory_mask = xr.DataArray(
+            [self._invest_params[eid].mandatory for eid in element_ids],
+            dims=[dim],
+            coords={dim: element_ids},
         )
-        self._investments_model.create_variables()
-        self._investments_model.create_constraints()
-        # Effect shares are collected by EffectsModel.finalize_shares()
 
-        logger.debug(f'FlowsModel created FlowInvestmentsModel for {len(self.flows_with_investment)} flows')
+        # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
+        lower_bounds = xr.where(mandatory_mask, size_min, 0)
+        upper_bounds = size_max
+
+        # === flow|size variable ===
+        size_coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+        size_var = self.model.add_variables(
+            lower=lower_bounds,
+            upper=upper_bounds,
+            coords=size_coords,
+            name='flow|size',
+        )
+        self._variables['size'] = size_var
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
+        if expansion_category is not None:
+            self.model.variable_categories[size_var.name] = expansion_category
+
+        # === flow|invested variable (non-mandatory only) ===
+        if non_mandatory_ids:
+            invested_coords = xr.Coordinates({dim: pd.Index(non_mandatory_ids, name=dim), **base_coords_dict})
+            invested_var = self.model.add_variables(
+                binary=True,
+                coords=invested_coords,
+                name='flow|invested',
+            )
+            self._variables['invested'] = invested_var
+
+            # State-controlled bounds constraints
+            from .features import InvestmentHelpers
+
+            min_bounds = InvestmentHelpers.stack_bounds(
+                [self._invest_params[eid].minimum_or_fixed_size for eid in non_mandatory_ids],
+                non_mandatory_ids,
+                dim,
+            )
+            max_bounds = InvestmentHelpers.stack_bounds(
+                [self._invest_params[eid].maximum_or_fixed_size for eid in non_mandatory_ids],
+                non_mandatory_ids,
+                dim,
+            )
+            InvestmentHelpers.add_optional_size_bounds(
+                model=self.model,
+                size_var=size_var,
+                invested_var=invested_var,
+                min_bounds=min_bounds,
+                max_bounds=max_bounds,
+                element_ids=non_mandatory_ids,
+                dim_name=dim,
+                name_prefix='flow',
+            )
+
+        # Linked periods constraints
+        InvestmentHelpers.add_linked_periods_constraints(
+            model=self.model,
+            size_var=size_var,
+            params=self._invest_params,
+            element_ids=element_ids,
+            dim_name=dim,
+        )
+
+        logger.debug(
+            f'FlowsModel created investment variables: {len(element_ids)} flows '
+            f'({len(mandatory_ids)} mandatory, {len(non_mandatory_ids)} optional)'
+        )
+
+    # === Investment effect properties (used by EffectsModel) ===
+
+    @property
+    def invest_effects_per_size(self) -> xr.DataArray | None:
+        """Combined effects_of_investment_per_size with (flow, effect) dims."""
+        if not hasattr(self, '_invest_params'):
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment_per_size', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @property
+    def invest_effects_of_investment(self) -> xr.DataArray | None:
+        """Combined effects_of_investment with (flow, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params'):
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @property
+    def invest_effects_of_retirement(self) -> xr.DataArray | None:
+        """Combined effects_of_retirement with (flow, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params'):
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_retirement', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    def add_constant_investment_shares(self) -> None:
+        """Add constant (non-variable) investment shares directly to effect constraints.
+
+        This handles:
+        - Mandatory fixed effects (always incurred)
+        - Retirement constant parts (the +factor in -invested*factor + factor)
+        """
+        if not hasattr(self, '_invest_params'):
+            return
+
+        # Mandatory fixed effects
+        mandatory_with_effects = [
+            eid
+            for eid in self.investment_ids
+            if self._invest_params[eid].mandatory and self._invest_params[eid].effects_of_investment
+        ]
+        for element_id in mandatory_with_effects:
+            elem_effects = self._invest_params[element_id].effects_of_investment or {}
+            effects_dict = {
+                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
+            }
+            if effects_dict:
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|invest_fix',
+                    expressions=effects_dict,
+                    target='periodic',
+                )
+
+        # Retirement constant parts
+        non_mandatory_with_retirement = [
+            eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement
+        ]
+        for element_id in non_mandatory_with_retirement:
+            elem_effects = self._invest_params[element_id].effects_of_retirement or {}
+            effects_dict = {
+                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
+            }
+            if effects_dict:
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|invest_retire_const',
+                    expressions=effects_dict,
+                    target='periodic',
+                )
 
     def create_status_model(self) -> None:
         """Create batched FlowStatusesModel for flows with status.

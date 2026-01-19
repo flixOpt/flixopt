@@ -712,16 +712,13 @@ class EffectsModel:
 
     def _create_periodic_shares(self, flows_model) -> None:
         """Create share|periodic and add all periodic contributions to effect|periodic."""
-        investments_model = flows_model._investments_model
-        if investments_model is None:
-            return
-
-        dim = investments_model.dim_name
-        factors = investments_model.effects_of_investment_per_size
+        # Check if flows_model has investment data
+        factors = flows_model.invest_effects_per_size
         if factors is None:
             return
 
-        size = investments_model._variables['size'].sel({dim: factors.coords[dim].values})
+        dim = flows_model.dim_name
+        size = flows_model._variables['size'].sel({dim: factors.coords[dim].values})
 
         # share|periodic: size * effects_of_investment_per_size
         self.share_periodic = self.model.add_variables(
@@ -738,17 +735,17 @@ class EffectsModel:
         # Collect all periodic contributions
         exprs = [self.share_periodic.sum(dim)]
 
-        invested = investments_model._variables.get('invested')
+        invested = flows_model._variables.get('invested')
         if invested is not None:
-            if (f := investments_model.effects_of_investment) is not None:
+            if (f := flows_model.invest_effects_of_investment) is not None:
                 exprs.append((invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
-            if (f := investments_model.effects_of_retirement) is not None:
+            if (f := flows_model.invest_effects_of_retirement) is not None:
                 exprs.append((invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
 
         self._eq_periodic.lhs -= sum(exprs)
 
         # Constant shares (mandatory fixed, retirement constants)
-        investments_model.add_constant_shares_to_effects(self)
+        flows_model.add_constant_investment_shares()
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""

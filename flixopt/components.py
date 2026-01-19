@@ -1523,10 +1523,14 @@ class StoragesModel:
         self.storages_with_investment: list[Storage] = [
             s for s in elements if isinstance(s.capacity_in_flow_hours, InvestParameters)
         ]
+        self.storages_with_optional_investment: list[Storage] = [
+            s for s in self.storages_with_investment if not s.capacity_in_flow_hours.mandatory
+        ]
         self.investment_ids: list[str] = [s.label_full for s in self.storages_with_investment]
+        self.optional_investment_ids: list[str] = [s.label_full for s in self.storages_with_optional_investment]
 
-        # Batched investment model (created later via create_investment_model)
-        self._investments_model = None
+        # Investment params dict (populated in create_investment_model)
+        self._invest_params: dict[str, InvestParameters] = {}
 
         # Set reference on each storage element
         for storage in elements:
@@ -1826,31 +1830,129 @@ class StoragesModel:
         )
 
     def create_investment_model(self) -> None:
-        """Create batched InvestmentsModel for storages with investment.
+        """Create investment variables and constraints for storages with investment.
 
-        This method creates variables (size, invested) for all storages with
-        InvestParameters using a single batched model.
+        Creates:
+        - storage|size: For all storages with investment
+        - storage|invested: For storages with optional (non-mandatory) investment
 
         Must be called BEFORE create_investment_constraints().
         """
         if not self.storages_with_investment:
             return
 
-        from .features import StorageInvestmentsModel
-        from .structure import VariableCategory
+        import pandas as pd
 
-        self._investments_model = StorageInvestmentsModel(
-            model=self.model,
-            storages=self.storages_with_investment,
-            size_category=VariableCategory.STORAGE_SIZE,
-            name_prefix='storage_investment',
-            dim_name=self.dim_name,  # Use 'storage' dimension to match StoragesModel
+        from .features import InvestmentHelpers
+        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
+
+        # Build params dict for easy access
+        self._invest_params = {s.label_full: s.capacity_in_flow_hours for s in self.storages_with_investment}
+
+        dim = self.dim_name
+        element_ids = self.investment_ids
+        non_mandatory_ids = self.optional_investment_ids
+        mandatory_ids = [eid for eid in element_ids if self._invest_params[eid].mandatory]
+
+        # Get base coords
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+
+        # Collect bounds
+        size_min = InvestmentHelpers.stack_bounds(
+            [self._invest_params[eid].minimum_or_fixed_size for eid in element_ids],
+            element_ids,
+            dim,
         )
-        self._investments_model.create_variables()
-        self._investments_model.create_constraints()
-        # Effect shares are collected centrally in EffectsModel.finalize_shares()
+        size_max = InvestmentHelpers.stack_bounds(
+            [self._invest_params[eid].maximum_or_fixed_size for eid in element_ids],
+            element_ids,
+            dim,
+        )
+        linked_periods_list = [self._invest_params[eid].linked_periods for eid in element_ids]
 
-        logger.debug(f'StoragesModel created StorageInvestmentsModel for {len(self.storages_with_investment)} storages')
+        # Handle linked_periods masking
+        if any(lp is not None for lp in linked_periods_list):
+            linked_periods = InvestmentHelpers.stack_bounds(
+                [lp if lp is not None else np.nan for lp in linked_periods_list],
+                element_ids,
+                dim,
+            )
+            linked = linked_periods.fillna(1.0)
+            size_min = size_min * linked
+            size_max = size_max * linked
+
+        # Build mandatory mask
+        mandatory_mask = xr.DataArray(
+            [self._invest_params[eid].mandatory for eid in element_ids],
+            dims=[dim],
+            coords={dim: element_ids},
+        )
+
+        # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
+        lower_bounds = xr.where(mandatory_mask, size_min, 0)
+        upper_bounds = size_max
+
+        # === storage|size variable ===
+        size_coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+        size_var = self.model.add_variables(
+            lower=lower_bounds,
+            upper=upper_bounds,
+            coords=size_coords,
+            name='storage|size',
+        )
+        self._variables['size'] = size_var
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
+        if expansion_category is not None:
+            self.model.variable_categories[size_var.name] = expansion_category
+
+        # === storage|invested variable (non-mandatory only) ===
+        if non_mandatory_ids:
+            invested_coords = xr.Coordinates({dim: pd.Index(non_mandatory_ids, name=dim), **base_coords_dict})
+            invested_var = self.model.add_variables(
+                binary=True,
+                coords=invested_coords,
+                name='storage|invested',
+            )
+            self._variables['invested'] = invested_var
+
+            # State-controlled bounds constraints
+            min_bounds = InvestmentHelpers.stack_bounds(
+                [self._invest_params[eid].minimum_or_fixed_size for eid in non_mandatory_ids],
+                non_mandatory_ids,
+                dim,
+            )
+            max_bounds = InvestmentHelpers.stack_bounds(
+                [self._invest_params[eid].maximum_or_fixed_size for eid in non_mandatory_ids],
+                non_mandatory_ids,
+                dim,
+            )
+            InvestmentHelpers.add_optional_size_bounds(
+                model=self.model,
+                size_var=size_var,
+                invested_var=invested_var,
+                min_bounds=min_bounds,
+                max_bounds=max_bounds,
+                element_ids=non_mandatory_ids,
+                dim_name=dim,
+                name_prefix='storage',
+            )
+
+        # Linked periods constraints
+        InvestmentHelpers.add_linked_periods_constraints(
+            model=self.model,
+            size_var=size_var,
+            params=self._invest_params,
+            element_ids=element_ids,
+            dim_name=dim,
+        )
+
+        logger.debug(
+            f'StoragesModel created investment variables: {len(element_ids)} storages '
+            f'({len(mandatory_ids)} mandatory, {len(non_mandatory_ids)} optional)'
+        )
 
     def create_investment_constraints(self) -> None:
         """Create batched scaled bounds linking charge_state to investment size.
@@ -1861,14 +1963,13 @@ class StoragesModel:
             charge_state >= size * relative_minimum_charge_state
             charge_state <= size * relative_maximum_charge_state
 
-        Uses the batched size variable from InvestmentsModel for true vectorized
-        constraint creation.
+        Uses the batched size variable for true vectorized constraint creation.
         """
-        if not self.storages_with_investment or self._investments_model is None:
+        if not self.storages_with_investment or 'size' not in self._variables:
             return
 
         charge_state = self._variables['charge']
-        size_var = self._investments_model.size  # Batched size with storage dimension
+        size_var = self._variables['size']  # Batched size with storage dimension
 
         # Collect relative bounds for all investment storages
         rel_lowers = []
@@ -2022,7 +2123,7 @@ class StorageModelProxy(ComponentModel):
 
     @property
     def investment(self):
-        """Investment feature - provides access to batched InvestmentsModel for this storage.
+        """Investment feature - provides access to batched investment variables for this storage.
 
         Returns a proxy object with size/invested properties that select this storage's
         portion of the batched investment variables.
@@ -2030,12 +2131,11 @@ class StorageModelProxy(ComponentModel):
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return None
 
-        investments_model = self._storages_model._investments_model
-        if investments_model is None:
+        if 'size' not in self._storages_model._variables:
             return None
 
         # Return a proxy that provides size/invested for this specific element
-        return InvestmentProxy(investments_model, self.label_full)
+        return InvestmentProxy(self._storages_model, self.label_full, dim_name='storage')
 
     @property
     def charge_state(self) -> linopy.Variable:
