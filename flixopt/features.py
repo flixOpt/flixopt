@@ -517,31 +517,67 @@ class InvestmentsModel:
         """IDs of non-mandatory elements with effects_of_retirement."""
         return [e.label_full for e in self.non_mandatory_with_retirement_effects]
 
-    def get_per_size_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
-        """Get per-size effect factors as DataArray with (element, effect) dims."""
+    # === Effect factor properties (used by EffectsModel.finalize_shares) ===
+
+    @property
+    def effect_factors_per_size(self) -> xr.DataArray | None:
+        """Factor array with (element, effect) dims for effects_of_investment_per_size.
+
+        Returns sparse array - coords define which elements are included.
+        Returns None if no elements have this effect type.
+        """
         elements = self.elements_with_per_size_effects
         if not elements:
             return None
-        return self._build_factors(
-            elements, lambda e: self._parameters_getter(e).effects_of_investment_per_size, effect_ids
-        )
 
-    def get_fix_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
-        """Get fixed investment effect factors for non-mandatory elements."""
+        def getter(e):
+            return self._parameters_getter(e).effects_of_investment_per_size
+
+        return self._build_factors(elements, getter)
+
+    @property
+    def effect_factors_fix(self) -> xr.DataArray | None:
+        """Factor array with (element, effect) dims for effects_of_investment.
+
+        Returns sparse array - coords define which non-mandatory elements are included.
+        Returns None if no elements have this effect type.
+        """
         elements = self.non_mandatory_with_fix_effects
         if not elements:
             return None
-        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_investment, effect_ids)
 
-    def get_retirement_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
-        """Get retirement effect factors for non-mandatory elements."""
+        def getter(e):
+            return self._parameters_getter(e).effects_of_investment
+
+        return self._build_factors(elements, getter)
+
+    @property
+    def effect_factors_retirement(self) -> xr.DataArray | None:
+        """Factor array with (element, effect) dims for effects_of_retirement.
+
+        Returns sparse array - coords define which non-mandatory elements are included.
+        Returns None if no elements have this effect type.
+        """
         elements = self.non_mandatory_with_retirement_effects
         if not elements:
             return None
-        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_retirement, effect_ids)
 
-    def _build_factors(self, elements: list, effects_getter: callable, effect_ids: list[str]) -> xr.DataArray:
-        """Build sparse factor array with (element, effect) dims."""
+        def getter(e):
+            return self._parameters_getter(e).effects_of_retirement
+
+        return self._build_factors(elements, getter)
+
+    def _build_factors(self, elements: list, effects_getter: callable) -> xr.DataArray | None:
+        """Build sparse factor array with (element, effect) dims.
+
+        Gets effect_ids from the model internally.
+        """
+        # Get effect IDs from the model
+        effects_model = getattr(self.model.effects, '_batched_model', None)
+        if effects_model is None:
+            return None
+        effect_ids = effects_model.effect_ids
+
         element_ids = [e.label_full for e in elements]
         factors_array = np.zeros((len(elements), len(effect_ids)))
 
@@ -1082,50 +1118,37 @@ class StatusesModel:
     # === Effect factor properties (used by EffectsModel.finalize_shares) ===
 
     @property
-    def elements_with_active_hour_effects(self) -> list:
-        """Elements that have effects_per_active_hour defined."""
-        return [e for e in self.elements if self._parameters_getter(e).effects_per_active_hour]
+    def effect_factors_per_active_hour(self) -> xr.DataArray | None:
+        """Factor array with (element, effect) dims for effects_per_active_hour.
 
-    @property
-    def elements_with_active_hour_effects_ids(self) -> list[str]:
-        """IDs of elements with effects_per_active_hour."""
-        return [e.label_full for e in self.elements_with_active_hour_effects]
-
-    @property
-    def elements_with_startup_effects(self) -> list:
-        """Elements that have effects_per_startup defined."""
-        return [e for e in self._with_startup_tracking if self._parameters_getter(e).effects_per_startup]
-
-    @property
-    def elements_with_startup_effects_ids(self) -> list[str]:
-        """IDs of elements with effects_per_startup."""
-        return [e.label_full for e in self.elements_with_startup_effects]
-
-    def get_active_hour_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
-        """Get active hour effect factors as DataArray with (element, effect) dims.
-
-        Returns sparse array containing only elements with effects_per_active_hour.
+        Returns sparse array - coords define which elements are included.
+        Returns None if no elements have this effect type.
         """
-        elements = self.elements_with_active_hour_effects
+        elements = [e for e in self.elements if self._parameters_getter(e).effects_per_active_hour]
         if not elements:
             return None
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_active_hour)
 
-        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_active_hour, effect_ids)
+    @property
+    def effect_factors_per_startup(self) -> xr.DataArray | None:
+        """Factor array with (element, effect) dims for effects_per_startup.
 
-    def get_startup_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
-        """Get startup effect factors as DataArray with (element, effect) dims.
-
-        Returns sparse array containing only elements with effects_per_startup.
+        Returns sparse array - coords define which elements are included.
+        Returns None if no elements have this effect type.
         """
-        elements = self.elements_with_startup_effects
+        elements = [e for e in self._with_startup_tracking if self._parameters_getter(e).effects_per_startup]
         if not elements:
             return None
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_startup)
 
-        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_startup, effect_ids)
-
-    def _build_factors(self, elements: list, effects_getter: callable, effect_ids: list[str]) -> xr.DataArray:
+    def _build_factors(self, elements: list, effects_getter: callable) -> xr.DataArray:
         """Build sparse factor array with (element, effect) dims."""
-        xr = self._xr
+        # Get effect IDs from the model
+        effects_model = getattr(self.model.effects, '_batched_model', None)
+        if effects_model is None:
+            return None
+        effect_ids = effects_model.effect_ids
+
         element_ids = [e.label_full for e in elements]
         factors_array = np.zeros((len(elements), len(effect_ids)))
 
