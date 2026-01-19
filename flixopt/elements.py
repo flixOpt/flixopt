@@ -1222,14 +1222,20 @@ class FlowsModel(TypeModel):
         base_coords = self.model.get_coords(['period', 'scenario'])
         base_coords_dict = dict(base_coords) if base_coords is not None else {}
 
-        # Collect bounds
-        size_min = self._stack_bounds([self._invest_params[eid].minimum_or_fixed_size for eid in element_ids])
-        size_max = self._stack_bounds([self._invest_params[eid].maximum_or_fixed_size for eid in element_ids])
+        # Collect bounds - use InvestmentHelpers.stack_bounds for subset with correct element_ids
+        size_min = InvestmentHelpers.stack_bounds(
+            [self._invest_params[eid].minimum_or_fixed_size for eid in element_ids], element_ids, dim
+        )
+        size_max = InvestmentHelpers.stack_bounds(
+            [self._invest_params[eid].maximum_or_fixed_size for eid in element_ids], element_ids, dim
+        )
         linked_periods_list = [self._invest_params[eid].linked_periods for eid in element_ids]
 
         # Handle linked_periods masking
         if any(lp is not None for lp in linked_periods_list):
-            linked_periods = self._stack_bounds([lp if lp is not None else np.nan for lp in linked_periods_list])
+            linked_periods = InvestmentHelpers.stack_bounds(
+                [lp if lp is not None else np.nan for lp in linked_periods_list], element_ids, dim
+            )
             linked = linked_periods.fillna(1.0)
             size_min = size_min * linked
             size_max = size_max * linked
