@@ -2698,13 +2698,8 @@ class ComponentStatusesModel:
         self._logger.debug(f'ComponentStatusesModel created status features for {len(self.components)} components')
 
     def create_effect_shares(self) -> None:
-        """Create effect shares for component status (startup costs, etc.)."""
-        if not self.components or self._statuses_model is None:
-            return
-
-        self._statuses_model.create_effect_shares()
-
-        self._logger.debug(f'ComponentStatusesModel created effect shares for {len(self.components)} components')
+        """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
+        pass
 
     def get_variable(self, var_name: str, component_id: str):
         """Get variable slice for a specific component."""

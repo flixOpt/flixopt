@@ -734,8 +734,8 @@ class StatusesModel:
             dim_name: Dimension name for the element type (e.g., 'flow', 'component').
             name_prefix: Prefix for variable names (e.g., 'status', 'component_status').
             batched_status_var: Optional batched status variable with element dimension.
-                Used for SharesModel registration. If not provided, falls back to
-                per-element status_var_getter for effect share creation.
+                Used for direct expression building in finalize_shares(). If not provided,
+                falls back to per-element status_var_getter for effect share creation.
         """
         import logging
 

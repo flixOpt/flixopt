@@ -1986,7 +1986,7 @@ class StoragesModel:
         )
         self._investments_model.create_variables()
         self._investments_model.create_constraints()
-        self._investments_model.create_effect_shares()
+        # Effect shares are collected centrally in EffectsModel.finalize_shares()
 
         logger.debug(
             f'StoragesModel created batched InvestmentsModel for {len(self.storages_with_investment)} storages'

@@ -1011,11 +1011,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
 
-        # Create unified share variables with (element, effect) dimensions
+        # Finalize effect shares
         if self.effects._batched_model is not None:
-            # New SharesModel approach: finalize shares registered via register_temporal/periodic
+            # Build expressions from type-level models (FlowsModel, StatusesModel, InvestmentsModel)
             self.effects._batched_model.finalize_shares()
-            # Legacy approach: create share variables from _temporal_contributions/_periodic_contributions
+            # Create share variables for cross-effect and per-element contributions
             self.effects._batched_model.create_share_variables()
 
         record('end')
