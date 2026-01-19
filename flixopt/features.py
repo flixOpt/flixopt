@@ -215,23 +215,23 @@ class InvestmentsModel:
         >>> investments_model.create_constraints()
     """
 
+    # These must be set by child classes in their __init__
+    element_ids: list[str]
+    params: dict[str, InvestParameters]  # Maps element_id -> InvestParameters
+
     def __init__(
         self,
         model: FlowSystemModel,
-        elements: list,
-        params_getter: callable,
-        id_getter: callable,
         size_category: VariableCategory = VariableCategory.SIZE,
         name_prefix: str = 'investment',
         dim_name: str = 'element',
     ):
         """Initialize the type-level investment model.
 
+        Child classes must set `element_ids` and `params` after calling super().__init__.
+
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of elements with investment parameters.
-            params_getter: Function (element) -> InvestParameters.
-            id_getter: Function (element) -> str (element identifier).
             size_category: Category for size variable expansion.
             name_prefix: Prefix for variable names (e.g., 'flow', 'storage').
             dim_name: Dimension name for element grouping (e.g., 'flow', 'storage').
@@ -243,7 +243,6 @@ class InvestmentsModel:
 
         self._logger = logging.getLogger('flixopt')
         self.model = model
-        self.elements = elements
         self._size_category = size_category
         self._name_prefix = name_prefix
         self.dim_name = dim_name
@@ -255,63 +254,35 @@ class InvestmentsModel:
         self._xr = xr
         self._pd = pd
 
-        # Store accessor callables
-        self._params_getter = params_getter
-        self._id_getter = id_getter
-
+    def _log_init(self) -> None:
+        """Log initialization info. Call after setting element_ids and params."""
         self._logger.debug(
             f'InvestmentsModel initialized: {len(self.element_ids)} elements '
             f'({len(self.mandatory_ids)} mandatory, {len(self.non_mandatory_ids)} non-mandatory)'
         )
 
-    def _get_params(self, element) -> InvestParameters:
-        """Get InvestParameters from an element."""
-        return self._params_getter(element)
-
-    def _get_element_id(self, element) -> str:
-        """Get element identifier."""
-        return self._id_getter(element)
-
     # === Properties for element categorization ===
-
-    @property
-    def element_ids(self) -> list[str]:
-        """IDs of all elements with investment."""
-        return [self._get_element_id(e) for e in self.elements]
 
     @property
     def mandatory_ids(self) -> list[str]:
         """IDs of mandatory elements."""
-        return [self._get_element_id(e) for e in self.elements if self._get_params(e).mandatory]
+        return [eid for eid in self.element_ids if self.params[eid].mandatory]
 
     @property
     def non_mandatory_ids(self) -> list[str]:
         """IDs of non-mandatory elements."""
-        return [self._get_element_id(e) for e in self.elements if not self._get_params(e).mandatory]
-
-    def _get_element_by_id(self, element_id: str):
-        """Get element by its ID."""
-        for e in self.elements:
-            if self._get_element_id(e) == element_id:
-                return e
-        return None
+        return [eid for eid in self.element_ids if not self.params[eid].mandatory]
 
     # === Parameter collection helpers ===
 
     def _collect_param(self, attr: str, element_ids: list[str] | None = None) -> xr.DataArray:
         """Collect a scalar or DataArray parameter from elements."""
         xr = self._xr
-        if element_ids is None:
-            elements = self.elements
-            ids = self.element_ids
-        else:
-            id_set = set(element_ids)
-            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
-            ids = element_ids
+        ids = element_ids if element_ids is not None else self.element_ids
 
         values = []
-        for e in elements:
-            val = getattr(self._get_params(e), attr)
+        for eid in ids:
+            val = getattr(self.params[eid], attr)
             if val is None:
                 values.append(np.nan)
             else:
@@ -327,18 +298,12 @@ class InvestmentsModel:
     def _collect_effects(self, attr: str, element_ids: list[str] | None = None) -> dict[str, xr.DataArray]:
         """Collect effects dict from elements into a dict of DataArrays."""
         xr = self._xr
-        if element_ids is None:
-            elements = self.elements
-            ids = self.element_ids
-        else:
-            id_set = set(element_ids)
-            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
-            ids = element_ids
+        ids = element_ids if element_ids is not None else self.element_ids
 
         # Find all effect names across all elements
         all_effects: set[str] = set()
-        for e in elements:
-            effects = getattr(self._get_params(e), attr) or {}
+        for eid in ids:
+            effects = getattr(self.params[eid], attr) or {}
             all_effects.update(effects.keys())
 
         if not all_effects:
@@ -348,8 +313,8 @@ class InvestmentsModel:
         result = {}
         for effect_name in all_effects:
             values = []
-            for e in elements:
-                effects = getattr(self._get_params(e), attr) or {}
+            for eid in ids:
+                effects = getattr(self.params[eid], attr) or {}
                 values.append(effects.get(effect_name, np.nan))
             result[effect_name] = xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
 
@@ -434,7 +399,7 @@ class InvestmentsModel:
 
         # Build mandatory mask
         mandatory_mask = xr.DataArray(
-            [self._get_params(e).mandatory for e in self.elements],
+            [self.params[eid].mandatory for eid in self.element_ids],
             dims=[dim],
             coords={dim: self.element_ids},
         )
@@ -541,15 +506,12 @@ class InvestmentsModel:
         dim = self.dim_name
 
         # Get elements with linked periods
-        element_ids_with_linking = [
-            self._get_element_id(e) for e in self.elements if self._get_params(e).linked_periods is not None
-        ]
+        element_ids_with_linking = [eid for eid in self.element_ids if self.params[eid].linked_periods is not None]
         if not element_ids_with_linking:
             return
 
         for element_id in element_ids_with_linking:
-            elem = self._get_element_by_id(element_id)
-            linked = self._get_params(elem).linked_periods
+            linked = self.params[element_id].linked_periods
             element_size = size_var.sel({dim: element_id})
             masked_size = element_size.where(linked, drop=True)
             if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
@@ -563,33 +525,27 @@ class InvestmentsModel:
     @property
     def elements_with_per_size_effects_ids(self) -> list[str]:
         """IDs of elements with effects_of_investment_per_size."""
-        return [self._get_element_id(e) for e in self.elements if self._get_params(e).effects_of_investment_per_size]
+        return [eid for eid in self.element_ids if self.params[eid].effects_of_investment_per_size]
 
     @property
     def non_mandatory_with_fix_effects_ids(self) -> list[str]:
         """IDs of non-mandatory elements with effects_of_investment."""
         return [
-            self._get_element_id(e)
-            for e in self.elements
-            if not self._get_params(e).mandatory and self._get_params(e).effects_of_investment
+            eid for eid in self.element_ids if not self.params[eid].mandatory and self.params[eid].effects_of_investment
         ]
 
     @property
     def non_mandatory_with_retirement_effects_ids(self) -> list[str]:
         """IDs of non-mandatory elements with effects_of_retirement."""
         return [
-            self._get_element_id(e)
-            for e in self.elements
-            if not self._get_params(e).mandatory and self._get_params(e).effects_of_retirement
+            eid for eid in self.element_ids if not self.params[eid].mandatory and self.params[eid].effects_of_retirement
         ]
 
     @property
     def mandatory_with_fix_effects_ids(self) -> list[str]:
         """IDs of mandatory elements with effects_of_investment."""
         return [
-            self._get_element_id(e)
-            for e in self.elements
-            if self._get_params(e).mandatory and self._get_params(e).effects_of_investment
+            eid for eid in self.element_ids if self.params[eid].mandatory and self.params[eid].effects_of_investment
         ]
 
     # === Effect DataArray properties ===
@@ -668,8 +624,7 @@ class InvestmentsModel:
         """
         # Mandatory fixed effects
         for element_id in self.mandatory_with_fix_effects_ids:
-            elem = self._get_element_by_id(element_id)
-            elem_effects = self._get_params(elem).effects_of_investment or {}
+            elem_effects = self.params[element_id].effects_of_investment or {}
             effects_dict = {}
             for effect_name, val in elem_effects.items():
                 if val is not None and not (np.isscalar(val) and np.isnan(val)):
@@ -683,8 +638,7 @@ class InvestmentsModel:
 
         # Retirement constant parts
         for element_id in self.non_mandatory_with_retirement_effects_ids:
-            elem = self._get_element_by_id(element_id)
-            elem_effects = self._get_params(elem).effects_of_retirement or {}
+            elem_effects = self.params[element_id].effects_of_retirement or {}
             effects_dict = {}
             for effect_name, val in elem_effects.items():
                 if val is not None and not (np.isscalar(val) and np.isnan(val)):
@@ -739,13 +693,14 @@ class FlowInvestmentsModel(InvestmentsModel):
         """
         super().__init__(
             model=model,
-            elements=flows,
-            params_getter=lambda f: f.size,  # For flows, InvestParameters is stored in size
-            id_getter=lambda f: f.label_full,
             size_category=size_category,
             name_prefix=name_prefix,
             dim_name='flow',
         )
+        self.flows = flows
+        self.element_ids = [f.label_full for f in flows]
+        self.params = {f.label_full: f.size for f in flows}
+        self._log_init()
 
 
 class StorageInvestmentsModel(InvestmentsModel):
@@ -770,13 +725,14 @@ class StorageInvestmentsModel(InvestmentsModel):
         """
         super().__init__(
             model=model,
-            elements=storages,
-            params_getter=lambda s: s.invest_parameters,
-            id_getter=lambda s: s.label,
             size_category=size_category,
             name_prefix=name_prefix,
             dim_name=dim_name,
         )
+        self.storages = storages
+        self.element_ids = [s.label for s in storages]
+        self.params = {s.label: s.invest_parameters for s in storages}
+        self._log_init()
 
 
 class StatusProxy:
@@ -847,26 +803,25 @@ class StatusesModel:
     that know how to access element-specific status parameters.
     """
 
+    # These must be set by child classes in their __init__
+    element_ids: list[str]
+    params: dict[str, StatusParameters]  # Maps element_id -> StatusParameters
+    previous_status: dict[str, xr.DataArray]  # Maps element_id -> previous status DataArray
+
     def __init__(
         self,
         model: FlowSystemModel,
         status: linopy.Variable,
-        elements: list,
-        params_getter: callable,
-        id_getter: callable,
-        previous_status_getter: callable | None = None,
         dim_name: str = 'element',
         name_prefix: str = 'status',
     ):
         """Initialize the type-level status model.
 
+        Child classes must set `element_ids`, `params`, and `previous_status` after calling super().__init__.
+
         Args:
             model: The FlowSystemModel to create variables/constraints in.
             status: Batched status variable with element dimension.
-            elements: List of elements with status parameters.
-            params_getter: Function (element) -> StatusParameters.
-            id_getter: Function (element) -> str (element identifier).
-            previous_status_getter: Optional function (element) -> DataArray for previous status.
             dim_name: Dimension name for the element type (e.g., 'flow', 'component').
             name_prefix: Prefix for variable names (e.g., 'status', 'component_status').
         """
@@ -887,48 +842,25 @@ class StatusesModel:
         # Variables dict
         self._variables: dict[str, linopy.Variable] = {}
 
-        # Store elements and status variable
-        self.elements = elements
+        # Store status variable
         self._batched_status_var = status
 
-        # Store accessor callables
-        self._params_getter = params_getter
-        self._id_getter = id_getter
-        self._previous_status_getter = previous_status_getter
-
+    def _log_init(self) -> None:
+        """Log initialization info. Call after setting element_ids, params, and previous_status."""
         self._logger.debug(
             f'StatusesModel initialized: {len(self.element_ids)} elements, '
             f'{len(self.startup_tracking_ids)} with startup tracking, '
             f'{len(self.downtime_tracking_ids)} with downtime tracking'
         )
 
-    def _get_params(self, element) -> StatusParameters:
-        """Get StatusParameters from an element."""
-        return self._params_getter(element)
-
-    def _get_element_id(self, element) -> str:
-        """Get element identifier."""
-        return self._id_getter(element)
-
-    def _get_previous_status(self, element) -> xr.DataArray | None:
-        """Get previous status DataArray for an element."""
-        if self._previous_status_getter is not None:
-            return self._previous_status_getter(element)
-        return None
-
     # === Element categorization properties ===
-
-    @property
-    def element_ids(self) -> list[str]:
-        """IDs of all elements with status."""
-        return [self._get_element_id(e) for e in self.elements]
 
     @property
     def startup_tracking_ids(self) -> list[str]:
         """IDs of elements needing startup/shutdown tracking."""
         result = []
-        for e in self.elements:
-            params = self._get_params(e)
+        for eid in self.element_ids:
+            params = self.params[eid]
             needs_tracking = (
                 params.effects_per_startup
                 or params.min_uptime is not None
@@ -937,77 +869,63 @@ class StatusesModel:
                 or params.force_startup_tracking
             )
             if needs_tracking:
-                result.append(self._get_element_id(e))
+                result.append(eid)
         return result
 
     @property
     def downtime_tracking_ids(self) -> list[str]:
         """IDs of elements needing downtime tracking (inactive variable)."""
         return [
-            self._get_element_id(e)
-            for e in self.elements
-            if self._get_params(e).min_downtime is not None or self._get_params(e).max_downtime is not None
+            eid
+            for eid in self.element_ids
+            if self.params[eid].min_downtime is not None or self.params[eid].max_downtime is not None
         ]
 
     @property
     def uptime_tracking_ids(self) -> list[str]:
         """IDs of elements with min_uptime or max_uptime constraints."""
         return [
-            self._get_element_id(e)
-            for e in self.elements
-            if self._get_params(e).min_uptime is not None or self._get_params(e).max_uptime is not None
+            eid
+            for eid in self.element_ids
+            if self.params[eid].min_uptime is not None or self.params[eid].max_uptime is not None
         ]
 
     @property
     def startup_limit_ids(self) -> list[str]:
         """IDs of elements with startup_limit constraint."""
-        return [self._get_element_id(e) for e in self.elements if self._get_params(e).startup_limit is not None]
+        return [eid for eid in self.element_ids if self.params[eid].startup_limit is not None]
 
     @property
     def cluster_cyclic_ids(self) -> list[str]:
         """IDs of elements with cluster_mode == 'cyclic'."""
-        return [self._get_element_id(e) for e in self.elements if self._get_params(e).cluster_mode == 'cyclic']
+        return [eid for eid in self.element_ids if self.params[eid].cluster_mode == 'cyclic']
 
     # === Parameter collection helpers ===
 
     def _collect_param(self, attr: str, element_ids: list[str] | None = None) -> xr.DataArray:
         """Collect a scalar parameter from elements into a DataArray."""
-        if element_ids is None:
-            elements = self.elements
-            ids = self.element_ids
-        else:
-            id_set = set(element_ids)
-            elements = [e for e in self.elements if self._get_element_id(e) in id_set]
-            ids = element_ids
+        ids = element_ids if element_ids is not None else self.element_ids
 
         values = []
-        for e in elements:
-            val = getattr(self._get_params(e), attr)
+        for eid in ids:
+            val = getattr(self.params[eid], attr)
             values.append(np.nan if val is None else val)
 
         return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
 
     def _get_previous_status_batched(self) -> xr.DataArray | None:
-        """Build batched previous status DataArray from elements."""
+        """Build batched previous status DataArray."""
+        if not self.previous_status:
+            return None
+
         arrays = []
-        ids = []
-        for e in self.elements:
-            prev = self._get_previous_status(e)
-            if prev is not None:
-                arrays.append(prev.expand_dims({self.dim_name: [self._get_element_id(e)]}))
-                ids.append(self._get_element_id(e))
+        for eid, prev in self.previous_status.items():
+            arrays.append(prev.expand_dims({self.dim_name: [eid]}))
 
         if not arrays:
             return None
 
         return xr.concat(arrays, dim=self.dim_name)
-
-    def _get_element_by_id(self, element_id: str):
-        """Get element by its ID."""
-        for e in self.elements:
-            if self._get_element_id(e) == element_id:
-                return e
-        return None
 
     def create_variables(self) -> None:
         """Create batched status feature variables with element dimension."""
@@ -1171,8 +1089,7 @@ class StatusesModel:
 
         # === Uptime tracking (per-element due to previous duration complexity) ===
         for elem_id in self.uptime_tracking_ids:
-            elem = self._get_element_by_id(elem_id)
-            params = self._get_params(elem)
+            params = self.params[elem_id]
             status_elem = status.sel({dim: elem_id})
             min_uptime = params.min_uptime
             max_uptime = params.max_uptime
@@ -1196,8 +1113,7 @@ class StatusesModel:
 
         # === Downtime tracking (per-element due to previous duration complexity) ===
         for elem_id in self.downtime_tracking_ids:
-            elem = self._get_element_by_id(elem_id)
-            params = self._get_params(elem)
+            params = self.params[elem_id]
             inactive = self._variables['inactive'].sel({dim: elem_id})
             min_downtime = params.min_downtime
             max_downtime = params.max_downtime
@@ -1529,13 +1445,20 @@ class FlowStatusesModel(StatusesModel):
         super().__init__(
             model=model,
             status=status,
-            elements=flows,
-            params_getter=lambda f: f.status_parameters,
-            id_getter=lambda f: f.label_full,
-            previous_status_getter=previous_status_getter,
             dim_name='flow',
             name_prefix=name_prefix,
         )
+        self.flows = flows
+        self.element_ids = [f.label_full for f in flows]
+        self.params = {f.label_full: f.status_parameters for f in flows}
+        # Build previous_status dict
+        self.previous_status = {}
+        if previous_status_getter is not None:
+            for f in flows:
+                prev = previous_status_getter(f)
+                if prev is not None:
+                    self.previous_status[f.label_full] = prev
+        self._log_init()
 
 
 class ComponentStatusFeaturesModel(StatusesModel):
@@ -1561,13 +1484,20 @@ class ComponentStatusFeaturesModel(StatusesModel):
         super().__init__(
             model=model,
             status=status,
-            elements=components,
-            params_getter=lambda c: c.status_parameters,
-            id_getter=lambda c: c.label,
-            previous_status_getter=previous_status_getter,
             dim_name='component',
             name_prefix=name_prefix,
         )
+        self.components = components
+        self.element_ids = [c.label for c in components]
+        self.params = {c.label: c.status_parameters for c in components}
+        # Build previous_status dict
+        self.previous_status = {}
+        if previous_status_getter is not None:
+            for c in components:
+                prev = previous_status_getter(c)
+                if prev is not None:
+                    self.previous_status[c.label] = prev
+        self._log_init()
 
 
 class StatusModel(Submodel):
