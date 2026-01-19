@@ -652,6 +652,47 @@ class TypeModel(ABC):
 
         return stacked
 
+    def _broadcast_to_model_coords(
+        self,
+        data: xr.DataArray | float,
+        dims: list[str] | None = None,
+    ) -> xr.DataArray:
+        """Broadcast data to include model dimensions.
+
+        Args:
+            data: Input data (scalar or DataArray).
+            dims: Model dimensions to include. None = all (time, period, scenario).
+
+        Returns:
+            DataArray broadcast to include model dimensions and element dimension.
+        """
+        # Get model coords for broadcasting
+        model_coords = self.model.get_coords(dims=dims)
+
+        # Convert scalar to DataArray with element dimension
+        if np.isscalar(data):
+            # Start with just element dimension
+            result = xr.DataArray(
+                [data] * len(self.element_ids),
+                dims=[self.dim_name],
+                coords={self.dim_name: self.element_ids},
+            )
+            if model_coords is not None:
+                # Broadcast to include model coords
+                template = xr.DataArray(coords=model_coords)
+                result = result.broadcast_like(template)
+            return result
+
+        if not isinstance(data, xr.DataArray):
+            data = xr.DataArray(data)
+
+        if model_coords is None:
+            return data
+
+        # Create template with all required dims
+        template = xr.DataArray(coords=model_coords)
+        return data.broadcast_like(template)
+
     def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
         """Get a variable, optionally sliced to a specific element.
 

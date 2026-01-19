@@ -5,6 +5,7 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -909,12 +910,9 @@ class FlowsModel(TypeModel):
         )
 
         # === flow|hours: ALL flows ===
-        total_lower = self._stack_bounds(
-            [f.flow_hours_min if f.flow_hours_min is not None else 0 for f in self.elements]
-        )
-        total_upper = self._stack_bounds(
-            [f.flow_hours_max if f.flow_hours_max is not None else np.inf for f in self.elements]
-        )
+        # Use cached properties with fillna at use time
+        total_lower = self.flow_hours_minimum.fillna(0)
+        total_upper = self.flow_hours_maximum.fillna(np.inf)
 
         self.add_variables(
             name='hours',
@@ -939,18 +937,13 @@ class FlowsModel(TypeModel):
 
         # === flow|hours_over_periods: Only flows that need it ===
         if self.flows_with_flow_hours_over_periods:
-            fhop_lower = self._stack_bounds(
-                [
-                    f.flow_hours_min_over_periods if f.flow_hours_min_over_periods is not None else 0
-                    for f in self.flows_with_flow_hours_over_periods
-                ]
-            )
-            fhop_upper = self._stack_bounds(
-                [
-                    f.flow_hours_max_over_periods if f.flow_hours_max_over_periods is not None else np.inf
-                    for f in self.flows_with_flow_hours_over_periods
-                ]
-            )
+            # Use cached properties, select subset, and apply fillna
+            fhop_lower = self.flow_hours_minimum_over_periods.sel(
+                {self.dim_name: self.flow_hours_over_periods_ids}
+            ).fillna(0)
+            fhop_upper = self.flow_hours_maximum_over_periods.sel(
+                {self.dim_name: self.flow_hours_over_periods_ids}
+            ).fillna(np.inf)
 
             self._add_subset_variables(
                 name='hours_over_periods',
@@ -1525,7 +1518,7 @@ class FlowsModel(TypeModel):
         """Batched invested binary variable with (flow,) dims, or None if no optional investments."""
         return self.model.variables[FlowVarName.INVESTED] if FlowVarName.INVESTED in self.model.variables else None
 
-    @property
+    @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:
         """Combined effect factors with (flow, effect, ...) dims.
 
@@ -1580,6 +1573,132 @@ class FlowsModel(TypeModel):
         )
 
     # === Batched Parameter Properties ===
+
+    # --- Flow Hours Bounds ---
+
+    @cached_property
+    def flow_hours_minimum(self) -> xr.DataArray:
+        """(flow, period, scenario) - minimum total flow hours. NaN = no constraint."""
+        values = [f.flow_hours_min if f.flow_hours_min is not None else np.nan for f in self.elements]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    @cached_property
+    def flow_hours_maximum(self) -> xr.DataArray:
+        """(flow, period, scenario) - maximum total flow hours. NaN = no constraint."""
+        values = [f.flow_hours_max if f.flow_hours_max is not None else np.nan for f in self.elements]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    @cached_property
+    def flow_hours_minimum_over_periods(self) -> xr.DataArray:
+        """(flow, scenario) - minimum flow hours summed over all periods. NaN = no constraint."""
+        values = [
+            f.flow_hours_min_over_periods if f.flow_hours_min_over_periods is not None else np.nan
+            for f in self.elements
+        ]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['scenario'])
+
+    @cached_property
+    def flow_hours_maximum_over_periods(self) -> xr.DataArray:
+        """(flow, scenario) - maximum flow hours summed over all periods. NaN = no constraint."""
+        values = [
+            f.flow_hours_max_over_periods if f.flow_hours_max_over_periods is not None else np.nan
+            for f in self.elements
+        ]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['scenario'])
+
+    # --- Load Factor Bounds ---
+
+    @cached_property
+    def load_factor_minimum(self) -> xr.DataArray:
+        """(flow, period, scenario) - minimum load factor. NaN = no constraint."""
+        values = [f.load_factor_min if f.load_factor_min is not None else np.nan for f in self.elements]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    @cached_property
+    def load_factor_maximum(self) -> xr.DataArray:
+        """(flow, period, scenario) - maximum load factor. NaN = no constraint."""
+        values = [f.load_factor_max if f.load_factor_max is not None else np.nan for f in self.elements]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    # --- Relative Bounds ---
+
+    @cached_property
+    def relative_minimum(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - relative lower bound on flow rate."""
+        values = [f.relative_minimum for f in self.elements]  # Default is 0, never None
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
+
+    @cached_property
+    def relative_maximum(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - relative upper bound on flow rate."""
+        values = [f.relative_maximum for f in self.elements]  # Default is 1, never None
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
+
+    @cached_property
+    def fixed_relative_profile(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - fixed profile. NaN = not fixed."""
+        values = [f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements]
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
+
+    # --- Size Bounds ---
+
+    @cached_property
+    def size_minimum(self) -> xr.DataArray:
+        """(flow, period, scenario) - minimum size. NaN for flows without size."""
+        values = []
+        for f in self.elements:
+            if f.size is None:
+                values.append(np.nan)
+            elif isinstance(f.size, InvestParameters):
+                values.append(f.size.minimum_or_fixed_size)
+            else:
+                values.append(f.size)  # Fixed size
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    @cached_property
+    def size_maximum(self) -> xr.DataArray:
+        """(flow, period, scenario) - maximum size. NaN for flows without size."""
+        values = []
+        for f in self.elements:
+            if f.size is None:
+                values.append(np.nan)
+            elif isinstance(f.size, InvestParameters):
+                values.append(f.size.maximum_or_fixed_size)
+            else:
+                values.append(f.size)  # Fixed size
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
+
+    # --- Investment Masks ---
+
+    @cached_property
+    def investment_mandatory(self) -> xr.DataArray:
+        """(flow,) bool - True if investment is mandatory, False if optional, NaN if no investment."""
+        values = []
+        for f in self.elements:
+            if not isinstance(f.size, InvestParameters):
+                values.append(np.nan)
+            else:
+                values.append(f.size.mandatory)
+        return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: self.element_ids})
+
+    @cached_property
+    def linked_periods(self) -> xr.DataArray | None:
+        """(flow, period) - period linking mask. 1=linked, 0=not linked, NaN=no linking."""
+        has_linking = any(
+            isinstance(f.size, InvestParameters) and f.size.linked_periods is not None for f in self.elements
+        )
+        if not has_linking:
+            return None
+
+        values = []
+        for f in self.elements:
+            if not isinstance(f.size, InvestParameters) or f.size.linked_periods is None:
+                values.append(np.nan)
+            else:
+                values.append(f.size.linked_periods)
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period'])
+
+    # --- Previous Status ---
 
     @property
     def previous_status_batched(self) -> xr.DataArray | None:
