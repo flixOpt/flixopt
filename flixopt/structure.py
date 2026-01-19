@@ -290,12 +290,9 @@ class FlowVarName:
     INACTIVE = 'status|inactive'
     STARTUP_COUNT = 'status|startup_count'
 
-    # === Duration Tracking (base names - helper appends |duration) ===
+    # === Duration Tracking Variables ===
     UPTIME = 'status|uptime'
     DOWNTIME = 'status|downtime'
-    # Full variable names (created by helper):
-    UPTIME_DURATION = 'status|uptime|duration'
-    DOWNTIME_DURATION = 'status|downtime|duration'
 
     # === Constraint Names ===
     class Constraint:
@@ -312,17 +309,19 @@ class FlowVarName:
         STARTUP_COUNT = 'status|startup_count'
         CLUSTER_CYCLIC = 'status|cluster_cyclic'
 
-        # Duration tracking constraint suffixes
-        UPTIME_DURATION_UB = 'status|uptime|duration|ub'
-        UPTIME_DURATION_FORWARD = 'status|uptime|duration|forward'
-        UPTIME_DURATION_BACKWARD = 'status|uptime|duration|backward'
-        UPTIME_DURATION_INITIAL_UB = 'status|uptime|duration|initial_ub'
-        UPTIME_DURATION_INITIAL_LB = 'status|uptime|duration|initial_lb'
-        DOWNTIME_DURATION_UB = 'status|downtime|duration|ub'
-        DOWNTIME_DURATION_FORWARD = 'status|downtime|duration|forward'
-        DOWNTIME_DURATION_BACKWARD = 'status|downtime|duration|backward'
-        DOWNTIME_DURATION_INITIAL_UB = 'status|downtime|duration|initial_ub'
-        DOWNTIME_DURATION_INITIAL_LB = 'status|downtime|duration|initial_lb'
+        # Uptime tracking constraints
+        UPTIME_UB = 'status|uptime|ub'
+        UPTIME_FORWARD = 'status|uptime|forward'
+        UPTIME_BACKWARD = 'status|uptime|backward'
+        UPTIME_INITIAL_UB = 'status|uptime|initial_ub'
+        UPTIME_INITIAL_LB = 'status|uptime|initial_lb'
+
+        # Downtime tracking constraints
+        DOWNTIME_UB = 'status|downtime|ub'
+        DOWNTIME_FORWARD = 'status|downtime|forward'
+        DOWNTIME_BACKWARD = 'status|downtime|backward'
+        DOWNTIME_INITIAL_UB = 'status|downtime|initial_ub'
+        DOWNTIME_INITIAL_LB = 'status|downtime|initial_lb'
 
 
 class ComponentVarName:
@@ -340,12 +339,9 @@ class ComponentVarName:
     INACTIVE = 'component|inactive'
     STARTUP_COUNT = 'component|startup_count'
 
-    # === Duration Tracking (base names - helper appends |duration) ===
+    # === Duration Tracking Variables ===
     UPTIME = 'component|uptime'
     DOWNTIME = 'component|downtime'
-    # Full variable names (created by helper):
-    UPTIME_DURATION = 'component|uptime|duration'
-    DOWNTIME_DURATION = 'component|downtime|duration'
 
     # === Constraint Names ===
     class Constraint:
@@ -359,17 +355,19 @@ class ComponentVarName:
         STARTUP_COUNT = 'component|startup_count'
         CLUSTER_CYCLIC = 'component|cluster_cyclic'
 
-        # Duration tracking constraint suffixes
-        UPTIME_DURATION_UB = 'component|uptime|duration|ub'
-        UPTIME_DURATION_FORWARD = 'component|uptime|duration|forward'
-        UPTIME_DURATION_BACKWARD = 'component|uptime|duration|backward'
-        UPTIME_DURATION_INITIAL_UB = 'component|uptime|duration|initial_ub'
-        UPTIME_DURATION_INITIAL_LB = 'component|uptime|duration|initial_lb'
-        DOWNTIME_DURATION_UB = 'component|downtime|duration|ub'
-        DOWNTIME_DURATION_FORWARD = 'component|downtime|duration|forward'
-        DOWNTIME_DURATION_BACKWARD = 'component|downtime|duration|backward'
-        DOWNTIME_DURATION_INITIAL_UB = 'component|downtime|duration|initial_ub'
-        DOWNTIME_DURATION_INITIAL_LB = 'component|downtime|duration|initial_lb'
+        # Uptime tracking constraints
+        UPTIME_UB = 'component|uptime|ub'
+        UPTIME_FORWARD = 'component|uptime|forward'
+        UPTIME_BACKWARD = 'component|uptime|backward'
+        UPTIME_INITIAL_UB = 'component|uptime|initial_ub'
+        UPTIME_INITIAL_LB = 'component|uptime|initial_lb'
+
+        # Downtime tracking constraints
+        DOWNTIME_UB = 'component|downtime|ub'
+        DOWNTIME_FORWARD = 'component|downtime|forward'
+        DOWNTIME_BACKWARD = 'component|downtime|backward'
+        DOWNTIME_INITIAL_UB = 'component|downtime|initial_ub'
+        DOWNTIME_INITIAL_LB = 'component|downtime|initial_lb'
 
 
 class StorageVarName:

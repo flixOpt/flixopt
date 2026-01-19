@@ -991,7 +991,7 @@ class StatusesModel:
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=status.sel({dim: self.uptime_tracking_ids}),
-                name=f'{self.name_prefix}|uptime|duration',
+                name=f'{self.name_prefix}|uptime',
                 dim_name=dim,
                 timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_uptime,
@@ -1034,7 +1034,7 @@ class StatusesModel:
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=self._variables['inactive'],
-                name=f'{self.name_prefix}|downtime|duration',
+                name=f'{self.name_prefix}|downtime',
                 dim_name=dim,
                 timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_downtime,

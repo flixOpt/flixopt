@@ -1634,7 +1634,7 @@ class FlowsModel(TypeModel):
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=status.sel({dim: uptime_tracking_ids}),
-                name=FlowVarName.UPTIME_DURATION,
+                name=FlowVarName.UPTIME,
                 dim_name=dim,
                 timestep_duration=timestep_duration,
                 minimum_duration=min_uptime,
@@ -1670,7 +1670,7 @@ class FlowsModel(TypeModel):
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=self._variables['inactive'],
-                name=FlowVarName.DOWNTIME_DURATION,
+                name=FlowVarName.DOWNTIME,
                 dim_name=dim,
                 timestep_duration=timestep_duration,
                 minimum_duration=min_downtime,
