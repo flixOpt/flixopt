@@ -265,6 +265,137 @@ VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
 
 
 # =============================================================================
+# Central Variable/Constraint Naming
+# =============================================================================
+
+
+class FlowVarName:
+    """Central variable naming for Flow type-level models.
+
+    All variable and constraint names for FlowsModel should reference these constants.
+    Pattern: {element_type}|{variable_suffix}
+    """
+
+    # === Flow Variables (FlowsModel) ===
+    RATE = 'flow|rate'
+    HOURS = 'flow|hours'
+    STATUS = 'flow|status'
+    SIZE = 'flow|size'
+    INVESTED = 'flow|invested'
+
+    # === Status Variables (created by FlowsModel for flows with status) ===
+    ACTIVE_HOURS = 'status|active_hours'
+    STARTUP = 'status|startup'
+    SHUTDOWN = 'status|shutdown'
+    INACTIVE = 'status|inactive'
+    STARTUP_COUNT = 'status|startup_count'
+
+    # === Duration Tracking (base names - helper appends |duration) ===
+    UPTIME = 'status|uptime'
+    DOWNTIME = 'status|downtime'
+    # Full variable names (created by helper):
+    UPTIME_DURATION = 'status|uptime|duration'
+    DOWNTIME_DURATION = 'status|downtime|duration'
+
+    # === Constraint Names ===
+    class Constraint:
+        """Constraint names for FlowsModel."""
+
+        HOURS_EQ = 'flow|hours_eq'
+        RATE_STATUS_LB = 'flow|rate_status_lb'
+        RATE_STATUS_UB = 'flow|rate_status_ub'
+        ACTIVE_HOURS = 'status|active_hours'
+        COMPLEMENTARY = 'status|complementary'
+        SWITCH_TRANSITION = 'status|switch|transition'
+        SWITCH_MUTEX = 'status|switch|mutex'
+        SWITCH_INITIAL = 'status|switch|initial'
+        STARTUP_COUNT = 'status|startup_count'
+        CLUSTER_CYCLIC = 'status|cluster_cyclic'
+
+        # Duration tracking constraint suffixes
+        UPTIME_DURATION_UB = 'status|uptime|duration|ub'
+        UPTIME_DURATION_FORWARD = 'status|uptime|duration|forward'
+        UPTIME_DURATION_BACKWARD = 'status|uptime|duration|backward'
+        UPTIME_DURATION_INITIAL_UB = 'status|uptime|duration|initial_ub'
+        UPTIME_DURATION_INITIAL_LB = 'status|uptime|duration|initial_lb'
+        DOWNTIME_DURATION_UB = 'status|downtime|duration|ub'
+        DOWNTIME_DURATION_FORWARD = 'status|downtime|duration|forward'
+        DOWNTIME_DURATION_BACKWARD = 'status|downtime|duration|backward'
+        DOWNTIME_DURATION_INITIAL_UB = 'status|downtime|duration|initial_ub'
+        DOWNTIME_DURATION_INITIAL_LB = 'status|downtime|duration|initial_lb'
+
+
+class ComponentVarName:
+    """Central variable naming for Component type-level models.
+
+    All variable and constraint names for ComponentStatusesModel should reference these constants.
+    Pattern: {element_type}|{variable_suffix}
+    """
+
+    # === Component Status Variables ===
+    STATUS = 'component|status'
+    ACTIVE_HOURS = 'component|active_hours'
+    STARTUP = 'component|startup'
+    SHUTDOWN = 'component|shutdown'
+    INACTIVE = 'component|inactive'
+    STARTUP_COUNT = 'component|startup_count'
+
+    # === Duration Tracking (base names - helper appends |duration) ===
+    UPTIME = 'component|uptime'
+    DOWNTIME = 'component|downtime'
+    # Full variable names (created by helper):
+    UPTIME_DURATION = 'component|uptime|duration'
+    DOWNTIME_DURATION = 'component|downtime|duration'
+
+    # === Constraint Names ===
+    class Constraint:
+        """Constraint names for ComponentStatusesModel."""
+
+        ACTIVE_HOURS = 'component|active_hours'
+        COMPLEMENTARY = 'component|complementary'
+        SWITCH_TRANSITION = 'component|switch|transition'
+        SWITCH_MUTEX = 'component|switch|mutex'
+        SWITCH_INITIAL = 'component|switch|initial'
+        STARTUP_COUNT = 'component|startup_count'
+        CLUSTER_CYCLIC = 'component|cluster_cyclic'
+
+        # Duration tracking constraint suffixes
+        UPTIME_DURATION_UB = 'component|uptime|duration|ub'
+        UPTIME_DURATION_FORWARD = 'component|uptime|duration|forward'
+        UPTIME_DURATION_BACKWARD = 'component|uptime|duration|backward'
+        UPTIME_DURATION_INITIAL_UB = 'component|uptime|duration|initial_ub'
+        UPTIME_DURATION_INITIAL_LB = 'component|uptime|duration|initial_lb'
+        DOWNTIME_DURATION_UB = 'component|downtime|duration|ub'
+        DOWNTIME_DURATION_FORWARD = 'component|downtime|duration|forward'
+        DOWNTIME_DURATION_BACKWARD = 'component|downtime|duration|backward'
+        DOWNTIME_DURATION_INITIAL_UB = 'component|downtime|duration|initial_ub'
+        DOWNTIME_DURATION_INITIAL_LB = 'component|downtime|duration|initial_lb'
+
+
+class StorageVarName:
+    """Central variable naming for Storage type-level models.
+
+    All variable and constraint names for StoragesModel should reference these constants.
+    """
+
+    # === Storage Variables ===
+    CHARGE = 'storage|charge'
+    NETTO = 'storage|netto'
+    SIZE = 'storage|size'
+    INVESTED = 'storage|invested'
+
+
+class EffectVarName:
+    """Central variable naming for Effect models."""
+
+    # === Effect Variables ===
+    PERIODIC = 'effect|periodic'
+    TEMPORAL = 'effect|temporal'
+    PER_TIMESTEP = 'effect|per_timestep'
+    TOTAL = 'effect|total'
+
+
+# =============================================================================
 # TypeModel Base Class
 # =============================================================================
 

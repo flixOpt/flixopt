@@ -253,87 +253,6 @@ class StatusHelpers:
     """
 
     @staticmethod
-    def add_consecutive_duration_tracking(
-        model: FlowSystemModel,
-        state: linopy.Variable,
-        name: str,
-        timestep_duration: xr.DataArray,
-        minimum_duration: float | xr.DataArray | None = None,
-        maximum_duration: float | xr.DataArray | None = None,
-        previous_duration: float | xr.DataArray | None = None,
-    ) -> linopy.Variable:
-        """Add consecutive duration tracking constraints for a binary state variable.
-
-        Creates:
-        - duration variable: tracks consecutive time in state
-        - upper bound: duration[t] <= state[t] * M
-        - forward constraint: duration[t+1] <= duration[t] + dt[t]
-        - backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
-        - optional initial constraints if previous_duration provided
-
-        Args:
-            model: The FlowSystemModel to add constraints to.
-            state: Binary state variable (element, time).
-            name: Base name for the duration variable and constraints.
-            timestep_duration: Duration per timestep.
-            minimum_duration: Optional minimum duration constraint.
-            maximum_duration: Optional maximum duration constraint.
-            previous_duration: Optional previous duration for initial state.
-
-        Returns:
-            The created duration variable.
-        """
-        duration_dim = 'time'
-
-        # Big-M value
-        mega = timestep_duration.sum(duration_dim) + (previous_duration if previous_duration is not None else 0)
-
-        # Duration variable
-        upper_bound = maximum_duration if maximum_duration is not None else mega
-        duration = model.add_variables(
-            lower=0,
-            upper=upper_bound,
-            coords=state.coords,
-            name=f'{name}|duration',
-        )
-
-        # Upper bound: duration[t] <= state[t] * M
-        model.add_constraints(duration <= state * mega, name=f'{name}|duration|ub')
-
-        # Forward constraint: duration[t+1] <= duration[t] + duration_per_step[t]
-        model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
-            <= duration.isel({duration_dim: slice(None, -1)}) + timestep_duration.isel({duration_dim: slice(None, -1)}),
-            name=f'{name}|duration|forward',
-        )
-
-        # Backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
-        model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
-            >= duration.isel({duration_dim: slice(None, -1)})
-            + timestep_duration.isel({duration_dim: slice(None, -1)})
-            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
-            name=f'{name}|duration|backward',
-        )
-
-        # Initial constraints if previous_duration provided
-        if previous_duration is not None:
-            model.add_constraints(
-                duration.isel({duration_dim: 0})
-                <= state.isel({duration_dim: 0}) * (previous_duration + timestep_duration.isel({duration_dim: 0})),
-                name=f'{name}|duration|initial_ub',
-            )
-            model.add_constraints(
-                duration.isel({duration_dim: 0})
-                >= (state.isel({duration_dim: 0}) - 1) * mega
-                + previous_duration
-                + state.isel({duration_dim: 0}) * timestep_duration.isel({duration_dim: 0}),
-                name=f'{name}|duration|initial_lb',
-            )
-
-        return duration
-
-    @staticmethod
     def compute_previous_duration(
         previous_status: xr.DataArray,
         target_state: int,
@@ -415,8 +334,8 @@ class StatusHelpers:
     ) -> linopy.Variable:
         """Add batched consecutive duration tracking constraints for binary state variables.
 
-        This is a vectorized version of add_consecutive_duration_tracking that operates
-        on batched state variables with an element dimension.
+        This is a vectorized version that operates on batched state variables
+        with an element dimension.
 
         Creates:
         - duration variable: tracks consecutive time in state for all elements
@@ -428,7 +347,7 @@ class StatusHelpers:
         Args:
             model: The FlowSystemModel to add constraints to.
             state: Binary state variable with (element_dim, time) dims.
-            name: Base name for the duration variable and constraints (e.g., 'status|uptime').
+            name: Full name for the duration variable (e.g., 'status|uptime|duration').
             dim_name: Element dimension name (e.g., 'flow', 'component').
             timestep_duration: Duration per timestep (time,).
             minimum_duration: Optional minimum duration per element (element_dim,). NaN = no constraint.
@@ -459,17 +378,17 @@ class StatusHelpers:
             lower=0,
             upper=upper_bound,
             coords=state.coords,
-            name=f'{name}|duration',
+            name=name,
         )
 
         # Upper bound: duration[e,t] <= state[e,t] * M[e]
-        model.add_constraints(duration <= state * mega, name=f'{name}|duration|ub')
+        model.add_constraints(duration <= state * mega, name=f'{name}|ub')
 
         # Forward constraint: duration[e,t+1] <= duration[e,t] + dt[t]
         model.add_constraints(
             duration.isel({duration_dim: slice(1, None)})
             <= duration.isel({duration_dim: slice(None, -1)}) + timestep_duration.isel({duration_dim: slice(None, -1)}),
-            name=f'{name}|duration|forward',
+            name=f'{name}|forward',
         )
 
         # Backward constraint: duration[e,t+1] >= duration[e,t] + dt[t] + (state[e,t+1] - 1) * M[e]
@@ -478,7 +397,7 @@ class StatusHelpers:
             >= duration.isel({duration_dim: slice(None, -1)})
             + timestep_duration.isel({duration_dim: slice(None, -1)})
             + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
-            name=f'{name}|duration|backward',
+            name=f'{name}|backward',
         )
 
         # Initial constraints for elements with previous_duration
@@ -495,11 +414,11 @@ class StatusHelpers:
 
                 model.add_constraints(
                     duration_init <= state_init * (prev_vals + dt_init),
-                    name=f'{name}|duration|initial_ub',
+                    name=f'{name}|initial_ub',
                 )
                 model.add_constraints(
                     duration_init >= (state_init - 1) * mega_subset + prev_vals + state_init * dt_init,
-                    name=f'{name}|duration|initial_lb',
+                    name=f'{name}|initial_lb',
                 )
 
         return duration
@@ -1072,7 +991,7 @@ class StatusesModel:
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=status.sel({dim: self.uptime_tracking_ids}),
-                name=f'{self.name_prefix}|uptime',
+                name=f'{self.name_prefix}|uptime|duration',
                 dim_name=dim,
                 timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_uptime,
@@ -1115,7 +1034,7 @@ class StatusesModel:
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=self._variables['inactive'],
-                name=f'{self.name_prefix}|downtime',
+                name=f'{self.name_prefix}|downtime|duration',
                 dim_name=dim,
                 timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_downtime,
@@ -1134,82 +1053,6 @@ class StatusesModel:
                 )
 
         self._logger.debug(f'StatusesModel created constraints for {len(self.element_ids)} elements')
-
-    def _add_consecutive_duration_tracking(
-        self,
-        state: linopy.Variable,
-        name: str,
-        minimum_duration: float | xr.DataArray | None = None,
-        maximum_duration: float | xr.DataArray | None = None,
-        previous_duration: float | xr.DataArray | None = None,
-    ) -> None:
-        """Add consecutive duration tracking constraints for a binary state variable.
-
-        This implements the same logic as ModelingPrimitives.consecutive_duration_tracking
-        but directly on FlowSystemModel without requiring a Submodel.
-
-        Creates:
-        - duration variable: tracks consecutive time in state
-        - upper bound: duration[t] <= state[t] * M
-        - forward constraint: duration[t+1] <= duration[t] + dt[t]
-        - backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
-        - optional lower bound if minimum_duration provided
-        """
-        duration_per_step = self.model.timestep_duration
-        duration_dim = 'time'
-
-        # Big-M value
-        mega = duration_per_step.sum(duration_dim) + (previous_duration if previous_duration is not None else 0)
-
-        # Duration variable
-        upper_bound = maximum_duration if maximum_duration is not None else mega
-        duration = self.model.add_variables(
-            lower=0,
-            upper=upper_bound,
-            coords=state.coords,
-            name=f'{name}|duration',
-        )
-
-        # Upper bound: duration[t] <= state[t] * M
-        self.model.add_constraints(duration <= state * mega, name=f'{name}|duration|ub')
-
-        # Forward constraint: duration[t+1] <= duration[t] + duration_per_step[t]
-        self.model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
-            <= duration.isel({duration_dim: slice(None, -1)}) + duration_per_step.isel({duration_dim: slice(None, -1)}),
-            name=f'{name}|duration|forward',
-        )
-
-        # Backward constraint: duration[t+1] >= duration[t] + dt[t] + (state[t+1] - 1) * M
-        self.model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
-            >= duration.isel({duration_dim: slice(None, -1)})
-            + duration_per_step.isel({duration_dim: slice(None, -1)})
-            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
-            name=f'{name}|duration|backward',
-        )
-
-        # Initial constraint if previous_duration provided
-        if previous_duration is not None:
-            # duration[0] <= (state[0] * M) if previous_duration == 0, else handle differently
-            self.model.add_constraints(
-                duration.isel({duration_dim: 0})
-                <= state.isel({duration_dim: 0}) * (previous_duration + duration_per_step.isel({duration_dim: 0})),
-                name=f'{name}|duration|initial_ub',
-            )
-            self.model.add_constraints(
-                duration.isel({duration_dim: 0})
-                >= (state.isel({duration_dim: 0}) - 1) * mega
-                + previous_duration
-                + state.isel({duration_dim: 0}) * duration_per_step.isel({duration_dim: 0}),
-                name=f'{name}|duration|initial_lb',
-            )
-
-        # Lower bound if minimum_duration provided
-        if minimum_duration is not None:
-            # At shutdown (state drops to 0), duration must have reached minimum
-            # This requires tracking shutdown event
-            pass  # Handled by bounds naturally via backward constraint
 
     def _compute_previous_duration(
         self, previous_status: xr.DataArray, target_state: int, timestep_duration

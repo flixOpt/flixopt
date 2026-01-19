@@ -22,6 +22,7 @@ from .structure import (
     ElementModel,
     ElementType,
     FlowSystemModel,
+    FlowVarName,
     TypeModel,
     VariableType,
     register_class_for_io,
@@ -1256,7 +1257,7 @@ class FlowsModel(TypeModel):
             lower=lower_bounds,
             upper=upper_bounds,
             coords=size_coords,
-            name='flow|size',
+            name=FlowVarName.SIZE,
         )
         self._variables['size'] = size_var
 
@@ -1271,7 +1272,7 @@ class FlowsModel(TypeModel):
             invested_var = self.model.add_variables(
                 binary=True,
                 coords=invested_coords,
-                name='flow|invested',
+                name=FlowVarName.INVESTED,
             )
             self._variables['invested'] = invested_var
 
@@ -1512,7 +1513,7 @@ class FlowsModel(TypeModel):
             lower=active_hours_min,
             upper=active_hours_max,
             coords=active_hours_coords,
-            name='status|active_hours',
+            name=FlowVarName.ACTIVE_HOURS,
         )
 
         # === status|startup, status|shutdown: Elements with startup tracking ===
@@ -1520,10 +1521,10 @@ class FlowsModel(TypeModel):
             temporal_coords = self.model.get_coords()
             startup_coords = xr.Coordinates({dim: pd.Index(startup_tracking_ids, name=dim), **dict(temporal_coords)})
             self._variables['startup'] = self.model.add_variables(
-                binary=True, coords=startup_coords, name='status|startup'
+                binary=True, coords=startup_coords, name=FlowVarName.STARTUP
             )
             self._variables['shutdown'] = self.model.add_variables(
-                binary=True, coords=startup_coords, name='status|shutdown'
+                binary=True, coords=startup_coords, name=FlowVarName.SHUTDOWN
             )
 
         # === status|inactive: Elements with downtime tracking ===
@@ -1531,7 +1532,7 @@ class FlowsModel(TypeModel):
             temporal_coords = self.model.get_coords()
             inactive_coords = xr.Coordinates({dim: pd.Index(downtime_tracking_ids, name=dim), **dict(temporal_coords)})
             self._variables['inactive'] = self.model.add_variables(
-                binary=True, coords=inactive_coords, name='status|inactive'
+                binary=True, coords=inactive_coords, name=FlowVarName.INACTIVE
             )
 
         # === status|startup_count: Elements with startup limit ===
@@ -1544,7 +1545,7 @@ class FlowsModel(TypeModel):
                 startup_limit = startup_limit.sel({dim: startup_limit_ids})
             startup_count_coords = xr.Coordinates({dim: pd.Index(startup_limit_ids, name=dim), **base_coords_dict})
             self._variables['startup_count'] = self.model.add_variables(
-                lower=0, upper=startup_limit, coords=startup_count_coords, name='status|startup_count'
+                lower=0, upper=startup_limit, coords=startup_count_coords, name=FlowVarName.STARTUP_COUNT
             )
 
         # === CONSTRAINTS ===
@@ -1552,14 +1553,14 @@ class FlowsModel(TypeModel):
         # active_hours tracking: sum(status * weight) == active_hours
         self.model.add_constraints(
             self._variables['active_hours'] == self.model.sum_temporal(status),
-            name='status|active_hours',
+            name=FlowVarName.Constraint.ACTIVE_HOURS,
         )
 
         # inactive complementary: status + inactive == 1
         if downtime_tracking_ids:
             status_subset = status.sel({dim: downtime_tracking_ids})
             inactive = self._variables['inactive']
-            self.model.add_constraints(status_subset + inactive == 1, name='status|complementary')
+            self.model.add_constraints(status_subset + inactive == 1, name=FlowVarName.Constraint.COMPLEMENTARY)
 
         # State transitions: startup, shutdown
         if startup_tracking_ids:
@@ -1571,11 +1572,11 @@ class FlowsModel(TypeModel):
             self.model.add_constraints(
                 startup.isel(time=slice(1, None)) - shutdown.isel(time=slice(1, None))
                 == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
-                name='status|switch|transition',
+                name=FlowVarName.Constraint.SWITCH_TRANSITION,
             )
 
             # Mutex constraint
-            self.model.add_constraints(startup + shutdown <= 1, name='status|switch|mutex')
+            self.model.add_constraints(startup + shutdown <= 1, name=FlowVarName.Constraint.SWITCH_MUTEX)
 
             # Initial constraint for t = 0 (if previous_status available)
             if self._previous_status:
@@ -1592,7 +1593,7 @@ class FlowsModel(TypeModel):
 
                     self.model.add_constraints(
                         startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
-                        name='status|switch|initial',
+                        name=FlowVarName.Constraint.SWITCH_INITIAL,
                     )
 
         # startup_count: sum(startup) == startup_count
@@ -1600,7 +1601,9 @@ class FlowsModel(TypeModel):
             startup = self._variables['startup'].sel({dim: startup_limit_ids})
             startup_count = self._variables['startup_count']
             startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario', dim)]
-            self.model.add_constraints(startup_count == startup.sum(startup_temporal_dims), name='status|startup_count')
+            self.model.add_constraints(
+                startup_count == startup.sum(startup_temporal_dims), name=FlowVarName.Constraint.STARTUP_COUNT
+            )
 
         # Uptime tracking (batched)
         timestep_duration = self.model.timestep_duration
@@ -1631,7 +1634,7 @@ class FlowsModel(TypeModel):
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=status.sel({dim: uptime_tracking_ids}),
-                name='status|uptime',
+                name=FlowVarName.UPTIME_DURATION,
                 dim_name=dim,
                 timestep_duration=timestep_duration,
                 minimum_duration=min_uptime,
@@ -1667,7 +1670,7 @@ class FlowsModel(TypeModel):
             StatusHelpers.add_batched_duration_tracking(
                 model=self.model,
                 state=self._variables['inactive'],
-                name='status|downtime',
+                name=FlowVarName.DOWNTIME_DURATION,
                 dim_name=dim,
                 timestep_duration=timestep_duration,
                 minimum_duration=min_downtime,
@@ -1682,7 +1685,7 @@ class FlowsModel(TypeModel):
                 status_cyclic = status.sel({dim: cyclic_ids})
                 self.model.add_constraints(
                     status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
-                    name='status|cluster_cyclic',
+                    name=FlowVarName.Constraint.CLUSTER_CYCLIC,
                 )
 
         logger.debug(
