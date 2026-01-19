@@ -1133,19 +1133,17 @@ class FlowsModel(TypeModel):
         flow_rate = self._variables['rate'].sel({dim: flow_ids})
         status = self._variables['status'].sel({dim: flow_ids})
 
+        # Get effective relative bounds and fixed size for the subset
+        rel_max = self.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.effective_relative_minimum.sel({dim: flow_ids})
+        size = self.fixed_size.sel({dim: flow_ids})
+
         # Upper bound: rate <= status * size * relative_max
-        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
-        upper_bounds = xr.concat(
-            [self._get_relative_bounds(f)[1] * f.size for f in flows], dim=dim, coords='minimal'
-        ).assign_coords({dim: flow_ids})
+        upper_bounds = rel_max * size
         self.add_constraints(flow_rate <= status * upper_bounds, name='rate_status_ub')
 
         # Lower bound: rate >= status * max(epsilon, size * relative_min)
-        lower_bounds = xr.concat(
-            [np.maximum(CONFIG.Modeling.epsilon, self._get_relative_bounds(f)[0] * f.size) for f in flows],
-            dim=dim,
-            coords='minimal',
-        ).assign_coords({dim: flow_ids})
+        lower_bounds = np.maximum(CONFIG.Modeling.epsilon, rel_min * size)
         self.add_constraints(flow_rate >= status * lower_bounds, name='rate_status_lb')
 
     def _create_investment_bounds(self, flows: list[Flow]) -> None:
@@ -1155,17 +1153,14 @@ class FlowsModel(TypeModel):
         flow_rate = self._variables['rate'].sel({dim: flow_ids})
         size = self._variables['size'].sel({dim: flow_ids})
 
+        # Get effective relative bounds for the subset
+        rel_max = self.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.effective_relative_minimum.sel({dim: flow_ids})
+
         # Upper bound: rate <= size * relative_max
-        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
-        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim=dim, coords='minimal').assign_coords(
-            {dim: flow_ids}
-        )
         self.add_constraints(flow_rate <= size * rel_max, name='rate_invest_ub')
 
         # Lower bound: rate >= size * relative_min
-        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim=dim, coords='minimal').assign_coords(
-            {dim: flow_ids}
-        )
         self.add_constraints(flow_rate >= size * rel_min, name='rate_invest_lb')
 
     def _create_status_investment_bounds(self, flows: list[Flow]) -> None:
@@ -1176,22 +1171,17 @@ class FlowsModel(TypeModel):
         size = self._variables['size'].sel({dim: flow_ids})
         status = self._variables['status'].sel({dim: flow_ids})
 
+        # Get effective relative bounds and size_maximum for the subset
+        rel_max = self.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.effective_relative_minimum.sel({dim: flow_ids})
+        max_size = self.size_maximum.sel({dim: flow_ids})
+
         # Upper bound: rate <= size * relative_max
-        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
-        rel_max = xr.concat([self._get_relative_bounds(f)[1] for f in flows], dim=dim, coords='minimal').assign_coords(
-            {dim: flow_ids}
-        )
         self.add_constraints(flow_rate <= size * rel_max, name='rate_status_invest_ub')
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
-        rel_min = xr.concat([self._get_relative_bounds(f)[0] for f in flows], dim=dim, coords='minimal').assign_coords(
-            {dim: flow_ids}
-        )
-        big_m = xr.concat(
-            [f.size.maximum_or_fixed_size * self._get_relative_bounds(f)[0] for f in flows],
-            dim=dim,
-            coords='minimal',
-        ).assign_coords({dim: flow_ids})
+        # big_M = max_size * relative_min
+        big_m = max_size * rel_min
         rhs = (status - 1) * big_m + size * rel_min
         self.add_constraints(flow_rate >= rhs, name='rate_status_invest_lb')
 
@@ -1553,7 +1543,8 @@ class FlowsModel(TypeModel):
             for flow in flows_with_effects
         ]
 
-        return xr.concat(flow_factors, dim=self.dim_name).assign_coords({self.dim_name: flow_ids})
+        # Use coords='minimal' to handle dimension mismatches (some effects may have 'period', some don't)
+        return xr.concat(flow_factors, dim=self.dim_name, coords='minimal').assign_coords({self.dim_name: flow_ids})
 
     def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
         """Get previous status for a flow based on its previous_flow_rate.
@@ -1645,6 +1636,33 @@ class FlowsModel(TypeModel):
         """(flow, time, period, scenario) - fixed profile. NaN = not fixed."""
         values = [f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
+
+    @cached_property
+    def effective_relative_minimum(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - effective lower bound (uses fixed_profile if set)."""
+        # Where fixed_relative_profile is set, use it; otherwise use relative_minimum
+        fixed = self.fixed_relative_profile
+        rel_min = self.relative_minimum
+        return xr.where(fixed.notnull(), fixed, rel_min)
+
+    @cached_property
+    def effective_relative_maximum(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - effective upper bound (uses fixed_profile if set)."""
+        # Where fixed_relative_profile is set, use it; otherwise use relative_maximum
+        fixed = self.fixed_relative_profile
+        rel_max = self.relative_maximum
+        return xr.where(fixed.notnull(), fixed, rel_max)
+
+    @cached_property
+    def fixed_size(self) -> xr.DataArray:
+        """(flow, period, scenario) - fixed size for non-investment flows. NaN for investment/no-size flows."""
+        values = []
+        for f in self.elements:
+            if f.size is None or isinstance(f.size, InvestParameters):
+                values.append(np.nan)
+            else:
+                values.append(f.size)  # Fixed size
+        return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
 
     # --- Size Bounds ---
 
