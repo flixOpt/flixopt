@@ -39,39 +39,6 @@ logger = logging.getLogger('flixopt')
 PENALTY_EFFECT_LABEL = 'Penalty'
 
 
-def _stack_expressions(expressions: list[linopy.LinearExpression], model: linopy.Model) -> linopy.LinearExpression:
-    """Stack a list of LinearExpressions into a single expression with a 'pair' dimension.
-
-    This handles the case where expressions may have inconsistent underlying data types
-    (some Dataset-backed, some DataArray-backed) by converting all to a consistent format.
-
-    Args:
-        expressions: List of LinearExpressions to stack
-        model: The linopy model (for creating the result expression)
-
-    Returns:
-        A single LinearExpression with an additional 'pair' dimension
-    """
-    if not expressions:
-        raise ValueError('Cannot stack empty list of expressions')
-
-    # Convert all expression data to datasets for consistency
-    datasets = []
-    for i, expr in enumerate(expressions):
-        data = expr.data
-        if isinstance(data, xr.DataArray):
-            # Convert DataArray to Dataset
-            data = data.to_dataset()
-        # Expand with pair index
-        data = data.expand_dims(pair=[i])
-        datasets.append(data)
-
-    # Concatenate along the pair dimension
-    # Use compat='override' to handle conflicting coordinate values
-    stacked_data = xr.concat(datasets, dim='pair', coords='minimal', compat='override')
-    return linopy.LinearExpression(stacked_data, model)
-
-
 @register_class_for_io
 class Effect(Element):
     """Represents system-wide impacts like costs, emissions, or resource consumption.
@@ -483,13 +450,6 @@ class EffectsModel:
         self._eq_temporal: linopy.Constraint | None = None
         self._eq_total: linopy.Constraint | None = None
 
-        # Per-element share tracking (for cross-effect shares and non-batched contributions)
-        self._temporal_contributions: list[
-            tuple[str, str, linopy.LinearExpression]
-        ] = []  # (element_id, effect_id, expr)
-        self._periodic_contributions: list[
-            tuple[str, str, linopy.LinearExpression]
-        ] = []  # (element_id, effect_id, expr)
         self._eq_per_timestep: linopy.Constraint | None = None
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
@@ -663,21 +623,17 @@ class EffectsModel:
         """Add a periodic share to a specific effect.
 
         Args:
-            name: Element identifier for the share (used in unified share variable)
+            name: Element identifier (for debugging, not used in model)
             effect_id: Target effect identifier
             expression: The share expression to add
         """
-        # Track contribution for unified share variable creation
-        self._periodic_contributions.append((name, effect_id, expression))
-
         # Expand expression to have effect dimension (with zeros for other effects)
         effect_mask = xr.DataArray(
             [1 if eid == effect_id else 0 for eid in self.effect_ids],
             coords={'effect': self.effect_ids},
             dims=['effect'],
         )
-        expanded_expr = expression * effect_mask
-        self._eq_periodic.lhs -= expanded_expr
+        self._eq_periodic.lhs -= expression * effect_mask
 
     def add_share_temporal(
         self,
@@ -688,151 +644,17 @@ class EffectsModel:
         """Add a temporal (per-timestep) share to a specific effect.
 
         Args:
-            name: Element identifier for the share (used in unified share variable)
+            name: Element identifier (for debugging, not used in model)
             effect_id: Target effect identifier
             expression: The share expression to add
         """
-        # Track contribution for unified share variable creation
-        self._temporal_contributions.append((name, effect_id, expression))
-
         # Expand expression to have effect dimension (with zeros for other effects)
         effect_mask = xr.DataArray(
             [1 if eid == effect_id else 0 for eid in self.effect_ids],
             coords={'effect': self.effect_ids},
             dims=['effect'],
         )
-        expanded_expr = expression * effect_mask
-        self._eq_per_timestep.lhs -= expanded_expr
-
-    def create_share_variables(self) -> None:
-        """Create unified share variables with (contributor, effect) dimensions.
-
-        Called after all shares have been added to create the batched share variables.
-        Creates ONE batched constraint per share type (temporal/periodic) instead of
-        individual constraints per contributor-effect pair.
-        """
-        import pandas as pd
-
-        # === Temporal shares ===
-        if self._temporal_contributions:
-            # Combine contributions with the same (contributor_id, effect_id) pair
-            combined_temporal: dict[tuple[str, str], linopy.LinearExpression] = {}
-            for contributor_id, effect_id, expression in self._temporal_contributions:
-                key = (contributor_id, effect_id)
-                if key in combined_temporal:
-                    combined_temporal[key] = combined_temporal[key] + expression
-                else:
-                    combined_temporal[key] = expression
-
-            # Collect unique contributor IDs
-            contributor_ids = sorted(set(c_id for c_id, _ in combined_temporal.keys()))
-            contributor_index = pd.Index(contributor_ids, name='contributor')
-
-            # Build coordinates
-            temporal_coords = xr.Coordinates(
-                {
-                    'contributor': contributor_index,
-                    'effect': self._effect_index,
-                    **{k: v for k, v in (self.model.get_coords(None) or {}).items()},
-                }
-            )
-
-            # Create share variable (initialized to 0, contributions add to it)
-            self.share_temporal = self.model.add_variables(
-                lower=-np.inf,  # Can be negative if contributions cancel
-                upper=np.inf,
-                coords=temporal_coords,
-                name='share|temporal',
-            )
-
-            # Build batched expression array for ONE constraint
-            # Only include (contributor, effect) pairs that have contributions
-            # Create constraint: share[contributor, effect] == expression[contributor, effect]
-
-            # Get all populated (contributor, effect) pairs
-            populated_pairs = list(combined_temporal.keys())
-
-            # Select share variable slices and convert to expressions (var * 1)
-            share_exprs = []
-            expr_slices = []
-            for contributor_id, effect_id in populated_pairs:
-                # Convert Variable slice to LinearExpression
-                share_slice = self.share_temporal.sel(contributor=contributor_id, effect=effect_id)
-                share_exprs.append(1 * share_slice)  # Convert to expression
-                expr = combined_temporal[(contributor_id, effect_id)]
-                # Ensure expression is a LinearExpression (not a Variable)
-                if isinstance(expr, linopy.Variable):
-                    expr = 1 * expr
-                expr_slices.append(expr)
-
-            # Stack into batched arrays with a 'pair' dimension
-            # Use concat directly to handle potential type inconsistencies
-            share_stacked = _stack_expressions(share_exprs, self.model)
-            expr_stacked = _stack_expressions(expr_slices, self.model)
-
-            # ONE batched constraint for all temporal shares
-            self.model.add_constraints(
-                share_stacked == expr_stacked,
-                name='share|temporal',
-            )
-
-        # === Periodic shares ===
-        if self._periodic_contributions:
-            # Combine contributions with the same (contributor_id, effect_id) pair
-            combined_periodic: dict[tuple[str, str], linopy.LinearExpression] = {}
-            for contributor_id, effect_id, expression in self._periodic_contributions:
-                key = (contributor_id, effect_id)
-                if key in combined_periodic:
-                    combined_periodic[key] = combined_periodic[key] + expression
-                else:
-                    combined_periodic[key] = expression
-
-            # Collect unique contributor IDs
-            contributor_ids = sorted(set(c_id for c_id, _ in combined_periodic.keys()))
-            contributor_index = pd.Index(contributor_ids, name='contributor')
-
-            # Build coordinates
-            periodic_coords = xr.Coordinates(
-                {
-                    'contributor': contributor_index,
-                    'effect': self._effect_index,
-                    **{k: v for k, v in (self.model.get_coords(['period', 'scenario']) or {}).items()},
-                }
-            )
-
-            # Create share variable
-            self.share_periodic = self.model.add_variables(
-                lower=-np.inf,  # Periodic can be negative (retirement effects)
-                upper=np.inf,
-                coords=periodic_coords,
-                name='share|periodic',
-            )
-
-            # Build batched expression array for ONE constraint
-            # Only include (contributor, effect) pairs that have contributions
-            populated_pairs = list(combined_periodic.keys())
-
-            # Select share variable slices and convert to expressions
-            share_exprs = []
-            expr_slices = []
-            for contributor_id, effect_id in populated_pairs:
-                share_slice = self.share_periodic.sel(contributor=contributor_id, effect=effect_id)
-                share_exprs.append(1 * share_slice)  # Convert to expression
-                expr = combined_periodic[(contributor_id, effect_id)]
-                # Ensure expression is a LinearExpression (not a Variable)
-                if isinstance(expr, linopy.Variable):
-                    expr = 1 * expr
-                expr_slices.append(expr)
-
-            # Stack into batched arrays with a 'pair' dimension
-            share_stacked = _stack_expressions(share_exprs, self.model)
-            expr_stacked = _stack_expressions(expr_slices, self.model)
-
-            # ONE batched constraint for all periodic shares
-            self.model.add_constraints(
-                share_stacked == expr_stacked,
-                name='share|periodic',
-            )
+        self._eq_per_timestep.lhs -= expression * effect_mask
 
     def finalize_shares(self) -> None:
         """Add effect shares directly to effect constraints.
@@ -1360,14 +1182,7 @@ class EffectCollectionModel(Submodel):
             flow_rate_subset = flow_rate.sel({dim: element_ids})
 
             if self.is_type_level and self._batched_model is not None:
-                # Type-level mode: track contributions for unified share variable
-                for element_id, factor in element_factors:
-                    flow_rate_elem = flow_rate.sel({dim: element_id})
-                    factor_da = xr.DataArray(factor) if not isinstance(factor, xr.DataArray) else factor
-                    expression = flow_rate_elem * self._model.timestep_duration * factor_da
-                    self._batched_model._temporal_contributions.append((element_id, effect_name, expression))
-
-                # Add sum of shares to effect's per_timestep constraint
+                # Type-level mode: add sum of shares to effect's per_timestep constraint
                 expression_all = flow_rate_subset * self._model.timestep_duration * factors_da
                 share_sum = expression_all.sum(dim)
                 effect_mask = xr.DataArray(
@@ -1375,8 +1190,7 @@ class EffectCollectionModel(Submodel):
                     coords={'effect': self._batched_model.effect_ids},
                     dims=['effect'],
                 )
-                expanded_share = share_sum * effect_mask
-                self._batched_model._eq_per_timestep.lhs -= expanded_share
+                self._batched_model._eq_per_timestep.lhs -= share_sum * effect_mask
             else:
                 # Traditional mode: create per-effect share variable
                 expression = flow_rate_subset * self._model.timestep_duration * factors_da

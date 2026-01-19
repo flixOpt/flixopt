@@ -1013,10 +1013,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         # Finalize effect shares
         if self.effects._batched_model is not None:
-            # Build expressions from type-level models (FlowsModel, StatusesModel, InvestmentsModel)
             self.effects._batched_model.finalize_shares()
-            # Create share variables for cross-effect and per-element contributions
-            self.effects._batched_model.create_share_variables()
 
         record('end')
 
