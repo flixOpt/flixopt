@@ -219,6 +219,8 @@ class InvestmentsModel:
         self,
         model: FlowSystemModel,
         elements: list,
+        params_getter: callable,
+        id_getter: callable,
         size_category: VariableCategory = VariableCategory.SIZE,
         name_prefix: str = 'investment',
         dim_name: str = 'element',
@@ -228,6 +230,8 @@ class InvestmentsModel:
         Args:
             model: The FlowSystemModel to create variables/constraints in.
             elements: List of elements with investment parameters.
+            params_getter: Function (element) -> InvestParameters.
+            id_getter: Function (element) -> str (element identifier).
             size_category: Category for size variable expansion.
             name_prefix: Prefix for variable names (e.g., 'flow', 'storage').
             dim_name: Dimension name for element grouping (e.g., 'flow', 'storage').
@@ -251,20 +255,22 @@ class InvestmentsModel:
         self._xr = xr
         self._pd = pd
 
+        # Store accessor callables
+        self._params_getter = params_getter
+        self._id_getter = id_getter
+
         self._logger.debug(
             f'InvestmentsModel initialized: {len(self.element_ids)} elements '
             f'({len(self.mandatory_ids)} mandatory, {len(self.non_mandatory_ids)} non-mandatory)'
         )
 
-    # === Abstract methods - child classes must implement ===
-
     def _get_params(self, element) -> InvestParameters:
-        """Get InvestParameters from an element. Override in child classes."""
-        raise NotImplementedError('Child classes must implement _get_params')
+        """Get InvestParameters from an element."""
+        return self._params_getter(element)
 
     def _get_element_id(self, element) -> str:
-        """Get element identifier. Override in child classes."""
-        raise NotImplementedError('Child classes must implement _get_element_id')
+        """Get element identifier."""
+        return self._id_getter(element)
 
     # === Properties for element categorization ===
 
@@ -714,11 +720,7 @@ class InvestmentsModel:
 
 
 class FlowInvestmentsModel(InvestmentsModel):
-    """Type-level investment model for flows.
-
-    Implements the abstract methods from InvestmentsModel to access
-    flow-specific investment parameters directly.
-    """
+    """Type-level investment model for flows."""
 
     def __init__(
         self,
@@ -731,33 +733,23 @@ class FlowInvestmentsModel(InvestmentsModel):
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            flows: List of Flow objects with invest_parameters.
+            flows: List of Flow objects with investment (InvestParameters in size).
             size_category: Category for size variable expansion.
             name_prefix: Prefix for variable names.
         """
         super().__init__(
             model=model,
             elements=flows,
+            params_getter=lambda f: f.size,  # For flows, InvestParameters is stored in size
+            id_getter=lambda f: f.label_full,
             size_category=size_category,
             name_prefix=name_prefix,
             dim_name='flow',
         )
 
-    def _get_params(self, flow) -> InvestParameters:
-        """Get InvestParameters from a flow."""
-        return flow.invest_parameters
-
-    def _get_element_id(self, flow) -> str:
-        """Get flow identifier (label_full)."""
-        return flow.label_full
-
 
 class StorageInvestmentsModel(InvestmentsModel):
-    """Type-level investment model for storages.
-
-    Implements the abstract methods from InvestmentsModel to access
-    storage-specific investment parameters directly.
-    """
+    """Type-level investment model for storages."""
 
     def __init__(
         self,
@@ -779,18 +771,12 @@ class StorageInvestmentsModel(InvestmentsModel):
         super().__init__(
             model=model,
             elements=storages,
+            params_getter=lambda s: s.invest_parameters,
+            id_getter=lambda s: s.label,
             size_category=size_category,
             name_prefix=name_prefix,
             dim_name=dim_name,
         )
-
-    def _get_params(self, storage) -> InvestParameters:
-        """Get InvestParameters from a storage."""
-        return storage.invest_parameters
-
-    def _get_element_id(self, storage) -> str:
-        """Get storage identifier (label)."""
-        return storage.label
 
 
 class StatusProxy:
@@ -866,6 +852,9 @@ class StatusesModel:
         model: FlowSystemModel,
         status: linopy.Variable,
         elements: list,
+        params_getter: callable,
+        id_getter: callable,
+        previous_status_getter: callable | None = None,
         dim_name: str = 'element',
         name_prefix: str = 'status',
     ):
@@ -875,6 +864,9 @@ class StatusesModel:
             model: The FlowSystemModel to create variables/constraints in.
             status: Batched status variable with element dimension.
             elements: List of elements with status parameters.
+            params_getter: Function (element) -> StatusParameters.
+            id_getter: Function (element) -> str (element identifier).
+            previous_status_getter: Optional function (element) -> DataArray for previous status.
             dim_name: Dimension name for the element type (e.g., 'flow', 'component').
             name_prefix: Prefix for variable names (e.g., 'status', 'component_status').
         """
@@ -899,25 +891,30 @@ class StatusesModel:
         self.elements = elements
         self._batched_status_var = status
 
+        # Store accessor callables
+        self._params_getter = params_getter
+        self._id_getter = id_getter
+        self._previous_status_getter = previous_status_getter
+
         self._logger.debug(
             f'StatusesModel initialized: {len(self.element_ids)} elements, '
             f'{len(self.startup_tracking_ids)} with startup tracking, '
             f'{len(self.downtime_tracking_ids)} with downtime tracking'
         )
 
-    # === Abstract methods - child classes must implement ===
-
     def _get_params(self, element) -> StatusParameters:
-        """Get StatusParameters from an element. Override in child classes."""
-        raise NotImplementedError('Child classes must implement _get_params')
+        """Get StatusParameters from an element."""
+        return self._params_getter(element)
 
     def _get_element_id(self, element) -> str:
-        """Get element identifier. Override in child classes."""
-        raise NotImplementedError('Child classes must implement _get_element_id')
+        """Get element identifier."""
+        return self._id_getter(element)
 
     def _get_previous_status(self, element) -> xr.DataArray | None:
-        """Get previous status DataArray for an element. Override in child classes."""
-        return None  # Default: no previous status
+        """Get previous status DataArray for an element."""
+        if self._previous_status_getter is not None:
+            return self._previous_status_getter(element)
+        return None
 
     # === Element categorization properties ===
 
@@ -1510,11 +1507,7 @@ class StatusesModel:
 
 
 class FlowStatusesModel(StatusesModel):
-    """Type-level status model for flows.
-
-    Implements the abstract methods from StatusesModel to access
-    flow-specific status parameters directly.
-    """
+    """Type-level status model for flows."""
 
     def __init__(
         self,
@@ -1533,37 +1526,20 @@ class FlowStatusesModel(StatusesModel):
             previous_status_getter: Optional function (flow) -> DataArray for previous status.
             name_prefix: Prefix for variable names.
         """
-        self._flows = flows
-        self._previous_status_getter = previous_status_getter
         super().__init__(
             model=model,
             status=status,
             elements=flows,
+            params_getter=lambda f: f.status_parameters,
+            id_getter=lambda f: f.label_full,
+            previous_status_getter=previous_status_getter,
             dim_name='flow',
             name_prefix=name_prefix,
         )
 
-    def _get_params(self, flow) -> StatusParameters:
-        """Get StatusParameters from a flow."""
-        return flow.status_parameters
-
-    def _get_element_id(self, flow) -> str:
-        """Get flow identifier (label_full)."""
-        return flow.label_full
-
-    def _get_previous_status(self, flow) -> xr.DataArray | None:
-        """Get previous status for a flow."""
-        if self._previous_status_getter is not None:
-            return self._previous_status_getter(flow)
-        return None
-
 
 class ComponentStatusFeaturesModel(StatusesModel):
-    """Type-level status model for component status features.
-
-    Implements the abstract methods from StatusesModel to access
-    component-specific status parameters directly.
-    """
+    """Type-level status model for component status features."""
 
     def __init__(
         self,
@@ -1582,29 +1558,16 @@ class ComponentStatusFeaturesModel(StatusesModel):
             previous_status_getter: Optional function (component) -> DataArray for previous status.
             name_prefix: Prefix for variable names.
         """
-        self._components = components
-        self._previous_status_getter = previous_status_getter
         super().__init__(
             model=model,
             status=status,
             elements=components,
+            params_getter=lambda c: c.status_parameters,
+            id_getter=lambda c: c.label,
+            previous_status_getter=previous_status_getter,
             dim_name='component',
             name_prefix=name_prefix,
         )
-
-    def _get_params(self, component) -> StatusParameters:
-        """Get StatusParameters from a component."""
-        return component.status_parameters
-
-    def _get_element_id(self, component) -> str:
-        """Get component identifier (label, not label_full)."""
-        return component.label
-
-    def _get_previous_status(self, component) -> xr.DataArray | None:
-        """Get previous status for a component."""
-        if self._previous_status_getter is not None:
-            return self._previous_status_getter(component)
-        return None
 
 
 class StatusModel(Submodel):
