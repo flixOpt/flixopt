@@ -402,6 +402,108 @@ class StatusHelpers:
 
         return result
 
+    @staticmethod
+    def add_batched_duration_tracking(
+        model: FlowSystemModel,
+        state: linopy.Variable,
+        name: str,
+        dim_name: str,
+        timestep_duration: xr.DataArray,
+        minimum_duration: xr.DataArray | None = None,
+        maximum_duration: xr.DataArray | None = None,
+        previous_duration: xr.DataArray | None = None,
+    ) -> linopy.Variable:
+        """Add batched consecutive duration tracking constraints for binary state variables.
+
+        This is a vectorized version of add_consecutive_duration_tracking that operates
+        on batched state variables with an element dimension.
+
+        Creates:
+        - duration variable: tracks consecutive time in state for all elements
+        - upper bound: duration[e,t] <= state[e,t] * M[e]
+        - forward constraint: duration[e,t+1] <= duration[e,t] + dt[t]
+        - backward constraint: duration[e,t+1] >= duration[e,t] + dt[t] + (state[e,t+1] - 1) * M[e]
+        - optional initial constraints if previous_duration provided
+
+        Args:
+            model: The FlowSystemModel to add constraints to.
+            state: Binary state variable with (element_dim, time) dims.
+            name: Base name for the duration variable and constraints (e.g., 'status|uptime').
+            dim_name: Element dimension name (e.g., 'flow', 'component').
+            timestep_duration: Duration per timestep (time,).
+            minimum_duration: Optional minimum duration per element (element_dim,). NaN = no constraint.
+            maximum_duration: Optional maximum duration per element (element_dim,). NaN = no constraint.
+            previous_duration: Optional previous duration per element (element_dim,). NaN = no previous.
+
+        Returns:
+            The created duration variable with (element_dim, time) dims.
+        """
+        duration_dim = 'time'
+        element_ids = state.coords[dim_name].values
+
+        # Big-M value per element - broadcast to element dimension
+        mega_base = timestep_duration.sum(duration_dim)
+        if previous_duration is not None:
+            mega = mega_base + previous_duration.fillna(0)
+        else:
+            mega = mega_base
+
+        # Upper bound per element: use max_duration where provided, else mega
+        if maximum_duration is not None:
+            upper_bound = xr.where(maximum_duration.notnull(), maximum_duration, mega)
+        else:
+            upper_bound = mega
+
+        # Duration variable with (element_dim, time) dims
+        duration = model.add_variables(
+            lower=0,
+            upper=upper_bound,
+            coords=state.coords,
+            name=f'{name}|duration',
+        )
+
+        # Upper bound: duration[e,t] <= state[e,t] * M[e]
+        model.add_constraints(duration <= state * mega, name=f'{name}|duration|ub')
+
+        # Forward constraint: duration[e,t+1] <= duration[e,t] + dt[t]
+        model.add_constraints(
+            duration.isel({duration_dim: slice(1, None)})
+            <= duration.isel({duration_dim: slice(None, -1)}) + timestep_duration.isel({duration_dim: slice(None, -1)}),
+            name=f'{name}|duration|forward',
+        )
+
+        # Backward constraint: duration[e,t+1] >= duration[e,t] + dt[t] + (state[e,t+1] - 1) * M[e]
+        model.add_constraints(
+            duration.isel({duration_dim: slice(1, None)})
+            >= duration.isel({duration_dim: slice(None, -1)})
+            + timestep_duration.isel({duration_dim: slice(None, -1)})
+            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
+            name=f'{name}|duration|backward',
+        )
+
+        # Initial constraints for elements with previous_duration
+        if previous_duration is not None:
+            # Mask for elements that have previous_duration (not NaN)
+            has_previous = previous_duration.notnull()
+            if has_previous.any():
+                elem_with_prev = [eid for eid, has in zip(element_ids, has_previous.values, strict=False) if has]
+                prev_vals = previous_duration.sel({dim_name: elem_with_prev})
+                state_init = state.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
+                duration_init = duration.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
+                dt_init = timestep_duration.isel({duration_dim: 0})
+                mega_subset = mega.sel({dim_name: elem_with_prev}) if dim_name in mega.dims else mega
+
+                model.add_constraints(
+                    duration_init <= state_init * (prev_vals + dt_init),
+                    name=f'{name}|duration|initial_ub',
+                )
+                model.add_constraints(
+                    duration_init >= (state_init - 1) * mega_subset + prev_vals + state_init * dt_init,
+                    name=f'{name}|duration|initial_lb',
+                )
+
+        return duration
+
 
 class InvestmentModel(Submodel):
     """Mathematical model implementation for investment decisions.
@@ -937,52 +1039,88 @@ class StatusesModel:
                 name=f'{self.name_prefix}|startup_count',
             )
 
-        # === Uptime tracking (per-element due to previous duration complexity) ===
-        for elem_id in self.uptime_tracking_ids:
-            params = self.params[elem_id]
-            status_elem = status.sel({dim: elem_id})
-            min_uptime = params.min_uptime
-            max_uptime = params.max_uptime
-
-            # Get previous uptime if available
-            previous_uptime = None
-            if previous_status_batched is not None and elem_id in previous_status_batched.coords.get(dim, []):
-                prev_status = previous_status_batched.sel({dim: elem_id})
-                if min_uptime is not None:
-                    previous_uptime = self._compute_previous_duration(
+        # === Uptime tracking (batched) ===
+        if self.uptime_tracking_ids:
+            # Collect parameters into DataArrays
+            min_uptime = xr.DataArray(
+                [self.params[eid].min_uptime or np.nan for eid in self.uptime_tracking_ids],
+                dims=[dim],
+                coords={dim: self.uptime_tracking_ids},
+            )
+            max_uptime = xr.DataArray(
+                [self.params[eid].max_uptime or np.nan for eid in self.uptime_tracking_ids],
+                dims=[dim],
+                coords={dim: self.uptime_tracking_ids},
+            )
+            # Build previous uptime DataArray
+            previous_uptime_values = []
+            for eid in self.uptime_tracking_ids:
+                if (
+                    previous_status_batched is not None
+                    and eid in previous_status_batched.coords.get(dim, [])
+                    and self.params[eid].min_uptime is not None
+                ):
+                    prev_status = previous_status_batched.sel({dim: eid})
+                    prev = self._compute_previous_duration(
                         prev_status, target_state=1, timestep_duration=self.model.timestep_duration
                     )
+                    previous_uptime_values.append(prev)
+                else:
+                    previous_uptime_values.append(np.nan)
+            previous_uptime = xr.DataArray(previous_uptime_values, dims=[dim], coords={dim: self.uptime_tracking_ids})
 
-            self._add_consecutive_duration_tracking(
-                state=status_elem,
-                name=f'{elem_id}|uptime',
+            StatusHelpers.add_batched_duration_tracking(
+                model=self.model,
+                state=status.sel({dim: self.uptime_tracking_ids}),
+                name=f'{self.name_prefix}|uptime',
+                dim_name=dim,
+                timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_uptime,
                 maximum_duration=max_uptime,
-                previous_duration=previous_uptime,
+                previous_duration=previous_uptime if previous_uptime.notnull().any() else None,
             )
 
-        # === Downtime tracking (per-element due to previous duration complexity) ===
-        for elem_id in self.downtime_tracking_ids:
-            params = self.params[elem_id]
-            inactive = self._variables['inactive'].sel({dim: elem_id})
-            min_downtime = params.min_downtime
-            max_downtime = params.max_downtime
-
-            # Get previous downtime if available
-            previous_downtime = None
-            if previous_status_batched is not None and elem_id in previous_status_batched.coords.get(dim, []):
-                prev_status = previous_status_batched.sel({dim: elem_id})
-                if min_downtime is not None:
-                    previous_downtime = self._compute_previous_duration(
+        # === Downtime tracking (batched) ===
+        if self.downtime_tracking_ids:
+            # Collect parameters into DataArrays
+            min_downtime = xr.DataArray(
+                [self.params[eid].min_downtime or np.nan for eid in self.downtime_tracking_ids],
+                dims=[dim],
+                coords={dim: self.downtime_tracking_ids},
+            )
+            max_downtime = xr.DataArray(
+                [self.params[eid].max_downtime or np.nan for eid in self.downtime_tracking_ids],
+                dims=[dim],
+                coords={dim: self.downtime_tracking_ids},
+            )
+            # Build previous downtime DataArray
+            previous_downtime_values = []
+            for eid in self.downtime_tracking_ids:
+                if (
+                    previous_status_batched is not None
+                    and eid in previous_status_batched.coords.get(dim, [])
+                    and self.params[eid].min_downtime is not None
+                ):
+                    prev_status = previous_status_batched.sel({dim: eid})
+                    prev = self._compute_previous_duration(
                         prev_status, target_state=0, timestep_duration=self.model.timestep_duration
                     )
+                    previous_downtime_values.append(prev)
+                else:
+                    previous_downtime_values.append(np.nan)
+            previous_downtime = xr.DataArray(
+                previous_downtime_values, dims=[dim], coords={dim: self.downtime_tracking_ids}
+            )
 
-            self._add_consecutive_duration_tracking(
-                state=inactive,
-                name=f'{elem_id}|downtime',
+            StatusHelpers.add_batched_duration_tracking(
+                model=self.model,
+                state=self._variables['inactive'],
+                name=f'{self.name_prefix}|downtime',
+                dim_name=dim,
+                timestep_duration=self.model.timestep_duration,
                 minimum_duration=min_downtime,
                 maximum_duration=max_downtime,
-                previous_duration=previous_downtime,
+                previous_duration=previous_downtime if previous_downtime.notnull().any() else None,
             )
 
         # === Cluster cyclic constraints ===
