@@ -691,6 +691,82 @@ class StatusHelpers:
         return variables
 
 
+class MaskHelpers:
+    """Static helper methods for batched constraint creation using mask matrices.
+
+    These helpers enable batching of constraints across elements with
+    variable-length relationships (e.g., component -> flows mapping).
+
+    Pattern:
+        1. Build membership dict: element_id -> list of related item_ids
+        2. Create mask matrix: (element_dim, item_dim) = 1 if item belongs to element
+        3. Apply mask: (variable * mask).sum(item_dim) creates batched aggregation
+    """
+
+    @staticmethod
+    def build_mask(
+        row_dim: str,
+        row_ids: list[str],
+        col_dim: str,
+        col_ids: list[str],
+        membership: dict[str, list[str]],
+    ) -> xr.DataArray:
+        """Build a binary mask matrix indicating membership between two dimensions.
+
+        Creates a (row, col) DataArray where value is 1 if the column element
+        belongs to the row element, 0 otherwise.
+
+        Args:
+            row_dim: Name for the row dimension (e.g., 'component', 'storage').
+            row_ids: List of row identifiers.
+            col_dim: Name for the column dimension (e.g., 'flow').
+            col_ids: List of column identifiers.
+            membership: Dict mapping row_id -> list of col_ids that belong to it.
+
+        Returns:
+            DataArray with dims (row_dim, col_dim), values 0 or 1.
+
+        Example:
+            >>> membership = {'storage1': ['charge', 'discharge'], 'storage2': ['in', 'out']}
+            >>> mask = MaskHelpers.build_mask(
+            ...     'storage', ['storage1', 'storage2'], 'flow', ['charge', 'discharge', 'in', 'out'], membership
+            ... )
+            >>> # Use with: (status * mask).sum('flow') <= 1
+        """
+        mask_data = np.zeros((len(row_ids), len(col_ids)))
+
+        for i, row_id in enumerate(row_ids):
+            for col_id in membership.get(row_id, []):
+                if col_id in col_ids:
+                    j = col_ids.index(col_id)
+                    mask_data[i, j] = 1
+
+        return xr.DataArray(
+            mask_data,
+            dims=[row_dim, col_dim],
+            coords={row_dim: row_ids, col_dim: col_ids},
+        )
+
+    @staticmethod
+    def build_flow_membership(
+        elements: list,
+        get_flows: callable,
+    ) -> dict[str, list[str]]:
+        """Build membership dict from elements to their flows.
+
+        Args:
+            elements: List of elements (components, storages, etc.).
+            get_flows: Function that returns list of flows for an element.
+
+        Returns:
+            Dict mapping element label -> list of flow label_full.
+
+        Example:
+            >>> membership = MaskHelpers.build_flow_membership(storages, lambda s: s.inputs + s.outputs)
+        """
+        return {e.label: [f.label_full for f in get_flows(e)] for e in elements}
+
+
 class InvestmentModel(Submodel):
     """Mathematical model implementation for investment decisions.
 

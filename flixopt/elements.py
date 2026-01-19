@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, InvestmentProxy, StatusProxy
+from .features import InvestmentModel, InvestmentProxy, MaskHelpers, StatusProxy
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -2274,6 +2274,31 @@ class ComponentsModel:
                 result[c.label] = prev
         return result
 
+    @cached_property
+    def _flow_mask(self) -> xr.DataArray:
+        """(component, flow) mask: 1 if flow belongs to component."""
+        membership = MaskHelpers.build_flow_membership(
+            self.components,
+            lambda c: c.inputs + c.outputs,
+        )
+        return MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=self.element_ids,
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
+
+    @cached_property
+    def _flow_count(self) -> xr.DataArray:
+        """(component,) number of flows per component."""
+        counts = [len(c.inputs) + len(c.outputs) for c in self.components]
+        return xr.DataArray(
+            counts,
+            dims=['component'],
+            coords={'component': self.element_ids},
+        )
+
     def create_variables(self) -> None:
         """Create batched component status variable with component dimension."""
         if not self.components:
@@ -2299,44 +2324,53 @@ class ComponentsModel:
         self._logger.debug(f'ComponentsModel created status variable for {len(self.components)} components')
 
     def create_constraints(self) -> None:
-        """Create batched constraints linking component status to flow statuses."""
+        """Create batched constraints linking component status to flow statuses.
+
+        Uses mask matrix for batched constraint creation:
+        - Single-flow components: comp_status == flow_status (equality)
+        - Multi-flow components: bounded by flow sum with epsilon tolerance
+        """
         if not self.components:
             return
 
-        dim = self.dim_name
+        comp_status = self._variables['status']
+        flow_status = self._flows_model._variables['status']
+        mask = self._flow_mask
+        n_flows = self._flow_count
 
-        for component in self.components:
-            all_flows = component.inputs + component.outputs
-            comp_status = self._variables['status'].sel({dim: component.label})
+        # Sum of flow statuses for each component: (component, time, ...)
+        flow_sum = (flow_status * mask).sum('flow')
 
-            if len(all_flows) == 1:
-                # Single-flow: component status == flow status
-                flow = all_flows[0]
-                flow_status = self._flows_model.get_variable('status', flow.label_full)
-                self.model.add_constraints(
-                    comp_status == flow_status,
-                    name=f'{component.label}|status|eq',
-                )
-            else:
-                # Multi-flow: component status is 1 if ANY flow is active
-                # status <= sum(flow_statuses)
-                # status >= sum(flow_statuses) / N (approximately, with epsilon)
-                flow_statuses = [self._flows_model.get_variable('status', flow.label_full) for flow in all_flows]
-                n_flows = len(flow_statuses)
+        # Separate single-flow vs multi-flow components
+        single_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) == 1]
+        multi_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) > 1]
 
-                # Upper bound: status <= sum(flow_statuses) + epsilon
-                self.model.add_constraints(
-                    comp_status <= sum(flow_statuses) + CONFIG.Modeling.epsilon,
-                    name=f'{component.label}|status|ub',
-                )
+        # Single-flow: exact equality
+        if single_flow_ids:
+            self.model.add_constraints(
+                comp_status.sel(component=single_flow_ids) == flow_sum.sel(component=single_flow_ids),
+                name='component|status|eq',
+            )
 
-                # Lower bound: status >= sum(flow_statuses) / (N + epsilon)
-                self.model.add_constraints(
-                    comp_status >= sum(flow_statuses) / (n_flows + CONFIG.Modeling.epsilon),
-                    name=f'{component.label}|status|lb',
-                )
+        # Multi-flow: bounded constraints
+        if multi_flow_ids:
+            comp_status_multi = comp_status.sel(component=multi_flow_ids)
+            flow_sum_multi = flow_sum.sel(component=multi_flow_ids)
+            n_flows_multi = n_flows.sel(component=multi_flow_ids)
 
-        self._logger.debug(f'ComponentsModel created constraints for {len(self.components)} components')
+            # Upper bound: status <= sum(flow_statuses) + epsilon
+            self.model.add_constraints(
+                comp_status_multi <= flow_sum_multi + CONFIG.Modeling.epsilon,
+                name='component|status|ub',
+            )
+
+            # Lower bound: status >= sum(flow_statuses) / (n + epsilon)
+            self.model.add_constraints(
+                comp_status_multi >= flow_sum_multi / (n_flows_multi + CONFIG.Modeling.epsilon),
+                name='component|status|lb',
+            )
+
+        self._logger.debug(f'ComponentsModel created batched constraints for {len(self.components)} components')
 
     @cached_property
     def previous_status_batched(self) -> xr.DataArray | None:
@@ -2477,23 +2511,43 @@ class PreventSimultaneousFlowsModel:
 
         self._logger.debug(f'PreventSimultaneousFlowsModel initialized: {len(components)} components')
 
+    @cached_property
+    def _flow_mask(self) -> xr.DataArray:
+        """(component, flow) mask: 1 if flow belongs to component's prevent_simultaneous_flows."""
+        membership = MaskHelpers.build_flow_membership(
+            self.components,
+            lambda c: c.prevent_simultaneous_flows,
+        )
+        return MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=[c.label for c in self.components],
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
+
     def create_constraints(self) -> None:
-        """Create mutual exclusivity constraints for each component's flows."""
+        """Create batched mutual exclusivity constraints.
+
+        Uses a mask matrix to batch all components into a single constraint:
+        - mask: (component, flow) = 1 if flow in component's prevent_simultaneous_flows
+        - status: (flow, time, ...)
+        - (status * mask).sum('flow') <= 1 gives (component, time, ...) constraint
+        """
         if not self.components:
             return
 
-        for component in self.components:
-            flows = component.prevent_simultaneous_flows
-            if not flows:
-                continue
+        status = self._flows_model._variables['status']
+        mask = self._flow_mask
 
-            # Get flow status variables
-            flow_statuses = [self._flows_model.get_variable('status', flow.label_full) for flow in flows]
+        # Batched constraint: sum of statuses for each component's flows <= 1
+        # status * mask broadcasts to (component, flow, time, ...)
+        # .sum('flow') reduces to (component, time, ...)
+        self.model.add_constraints(
+            (status * mask).sum('flow') <= 1,
+            name='prevent_simultaneous',
+        )
 
-            # Mutual exclusivity: sum(statuses) <= 1
-            self.model.add_constraints(
-                sum(flow_statuses) <= 1,
-                name=f'{component.label}|prevent_simultaneous_use',
-            )
-
-        self._logger.debug(f'PreventSimultaneousFlowsModel created constraints for {len(self.components)} components')
+        self._logger.debug(
+            f'PreventSimultaneousFlowsModel created batched constraint for {len(self.components)} components'
+        )

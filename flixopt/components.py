@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, InvestmentProxy, PiecewiseModel
+from .features import InvestmentModel, InvestmentProxy, MaskHelpers, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
@@ -1607,6 +1607,21 @@ class StoragesModel:
         element_ids = self.optional_investment_ids
         values = [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_optional_investment]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def _flow_mask(self) -> xr.DataArray:
+        """(storage, flow) mask: 1 if flow belongs to storage."""
+        membership = MaskHelpers.build_flow_membership(
+            self.elements,
+            lambda s: s.inputs + s.outputs,
+        )
+        return MaskHelpers.build_mask(
+            row_dim='storage',
+            row_ids=self.element_ids,
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
 
     def create_variables(self) -> None:
         """Create batched variables for all storages.
