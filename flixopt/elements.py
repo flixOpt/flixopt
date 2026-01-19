@@ -983,6 +983,9 @@ class FlowsModel(TypeModel):
             weighted = (hours_subset * period_weights).sum('period')
             self.add_constraints(hours_over_periods == weighted, name='hours_over_periods_eq')
 
+        # === Load factor constraints ===
+        self._create_load_factor_constraints()
+
         # === Flow rate bounds (depends on status/investment) ===
         self._create_flow_rate_bounds()
 
@@ -990,6 +993,53 @@ class FlowsModel(TypeModel):
         # via create_investment_model(), not here
 
         logger.debug(f'FlowsModel created {len(self._constraints)} constraint types')
+
+    def _create_load_factor_constraints(self) -> None:
+        """Create load_factor_min/max constraints for flows that have them.
+
+        Constraints:
+        - load_factor_min: total_hours >= total_time * load_factor_min * size
+        - load_factor_max: total_hours <= total_time * load_factor_max * size
+
+        Only created for flows with non-NaN load factor values.
+        """
+        total_hours = self._variables['hours']
+        total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
+        dim = self.dim_name
+
+        # Helper to get dims other than flow
+        def other_dims(arr: xr.DataArray) -> list[str]:
+            return [d for d in arr.dims if d != dim]
+
+        # Load factor min constraint
+        lf_min = self.load_factor_minimum
+        has_lf_min = lf_min.notnull().any(other_dims(lf_min)) if other_dims(lf_min) else lf_min.notnull()
+        if has_lf_min.any():
+            flow_ids_min = [
+                eid
+                for eid, has in zip(self.element_ids, has_lf_min.sel({dim: self.element_ids}).values, strict=False)
+                if has
+            ]
+            size_min = self.size_minimum.sel({dim: flow_ids_min}).fillna(0)
+            hours_subset = total_hours.sel({dim: flow_ids_min})
+            lf_min_subset = lf_min.sel({dim: flow_ids_min}).fillna(0)
+            rhs_min = total_time * lf_min_subset * size_min
+            self.add_constraints(hours_subset >= rhs_min, name='load_factor_min')
+
+        # Load factor max constraint
+        lf_max = self.load_factor_maximum
+        has_lf_max = lf_max.notnull().any(other_dims(lf_max)) if other_dims(lf_max) else lf_max.notnull()
+        if has_lf_max.any():
+            flow_ids_max = [
+                eid
+                for eid, has in zip(self.element_ids, has_lf_max.sel({dim: self.element_ids}).values, strict=False)
+                if has
+            ]
+            size_max = self.size_maximum.sel({dim: flow_ids_max}).fillna(np.inf)
+            hours_subset = total_hours.sel({dim: flow_ids_max})
+            lf_max_subset = lf_max.sel({dim: flow_ids_max}).fillna(1)
+            rhs_max = total_time * lf_max_subset * size_max
+            self.add_constraints(hours_subset <= rhs_max, name='load_factor_max')
 
     def _add_subset_variables(
         self,
@@ -1306,7 +1356,7 @@ class FlowsModel(TypeModel):
 
     # === Investment effect properties (used by EffectsModel) ===
 
-    @property
+    @cached_property
     def invest_effects_per_size(self) -> xr.DataArray | None:
         """Combined effects_of_investment_per_size with (flow, effect) dims."""
         if not hasattr(self, '_invest_params'):
@@ -1321,7 +1371,7 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    @property
+    @cached_property
     def invest_effects_of_investment(self) -> xr.DataArray | None:
         """Combined effects_of_investment with (flow, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params'):
@@ -1336,7 +1386,7 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    @property
+    @cached_property
     def invest_effects_of_retirement(self) -> xr.DataArray | None:
         """Combined effects_of_retirement with (flow, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params'):
@@ -1351,7 +1401,7 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    @property
+    @cached_property
     def status_effects_per_active_hour(self) -> xr.DataArray | None:
         """Combined effects_per_active_hour with (flow, effect) dims."""
         if not hasattr(self, '_status_params') or not self._status_params:
@@ -1366,7 +1416,7 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    @property
+    @cached_property
     def status_effects_per_startup(self) -> xr.DataArray | None:
         """Combined effects_per_startup with (flow, effect) dims."""
         if not hasattr(self, '_status_params') or not self._status_params:
@@ -1381,7 +1431,7 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
-    @property
+    @cached_property
     def mandatory_invest_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for mandatory investments with fixed effects.
 
@@ -1404,7 +1454,7 @@ class FlowsModel(TypeModel):
                     result.append((eid, effects_dict))
         return result
 
-    @property
+    @cached_property
     def retirement_constant_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for retirement constant parts.
 
@@ -1535,10 +1585,12 @@ class FlowsModel(TypeModel):
         flow_ids = [f.label_full for f in flows_with_effects]
 
         # Use np.nan for missing effects (not 0!) to distinguish "not defined" from "zero"
+        # Use coords='minimal' to handle dimension mismatches (some effects may have 'time', some scalars)
         flow_factors = [
             xr.concat(
                 [xr.DataArray(flow.effects_per_flow_hour.get(eff, np.nan)) for eff in effect_ids],
                 dim='effect',
+                coords='minimal',
             ).assign_coords(effect=effect_ids)
             for flow in flows_with_effects
         ]
