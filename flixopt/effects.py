@@ -454,38 +454,18 @@ class EffectsModel:
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
-        bounds_list = []
-        for effect in self.effects:
-            bound = getattr(effect, attr_name, None)
-            if bound is None:
-                bound = xr.DataArray(default)
-            elif not isinstance(bound, xr.DataArray):
-                bound = xr.DataArray(bound)
-            bounds_list.append(bound)
 
-        # Check if all are scalars
-        if all(arr.dims == () for arr in bounds_list):
-            values = [float(arr.values) for arr in bounds_list]
-            return xr.DataArray(values, coords={'effect': self.effect_ids}, dims=['effect'])
+        def as_dataarray(effect: Effect) -> xr.DataArray:
+            val = getattr(effect, attr_name, None)
+            if val is None:
+                return xr.DataArray(default)
+            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
 
-        # Find union of all non-effect dimensions
-        all_dims: dict[str, any] = {}
-        for arr in bounds_list:
-            for dim in arr.dims:
-                if dim != 'effect' and dim not in all_dims:
-                    all_dims[dim] = arr.coords[dim].values
-
-        # Expand each array to have all dimensions
-        expanded = []
-        for arr, eid in zip(bounds_list, self.effect_ids, strict=False):
-            if 'effect' not in arr.dims:
-                arr = arr.expand_dims(effect=[eid])
-            for dim, coords in all_dims.items():
-                if dim not in arr.dims:
-                    arr = arr.expand_dims({dim: coords})
-            expanded.append(arr)
-
-        return xr.concat(expanded, dim='effect')
+        return xr.concat(
+            [as_dataarray(e).expand_dims(effect=[e.label]) for e in self.effects],
+            dim='effect',
+            fill_value=default,
+        )
 
     def _get_period_weights(self, effect: Effect) -> xr.DataArray:
         """Get period weights for an effect."""
