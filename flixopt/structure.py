@@ -799,6 +799,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._flows_model: TypeModel | None = None  # Reference to FlowsModel
         self._buses_model: TypeModel | None = None  # Reference to BusesModel
         self._storages_model = None  # Reference to StoragesModel
+        self._components_model = None  # Reference to ComponentsModel
+        self._linear_converters_model = None  # Reference to LinearConvertersModel
+        self._prevent_simultaneous_model = None  # Reference to PreventSimultaneousFlowsModel
 
     def add_variables(
         self,
@@ -857,7 +860,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         import time
 
-        from .components import Storage, StoragesModel
+        from .components import LinearConverter, LinearConvertersModel, Storage, StoragesModel
         from .elements import BusesModel, FlowsModel
 
         timings = {}
@@ -1010,6 +1013,17 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._prevent_simultaneous_model.create_constraints()
 
         record('prevent_simultaneous')
+
+        # Collect LinearConverters with conversion_factors (not piecewise)
+        converters_with_factors = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
+        ]
+
+        # Create type-level model for batched conversion constraints
+        self._linear_converters_model = LinearConvertersModel(self, converters_with_factors, self._flows_model)
+        self._linear_converters_model.create_constraints()
+
+        record('linear_converters')
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
