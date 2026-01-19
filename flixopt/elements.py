@@ -1679,32 +1679,32 @@ class FlowsModel(TypeModel):
     @property
     def rate(self) -> linopy.Variable:
         """Batched flow rate variable with (flow, time) dims."""
-        return self._variables['rate']
+        return self.model.variables['flow|rate']
 
     @property
     def status(self) -> linopy.Variable | None:
         """Batched status variable with (flow, time) dims, or None if no flows have status."""
-        return self._variables.get('status')
+        return self.model.variables['flow|status'] if 'flow|status' in self.model.variables else None
 
     @property
     def startup(self) -> linopy.Variable | None:
         """Batched startup variable with (flow, time) dims, or None if no flows need startup tracking."""
-        return self._variables.get('startup')
+        return self.model.variables['status|startup'] if 'status|startup' in self.model.variables else None
 
     @property
     def shutdown(self) -> linopy.Variable | None:
         """Batched shutdown variable with (flow, time) dims, or None if no flows need startup tracking."""
-        return self._variables.get('shutdown')
+        return self.model.variables['status|shutdown'] if 'status|shutdown' in self.model.variables else None
 
     @property
     def size(self) -> linopy.Variable | None:
         """Batched size variable with (flow,) dims, or None if no flows have investment."""
-        return self._variables.get('size')
+        return self.model.variables['flow|size'] if 'flow|size' in self.model.variables else None
 
     @property
     def invested(self) -> linopy.Variable | None:
         """Batched invested binary variable with (flow,) dims, or None if no optional investments."""
-        return self._variables.get('invested')
+        return self.model.variables['flow|invested'] if 'flow|invested' in self.model.variables else None
 
     @property
     def effects_per_flow_hour(self) -> xr.DataArray | None:

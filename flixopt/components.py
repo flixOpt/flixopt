@@ -2048,22 +2048,22 @@ class StoragesModel:
     @property
     def charge(self) -> linopy.Variable | None:
         """Batched charge state variable with (storage, time+1) dims."""
-        return self._variables.get('charge')
+        return self.model.variables['storage|charge'] if 'storage|charge' in self.model.variables else None
 
     @property
     def netto(self) -> linopy.Variable | None:
         """Batched netto discharge variable with (storage, time) dims."""
-        return self._variables.get('netto')
+        return self.model.variables['storage|netto'] if 'storage|netto' in self.model.variables else None
 
     @property
     def size(self) -> linopy.Variable | None:
         """Batched size variable with (storage,) dims, or None if no storages have investment."""
-        return self._variables.get('size')
+        return self.model.variables['storage|size'] if 'storage|size' in self.model.variables else None
 
     @property
     def invested(self) -> linopy.Variable | None:
         """Batched invested binary variable with (storage,) dims, or None if no optional investments."""
-        return self._variables.get('invested')
+        return self.model.variables['storage|invested'] if 'storage|invested' in self.model.variables else None
 
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element."""
