@@ -901,8 +901,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('flows_constraints')
 
-        # Create effect shares for flows
-        self._flows_model.create_effect_shares()
+        # Flow effect shares are collected by EffectsModel.finalize_shares()
 
         record('flows_effects')
 

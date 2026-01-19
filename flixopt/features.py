@@ -9,14 +9,13 @@ from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
+import xarray as xr
 
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
     from collections.abc import Collection
-
-    import xarray as xr
 
     from .core import FlowSystemDimensions
     from .interface import InvestParameters, Piecewise, StatusParameters
@@ -486,95 +485,89 @@ class InvestmentsModel:
                         name=f'{element.label_full}|linked_periods',
                     )
 
-    def create_effect_shares(self) -> None:
-        """Create batched effect shares for investment effects.
+    # === Effect factor properties (used by EffectsModel.finalize_shares) ===
 
-        Handles:
-        - effects_of_investment (fixed costs)
-        - effects_of_investment_per_size (variable costs)
-        - effects_of_retirement (divestment costs)
+    @property
+    def elements_with_per_size_effects(self) -> list:
+        """Elements with effects_of_investment_per_size defined."""
+        return [e for e in self.elements if self._parameters_getter(e).effects_of_investment_per_size]
 
-        Uses SharesModel for batched effect registration when available.
+    @property
+    def elements_with_per_size_effects_ids(self) -> list[str]:
+        """IDs of elements with effects_of_investment_per_size."""
+        return [e.label_full for e in self.elements_with_per_size_effects]
 
-        Note: piecewise_effects_of_investment is handled per-element due to complexity.
+    @property
+    def non_mandatory_with_fix_effects(self) -> list:
+        """Non-mandatory elements with effects_of_investment defined."""
+        return [e for e in self._non_mandatory_elements if self._parameters_getter(e).effects_of_investment]
+
+    @property
+    def non_mandatory_with_fix_effects_ids(self) -> list[str]:
+        """IDs of non-mandatory elements with effects_of_investment."""
+        return [e.label_full for e in self.non_mandatory_with_fix_effects]
+
+    @property
+    def non_mandatory_with_retirement_effects(self) -> list:
+        """Non-mandatory elements with effects_of_retirement defined."""
+        return [e for e in self._non_mandatory_elements if self._parameters_getter(e).effects_of_retirement]
+
+    @property
+    def non_mandatory_with_retirement_effects_ids(self) -> list[str]:
+        """IDs of non-mandatory elements with effects_of_retirement."""
+        return [e.label_full for e in self.non_mandatory_with_retirement_effects]
+
+    def get_per_size_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
+        """Get per-size effect factors as DataArray with (element, effect) dims."""
+        elements = self.elements_with_per_size_effects
+        if not elements:
+            return None
+        return self._build_factors(
+            elements, lambda e: self._parameters_getter(e).effects_of_investment_per_size, effect_ids
+        )
+
+    def get_fix_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
+        """Get fixed investment effect factors for non-mandatory elements."""
+        elements = self.non_mandatory_with_fix_effects
+        if not elements:
+            return None
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_investment, effect_ids)
+
+    def get_retirement_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
+        """Get retirement effect factors for non-mandatory elements."""
+        elements = self.non_mandatory_with_retirement_effects
+        if not elements:
+            return None
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_retirement, effect_ids)
+
+    def _build_factors(self, elements: list, effects_getter: callable, effect_ids: list[str]) -> xr.DataArray:
+        """Build sparse factor array with (element, effect) dims."""
+        element_ids = [e.label_full for e in elements]
+        factors_array = np.zeros((len(elements), len(effect_ids)))
+
+        for i, elem in enumerate(elements):
+            effects_dict = effects_getter(elem)
+            for j, effect_id in enumerate(effect_ids):
+                factor = effects_dict.get(effect_id, 0) if effects_dict else 0
+                factors_array[i, j] = float(factor.values) if isinstance(factor, xr.DataArray) else factor
+
+        return xr.DataArray(
+            factors_array,
+            dims=[self.dim_name, 'effect'],
+            coords={self.dim_name: element_ids, 'effect': effect_ids},
+        )
+
+    def add_constant_shares_to_effects(self, effects_model) -> None:
+        """Add constant (non-variable) shares directly to effect constraints.
+
+        This handles:
+        - Mandatory fixed effects (always incurred, not dependent on invested variable)
+        - Retirement constant parts (the +factor in -invested*factor + factor)
         """
-        import xarray as xr
-
-        # Check if SharesModel is available (type_level mode)
-        effects_model = getattr(self.model.effects, '_batched_model', None)
-        use_shares_model = effects_model is not None and hasattr(effects_model, 'shares')
-
-        if use_shares_model:
-            self._create_effect_shares_batched(effects_model, xr)
-        else:
-            self._create_effect_shares_legacy()
-
-        self._logger.debug('InvestmentsModel created effect shares')
-
-    def _create_effect_shares_batched(self, effects_model, xr) -> None:
-        """Create effect shares using SharesModel (batched factor approach).
-
-        Builds factor arrays with (element, effect) dimensions and registers
-        them with SharesModel for efficient single-constraint creation.
-        """
-        dim = self.dim_name
-        shares = effects_model.shares
-        size_var = self._variables['size']
-        invested_var = self._variables.get('invested')
-
-        # === effects_of_investment_per_size: size * factor ===
-        elements_with_per_size = [e for e in self.elements if self._parameters_getter(e).effects_of_investment_per_size]
-
-        if elements_with_per_size:
-            per_size_factors, per_size_ids = shares.build_factors(
-                elements=elements_with_per_size,
-                effects_getter=lambda e: self._parameters_getter(e).effects_of_investment_per_size,
-                contributor_dim=dim,
-            )
-
-            if per_size_factors is not None:
-                # Select size for these elements
-                size_subset = size_var.sel({dim: per_size_ids})
-
-                # Register with SharesModel (periodic shares)
-                shares.register_periodic(
-                    variable=size_subset,
-                    factors=per_size_factors,
-                    contributor_dim=dim,
-                )
-
-        # === effects_of_investment (fixed costs) ===
-        # For mandatory: factor only (constant, handle separately)
-        # For non-mandatory: invested * factor
-        non_mandatory_with_fix = [
-            e for e in self._non_mandatory_elements if self._parameters_getter(e).effects_of_investment
-        ]
-
-        if non_mandatory_with_fix and invested_var is not None:
-            fix_factors, fix_ids = shares.build_factors(
-                elements=non_mandatory_with_fix,
-                effects_getter=lambda e: self._parameters_getter(e).effects_of_investment,
-                contributor_dim=dim,
-            )
-
-            if fix_factors is not None:
-                # Select invested for these elements
-                invested_subset = invested_var.sel({dim: fix_ids})
-
-                # Register with SharesModel (periodic shares)
-                shares.register_periodic(
-                    variable=invested_subset,
-                    factors=fix_factors,
-                    contributor_dim=dim,
-                )
-
-        # Mandatory fixed effects: these are constants, need special handling
-        # For now, use legacy approach for mandatory elements with fixed effects
+        # Mandatory fixed effects
         for element in self._mandatory_elements:
             params = self._parameters_getter(element)
             if params.effects_of_investment:
-                # These are constant shares (not variable-dependent)
-                # Add directly to effect constraint
                 for effect_name, factor in params.effects_of_investment.items():
                     self.model.effects.add_share_to_effects(
                         name=f'{element.label_full}|invest_fix',
@@ -582,114 +575,13 @@ class InvestmentsModel:
                         target='periodic',
                     )
 
-        # === effects_of_retirement: (-invested * factor + factor) ===
-        # This is: factor * (1 - invested), meaning cost when NOT invested
-        # Rewrite as: factor - invested * factor
-        # The constant part (factor) goes to legacy, invested * factor to SharesModel
-        non_mandatory_with_retire = [
-            e for e in self._non_mandatory_elements if self._parameters_getter(e).effects_of_retirement
-        ]
-
-        if non_mandatory_with_retire and invested_var is not None:
-            retire_factors, retire_ids = shares.build_factors(
-                elements=non_mandatory_with_retire,
-                effects_getter=lambda e: self._parameters_getter(e).effects_of_retirement,
-                contributor_dim=dim,
-            )
-
-            if retire_factors is not None:
-                # Select invested for these elements
-                invested_subset = invested_var.sel({dim: retire_ids})
-
-                # Register negative invested * factor (the variable part)
-                shares.register_periodic(
-                    variable=invested_subset,
-                    factors=-retire_factors,  # Negative because formula is -invested * factor + factor
-                    contributor_dim=dim,
-                )
-
-                # Add constant part (factor) for each element
-                for element in non_mandatory_with_retire:
-                    params = self._parameters_getter(element)
-                    for effect_name, factor in params.effects_of_retirement.items():
-                        self.model.effects.add_share_to_effects(
-                            name=f'{element.label_full}|invest_retire_const',
-                            expressions={effect_name: factor},
-                            target='periodic',
-                        )
-
-    def _create_effect_shares_legacy(self) -> None:
-        """Create effect shares using legacy per-element approach."""
-        size_var = self._variables['size']
-        invested_var = self._variables.get('invested')
-
-        # Collect effect shares by effect name
-        fix_effects: dict[str, list[tuple[str, any]]] = {}  # effect_name -> [(element_id, factor), ...]
-        per_size_effects: dict[str, list[tuple[str, any]]] = {}
-        retirement_effects: dict[str, list[tuple[str, any]]] = {}
-
-        for element in self.elements:
+        # Retirement constant parts
+        for element in self.non_mandatory_with_retirement_effects:
             params = self._parameters_getter(element)
-            element_id = element.label_full
-
-            if params.effects_of_investment:
-                for effect_name, factor in params.effects_of_investment.items():
-                    if effect_name not in fix_effects:
-                        fix_effects[effect_name] = []
-                    fix_effects[effect_name].append((element_id, factor))
-
-            if params.effects_of_investment_per_size:
-                for effect_name, factor in params.effects_of_investment_per_size.items():
-                    if effect_name not in per_size_effects:
-                        per_size_effects[effect_name] = []
-                    per_size_effects[effect_name].append((element_id, factor))
-
-            if params.effects_of_retirement and not params.mandatory:
-                for effect_name, factor in params.effects_of_retirement.items():
-                    if effect_name not in retirement_effects:
-                        retirement_effects[effect_name] = []
-                    retirement_effects[effect_name].append((element_id, factor))
-
-        # Apply fixed effects (factor * invested or factor if mandatory)
-        dim = self.dim_name
-        for effect_name, element_factors in fix_effects.items():
-            expressions = {}
-            for element_id, factor in element_factors:
-                element = next(e for e in self.elements if e.label_full == element_id)
-                params = self._parameters_getter(element)
-                if params.mandatory:
-                    # Always incurred
-                    expressions[element_id] = factor
-                else:
-                    # Only if invested
-                    invested_elem = invested_var.sel({dim: element_id})
-                    expressions[element_id] = invested_elem * factor
-
-            # Add to effects (per-element for now, could be batched further)
-            for element_id, expr in expressions.items():
+            for effect_name, factor in params.effects_of_retirement.items():
                 self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_fix',
-                    expressions={effect_name: expr},
-                    target='periodic',
-                )
-
-        # Apply per-size effects (size * factor)
-        for effect_name, element_factors in per_size_effects.items():
-            for element_id, factor in element_factors:
-                size_elem = size_var.sel({dim: element_id})
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_per_size',
-                    expressions={effect_name: size_elem * factor},
-                    target='periodic',
-                )
-
-        # Apply retirement effects (-invested * factor + factor)
-        for effect_name, element_factors in retirement_effects.items():
-            for element_id, factor in element_factors:
-                invested_elem = invested_var.sel({dim: element_id})
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_retire',
-                    expressions={effect_name: -invested_elem * factor + factor},
+                    name=f'{element.label_full}|invest_retire_const',
+                    expressions={effect_name: factor},
                     target='periodic',
                 )
 
@@ -1187,127 +1079,67 @@ class StatusesModel:
             duration = timestep_duration * count
         return xr.DataArray(duration)
 
-    def create_effect_shares(self) -> None:
-        """Create effect shares for status-related effects.
+    # === Effect factor properties (used by EffectsModel.finalize_shares) ===
 
-        Uses SharesModel for batched effect registration when available.
-        Builds factor arrays with (element, effect) dimensions and registers
-        them in a single call for efficient constraint creation.
+    @property
+    def elements_with_active_hour_effects(self) -> list:
+        """Elements that have effects_per_active_hour defined."""
+        return [e for e in self.elements if self._parameters_getter(e).effects_per_active_hour]
+
+    @property
+    def elements_with_active_hour_effects_ids(self) -> list[str]:
+        """IDs of elements with effects_per_active_hour."""
+        return [e.label_full for e in self.elements_with_active_hour_effects]
+
+    @property
+    def elements_with_startup_effects(self) -> list:
+        """Elements that have effects_per_startup defined."""
+        return [e for e in self._with_startup_tracking if self._parameters_getter(e).effects_per_startup]
+
+    @property
+    def elements_with_startup_effects_ids(self) -> list[str]:
+        """IDs of elements with effects_per_startup."""
+        return [e.label_full for e in self.elements_with_startup_effects]
+
+    def get_active_hour_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
+        """Get active hour effect factors as DataArray with (element, effect) dims.
+
+        Returns sparse array containing only elements with effects_per_active_hour.
         """
+        elements = self.elements_with_active_hour_effects
+        if not elements:
+            return None
+
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_active_hour, effect_ids)
+
+    def get_startup_factors(self, effect_ids: list[str]) -> xr.DataArray | None:
+        """Get startup effect factors as DataArray with (element, effect) dims.
+
+        Returns sparse array containing only elements with effects_per_startup.
+        """
+        elements = self.elements_with_startup_effects
+        if not elements:
+            return None
+
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_startup, effect_ids)
+
+    def _build_factors(self, elements: list, effects_getter: callable, effect_ids: list[str]) -> xr.DataArray:
+        """Build sparse factor array with (element, effect) dims."""
         xr = self._xr
+        element_ids = [e.label_full for e in elements]
+        factors_array = np.zeros((len(elements), len(effect_ids)))
 
-        # Check if SharesModel is available (type_level mode)
-        effects_model = getattr(self.model.effects, '_batched_model', None)
-        use_shares_model = effects_model is not None and hasattr(effects_model, 'shares')
+        for i, elem in enumerate(elements):
+            effects_dict = effects_getter(elem)
+            for j, effect_id in enumerate(effect_ids):
+                factor = effects_dict.get(effect_id, 0) if effects_dict else 0
+                factors_array[i, j] = float(factor.values) if isinstance(factor, xr.DataArray) else factor
 
-        if use_shares_model:
-            self._create_effect_shares_batched(effects_model, xr)
-        else:
-            self._create_effect_shares_legacy()
-
-        self._logger.debug(f'StatusesModel created effect shares for {len(self.elements)} elements')
-
-    def _create_effect_shares_batched(self, effects_model, xr) -> None:
-        """Create effect shares using SharesModel (batched factor approach).
-
-        Builds factor arrays with (element, effect) dimensions and registers
-        them with SharesModel for efficient single-constraint creation.
-        """
-        dim = self.dim_name
-        shares = effects_model.shares
-
-        # === effects_per_active_hour: status * factor * timestep_duration ===
-        elements_with_active_hour_effects = [
-            e for e in self.elements if self._parameters_getter(e).effects_per_active_hour
-        ]
-
-        if elements_with_active_hour_effects:
-            # Use centralized build_factors from SharesModel
-            active_hour_factors, active_hour_ids = shares.build_factors(
-                elements=elements_with_active_hour_effects,
-                effects_getter=lambda e: self._parameters_getter(e).effects_per_active_hour,
-                contributor_dim=dim,
-            )
-
-            if active_hour_factors is not None:
-                # Check if we have batched status variable
-                if self._batched_status_var is not None:
-                    # Select only elements with effects
-                    status_subset = self._batched_status_var.sel({dim: active_hour_ids})
-
-                    # Multiply by timestep_duration to get hours
-                    status_hours = status_subset * self.model.timestep_duration
-
-                    # Register with SharesModel
-                    shares.register_temporal(
-                        variable=status_hours,
-                        factors=active_hour_factors,
-                        contributor_dim=dim,
-                    )
-                else:
-                    # Fall back to per-element approach
-                    for elem in elements_with_active_hour_effects:
-                        params = self._parameters_getter(elem)
-                        status_var = self._status_var_getter(elem)
-                        self.model.effects.add_share_to_effects(
-                            name=elem.label_full,
-                            expressions={
-                                effect: status_var * factor * self.model.timestep_duration
-                                for effect, factor in params.effects_per_active_hour.items()
-                            },
-                            target='temporal',
-                        )
-
-        # === effects_per_startup: startup * factor ===
-        elements_with_startup_effects = [
-            e for e in self._with_startup_tracking if self._parameters_getter(e).effects_per_startup
-        ]
-
-        if elements_with_startup_effects:
-            startup_factors, startup_ids = shares.build_factors(
-                elements=elements_with_startup_effects,
-                effects_getter=lambda e: self._parameters_getter(e).effects_per_startup,
-                contributor_dim=dim,
-            )
-
-            if startup_factors is not None and self._variables.get('startup') is not None:
-                # Get startup variable (already batched with element dimension)
-                startup_var = self._variables['startup']
-                # Select only elements with startup effects
-                startup_subset = startup_var.sel({dim: startup_ids})
-
-                # Register with SharesModel
-                shares.register_temporal(
-                    variable=startup_subset,
-                    factors=startup_factors,
-                    contributor_dim=dim,
-                )
-
-    def _create_effect_shares_legacy(self) -> None:
-        """Create effect shares using legacy per-element approach."""
-        for elem in self.elements:
-            params = self._parameters_getter(elem)
-            status_var = self._status_var_getter(elem)
-
-            # effects_per_active_hour
-            if params.effects_per_active_hour:
-                self.model.effects.add_share_to_effects(
-                    name=elem.label_full,
-                    expressions={
-                        effect: status_var * factor * self.model.timestep_duration
-                        for effect, factor in params.effects_per_active_hour.items()
-                    },
-                    target='temporal',
-                )
-
-            # effects_per_startup
-            if params.effects_per_startup and elem in self._with_startup_tracking:
-                startup = self._variables['startup'].sel({self.dim_name: elem.label_full})
-                self.model.effects.add_share_to_effects(
-                    name=elem.label_full,
-                    expressions={effect: startup * factor for effect, factor in params.effects_per_startup.items()},
-                    target='temporal',
-                )
+        return xr.DataArray(
+            factors_array,
+            dims=[self.dim_name, 'effect'],
+            coords={self.dim_name: element_ids, 'effect': effect_ids},
+        )
 
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element."""
