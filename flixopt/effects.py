@@ -666,52 +666,60 @@ class EffectsModel:
         # === Periodic shares ===
         self._create_periodic_shares(flows_model)
 
+    def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
+        """Build coordinates for share variables: (element, effect) + time/period/scenario."""
+        base_dims = None if temporal else ['period', 'scenario']
+        return xr.Coordinates(
+            {
+                element_dim: element_index,
+                'effect': self._effect_index,
+                **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
+            }
+        )
+
     def _create_temporal_shares(self, flows_model, dt: xr.DataArray) -> None:
         """Create temporal share variables and add to effect constraints."""
-        # Flow effects: rate * effects_per_flow_hour * dt
         factors = flows_model.effects_per_flow_hour
-        if factors is not None:
-            dim = flows_model.dim_name
-            rate = flows_model.rate.sel({dim: factors.coords[dim].values})
+        if factors is None:
+            return
 
-            share_coords = xr.Coordinates(
-                {
-                    dim: factors.coords[dim],
-                    'effect': self._effect_index,
-                    **{k: v for k, v in (self.model.get_coords(None) or {}).items()},
-                }
-            )
+        dim = flows_model.dim_name
+        rate = flows_model.rate.sel({dim: factors.coords[dim].values})
 
-            self.share_temporal = self.model.add_variables(
-                lower=-np.inf,
-                upper=np.inf,
-                coords=share_coords,
-                name='share|temporal',
-            )
+        self.share_temporal = self.model.add_variables(
+            lower=-np.inf,
+            upper=np.inf,
+            coords=self._share_coords(dim, factors.coords[dim], temporal=True),
+            name='share|temporal',
+        )
+        self.model.add_constraints(
+            self.share_temporal == rate * factors.fillna(0) * dt,
+            name='share|temporal',
+        )
+        self._eq_per_timestep.lhs -= self.share_temporal.sum(dim)
 
-            expression = rate * factors.fillna(0) * dt
-            self.model.add_constraints(self.share_temporal == expression, name='share|temporal')
+        # Status effects (add directly - no share variable needed)
+        self._add_status_effects(flows_model, dt)
 
-            # Add sum to effect constraint
-            self._eq_per_timestep.lhs -= self.share_temporal.sum(dim)
-
-        # Status effects: status * effects_per_active_hour * dt
+    def _add_status_effects(self, flows_model, dt: xr.DataArray) -> None:
+        """Add status-related effects directly to per_timestep constraint."""
         statuses_model = flows_model._statuses_model
-        if statuses_model is not None:
-            dim = statuses_model.dim_name
+        if statuses_model is None:
+            return
 
-            factors = statuses_model.effects_per_active_hour
-            if factors is not None and statuses_model._batched_status_var is not None:
-                status = statuses_model._batched_status_var.sel({dim: factors.coords[dim].values})
-                expr = (status * factors.fillna(0) * dt).sum(dim)
-                self._eq_per_timestep.lhs -= expr
+        dim = statuses_model.dim_name
 
-            # Startup effects: startup * effects_per_startup
-            factors = statuses_model.effects_per_startup
-            if factors is not None and statuses_model._variables.get('startup') is not None:
-                startup = statuses_model._variables['startup'].sel({dim: factors.coords[dim].values})
-                expr = (startup * factors.fillna(0)).sum(dim)
-                self._eq_per_timestep.lhs -= expr
+        # effects_per_active_hour
+        factors = statuses_model.effects_per_active_hour
+        if factors is not None and statuses_model._batched_status_var is not None:
+            status = statuses_model._batched_status_var.sel({dim: factors.coords[dim].values})
+            self._eq_per_timestep.lhs -= (status * factors.fillna(0) * dt).sum(dim)
+
+        # effects_per_startup
+        factors = statuses_model.effects_per_startup
+        if factors is not None and statuses_model._variables.get('startup') is not None:
+            startup = statuses_model._variables['startup'].sel({dim: factors.coords[dim].values})
+            self._eq_per_timestep.lhs -= (startup * factors.fillna(0)).sum(dim)
 
     def _create_periodic_shares(self, flows_model) -> None:
         """Create periodic share variables and add to effect constraints."""
@@ -721,45 +729,43 @@ class EffectsModel:
 
         dim = investments_model.dim_name
 
-        # effects_of_investment_per_size: size * factors -> share_periodic
+        # effects_of_investment_per_size -> share_periodic
         factors = investments_model.effects_of_investment_per_size
         if factors is not None:
             size = investments_model._variables['size'].sel({dim: factors.coords[dim].values})
 
-            share_coords = xr.Coordinates(
-                {
-                    dim: factors.coords[dim],
-                    'effect': self._effect_index,
-                    **{k: v for k, v in (self.model.get_coords(['period', 'scenario']) or {}).items()},
-                }
-            )
-
             self.share_periodic = self.model.add_variables(
                 lower=-np.inf,
                 upper=np.inf,
-                coords=share_coords,
+                coords=self._share_coords(dim, factors.coords[dim], temporal=False),
                 name='share|periodic',
             )
-
-            expression = size * factors.fillna(0)
-            self.model.add_constraints(self.share_periodic == expression, name='share|periodic')
-
-            # Add sum to effect constraint
+            self.model.add_constraints(
+                self.share_periodic == size * factors.fillna(0),
+                name='share|periodic',
+            )
             self._eq_periodic.lhs -= self.share_periodic.sum(dim)
 
-        # effects_of_investment: invested * factors (add directly to constraint)
+        # Other investment effects (add directly - no share variable needed)
+        self._add_investment_effects(investments_model)
+
+    def _add_investment_effects(self, investments_model) -> None:
+        """Add investment-related effects directly to periodic constraint."""
+        dim = investments_model.dim_name
+
+        # effects_of_investment
         factors = investments_model.effects_of_investment
         if factors is not None and investments_model._variables.get('invested') is not None:
             invested = investments_model._variables['invested'].sel({dim: factors.coords[dim].values})
             self._eq_periodic.lhs -= (invested * factors.fillna(0)).sum(dim)
 
-        # effects_of_retirement: -invested * factors (add directly to constraint)
+        # effects_of_retirement
         factors = investments_model.effects_of_retirement
         if factors is not None and investments_model._variables.get('invested') is not None:
             invested = investments_model._variables['invested'].sel({dim: factors.coords[dim].values})
             self._eq_periodic.lhs -= (invested * (-factors.fillna(0))).sum(dim)
 
-        # Constant shares (mandatory fixed, retirement constants)
+        # Constant shares
         investments_model.add_constant_shares_to_effects(self)
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
