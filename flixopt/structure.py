@@ -334,7 +334,7 @@ FlowVarName.Constraint = _FlowConstraint
 class ComponentVarName:
     """Central variable naming for Component type-level models.
 
-    All variable and constraint names for ComponentStatusesModel should reference these constants.
+    All variable and constraint names for ComponentsModel should reference these constants.
     Pattern: {element_type}|{variable_suffix}
     """
 
@@ -351,9 +351,9 @@ class ComponentVarName:
     DOWNTIME = 'component|downtime'
 
 
-# Constraint names for ComponentStatusesModel (references ComponentVarName)
+# Constraint names for ComponentsModel (references ComponentVarName)
 class _ComponentConstraint:
-    """Constraint names for ComponentStatusesModel.
+    """Constraint names for ComponentsModel.
 
     Constraints can have 3 levels: component|{var}|{constraint_type}
     """
@@ -976,25 +976,25 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         record('storages_investment_constraints')
 
         # Collect components with status_parameters for batched status handling
-        from .elements import ComponentStatusesModel, PreventSimultaneousFlowsModel
+        from .elements import ComponentsModel, PreventSimultaneousFlowsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
 
         # Create type-level model for component status
-        self._component_statuses_model = ComponentStatusesModel(self, components_with_status, self._flows_model)
-        self._component_statuses_model.create_variables()
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
+        self._components_model.create_variables()
 
         record('component_status_variables')
 
-        self._component_statuses_model.create_constraints()
+        self._components_model.create_constraints()
 
         record('component_status_constraints')
 
-        self._component_statuses_model.create_status_features()
+        self._components_model.create_status_features()
 
         record('component_status_features')
 
-        self._component_statuses_model.create_effect_shares()
+        self._components_model.create_effect_shares()
 
         record('component_status_effects')
 
@@ -1013,7 +1013,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
-        # Note: ComponentModel will skip status creation since ComponentStatusesModel handles it
+        # Note: ComponentModel will skip status creation since ComponentsModel handles it
         for component in self.flow_system.components.values():
             component.create_model(self)
 

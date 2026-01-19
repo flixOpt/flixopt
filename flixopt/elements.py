@@ -1578,7 +1578,7 @@ class FlowsModel(TypeModel):
     def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
         """Get previous status for a flow based on its previous_flow_rate.
 
-        This is used by ComponentStatusesModel to compute component previous status.
+        This is used by ComponentsModel to compute component previous status.
 
         Args:
             flow: The flow to get previous status for.
@@ -2201,7 +2201,7 @@ class ComponentModel(ElementModel):
         return xr.concat(padded_previous_status, dim='flow').any(dim='flow').astype(int)
 
 
-class ComponentStatusesModel:
+class ComponentsModel:
     """Type-level model for batched component status across multiple components.
 
     This handles component-level status variables and constraints for ALL components
@@ -2217,7 +2217,7 @@ class ComponentStatusesModel:
     - Status features (active_hours, startup, shutdown, etc.) via StatusHelpers
 
     Example:
-        >>> component_statuses = ComponentStatusesModel(
+        >>> component_statuses = ComponentsModel(
         ...     model=flow_system_model,
         ...     components=components_with_status,
         ...     flows_model=flows_model,
@@ -2255,7 +2255,24 @@ class ComponentStatusesModel:
         # Status feature variables (active_hours, startup, shutdown, etc.) created by StatusHelpers
         self._status_variables: dict[str, linopy.Variable] = {}
 
-        self._logger.debug(f'ComponentStatusesModel initialized: {len(components)} components with status')
+        self._logger.debug(f'ComponentsModel initialized: {len(components)} components with status')
+
+    # --- Cached Properties ---
+
+    @cached_property
+    def _status_params(self) -> dict[str, StatusParameters]:
+        """Dict of component_id -> StatusParameters."""
+        return {c.label: c.status_parameters for c in self.components}
+
+    @cached_property
+    def _previous_status_dict(self) -> dict[str, xr.DataArray]:
+        """Dict of component_id -> previous_status DataArray."""
+        result = {}
+        for c in self.components:
+            prev = self._get_previous_status_for_component(c)
+            if prev is not None:
+                result[c.label] = prev
+        return result
 
     def create_variables(self) -> None:
         """Create batched component status variable with component dimension."""
@@ -2279,7 +2296,7 @@ class ComponentStatusesModel:
             name='component|status',
         )
 
-        self._logger.debug(f'ComponentStatusesModel created status variable for {len(self.components)} components')
+        self._logger.debug(f'ComponentsModel created status variable for {len(self.components)} components')
 
     def create_constraints(self) -> None:
         """Create batched constraints linking component status to flow statuses."""
@@ -2319,9 +2336,9 @@ class ComponentStatusesModel:
                     name=f'{component.label}|status|lb',
                 )
 
-        self._logger.debug(f'ComponentStatusesModel created constraints for {len(self.components)} components')
+        self._logger.debug(f'ComponentsModel created constraints for {len(self.components)} components')
 
-    @property
+    @cached_property
     def previous_status_batched(self) -> xr.DataArray | None:
         """Concatenated previous status (component, time) derived from component flows.
 
@@ -2390,31 +2407,21 @@ class ComponentStatusesModel:
 
         from .features import StatusHelpers
 
-        # Build params dict
-        params = {c.label: c.status_parameters for c in self.components}
-
-        # Build previous_status dict
-        previous_status = {}
-        for c in self.components:
-            prev = self._get_previous_status_for_component(c)
-            if prev is not None:
-                previous_status[c.label] = prev
-
-        # Use helper to create all status features
+        # Use helper to create all status features with cached properties
         status_vars = StatusHelpers.create_status_features(
             model=self.model,
             status=self._variables['status'],
-            params=params,
+            params=self._status_params,
             dim_name=self.dim_name,
             var_names=ComponentVarName,
-            previous_status=previous_status,
+            previous_status=self._previous_status_dict,
             has_clusters=self.model.flow_system.clusters is not None,
         )
 
         # Store created variables
         self._status_variables = status_vars
 
-        self._logger.debug(f'ComponentStatusesModel created status features for {len(self.components)} components')
+        self._logger.debug(f'ComponentsModel created status features for {len(self.components)} components')
 
     def create_effect_shares(self) -> None:
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
@@ -2438,7 +2445,7 @@ class ComponentStatusesModel:
                 return var.sel({dim: component_id})
             return None
         else:
-            raise KeyError(f'Variable {var_name} not found in ComponentStatusesModel')
+            raise KeyError(f'Variable {var_name} not found in ComponentsModel')
 
 
 class PreventSimultaneousFlowsModel:

@@ -249,7 +249,7 @@ class StatusHelpers:
     """Static helper methods for status constraint creation.
 
     These helpers contain the shared math for status constraints,
-    used by FlowsModel and ComponentStatusesModel.
+    used by FlowsModel and ComponentsModel.
     """
 
     @staticmethod
@@ -869,7 +869,7 @@ class StatusProxy:
 
     Provides access to status-related variables for a specific element.
     Returns slices from batched variables. Works with both FlowsModel
-    (for flows) and ComponentStatusesModel (for components).
+    (for flows) and ComponentsModel (for components).
     """
 
     def __init__(self, model, element_id: str):
