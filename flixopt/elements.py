@@ -1226,8 +1226,7 @@ class FlowsModel(TypeModel):
 
         self._investments_model = InvestmentsModel(
             model=self.model,
-            elements=self.flows_with_investment,
-            parameters_getter=lambda f: f.size,
+            parameters=self.invest_parameters_batched,
             size_category=VariableCategory.FLOW_SIZE,
             name_prefix='flow',
             dim_name='flow',
@@ -1251,28 +1250,13 @@ class FlowsModel(TypeModel):
 
         from .features import StatusesModel
 
-        def get_previous_status(flow: Flow) -> xr.DataArray | None:
-            """Get previous status for a flow based on its previous_flow_rate."""
-            previous_flow_rate = flow.previous_flow_rate
-            if previous_flow_rate is None:
-                return None
-
-            return ModelingUtilitiesAbstract.to_binary(
-                values=xr.DataArray(
-                    [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
-                ),
-                epsilon=CONFIG.Modeling.epsilon,
-                dims='time',
-            )
-
         self._statuses_model = StatusesModel(
             model=self.model,
-            elements=self.flows_with_status,
-            status_var_getter=lambda f: self.get_variable('status', f.label_full),
-            parameters_getter=lambda f: f.status_parameters,
-            previous_status_getter=get_previous_status,
+            status=self._variables.get('status'),
+            parameters=self.status_parameters_batched,
+            previous_status=self.previous_status_batched,
             dim_name='flow',
-            batched_status_var=self._variables.get('status'),
+            name_prefix='status',
         )
         self._statuses_model.create_variables()
         self._statuses_model.create_constraints()
@@ -1353,6 +1337,80 @@ class FlowsModel(TypeModel):
             ),
             epsilon=CONFIG.Modeling.epsilon,
             dims='time',
+        )
+
+    # === Batched Parameter Properties ===
+
+    @property
+    def status_parameters_batched(self):
+        """Concatenated status parameters from all flows with status.
+
+        Returns:
+            StatusParametersBatched with all status parameters stacked by flow dimension.
+            Returns None if no flows have status parameters.
+        """
+        if not self.flows_with_status:
+            return None
+
+        from .interface import StatusParametersBatched
+
+        return StatusParametersBatched.from_elements(
+            elements=self.flows_with_status,
+            parameters_getter=lambda f: f.status_parameters,
+            dim_name=self.dim_name,
+        )
+
+    @property
+    def previous_status_batched(self) -> xr.DataArray | None:
+        """Concatenated previous status (flow, time) from previous_flow_rate.
+
+        Returns None if no flows have previous_flow_rate set.
+        For flows without previous_flow_rate, their slice contains NaN values.
+
+        The DataArray has dimensions (flow, time) where:
+        - flow: subset of flows_with_status that have previous_flow_rate
+        - time: negative time indices representing past timesteps
+        """
+        flows_with_previous = [f for f in self.flows_with_status if f.previous_flow_rate is not None]
+        if not flows_with_previous:
+            return None
+
+        previous_arrays = []
+        for flow in flows_with_previous:
+            previous_flow_rate = flow.previous_flow_rate
+
+            # Convert to DataArray and compute binary status
+            previous_status = ModelingUtilitiesAbstract.to_binary(
+                values=xr.DataArray(
+                    [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate,
+                    dims='time',
+                ),
+                epsilon=CONFIG.Modeling.epsilon,
+                dims='time',
+            )
+            # Expand dims to add flow dimension
+            previous_status = previous_status.expand_dims({self.dim_name: [flow.label_full]})
+            previous_arrays.append(previous_status)
+
+        return xr.concat(previous_arrays, dim=self.dim_name)
+
+    @property
+    def invest_parameters_batched(self):
+        """Concatenated investment parameters from all flows with investment.
+
+        Returns:
+            InvestParametersBatched with all investment parameters stacked by flow dimension.
+            Returns None if no flows have investment parameters.
+        """
+        if not self.flows_with_investment:
+            return None
+
+        from .interface import InvestParametersBatched
+
+        return InvestParametersBatched.from_elements(
+            elements=self.flows_with_investment,
+            parameters_getter=lambda f: f.size,
+            dim_name=self.dim_name,
         )
 
 
@@ -1823,17 +1881,33 @@ class ComponentStatusesModel:
 
         self._logger.debug(f'ComponentStatusesModel created constraints for {len(self.components)} components')
 
-    def create_status_features(self) -> None:
-        """Create StatusesModel for status features (startup, shutdown, active_hours, etc.)."""
-        if not self.components:
-            return
+    @property
+    def status_parameters_batched(self):
+        """Concatenated status parameters from all components with status.
 
-        from .features import StatusesModel
+        Returns:
+            StatusParametersBatched with all status parameters stacked by component dimension.
+        """
+        from .interface import StatusParametersBatched
 
-        dim = self.dim_name
+        return StatusParametersBatched.from_elements(
+            elements=self.components,
+            parameters_getter=lambda c: c.status_parameters,
+            dim_name=self.dim_name,
+            label_getter=lambda c: c.label,  # Components use label, not label_full
+        )
 
-        def get_previous_status(component: Component) -> xr.DataArray | None:
-            """Get previous status for component, derived from its flows."""
+    @property
+    def previous_status_batched(self) -> xr.DataArray | None:
+        """Concatenated previous status (component, time) derived from component flows.
+
+        Returns None if no components have previous status.
+        For each component, previous status is OR of its flows' previous statuses.
+        """
+        previous_arrays = []
+        components_with_previous = []
+
+        for component in self.components:
             all_flows = component.inputs + component.outputs
             previous_status = []
             for flow in all_flows:
@@ -1841,23 +1915,36 @@ class ComponentStatusesModel:
                 if prev is not None:
                     previous_status.append(prev)
 
-            if not previous_status:
-                return None
+            if previous_status:
+                # Combine flow statuses using OR (any flow active = component active)
+                max_len = max(da.sizes['time'] for da in previous_status)
+                padded = [
+                    da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
+                    for da in previous_status
+                ]
+                comp_prev_status = xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+                comp_prev_status = comp_prev_status.expand_dims({self.dim_name: [component.label]})
+                previous_arrays.append(comp_prev_status)
+                components_with_previous.append(component)
 
-            max_len = max(da.sizes['time'] for da in previous_status)
-            padded = [
-                da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
-                for da in previous_status
-            ]
-            return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+        if not previous_arrays:
+            return None
+
+        return xr.concat(previous_arrays, dim=self.dim_name)
+
+    def create_status_features(self) -> None:
+        """Create StatusesModel for status features (startup, shutdown, active_hours, etc.)."""
+        if not self.components:
+            return
+
+        from .features import StatusesModel
 
         self._statuses_model = StatusesModel(
             model=self.model,
-            elements=self.components,
-            status_var_getter=lambda c: self._variables['status'].sel({dim: c.label}),
-            parameters_getter=lambda c: c.status_parameters,
-            previous_status_getter=get_previous_status,
-            dim_name=dim,
+            status=self._variables['status'],
+            parameters=self.status_parameters_batched,
+            previous_status=self.previous_status_batched,
+            dim_name=self.dim_name,
             name_prefix='component',
         )
 

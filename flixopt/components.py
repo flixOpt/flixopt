@@ -1825,6 +1825,25 @@ class StoragesModel:
             name='storage|cluster_cyclic',
         )
 
+    @property
+    def invest_parameters_batched(self):
+        """Concatenated investment parameters from all storages with investment.
+
+        Returns:
+            InvestParametersBatched with all investment parameters stacked by storage dimension.
+            Returns None if no storages have investment parameters.
+        """
+        if not self.storages_with_investment:
+            return None
+
+        from .interface import InvestParametersBatched
+
+        return InvestParametersBatched.from_elements(
+            elements=self.storages_with_investment,
+            parameters_getter=lambda s: s.capacity_in_flow_hours,
+            dim_name=self.dim_name,
+        )
+
     def create_investment_model(self) -> None:
         """Create batched InvestmentsModel for storages with investment.
 
@@ -1841,8 +1860,7 @@ class StoragesModel:
 
         self._investments_model = InvestmentsModel(
             model=self.model,
-            elements=self.storages_with_investment,
-            parameters_getter=lambda s: s.capacity_in_flow_hours,
+            parameters=self.invest_parameters_batched,
             size_category=VariableCategory.STORAGE_SIZE,
             name_prefix='storage_investment',
             dim_name=self.dim_name,  # Use 'storage' dimension to match StoragesModel

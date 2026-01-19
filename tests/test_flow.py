@@ -20,10 +20,10 @@ class TestFlowModel:
 
         model = create_linopy_model(flow_system)
 
+        # Constraints are now batched at type-level, select specific flow
         assert_conequal(
-            model.constraints['Sink(Wärme)|total_flow_hours'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration).sum('time'),
+            model.constraints['flow|hours_eq'].sel(flow='Sink(Wärme)'),
+            flow.submodel.total_flow_hours == (flow.submodel.flow_rate * model.timestep_duration).sum('time'),
         )
         assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
         assert_var_equal(
@@ -31,12 +31,16 @@ class TestFlowModel:
             model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
 
+        # Variables are registered with short names in submodel
         assert_sets_equal(
-            set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            set(flow.submodel._variables.keys()),
+            {'total_flow_hours', 'flow_rate'},
             msg='Incorrect variables',
         )
-        assert_sets_equal(set(flow.submodel.constraints), {'Sink(Wärme)|total_flow_hours'}, msg='Incorrect constraints')
+        # Constraints are now at type-level (batched), submodel constraints are empty
+        assert_sets_equal(
+            set(flow.submodel._constraints.keys()), set(), msg='Batched model has no per-element constraints'
+        )
 
     def test_flow(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config

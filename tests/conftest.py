@@ -772,17 +772,27 @@ def assert_conequal(actual: linopy.Constraint, desired: linopy.Constraint):
 
 
 def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
-    """Assert that two variables are equal with detailed error messages."""
+    """Assert that two variables are equal with detailed error messages.
+
+    Drops scalar coordinates (non-dimension coords) before comparison to handle
+    batched model slices that carry element coordinates.
+    """
     name = actual.name
+
+    def drop_scalar_coords(arr: xr.DataArray) -> xr.DataArray:
+        """Drop coordinates that are not dimensions (scalar coords from .sel())."""
+        scalar_coords = [c for c in arr.coords if c not in arr.dims]
+        return arr.drop_vars(scalar_coords) if scalar_coords else arr
+
     try:
-        xr.testing.assert_equal(actual.lower, desired.lower)
+        xr.testing.assert_equal(drop_scalar_coords(actual.lower), drop_scalar_coords(desired.lower))
     except AssertionError as e:
         raise AssertionError(
             f"{name} lower bounds don't match:\nActual: {actual.lower}\nExpected: {desired.lower}"
         ) from e
 
     try:
-        xr.testing.assert_equal(actual.upper, desired.upper)
+        xr.testing.assert_equal(drop_scalar_coords(actual.upper), drop_scalar_coords(desired.upper))
     except AssertionError as e:
         raise AssertionError(
             f"{name} upper bounds don't match:\nActual: {actual.upper}\nExpected: {desired.upper}"
@@ -797,15 +807,19 @@ def assert_var_equal(actual: linopy.Variable, desired: linopy.Variable):
     if actual.shape != desired.shape:
         raise AssertionError(f"{name} shapes don't match: {actual.shape} != {desired.shape}")
 
+    # Compare only dimension coordinates (drop scalar coords from batched model slices)
+    actual_dim_coords = {k: v for k, v in actual.coords.items() if k in actual.dims}
+    desired_dim_coords = {k: v for k, v in desired.coords.items() if k in desired.dims}
     try:
-        xr.testing.assert_equal(actual.coords, desired.coords)
+        xr.testing.assert_equal(xr.Coordinates(actual_dim_coords), xr.Coordinates(desired_dim_coords))
     except AssertionError as e:
         raise AssertionError(
-            f"{name} coordinates don't match:\nActual: {actual.coords}\nExpected: {desired.coords}"
+            f"{name} dimension coordinates don't match:\nActual: {actual_dim_coords}\nExpected: {desired_dim_coords}"
         ) from e
 
-    if actual.coord_dims != desired.coord_dims:
-        raise AssertionError(f"{name} coordinate dimensions don't match: {actual.coord_dims} != {desired.coord_dims}")
+    # Compare dims (the tuple of dimension names)
+    if actual.dims != desired.dims:
+        raise AssertionError(f"{name} dimensions don't match: {actual.dims} != {desired.dims}")
 
 
 def assert_sets_equal(set1: Iterable, set2: Iterable, msg=''):
