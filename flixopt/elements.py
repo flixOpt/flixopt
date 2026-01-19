@@ -1238,7 +1238,7 @@ class FlowsModel(TypeModel):
         logger.debug(f'FlowsModel created batched InvestmentsModel for {len(self.flows_with_investment)} flows')
 
     def create_status_model(self) -> None:
-        """Create batched StatusesModel for flows with status.
+        """Create batched FlowStatusesModel for flows with status.
 
         This method creates variables (active_hours, startup, shutdown, etc.) and constraints
         for all flows with StatusParameters using a single batched model.
@@ -1248,21 +1248,20 @@ class FlowsModel(TypeModel):
         if not self.flows_with_status:
             return
 
-        from .features import StatusesModel
+        from .features import FlowStatusesModel
 
-        self._statuses_model = StatusesModel(
+        self._statuses_model = FlowStatusesModel(
             model=self.model,
             status=self._variables.get('status'),
-            parameters=self.status_parameters_batched,
-            previous_status=self.previous_status_batched,
-            dim_name='flow',
+            flows=self.flows_with_status,
+            previous_status_getter=self.get_previous_status,
             name_prefix='status',
         )
         self._statuses_model.create_variables()
         self._statuses_model.create_constraints()
         # Effect shares are collected by EffectsModel.finalize_shares()
 
-        logger.debug(f'FlowsModel created batched StatusesModel for {len(self.flows_with_status)} flows')
+        logger.debug(f'FlowsModel created batched FlowStatusesModel for {len(self.flows_with_status)} flows')
 
     def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
         """Collect effect share specifications for all flows.
@@ -1340,25 +1339,6 @@ class FlowsModel(TypeModel):
         )
 
     # === Batched Parameter Properties ===
-
-    @property
-    def status_parameters_batched(self):
-        """Concatenated status parameters from all flows with status.
-
-        Returns:
-            StatusParametersBatched with all status parameters stacked by flow dimension.
-            Returns None if no flows have status parameters.
-        """
-        if not self.flows_with_status:
-            return None
-
-        from .interface import StatusParametersBatched
-
-        return StatusParametersBatched.from_elements(
-            elements=self.flows_with_status,
-            parameters_getter=lambda f: f.status_parameters,
-            dim_name=self.dim_name,
-        )
 
     @property
     def previous_status_batched(self) -> xr.DataArray | None:
@@ -1882,22 +1862,6 @@ class ComponentStatusesModel:
         self._logger.debug(f'ComponentStatusesModel created constraints for {len(self.components)} components')
 
     @property
-    def status_parameters_batched(self):
-        """Concatenated status parameters from all components with status.
-
-        Returns:
-            StatusParametersBatched with all status parameters stacked by component dimension.
-        """
-        from .interface import StatusParametersBatched
-
-        return StatusParametersBatched.from_elements(
-            elements=self.components,
-            parameters_getter=lambda c: c.status_parameters,
-            dim_name=self.dim_name,
-            label_getter=lambda c: c.label,  # Components use label, not label_full
-        )
-
-    @property
     def previous_status_batched(self) -> xr.DataArray | None:
         """Concatenated previous status (component, time) derived from component flows.
 
@@ -1932,19 +1896,45 @@ class ComponentStatusesModel:
 
         return xr.concat(previous_arrays, dim=self.dim_name)
 
+    def _get_previous_status_for_component(self, component) -> xr.DataArray | None:
+        """Get previous status for a single component (OR of flow statuses).
+
+        Args:
+            component: The component to get previous status for.
+
+        Returns:
+            DataArray of previous status, or None if no flows have previous status.
+        """
+        all_flows = component.inputs + component.outputs
+        previous_status = []
+        for flow in all_flows:
+            prev = self._flows_model.get_previous_status(flow)
+            if prev is not None:
+                previous_status.append(prev)
+
+        if not previous_status:
+            return None
+
+        # Combine flow statuses using OR (any flow active = component active)
+        max_len = max(da.sizes['time'] for da in previous_status)
+        padded = [
+            da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
+            for da in previous_status
+        ]
+        return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+
     def create_status_features(self) -> None:
-        """Create StatusesModel for status features (startup, shutdown, active_hours, etc.)."""
+        """Create ComponentStatusFeaturesModel for status features (startup, shutdown, active_hours, etc.)."""
         if not self.components:
             return
 
-        from .features import StatusesModel
+        from .features import ComponentStatusFeaturesModel
 
-        self._statuses_model = StatusesModel(
+        self._statuses_model = ComponentStatusFeaturesModel(
             model=self.model,
             status=self._variables['status'],
-            parameters=self.status_parameters_batched,
-            previous_status=self.previous_status_batched,
-            dim_name=self.dim_name,
+            components=self.components,
+            previous_status_getter=self._get_previous_status_for_component,
             name_prefix='component',
         )
 
