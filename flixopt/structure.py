@@ -273,55 +273,62 @@ class FlowVarName:
     """Central variable naming for Flow type-level models.
 
     All variable and constraint names for FlowsModel should reference these constants.
-    Pattern: {element_type}|{variable_suffix}
+    Pattern: flow|{variable_name} (max 2 levels for variables)
     """
 
-    # === Flow Variables (FlowsModel) ===
+    # === Flow Variables ===
     RATE = 'flow|rate'
     HOURS = 'flow|hours'
     STATUS = 'flow|status'
     SIZE = 'flow|size'
     INVESTED = 'flow|invested'
 
-    # === Status Variables (created by FlowsModel for flows with status) ===
-    ACTIVE_HOURS = 'status|active_hours'
-    STARTUP = 'status|startup'
-    SHUTDOWN = 'status|shutdown'
-    INACTIVE = 'status|inactive'
-    STARTUP_COUNT = 'status|startup_count'
+    # === Status Tracking Variables (for flows with status) ===
+    ACTIVE_HOURS = 'flow|active_hours'
+    STARTUP = 'flow|startup'
+    SHUTDOWN = 'flow|shutdown'
+    INACTIVE = 'flow|inactive'
+    STARTUP_COUNT = 'flow|startup_count'
 
     # === Duration Tracking Variables ===
-    UPTIME = 'status|uptime'
-    DOWNTIME = 'status|downtime'
+    UPTIME = 'flow|uptime'
+    DOWNTIME = 'flow|downtime'
 
-    # === Constraint Names ===
-    class Constraint:
-        """Constraint names for FlowsModel."""
 
-        HOURS_EQ = 'flow|hours_eq'
-        RATE_STATUS_LB = 'flow|rate_status_lb'
-        RATE_STATUS_UB = 'flow|rate_status_ub'
-        ACTIVE_HOURS = 'status|active_hours'
-        COMPLEMENTARY = 'status|complementary'
-        SWITCH_TRANSITION = 'status|switch|transition'
-        SWITCH_MUTEX = 'status|switch|mutex'
-        SWITCH_INITIAL = 'status|switch|initial'
-        STARTUP_COUNT = 'status|startup_count'
-        CLUSTER_CYCLIC = 'status|cluster_cyclic'
+# Constraint names for FlowsModel (references FlowVarName)
+class _FlowConstraint:
+    """Constraint names for FlowsModel.
 
-        # Uptime tracking constraints
-        UPTIME_UB = 'status|uptime|ub'
-        UPTIME_FORWARD = 'status|uptime|forward'
-        UPTIME_BACKWARD = 'status|uptime|backward'
-        UPTIME_INITIAL_UB = 'status|uptime|initial_ub'
-        UPTIME_INITIAL_LB = 'status|uptime|initial_lb'
+    Constraints can have 3 levels: flow|{var}|{constraint_type}
+    """
 
-        # Downtime tracking constraints
-        DOWNTIME_UB = 'status|downtime|ub'
-        DOWNTIME_FORWARD = 'status|downtime|forward'
-        DOWNTIME_BACKWARD = 'status|downtime|backward'
-        DOWNTIME_INITIAL_UB = 'status|downtime|initial_ub'
-        DOWNTIME_INITIAL_LB = 'status|downtime|initial_lb'
+    HOURS_EQ = 'flow|hours_eq'
+    RATE_STATUS_LB = 'flow|rate_status_lb'
+    RATE_STATUS_UB = 'flow|rate_status_ub'
+    ACTIVE_HOURS = FlowVarName.ACTIVE_HOURS  # Same as variable (tracking constraint)
+    COMPLEMENTARY = 'flow|complementary'
+    SWITCH_TRANSITION = 'flow|switch_transition'
+    SWITCH_MUTEX = 'flow|switch_mutex'
+    SWITCH_INITIAL = 'flow|switch_initial'
+    STARTUP_COUNT = FlowVarName.STARTUP_COUNT  # Same as variable
+    CLUSTER_CYCLIC = 'flow|cluster_cyclic'
+
+    # Uptime tracking constraints (built from variable name)
+    UPTIME_UB = f'{FlowVarName.UPTIME}|ub'
+    UPTIME_FORWARD = f'{FlowVarName.UPTIME}|forward'
+    UPTIME_BACKWARD = f'{FlowVarName.UPTIME}|backward'
+    UPTIME_INITIAL_UB = f'{FlowVarName.UPTIME}|initial_ub'
+    UPTIME_INITIAL_LB = f'{FlowVarName.UPTIME}|initial_lb'
+
+    # Downtime tracking constraints (built from variable name)
+    DOWNTIME_UB = f'{FlowVarName.DOWNTIME}|ub'
+    DOWNTIME_FORWARD = f'{FlowVarName.DOWNTIME}|forward'
+    DOWNTIME_BACKWARD = f'{FlowVarName.DOWNTIME}|backward'
+    DOWNTIME_INITIAL_UB = f'{FlowVarName.DOWNTIME}|initial_ub'
+    DOWNTIME_INITIAL_LB = f'{FlowVarName.DOWNTIME}|initial_lb'
+
+
+FlowVarName.Constraint = _FlowConstraint
 
 
 class ComponentVarName:
@@ -343,31 +350,38 @@ class ComponentVarName:
     UPTIME = 'component|uptime'
     DOWNTIME = 'component|downtime'
 
-    # === Constraint Names ===
-    class Constraint:
-        """Constraint names for ComponentStatusesModel."""
 
-        ACTIVE_HOURS = 'component|active_hours'
-        COMPLEMENTARY = 'component|complementary'
-        SWITCH_TRANSITION = 'component|switch|transition'
-        SWITCH_MUTEX = 'component|switch|mutex'
-        SWITCH_INITIAL = 'component|switch|initial'
-        STARTUP_COUNT = 'component|startup_count'
-        CLUSTER_CYCLIC = 'component|cluster_cyclic'
+# Constraint names for ComponentStatusesModel (references ComponentVarName)
+class _ComponentConstraint:
+    """Constraint names for ComponentStatusesModel.
 
-        # Uptime tracking constraints
-        UPTIME_UB = 'component|uptime|ub'
-        UPTIME_FORWARD = 'component|uptime|forward'
-        UPTIME_BACKWARD = 'component|uptime|backward'
-        UPTIME_INITIAL_UB = 'component|uptime|initial_ub'
-        UPTIME_INITIAL_LB = 'component|uptime|initial_lb'
+    Constraints can have 3 levels: component|{var}|{constraint_type}
+    """
 
-        # Downtime tracking constraints
-        DOWNTIME_UB = 'component|downtime|ub'
-        DOWNTIME_FORWARD = 'component|downtime|forward'
-        DOWNTIME_BACKWARD = 'component|downtime|backward'
-        DOWNTIME_INITIAL_UB = 'component|downtime|initial_ub'
-        DOWNTIME_INITIAL_LB = 'component|downtime|initial_lb'
+    ACTIVE_HOURS = ComponentVarName.ACTIVE_HOURS
+    COMPLEMENTARY = 'component|complementary'
+    SWITCH_TRANSITION = 'component|switch_transition'
+    SWITCH_MUTEX = 'component|switch_mutex'
+    SWITCH_INITIAL = 'component|switch_initial'
+    STARTUP_COUNT = ComponentVarName.STARTUP_COUNT
+    CLUSTER_CYCLIC = 'component|cluster_cyclic'
+
+    # Uptime tracking constraints
+    UPTIME_UB = f'{ComponentVarName.UPTIME}|ub'
+    UPTIME_FORWARD = f'{ComponentVarName.UPTIME}|forward'
+    UPTIME_BACKWARD = f'{ComponentVarName.UPTIME}|backward'
+    UPTIME_INITIAL_UB = f'{ComponentVarName.UPTIME}|initial_ub'
+    UPTIME_INITIAL_LB = f'{ComponentVarName.UPTIME}|initial_lb'
+
+    # Downtime tracking constraints
+    DOWNTIME_UB = f'{ComponentVarName.DOWNTIME}|ub'
+    DOWNTIME_FORWARD = f'{ComponentVarName.DOWNTIME}|forward'
+    DOWNTIME_BACKWARD = f'{ComponentVarName.DOWNTIME}|backward'
+    DOWNTIME_INITIAL_UB = f'{ComponentVarName.DOWNTIME}|initial_ub'
+    DOWNTIME_INITIAL_LB = f'{ComponentVarName.DOWNTIME}|initial_lb'
+
+
+ComponentVarName.Constraint = _ComponentConstraint
 
 
 class StorageVarName:

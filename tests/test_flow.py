@@ -61,11 +61,10 @@ class TestFlowModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
-        # total_flow_hours
+        # total_flow_hours - now batched at type-level
         assert_conequal(
-            model.constraints['Sink(Wärme)|total_flow_hours'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours']
-            == (flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration).sum('time'),
+            model.constraints['flow|hours_eq'].sel(flow='Sink(Wärme)'),
+            flow.submodel.total_flow_hours == (flow.submodel.flow_rate * model.timestep_duration).sum('time'),
         )
 
         assert_var_equal(
@@ -85,25 +84,28 @@ class TestFlowModel:
             ),
         )
 
+        # load_factor constraints - now batched at type-level
         assert_conequal(
-            model.constraints['Sink(Wärme)|load_factor_min'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] >= model.timestep_duration.sum('time') * 0.1 * 100,
+            model.constraints['flow|load_factor_min'].sel(flow='Sink(Wärme)'),
+            flow.submodel.total_flow_hours >= model.timestep_duration.sum('time') * 0.1 * 100,
         )
 
         assert_conequal(
-            model.constraints['Sink(Wärme)|load_factor_max'],
-            flow.submodel.variables['Sink(Wärme)|total_flow_hours'] <= model.timestep_duration.sum('time') * 0.9 * 100,
+            model.constraints['flow|load_factor_max'].sel(flow='Sink(Wärme)'),
+            flow.submodel.total_flow_hours <= model.timestep_duration.sum('time') * 0.9 * 100,
         )
 
+        # Submodel uses short names
         assert_sets_equal(
-            set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            set(flow.submodel._variables.keys()),
+            {'total_flow_hours', 'flow_rate'},
             msg='Incorrect variables',
         )
+        # Constraints are now at type-level (batched), submodel constraints are empty
         assert_sets_equal(
-            set(flow.submodel.constraints),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|load_factor_max', 'Sink(Wärme)|load_factor_min'},
-            msg='Incorrect constraints',
+            set(flow.submodel._constraints.keys()),
+            set(),
+            msg='Batched model has no per-element constraints',
         )
 
     def test_effects_per_flow_hour(self, basic_flow_system_linopy_coords, coords_config):
@@ -120,26 +122,31 @@ class TestFlowModel:
         model = create_linopy_model(flow_system)
         costs, co2 = flow_system.effects['costs'], flow_system.effects['CO2']
 
+        # Submodel uses short names
         assert_sets_equal(
-            set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate'},
+            set(flow.submodel._variables.keys()),
+            {'total_flow_hours', 'flow_rate'},
             msg='Incorrect variables',
         )
-        assert_sets_equal(set(flow.submodel.constraints), {'Sink(Wärme)|total_flow_hours'}, msg='Incorrect constraints')
+        # Constraints are now at type-level (batched)
+        assert_sets_equal(
+            set(flow.submodel._constraints.keys()), set(), msg='Batched model has no per-element constraints'
+        )
 
+        # Effect constraints are still per-element (registered in effect submodel)
         assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
         assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
 
         assert_conequal(
             model.constraints['Sink(Wärme)->costs(temporal)'],
             model.variables['Sink(Wärme)->costs(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration * costs_per_flow_hour,
+            == flow.submodel.flow_rate * model.timestep_duration * costs_per_flow_hour,
         )
 
         assert_conequal(
             model.constraints['Sink(Wärme)->CO2(temporal)'],
             model.variables['Sink(Wärme)->CO2(temporal)']
-            == flow.submodel.variables['Sink(Wärme)|flow_rate'] * model.timestep_duration * co2_per_flow_hour,
+            == flow.submodel.flow_rate * model.timestep_duration * co2_per_flow_hour,
         )
 
 

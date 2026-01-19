@@ -347,7 +347,7 @@ class StatusHelpers:
         Args:
             model: The FlowSystemModel to add constraints to.
             state: Binary state variable with (element_dim, time) dims.
-            name: Full name for the duration variable (e.g., 'status|uptime|duration').
+            name: Full name for the duration variable (e.g., 'flow|uptime').
             dim_name: Element dimension name (e.g., 'flow', 'component').
             timestep_duration: Duration per timestep (time,).
             minimum_duration: Optional minimum duration per element (element_dim,). NaN = no constraint.
@@ -422,6 +422,273 @@ class StatusHelpers:
                 )
 
         return duration
+
+    @staticmethod
+    def create_status_features(
+        model: FlowSystemModel,
+        status: linopy.Variable,
+        params: dict[str, StatusParameters],
+        dim_name: str,
+        var_names,  # FlowVarName or ComponentVarName class
+        previous_status: dict[str, xr.DataArray] | None = None,
+        has_clusters: bool = False,
+    ) -> dict[str, linopy.Variable]:
+        """Create all status-derived variables and constraints.
+
+        This is the main entry point for status feature creation. Given a status
+        variable (created by the caller), this method creates all derived variables
+        and constraints for status tracking.
+
+        Creates variables:
+        - active_hours: For all elements with status
+        - startup, shutdown: For elements needing startup tracking
+        - inactive: For elements needing downtime tracking
+        - startup_count: For elements with startup limit
+        - uptime, downtime: Duration tracking variables
+
+        Creates constraints:
+        - active_hours tracking
+        - complementary (status + inactive == 1)
+        - switch_transition, switch_mutex, switch_initial
+        - startup_count tracking
+        - uptime/downtime duration tracking
+        - cluster_cyclic (if has_clusters)
+
+        Args:
+            model: The FlowSystemModel to add variables/constraints to.
+            status: Batched binary status variable with (element_dim, time) dims.
+            params: Dict mapping element_id -> StatusParameters.
+            dim_name: Element dimension name (e.g., 'flow', 'component').
+            var_names: Class with variable/constraint name constants (e.g., FlowVarName).
+            previous_status: Optional dict mapping element_id -> previous status DataArray.
+            has_clusters: Whether to check for cluster cyclic constraints.
+
+        Returns:
+            Dict of created variables (active_hours, startup, shutdown, inactive, startup_count, uptime, downtime).
+        """
+        import pandas as pd
+
+        if previous_status is None:
+            previous_status = {}
+
+        element_ids = list(params.keys())
+        variables: dict[str, linopy.Variable] = {}
+
+        # === Compute category lists ===
+        startup_tracking_ids = [
+            eid
+            for eid in element_ids
+            if (
+                params[eid].effects_per_startup
+                or params[eid].min_uptime is not None
+                or params[eid].max_uptime is not None
+                or params[eid].startup_limit is not None
+                or params[eid].force_startup_tracking
+            )
+        ]
+        downtime_tracking_ids = [
+            eid for eid in element_ids if params[eid].min_downtime is not None or params[eid].max_downtime is not None
+        ]
+        uptime_tracking_ids = [
+            eid for eid in element_ids if params[eid].min_uptime is not None or params[eid].max_uptime is not None
+        ]
+        startup_limit_ids = [eid for eid in element_ids if params[eid].startup_limit is not None]
+
+        # === Get coords ===
+        base_coords = model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+        temporal_coords = model.get_coords()
+        total_hours = model.temporal_weight.sum(model.temporal_dims)
+        timestep_duration = model.timestep_duration
+
+        # === VARIABLES ===
+
+        # active_hours: For ALL elements with status
+        active_hours_min_vals = [params[eid].active_hours_min or 0 for eid in element_ids]
+        active_hours_min = xr.DataArray(active_hours_min_vals, dims=[dim_name], coords={dim_name: element_ids})
+
+        active_hours_max_list = [params[eid].active_hours_max for eid in element_ids]
+        has_max = xr.DataArray(
+            [v is not None for v in active_hours_max_list], dims=[dim_name], coords={dim_name: element_ids}
+        )
+        max_vals = xr.DataArray(
+            [v if v is not None else 0 for v in active_hours_max_list], dims=[dim_name], coords={dim_name: element_ids}
+        )
+        active_hours_max = xr.where(has_max, max_vals, total_hours)
+
+        active_hours_coords = xr.Coordinates({dim_name: pd.Index(element_ids, name=dim_name), **base_coords_dict})
+        variables['active_hours'] = model.add_variables(
+            lower=active_hours_min,
+            upper=active_hours_max,
+            coords=active_hours_coords,
+            name=var_names.ACTIVE_HOURS,
+        )
+
+        # startup, shutdown: For elements with startup tracking
+        if startup_tracking_ids:
+            startup_coords = xr.Coordinates(
+                {dim_name: pd.Index(startup_tracking_ids, name=dim_name), **dict(temporal_coords)}
+            )
+            variables['startup'] = model.add_variables(binary=True, coords=startup_coords, name=var_names.STARTUP)
+            variables['shutdown'] = model.add_variables(binary=True, coords=startup_coords, name=var_names.SHUTDOWN)
+
+        # inactive: For elements with downtime tracking
+        if downtime_tracking_ids:
+            inactive_coords = xr.Coordinates(
+                {dim_name: pd.Index(downtime_tracking_ids, name=dim_name), **dict(temporal_coords)}
+            )
+            variables['inactive'] = model.add_variables(binary=True, coords=inactive_coords, name=var_names.INACTIVE)
+
+        # startup_count: For elements with startup limit
+        if startup_limit_ids:
+            startup_limit_vals = [params[eid].startup_limit for eid in startup_limit_ids]
+            startup_limit = xr.DataArray(startup_limit_vals, dims=[dim_name], coords={dim_name: startup_limit_ids})
+            startup_count_coords = xr.Coordinates(
+                {dim_name: pd.Index(startup_limit_ids, name=dim_name), **base_coords_dict}
+            )
+            variables['startup_count'] = model.add_variables(
+                lower=0, upper=startup_limit, coords=startup_count_coords, name=var_names.STARTUP_COUNT
+            )
+
+        # === CONSTRAINTS ===
+
+        # active_hours tracking: sum(status * weight) == active_hours
+        model.add_constraints(
+            variables['active_hours'] == model.sum_temporal(status),
+            name=var_names.Constraint.ACTIVE_HOURS,
+        )
+
+        # inactive complementary: status + inactive == 1
+        if downtime_tracking_ids:
+            status_subset = status.sel({dim_name: downtime_tracking_ids})
+            inactive = variables['inactive']
+            model.add_constraints(status_subset + inactive == 1, name=var_names.Constraint.COMPLEMENTARY)
+
+        # State transitions: startup, shutdown
+        if startup_tracking_ids:
+            status_subset = status.sel({dim_name: startup_tracking_ids})
+            startup = variables['startup']
+            shutdown = variables['shutdown']
+
+            # Transition constraint for t > 0
+            model.add_constraints(
+                startup.isel(time=slice(1, None)) - shutdown.isel(time=slice(1, None))
+                == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
+                name=var_names.Constraint.SWITCH_TRANSITION,
+            )
+
+            # Mutex constraint
+            model.add_constraints(startup + shutdown <= 1, name=var_names.Constraint.SWITCH_MUTEX)
+
+            # Initial constraint for t = 0 (if previous_status available)
+            elements_with_initial = [eid for eid in startup_tracking_ids if eid in previous_status]
+            if elements_with_initial:
+                prev_arrays = [previous_status[eid].expand_dims({dim_name: [eid]}) for eid in elements_with_initial]
+                prev_status_batched = xr.concat(prev_arrays, dim=dim_name)
+                prev_state = prev_status_batched.isel(time=-1)
+                startup_subset = startup.sel({dim_name: elements_with_initial})
+                shutdown_subset = shutdown.sel({dim_name: elements_with_initial})
+                status_initial = status_subset.sel({dim_name: elements_with_initial}).isel(time=0)
+
+                model.add_constraints(
+                    startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
+                    name=var_names.Constraint.SWITCH_INITIAL,
+                )
+
+        # startup_count: sum(startup) == startup_count
+        if startup_limit_ids:
+            startup = variables['startup'].sel({dim_name: startup_limit_ids})
+            startup_count = variables['startup_count']
+            startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario', dim_name)]
+            model.add_constraints(
+                startup_count == startup.sum(startup_temporal_dims), name=var_names.Constraint.STARTUP_COUNT
+            )
+
+        # Uptime tracking (batched)
+        if uptime_tracking_ids:
+            min_uptime = xr.DataArray(
+                [params[eid].min_uptime or np.nan for eid in uptime_tracking_ids],
+                dims=[dim_name],
+                coords={dim_name: uptime_tracking_ids},
+            )
+            max_uptime = xr.DataArray(
+                [params[eid].max_uptime or np.nan for eid in uptime_tracking_ids],
+                dims=[dim_name],
+                coords={dim_name: uptime_tracking_ids},
+            )
+            # Build previous uptime DataArray
+            previous_uptime_values = []
+            for eid in uptime_tracking_ids:
+                if eid in previous_status and params[eid].min_uptime is not None:
+                    prev = StatusHelpers.compute_previous_duration(
+                        previous_status[eid], target_state=1, timestep_duration=timestep_duration
+                    )
+                    previous_uptime_values.append(prev)
+                else:
+                    previous_uptime_values.append(np.nan)
+            previous_uptime = xr.DataArray(
+                previous_uptime_values, dims=[dim_name], coords={dim_name: uptime_tracking_ids}
+            )
+
+            variables['uptime'] = StatusHelpers.add_batched_duration_tracking(
+                model=model,
+                state=status.sel({dim_name: uptime_tracking_ids}),
+                name=var_names.UPTIME,
+                dim_name=dim_name,
+                timestep_duration=timestep_duration,
+                minimum_duration=min_uptime,
+                maximum_duration=max_uptime,
+                previous_duration=previous_uptime if previous_uptime.notnull().any() else None,
+            )
+
+        # Downtime tracking (batched)
+        if downtime_tracking_ids:
+            min_downtime = xr.DataArray(
+                [params[eid].min_downtime or np.nan for eid in downtime_tracking_ids],
+                dims=[dim_name],
+                coords={dim_name: downtime_tracking_ids},
+            )
+            max_downtime = xr.DataArray(
+                [params[eid].max_downtime or np.nan for eid in downtime_tracking_ids],
+                dims=[dim_name],
+                coords={dim_name: downtime_tracking_ids},
+            )
+            # Build previous downtime DataArray
+            previous_downtime_values = []
+            for eid in downtime_tracking_ids:
+                if eid in previous_status and params[eid].min_downtime is not None:
+                    prev = StatusHelpers.compute_previous_duration(
+                        previous_status[eid], target_state=0, timestep_duration=timestep_duration
+                    )
+                    previous_downtime_values.append(prev)
+                else:
+                    previous_downtime_values.append(np.nan)
+            previous_downtime = xr.DataArray(
+                previous_downtime_values, dims=[dim_name], coords={dim_name: downtime_tracking_ids}
+            )
+
+            variables['downtime'] = StatusHelpers.add_batched_duration_tracking(
+                model=model,
+                state=variables['inactive'],
+                name=var_names.DOWNTIME,
+                dim_name=dim_name,
+                timestep_duration=timestep_duration,
+                minimum_duration=min_downtime,
+                maximum_duration=max_downtime,
+                previous_duration=previous_downtime if previous_downtime.notnull().any() else None,
+            )
+
+        # Cluster cyclic constraints
+        if has_clusters:
+            cyclic_ids = [eid for eid in element_ids if params[eid].cluster_mode == 'cyclic']
+            if cyclic_ids:
+                status_cyclic = status.sel({dim_name: cyclic_ids})
+                model.add_constraints(
+                    status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
+                    name=var_names.Constraint.CLUSTER_CYCLIC,
+                )
+
+        return variables
 
 
 class InvestmentModel(Submodel):
@@ -651,639 +918,6 @@ class StatusProxy:
         # Handle both FlowsModel (_previous_status) and StatusesModel (previous_status)
         prev_dict = getattr(self._model, '_previous_status', None) or getattr(self._model, 'previous_status', {})
         return prev_dict.get(self._element_id)
-
-
-class StatusesModel:
-    """Type-level model for batched status features across multiple elements.
-
-    Unlike StatusModel (one per element), StatusesModel handles ALL elements
-    with status in a single instance with batched variables.
-
-    This enables:
-    - Batched `active_hours`, `startup`, `shutdown` variables with element dimension
-    - Vectorized constraint creation
-    - Batched effect shares
-
-    The model categorizes elements by their feature flags:
-    - all: Elements that have status (always get active_hours)
-    - with_startup_tracking: Elements needing startup/shutdown variables
-    - with_downtime_tracking: Elements needing inactive variable
-    - with_startup_limit: Elements needing startup_count variable
-
-    This is a base class. Use ComponentStatusFeaturesModel for component-level status.
-    Flow-level status is now handled directly by FlowsModel.create_status_model().
-    """
-
-    # These must be set by child classes in their __init__
-    element_ids: list[str]
-    params: dict[str, StatusParameters]  # Maps element_id -> StatusParameters
-    previous_status: dict[str, xr.DataArray]  # Maps element_id -> previous status DataArray
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        status: linopy.Variable,
-        dim_name: str = 'element',
-        name_prefix: str = 'status',
-    ):
-        """Initialize the type-level status model.
-
-        Child classes must set `element_ids`, `params`, and `previous_status` after calling super().__init__.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            status: Batched status variable with element dimension.
-            dim_name: Dimension name for the element type (e.g., 'flow', 'component').
-            name_prefix: Prefix for variable names (e.g., 'status', 'component_status').
-        """
-        import logging
-
-        import pandas as pd
-        import xarray as xr
-
-        self._logger = logging.getLogger('flixopt')
-        self.model = model
-        self.dim_name = dim_name
-        self.name_prefix = name_prefix
-
-        # Store imports for later use
-        self._pd = pd
-        self._xr = xr
-
-        # Variables dict
-        self._variables: dict[str, linopy.Variable] = {}
-
-        # Store status variable
-        self._batched_status_var = status
-
-    def _log_init(self) -> None:
-        """Log initialization info. Call after setting element_ids, params, and previous_status."""
-        self._logger.debug(
-            f'StatusesModel initialized: {len(self.element_ids)} elements, '
-            f'{len(self.startup_tracking_ids)} with startup tracking, '
-            f'{len(self.downtime_tracking_ids)} with downtime tracking'
-        )
-
-    # === Element categorization properties ===
-
-    @property
-    def startup_tracking_ids(self) -> list[str]:
-        """IDs of elements needing startup/shutdown tracking."""
-        result = []
-        for eid in self.element_ids:
-            params = self.params[eid]
-            needs_tracking = (
-                params.effects_per_startup
-                or params.min_uptime is not None
-                or params.max_uptime is not None
-                or params.startup_limit is not None
-                or params.force_startup_tracking
-            )
-            if needs_tracking:
-                result.append(eid)
-        return result
-
-    @property
-    def downtime_tracking_ids(self) -> list[str]:
-        """IDs of elements needing downtime tracking (inactive variable)."""
-        return [
-            eid
-            for eid in self.element_ids
-            if self.params[eid].min_downtime is not None or self.params[eid].max_downtime is not None
-        ]
-
-    @property
-    def uptime_tracking_ids(self) -> list[str]:
-        """IDs of elements with min_uptime or max_uptime constraints."""
-        return [
-            eid
-            for eid in self.element_ids
-            if self.params[eid].min_uptime is not None or self.params[eid].max_uptime is not None
-        ]
-
-    @property
-    def startup_limit_ids(self) -> list[str]:
-        """IDs of elements with startup_limit constraint."""
-        return [eid for eid in self.element_ids if self.params[eid].startup_limit is not None]
-
-    @property
-    def cluster_cyclic_ids(self) -> list[str]:
-        """IDs of elements with cluster_mode == 'cyclic'."""
-        return [eid for eid in self.element_ids if self.params[eid].cluster_mode == 'cyclic']
-
-    # === Parameter collection helpers ===
-
-    def _collect_param(self, attr: str, element_ids: list[str] | None = None) -> xr.DataArray:
-        """Collect a scalar parameter from elements into a DataArray."""
-        ids = element_ids if element_ids is not None else self.element_ids
-
-        values = []
-        for eid in ids:
-            val = getattr(self.params[eid], attr)
-            values.append(np.nan if val is None else val)
-
-        return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
-
-    def _get_previous_status_batched(self) -> xr.DataArray | None:
-        """Build batched previous status DataArray."""
-        if not self.previous_status:
-            return None
-
-        arrays = []
-        for eid, prev in self.previous_status.items():
-            arrays.append(prev.expand_dims({self.dim_name: [eid]}))
-
-        if not arrays:
-            return None
-
-        return xr.concat(arrays, dim=self.dim_name)
-
-    def create_variables(self) -> None:
-        """Create batched status feature variables with element dimension."""
-        pd = self._pd
-        xr = self._xr
-
-        # Get base coordinates (period, scenario if they exist)
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        base_coords_dict = dict(base_coords) if base_coords is not None else {}
-
-        dim = self.dim_name
-        total_hours = self.model.temporal_weight.sum(self.model.temporal_dims)
-
-        # === active_hours: ALL elements with status ===
-        # This is a per-period variable (summed over time within each period)
-        active_hours_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **base_coords_dict,
-            }
-        )
-
-        # Build bounds DataArrays by collecting from element parameters
-        active_hours_min = self._collect_param('active_hours_min')
-        active_hours_max = self._collect_param('active_hours_max')
-        lower_da = active_hours_min.fillna(0)
-        upper_da = xr.where(active_hours_max.notnull(), active_hours_max, total_hours)
-
-        self._variables['active_hours'] = self.model.add_variables(
-            lower=lower_da,
-            upper=upper_da,
-            coords=active_hours_coords,
-            name=f'{self.name_prefix}|active_hours',
-        )
-
-        # === startup, shutdown: Elements with startup tracking ===
-        if self.startup_tracking_ids:
-            temporal_coords = self.model.get_coords()
-            startup_coords = xr.Coordinates(
-                {
-                    dim: pd.Index(self.startup_tracking_ids, name=dim),
-                    **dict(temporal_coords),
-                }
-            )
-            self._variables['startup'] = self.model.add_variables(
-                binary=True,
-                coords=startup_coords,
-                name=f'{self.name_prefix}|startup',
-            )
-            self._variables['shutdown'] = self.model.add_variables(
-                binary=True,
-                coords=startup_coords,
-                name=f'{self.name_prefix}|shutdown',
-            )
-
-        # === inactive: Elements with downtime tracking ===
-        if self.downtime_tracking_ids:
-            temporal_coords = self.model.get_coords()
-            inactive_coords = xr.Coordinates(
-                {
-                    dim: pd.Index(self.downtime_tracking_ids, name=dim),
-                    **dict(temporal_coords),
-                }
-            )
-            self._variables['inactive'] = self.model.add_variables(
-                binary=True,
-                coords=inactive_coords,
-                name=f'{self.name_prefix}|inactive',
-            )
-
-        # === startup_count: Elements with startup limit ===
-        if self.startup_limit_ids:
-            startup_count_coords = xr.Coordinates(
-                {
-                    dim: pd.Index(self.startup_limit_ids, name=dim),
-                    **base_coords_dict,
-                }
-            )
-            # Get upper bounds by collecting from elements
-            startup_limit = self._collect_param('startup_limit', self.startup_limit_ids)
-
-            self._variables['startup_count'] = self.model.add_variables(
-                lower=0,
-                upper=startup_limit,
-                coords=startup_count_coords,
-                name=f'{self.name_prefix}|startup_count',
-            )
-
-        self._logger.debug(f'StatusesModel created variables for {len(self.element_ids)} elements')
-
-    def create_constraints(self) -> None:
-        """Create batched status feature constraints.
-
-        Uses vectorized operations where possible for better performance.
-        """
-        dim = self.dim_name
-        status = self._batched_status_var
-        previous_status_batched = self._get_previous_status_batched()
-
-        # === active_hours tracking: sum(status * weight) == active_hours ===
-        # Vectorized: single constraint for all elements
-        self.model.add_constraints(
-            self._variables['active_hours'] == self.model.sum_temporal(status),
-            name=f'{self.name_prefix}|active_hours',
-        )
-
-        # === inactive complementary: status + inactive == 1 ===
-        if self.downtime_tracking_ids:
-            status_subset = status.sel({dim: self.downtime_tracking_ids})
-            inactive = self._variables['inactive']
-            self.model.add_constraints(
-                status_subset + inactive == 1,
-                name=f'{self.name_prefix}|complementary',
-            )
-
-        # === State transitions: startup, shutdown ===
-        if self.startup_tracking_ids:
-            status_subset = status.sel({dim: self.startup_tracking_ids})
-            startup = self._variables['startup']
-            shutdown = self._variables['shutdown']
-
-            # Vectorized transition constraint for t > 0
-            self.model.add_constraints(
-                startup.isel(time=slice(1, None)) - shutdown.isel(time=slice(1, None))
-                == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
-                name=f'{self.name_prefix}|switch|transition',
-            )
-
-            # Vectorized mutex constraint
-            self.model.add_constraints(
-                startup + shutdown <= 1,
-                name=f'{self.name_prefix}|switch|mutex',
-            )
-
-            # Initial constraint for t = 0 (if previous_status available)
-            if previous_status_batched is not None:
-                # Get elements that have both startup tracking AND previous status
-                prev_element_ids = list(previous_status_batched.coords[dim].values)
-                elements_with_initial = [eid for eid in self.startup_tracking_ids if eid in prev_element_ids]
-                if elements_with_initial:
-                    prev_status_subset = previous_status_batched.sel({dim: elements_with_initial})
-                    prev_state = prev_status_subset.isel(time=-1)
-                    startup_subset = startup.sel({dim: elements_with_initial})
-                    shutdown_subset = shutdown.sel({dim: elements_with_initial})
-                    status_initial = status_subset.sel({dim: elements_with_initial}).isel(time=0)
-
-                    self.model.add_constraints(
-                        startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
-                        name=f'{self.name_prefix}|switch|initial',
-                    )
-
-        # === startup_count: sum(startup) == startup_count ===
-        if self.startup_limit_ids:
-            startup = self._variables['startup'].sel({dim: self.startup_limit_ids})
-            startup_count = self._variables['startup_count']
-            startup_temporal_dims = [d for d in startup.dims if d not in ('period', 'scenario', dim)]
-            self.model.add_constraints(
-                startup_count == startup.sum(startup_temporal_dims),
-                name=f'{self.name_prefix}|startup_count',
-            )
-
-        # === Uptime tracking (batched) ===
-        if self.uptime_tracking_ids:
-            # Collect parameters into DataArrays
-            min_uptime = xr.DataArray(
-                [self.params[eid].min_uptime or np.nan for eid in self.uptime_tracking_ids],
-                dims=[dim],
-                coords={dim: self.uptime_tracking_ids},
-            )
-            max_uptime = xr.DataArray(
-                [self.params[eid].max_uptime or np.nan for eid in self.uptime_tracking_ids],
-                dims=[dim],
-                coords={dim: self.uptime_tracking_ids},
-            )
-            # Build previous uptime DataArray
-            previous_uptime_values = []
-            for eid in self.uptime_tracking_ids:
-                if (
-                    previous_status_batched is not None
-                    and eid in previous_status_batched.coords.get(dim, [])
-                    and self.params[eid].min_uptime is not None
-                ):
-                    prev_status = previous_status_batched.sel({dim: eid})
-                    prev = self._compute_previous_duration(
-                        prev_status, target_state=1, timestep_duration=self.model.timestep_duration
-                    )
-                    previous_uptime_values.append(prev)
-                else:
-                    previous_uptime_values.append(np.nan)
-            previous_uptime = xr.DataArray(previous_uptime_values, dims=[dim], coords={dim: self.uptime_tracking_ids})
-
-            StatusHelpers.add_batched_duration_tracking(
-                model=self.model,
-                state=status.sel({dim: self.uptime_tracking_ids}),
-                name=f'{self.name_prefix}|uptime',
-                dim_name=dim,
-                timestep_duration=self.model.timestep_duration,
-                minimum_duration=min_uptime,
-                maximum_duration=max_uptime,
-                previous_duration=previous_uptime if previous_uptime.notnull().any() else None,
-            )
-
-        # === Downtime tracking (batched) ===
-        if self.downtime_tracking_ids:
-            # Collect parameters into DataArrays
-            min_downtime = xr.DataArray(
-                [self.params[eid].min_downtime or np.nan for eid in self.downtime_tracking_ids],
-                dims=[dim],
-                coords={dim: self.downtime_tracking_ids},
-            )
-            max_downtime = xr.DataArray(
-                [self.params[eid].max_downtime or np.nan for eid in self.downtime_tracking_ids],
-                dims=[dim],
-                coords={dim: self.downtime_tracking_ids},
-            )
-            # Build previous downtime DataArray
-            previous_downtime_values = []
-            for eid in self.downtime_tracking_ids:
-                if (
-                    previous_status_batched is not None
-                    and eid in previous_status_batched.coords.get(dim, [])
-                    and self.params[eid].min_downtime is not None
-                ):
-                    prev_status = previous_status_batched.sel({dim: eid})
-                    prev = self._compute_previous_duration(
-                        prev_status, target_state=0, timestep_duration=self.model.timestep_duration
-                    )
-                    previous_downtime_values.append(prev)
-                else:
-                    previous_downtime_values.append(np.nan)
-            previous_downtime = xr.DataArray(
-                previous_downtime_values, dims=[dim], coords={dim: self.downtime_tracking_ids}
-            )
-
-            StatusHelpers.add_batched_duration_tracking(
-                model=self.model,
-                state=self._variables['inactive'],
-                name=f'{self.name_prefix}|downtime',
-                dim_name=dim,
-                timestep_duration=self.model.timestep_duration,
-                minimum_duration=min_downtime,
-                maximum_duration=max_downtime,
-                previous_duration=previous_downtime if previous_downtime.notnull().any() else None,
-            )
-
-        # === Cluster cyclic constraints ===
-        if self.model.flow_system.clusters is not None:
-            cyclic_ids = self.cluster_cyclic_ids
-            if cyclic_ids:
-                status_cyclic = status.sel({dim: cyclic_ids})
-                self.model.add_constraints(
-                    status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
-                    name=f'{self.name_prefix}|cluster_cyclic',
-                )
-
-        self._logger.debug(f'StatusesModel created constraints for {len(self.element_ids)} elements')
-
-    def _compute_previous_duration(
-        self, previous_status: xr.DataArray, target_state: int, timestep_duration
-    ) -> xr.DataArray:
-        """Compute consecutive duration of target_state at end of previous_status."""
-        xr = self._xr
-        # Simple implementation: count consecutive target_state values from the end
-        # This is a scalar computation, not vectorized
-        values = previous_status.values
-        count = 0
-        for v in reversed(values):
-            if (target_state == 1 and v > 0) or (target_state == 0 and v == 0):
-                count += 1
-            else:
-                break
-        # Multiply by timestep_duration (which may be time-varying)
-        if hasattr(timestep_duration, 'isel'):
-            # If timestep_duration is xr.DataArray, use mean or last value
-            duration = float(timestep_duration.mean()) * count
-        else:
-            duration = timestep_duration * count
-        return xr.DataArray(duration)
-
-    # === Effect factor properties (used by EffectsModel.finalize_shares) ===
-
-    def _collect_effects(self, attr: str, element_ids: list[str] | None = None) -> dict[str, xr.DataArray]:
-        """Collect effects from elements into a dict of DataArrays.
-
-        Args:
-            attr: The attribute name on StatusParameters (e.g., 'effects_per_active_hour').
-            element_ids: Optional subset of element IDs to include.
-
-        Returns:
-            Dict mapping effect_name -> DataArray with element dimension.
-        """
-        ids = element_ids if element_ids is not None else self.element_ids
-
-        # Find all effect names across all elements
-        all_effects: set[str] = set()
-        for eid in ids:
-            effects = getattr(self.params[eid], attr) or {}
-            all_effects.update(effects.keys())
-
-        if not all_effects:
-            return {}
-
-        # Build DataArray for each effect
-        result = {}
-        for effect_name in all_effects:
-            values = []
-            for eid in ids:
-                effects = getattr(self.params[eid], attr) or {}
-                values.append(effects.get(effect_name, np.nan))
-            result[effect_name] = xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: ids})
-
-        return result
-
-    @property
-    def effects_per_active_hour(self) -> xr.DataArray | None:
-        """Combined effects_per_active_hour with (element, effect) dims.
-
-        Collects effects directly from element parameters.
-        Returns None if no elements have effects defined.
-        """
-        effects_dict = self._collect_effects('effects_per_active_hour')
-        if not effects_dict:
-            return None
-        return self._build_factors_from_dict(effects_dict)
-
-    @property
-    def effects_per_startup(self) -> xr.DataArray | None:
-        """Combined effects_per_startup with (element, effect) dims.
-
-        Collects effects directly from element parameters.
-        Returns None if no elements have effects defined.
-        """
-        effects_dict = self._collect_effects('effects_per_startup', self.startup_tracking_ids)
-        if not effects_dict:
-            return None
-        # Only include elements with startup tracking
-        return self._build_factors_from_dict(effects_dict, element_ids=self.startup_tracking_ids)
-
-    def _build_factors_from_dict(
-        self, effects_dict: dict[str, xr.DataArray], element_ids: list[str] | None = None
-    ) -> xr.DataArray | None:
-        """Build factor array with (element, effect) dims from effects dict.
-
-        Args:
-            effects_dict: Dict mapping effect_name -> DataArray with element dim.
-            element_ids: Optional subset of element IDs to include.
-
-        Returns:
-            DataArray with (element, effect) dims, NaN for missing effects.
-        """
-        if not effects_dict:
-            return None
-
-        effects_model = getattr(self.model.effects, '_batched_model', None)
-        if effects_model is None:
-            return None
-
-        effect_ids = effects_model.effect_ids
-        dim = self.dim_name
-
-        # Subset elements if specified
-        if element_ids is None:
-            element_ids = self.element_ids
-
-        # Build DataArray by stacking effects
-        effect_arrays = []
-        for effect_name in effect_ids:
-            if effect_name in effects_dict:
-                arr = effects_dict[effect_name]
-                # Select subset of elements if needed
-                if element_ids != self.element_ids:
-                    arr = arr.sel({dim: element_ids})
-            else:
-                # NaN for effects not defined
-                arr = xr.DataArray(
-                    [np.nan] * len(element_ids),
-                    dims=[dim],
-                    coords={dim: element_ids},
-                )
-            effect_arrays.append(arr)
-
-        result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
-        return result.transpose(dim, 'effect')
-
-    def get_variable(self, name: str, element_id: str | None = None):
-        """Get a variable, optionally selecting a specific element."""
-        var = self._variables.get(name)
-        if var is None:
-            return None
-        if element_id is not None:
-            dim = self.dim_name
-            if element_id in var.coords.get(dim, []):
-                return var.sel({dim: element_id})
-            return None
-        return var
-
-    def get_status_variable(self, element_id: str):
-        """Get the binary status variable for a specific element.
-
-        Args:
-            element_id: The element identifier (e.g., 'CHP(P_el)').
-
-        Returns:
-            The binary status variable for the specified element, or None.
-        """
-        dim = self.dim_name
-        if element_id in self._batched_status_var.coords.get(dim, []):
-            return self._batched_status_var.sel({dim: element_id})
-        return None
-
-    def get_previous_status(self, element_id: str):
-        """Get the previous status for a specific element.
-
-        Args:
-            element_id: The element identifier (e.g., 'CHP(P_el)').
-
-        Returns:
-            The previous status DataArray for the specified element, or None.
-        """
-        elem = self._get_element_by_id(element_id)
-        if elem is None:
-            return None
-        return self._get_previous_status(elem)
-
-    @property
-    def active_hours(self) -> linopy.Variable:
-        """Batched active_hours variable with element dimension."""
-        return self._variables['active_hours']
-
-    @property
-    def startup(self) -> linopy.Variable | None:
-        """Batched startup variable with element dimension."""
-        return self._variables.get('startup')
-
-    @property
-    def shutdown(self) -> linopy.Variable | None:
-        """Batched shutdown variable with element dimension."""
-        return self._variables.get('shutdown')
-
-    @property
-    def inactive(self) -> linopy.Variable | None:
-        """Batched inactive variable with element dimension."""
-        return self._variables.get('inactive')
-
-    @property
-    def startup_count(self) -> linopy.Variable | None:
-        """Batched startup_count variable with element dimension."""
-        return self._variables.get('startup_count')
-
-
-class ComponentStatusFeaturesModel(StatusesModel):
-    """Type-level status model for component status features."""
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        status: linopy.Variable,
-        components: list,
-        previous_status_getter: callable | None = None,
-        name_prefix: str = 'component',
-    ):
-        """Initialize the component status features model.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            status: Batched status variable with component dimension.
-            components: List of Component objects with status_parameters.
-            previous_status_getter: Optional function (component) -> DataArray for previous status.
-            name_prefix: Prefix for variable names.
-        """
-        super().__init__(
-            model=model,
-            status=status,
-            dim_name='component',
-            name_prefix=name_prefix,
-        )
-        self.components = components
-        self.element_ids = [c.label for c in components]
-        self.params = {c.label: c.status_parameters for c in components}
-        # Build previous_status dict
-        self.previous_status = {}
-        if previous_status_getter is not None:
-            for c in components:
-                prev = previous_status_getter(c)
-                if prev is not None:
-                    self.previous_status[c.label] = prev
-        self._log_init()
 
 
 class StatusModel(Submodel):
