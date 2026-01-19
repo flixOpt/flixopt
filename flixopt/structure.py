@@ -1014,6 +1014,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Finalize effect shares
         if self.effects._batched_model is not None:
             self.effects._batched_model.finalize_shares()
+            self.effects._batched_model.create_share_variables()
 
         record('end')
 

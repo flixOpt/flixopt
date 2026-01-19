@@ -452,6 +452,10 @@ class EffectsModel:
 
         self._eq_per_timestep: linopy.Constraint | None = None
 
+        # Share variables (created in create_share_variables)
+        self.share_temporal: linopy.Variable | None = None
+        self.share_periodic: linopy.Variable | None = None
+
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
 
@@ -603,7 +607,7 @@ class EffectsModel:
         """Add a periodic share to a specific effect.
 
         Args:
-            name: Element identifier (for debugging, not used in model)
+            name: Element identifier (for debugging)
             effect_id: Target effect identifier
             expression: The share expression to add
         """
@@ -624,7 +628,7 @@ class EffectsModel:
         """Add a temporal (per-timestep) share to a specific effect.
 
         Args:
-            name: Element identifier (for debugging, not used in model)
+            name: Element identifier (for debugging)
             effect_id: Target effect identifier
             expression: The share expression to add
         """
@@ -665,6 +669,82 @@ class EffectsModel:
         periodic_expr = self._build_periodic_expr(flows_model)
         if periodic_expr is not None:
             self._eq_periodic.lhs -= periodic_expr
+
+    def create_share_variables(self) -> None:
+        """Create share variables for visibility into individual contributions.
+
+        Creates batched variables directly from FlowsModel's factors arrays,
+        using (flow, effect, time, ...) dimensions. One batched constraint
+        per share type instead of per-element constraints.
+        """
+        flows_model = self.model._flows_model
+        if flows_model is None:
+            return
+
+        dt = self.model.timestep_duration
+
+        # === Temporal shares: flow effects ===
+        factors = flows_model.effects_per_flow_hour
+        if factors is not None:
+            dim = flows_model.dim_name
+            element_ids = factors.coords[dim].values
+            rate = flows_model.rate.sel({dim: element_ids})
+
+            # Create share variable with (flow, effect, time, ...) dims
+            # Coords from factors already have (flow, effect), add time etc.
+            share_coords = xr.Coordinates(
+                {
+                    dim: factors.coords[dim],
+                    'effect': self._effect_index,
+                    **{k: v for k, v in (self.model.get_coords(None) or {}).items()},
+                }
+            )
+
+            self.share_temporal = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=share_coords,
+                name='share|temporal',
+            )
+
+            # Single batched constraint: share == rate * factors * dt
+            expression = rate * factors.fillna(0) * dt
+            self.model.add_constraints(
+                self.share_temporal == expression,
+                name='share|temporal',
+            )
+
+        # === Periodic shares: investment effects ===
+        investments_model = flows_model._investments_model if flows_model else None
+        if investments_model is not None:
+            factors = investments_model.effects_of_investment_per_size
+            if factors is not None:
+                dim = investments_model.dim_name
+                element_ids = factors.coords[dim].values
+                size = investments_model._variables['size'].sel({dim: element_ids})
+
+                # Create share variable with (investment, effect, period, ...) dims
+                share_coords = xr.Coordinates(
+                    {
+                        dim: factors.coords[dim],
+                        'effect': self._effect_index,
+                        **{k: v for k, v in (self.model.get_coords(['period', 'scenario']) or {}).items()},
+                    }
+                )
+
+                self.share_periodic = self.model.add_variables(
+                    lower=-np.inf,
+                    upper=np.inf,
+                    coords=share_coords,
+                    name='share|periodic',
+                )
+
+                # Single batched constraint: share == size * factors
+                expression = size * factors.fillna(0)
+                self.model.add_constraints(
+                    self.share_periodic == expression,
+                    name='share|periodic',
+                )
 
     def _build_temporal_expr(self, flows_model) -> linopy.LinearExpression | None:
         """Build temporal share expression from all contributors."""
