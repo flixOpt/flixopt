@@ -2043,6 +2043,28 @@ class StoragesModel:
 
         logger.debug(f'StoragesModel created constraints for {len(self.elements)} storages')
 
+    # === Variable accessor properties ===
+
+    @property
+    def charge(self) -> linopy.Variable | None:
+        """Batched charge state variable with (storage, time+1) dims."""
+        return self._variables.get('charge')
+
+    @property
+    def netto(self) -> linopy.Variable | None:
+        """Batched netto discharge variable with (storage, time) dims."""
+        return self._variables.get('netto')
+
+    @property
+    def size(self) -> linopy.Variable | None:
+        """Batched size variable with (storage,) dims, or None if no storages have investment."""
+        return self._variables.get('size')
+
+    @property
+    def invested(self) -> linopy.Variable | None:
+        """Batched invested binary variable with (storage,) dims, or None if no optional investments."""
+        return self._variables.get('invested')
+
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element."""
         var = self._variables.get(name)
@@ -2131,7 +2153,7 @@ class StorageModelProxy(ComponentModel):
         if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
             return None
 
-        if 'size' not in self._storages_model._variables:
+        if self._storages_model.size is None:
             return None
 
         # Return a proxy that provides size/invested for this specific element

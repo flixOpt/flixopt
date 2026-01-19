@@ -1390,6 +1390,53 @@ class FlowsModel(TypeModel):
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
+    @property
+    def mandatory_invest_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects.
+
+        These are constant effects always incurred, not dependent on the invested variable.
+        Returns empty list if no such effects exist.
+        """
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        result = []
+        for eid in self.investment_ids:
+            params = self._invest_params[eid]
+            if params.mandatory and params.effects_of_investment:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_investment.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+    @property
+    def retirement_constant_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts.
+
+        For optional investments with effects_of_retirement, this is the constant "+factor"
+        part of the formula: -invested * factor + factor.
+        Returns empty list if no such effects exist.
+        """
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        result = []
+        for eid in self.optional_investment_ids:
+            params = self._invest_params[eid]
+            if params.effects_of_retirement:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_retirement.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
     def create_status_model(self) -> None:
         """Create status variables and constraints for flows with status.
 
@@ -1633,6 +1680,31 @@ class FlowsModel(TypeModel):
     def rate(self) -> linopy.Variable:
         """Batched flow rate variable with (flow, time) dims."""
         return self._variables['rate']
+
+    @property
+    def status(self) -> linopy.Variable | None:
+        """Batched status variable with (flow, time) dims, or None if no flows have status."""
+        return self._variables.get('status')
+
+    @property
+    def startup(self) -> linopy.Variable | None:
+        """Batched startup variable with (flow, time) dims, or None if no flows need startup tracking."""
+        return self._variables.get('startup')
+
+    @property
+    def shutdown(self) -> linopy.Variable | None:
+        """Batched shutdown variable with (flow, time) dims, or None if no flows need startup tracking."""
+        return self._variables.get('shutdown')
+
+    @property
+    def size(self) -> linopy.Variable | None:
+        """Batched size variable with (flow,) dims, or None if no flows have investment."""
+        return self._variables.get('size')
+
+    @property
+    def invested(self) -> linopy.Variable | None:
+        """Batched invested binary variable with (flow,) dims, or None if no optional investments."""
+        return self._variables.get('invested')
 
     @property
     def effects_per_flow_hour(self) -> xr.DataArray | None:

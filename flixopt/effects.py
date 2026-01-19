@@ -700,14 +700,12 @@ class EffectsModel:
         # Collect all temporal contributions
         exprs = [self.share_temporal.sum(dim)]
 
-        # Status effects (directly from FlowsModel)
-        status = flows_model._variables.get('status')
-        if status is not None:
+        # Status effects (using FlowsModel properties)
+        if flows_model.status is not None:
             if (f := flows_model.status_effects_per_active_hour) is not None:
-                exprs.append((status.sel({dim: f.coords[dim].values}) * f.fillna(0) * dt).sum(dim))
-            startup = flows_model._variables.get('startup')
-            if (f := flows_model.status_effects_per_startup) is not None and startup is not None:
-                exprs.append((startup.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+                exprs.append((flows_model.status.sel({dim: f.coords[dim].values}) * f.fillna(0) * dt).sum(dim))
+            if (f := flows_model.status_effects_per_startup) is not None and flows_model.startup is not None:
+                exprs.append((flows_model.startup.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
 
         self._eq_per_timestep.lhs -= sum(exprs)
 
@@ -720,7 +718,7 @@ class EffectsModel:
             return
 
         dim = flows_model.dim_name
-        size = flows_model._variables['size'].sel({dim: factors.coords[dim].values})
+        size = flows_model.size.sel({dim: factors.coords[dim].values})
 
         # share|periodic: size * effects_of_investment_per_size
         self.share_periodic = self.model.add_variables(
@@ -737,12 +735,11 @@ class EffectsModel:
         # Collect all periodic contributions
         exprs = [self.share_periodic.sum(dim)]
 
-        invested = flows_model._variables.get('invested')
-        if invested is not None:
+        if flows_model.invested is not None:
             if (f := flows_model.invest_effects_of_investment) is not None:
-                exprs.append((invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+                exprs.append((flows_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
             if (f := flows_model.invest_effects_of_retirement) is not None:
-                exprs.append((invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
+                exprs.append((flows_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
 
         self._eq_periodic.lhs -= sum(exprs)
 
@@ -756,44 +753,21 @@ class EffectsModel:
         - Mandatory fixed effects (always incurred, not dependent on invested variable)
         - Retirement constant parts (the +factor in -invested*factor + factor)
         """
-        if not hasattr(flows_model, '_invest_params') or not flows_model._invest_params:
-            return
+        # Mandatory fixed effects (using FlowsModel property)
+        for element_id, effects_dict in flows_model.mandatory_invest_effects:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|invest_fix',
+                expressions=effects_dict,
+                target='periodic',
+            )
 
-        invest_params = flows_model._invest_params
-
-        # Mandatory fixed effects
-        mandatory_with_effects = [
-            eid
-            for eid in flows_model.investment_ids
-            if invest_params[eid].mandatory and invest_params[eid].effects_of_investment
-        ]
-        for element_id in mandatory_with_effects:
-            elem_effects = invest_params[element_id].effects_of_investment or {}
-            effects_dict = {
-                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-            }
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_fix',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
-
-        # Retirement constant parts
-        non_mandatory_with_retirement = [
-            eid for eid in flows_model.optional_investment_ids if invest_params[eid].effects_of_retirement
-        ]
-        for element_id in non_mandatory_with_retirement:
-            elem_effects = invest_params[element_id].effects_of_retirement or {}
-            effects_dict = {
-                k: v for k, v in elem_effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-            }
-            if effects_dict:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|invest_retire_const',
-                    expressions=effects_dict,
-                    target='periodic',
-                )
+        # Retirement constant parts (using FlowsModel property)
+        for element_id, effects_dict in flows_model.retirement_constant_effects:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|invest_retire_const',
+                expressions=effects_dict,
+                target='periodic',
+            )
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""
