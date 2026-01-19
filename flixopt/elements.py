@@ -14,7 +14,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, InvestmentProxy, StatusModel, StatusProxy
+from .features import InvestmentModel, InvestmentProxy, StatusProxy
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -747,7 +747,7 @@ class FlowModelProxy(ElementModel):
 
     def _do_modeling(self):
         """Skip modeling - FlowsModel already created everything via StatusHelpers."""
-        # StatusModel is now handled by StatusHelpers in FlowsModel
+        # Status features are handled by StatusHelpers in FlowsModel
         pass
 
     @property
@@ -769,7 +769,7 @@ class FlowModelProxy(ElementModel):
         return self['total_flow_hours']
 
     @property
-    def status(self) -> StatusModel | StatusProxy | None:
+    def status(self) -> StatusProxy | None:
         """Status feature - returns proxy to FlowsModel's batched status variables."""
         if not self.with_status:
             return None
@@ -1900,7 +1900,7 @@ class ComponentModel(ElementModel):
     element: Component  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Component):
-        self.status: StatusModel | None = None
+        self.status: StatusProxy | None = None
         super().__init__(model, element)
 
     def _do_modeling(self):
@@ -1943,7 +1943,7 @@ class ComponentModel(ElementModel):
     def previous_status(self) -> xr.DataArray | None:
         """Previous status of the component, derived from its flows"""
         if self.element.status_parameters is None:
-            raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
+            raise ValueError(f'status_parameters not present in \n{self}\nCant access previous_status')
 
         previous_status = [flow.submodel.status._previous_status for flow in self.element.inputs + self.element.outputs]
         previous_status = [da for da in previous_status if da is not None]
