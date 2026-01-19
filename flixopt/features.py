@@ -520,78 +520,67 @@ class InvestmentsModel:
     # === Effect factor properties (used by EffectsModel.finalize_shares) ===
 
     @property
-    def effect_factors_per_size(self) -> xr.DataArray | None:
-        """Factor array with (element, effect) dims for effects_of_investment_per_size.
+    def effects_of_investment_per_size(self) -> xr.DataArray | None:
+        """Combined effects_of_investment_per_size with (element, effect) dims.
 
-        Returns sparse array - coords define which elements are included.
-        Returns None if no elements have this effect type.
+        Stacks effects from all elements into a single DataArray.
+        Returns None if no elements have effects defined.
         """
         elements = self.elements_with_per_size_effects
         if not elements:
             return None
-
-        def getter(e):
-            return self._parameters_getter(e).effects_of_investment_per_size
-
-        return self._build_factors(elements, getter)
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_investment_per_size)
 
     @property
-    def effect_factors_fix(self) -> xr.DataArray | None:
-        """Factor array with (element, effect) dims for effects_of_investment.
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """Combined effects_of_investment with (element, effect) dims.
 
-        Returns sparse array - coords define which non-mandatory elements are included.
-        Returns None if no elements have this effect type.
+        Stacks effects from non-mandatory elements into a single DataArray.
+        Returns None if no elements have effects defined.
         """
         elements = self.non_mandatory_with_fix_effects
         if not elements:
             return None
-
-        def getter(e):
-            return self._parameters_getter(e).effects_of_investment
-
-        return self._build_factors(elements, getter)
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_investment)
 
     @property
-    def effect_factors_retirement(self) -> xr.DataArray | None:
-        """Factor array with (element, effect) dims for effects_of_retirement.
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """Combined effects_of_retirement with (element, effect) dims.
 
-        Returns sparse array - coords define which non-mandatory elements are included.
-        Returns None if no elements have this effect type.
+        Stacks effects from non-mandatory elements into a single DataArray.
+        Returns None if no elements have effects defined.
         """
         elements = self.non_mandatory_with_retirement_effects
         if not elements:
             return None
-
-        def getter(e):
-            return self._parameters_getter(e).effects_of_retirement
-
-        return self._build_factors(elements, getter)
+        return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_of_retirement)
 
     def _build_factors(self, elements: list, effects_getter: callable) -> xr.DataArray | None:
-        """Build sparse factor array with (element, effect) dims.
+        """Build factor array with (element, effect) dims using xr.concat.
 
-        Gets effect_ids from the model internally.
+        Missing (element, effect) combinations are NaN to distinguish
+        "not defined" from "effect is zero".
         """
-        # Get effect IDs from the model
+        if not elements:
+            return None
+
         effects_model = getattr(self.model.effects, '_batched_model', None)
         if effects_model is None:
             return None
+
         effect_ids = effects_model.effect_ids
-
         element_ids = [e.label_full for e in elements]
-        factors_array = np.zeros((len(elements), len(effect_ids)))
 
-        for i, elem in enumerate(elements):
-            effects_dict = effects_getter(elem)
-            for j, effect_id in enumerate(effect_ids):
-                factor = effects_dict.get(effect_id, 0) if effects_dict else 0
-                factors_array[i, j] = float(factor.values) if isinstance(factor, xr.DataArray) else factor
+        # Use np.nan for missing effects (not 0!)
+        element_factors = [
+            xr.concat(
+                [xr.DataArray((effects_getter(elem) or {}).get(eff, np.nan)) for eff in effect_ids],
+                dim='effect',
+            ).assign_coords(effect=effect_ids)
+            for elem in elements
+        ]
 
-        return xr.DataArray(
-            factors_array,
-            dims=[self.dim_name, 'effect'],
-            coords={self.dim_name: element_ids, 'effect': effect_ids},
-        )
+        return xr.concat(element_factors, dim=self.dim_name).assign_coords({self.dim_name: element_ids})
 
     def add_constant_shares_to_effects(self, effects_model) -> None:
         """Add constant (non-variable) shares directly to effect constraints.
@@ -1118,11 +1107,11 @@ class StatusesModel:
     # === Effect factor properties (used by EffectsModel.finalize_shares) ===
 
     @property
-    def effect_factors_per_active_hour(self) -> xr.DataArray | None:
-        """Factor array with (element, effect) dims for effects_per_active_hour.
+    def effects_per_active_hour(self) -> xr.DataArray | None:
+        """Combined effects_per_active_hour with (element, effect) dims.
 
-        Returns sparse array - coords define which elements are included.
-        Returns None if no elements have this effect type.
+        Stacks effects from all elements into a single DataArray.
+        Returns None if no elements have effects defined.
         """
         elements = [e for e in self.elements if self._parameters_getter(e).effects_per_active_hour]
         if not elements:
@@ -1130,39 +1119,43 @@ class StatusesModel:
         return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_active_hour)
 
     @property
-    def effect_factors_per_startup(self) -> xr.DataArray | None:
-        """Factor array with (element, effect) dims for effects_per_startup.
+    def effects_per_startup(self) -> xr.DataArray | None:
+        """Combined effects_per_startup with (element, effect) dims.
 
-        Returns sparse array - coords define which elements are included.
-        Returns None if no elements have this effect type.
+        Stacks effects from all elements into a single DataArray.
+        Returns None if no elements have effects defined.
         """
         elements = [e for e in self._with_startup_tracking if self._parameters_getter(e).effects_per_startup]
         if not elements:
             return None
         return self._build_factors(elements, lambda e: self._parameters_getter(e).effects_per_startup)
 
-    def _build_factors(self, elements: list, effects_getter: callable) -> xr.DataArray:
-        """Build sparse factor array with (element, effect) dims."""
-        # Get effect IDs from the model
+    def _build_factors(self, elements: list, effects_getter: callable) -> xr.DataArray | None:
+        """Build factor array with (element, effect) dims using xr.concat.
+
+        Missing (element, effect) combinations are NaN to distinguish
+        "not defined" from "effect is zero".
+        """
+        if not elements:
+            return None
+
         effects_model = getattr(self.model.effects, '_batched_model', None)
         if effects_model is None:
             return None
+
         effect_ids = effects_model.effect_ids
-
         element_ids = [e.label_full for e in elements]
-        factors_array = np.zeros((len(elements), len(effect_ids)))
 
-        for i, elem in enumerate(elements):
-            effects_dict = effects_getter(elem)
-            for j, effect_id in enumerate(effect_ids):
-                factor = effects_dict.get(effect_id, 0) if effects_dict else 0
-                factors_array[i, j] = float(factor.values) if isinstance(factor, xr.DataArray) else factor
+        # Use np.nan for missing effects (not 0!)
+        element_factors = [
+            xr.concat(
+                [xr.DataArray((effects_getter(elem) or {}).get(eff, np.nan)) for eff in effect_ids],
+                dim='effect',
+            ).assign_coords(effect=effect_ids)
+            for elem in elements
+        ]
 
-        return xr.DataArray(
-            factors_array,
-            dims=[self.dim_name, 'effect'],
-            coords={self.dim_name: element_ids, 'effect': effect_ids},
-        )
+        return xr.concat(element_factors, dim=self.dim_name).assign_coords({self.dim_name: element_ids})
 
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element."""

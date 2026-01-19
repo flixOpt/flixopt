@@ -2013,55 +2013,35 @@ class FlowsModel(TypeModel):
         return self._variables['rate']
 
     @property
-    def effect_factors_per_flow_hour(self) -> xr.DataArray | None:
-        """Factor array with (flow, effect, ...) dims for effects_per_flow_hour.
+    def effects_per_flow_hour(self) -> xr.DataArray | None:
+        """Combined effect factors with (flow, effect, ...) dims.
 
-        Returns sparse array containing only flows that have effects.
-        The 'flow' coordinate defines which flows are included (implicit mask).
-        Returns None if no flows have any effects.
+        Missing (flow, effect) combinations are NaN - the xarray convention for
+        missing data. This distinguishes "no effect defined" from "effect is zero".
 
-        Handles both scalar and time-varying effects by properly stacking DataArrays.
-        Time-varying effects result in additional dimensions (time, period, scenario).
-
-        Usage in EffectsModel:
-            factors = flows_model.effect_factors_per_flow_hour
-            if factors is not None:
-                rate_subset = flows_model.rate.sel(flow=factors.coords['flow'])
-                expr = (rate_subset * factors * timestep_duration).sum('flow')
+        Use `.fillna(0)` to fill for computation, `.notnull()` as mask.
         """
         flows_with_effects = [f for f in self.elements if f.effects_per_flow_hour]
         if not flows_with_effects:
             return None
 
-        # Get effect IDs from the model
         effects_model = getattr(self.model.effects, '_batched_model', None)
         if effects_model is None:
             return None
+
         effect_ids = effects_model.effect_ids
+        flow_ids = [f.label_full for f in flows_with_effects]
 
-        # Build per-flow factor DataArrays and stack them
-        flow_factors = []
-        flow_ids = []
-        for flow in flows_with_effects:
-            flow_ids.append(flow.label_full)
-            # Build factor array for this flow across all effects
-            effect_factors = []
-            for effect_id in effect_ids:
-                factor = flow.effects_per_flow_hour.get(effect_id, 0)
-                if isinstance(factor, xr.DataArray):
-                    # Preserve multi-dimensional factors
-                    effect_factors.append(factor)
-                else:
-                    effect_factors.append(xr.DataArray(factor))
-            # Stack effects for this flow
-            flow_factor = xr.concat(effect_factors, dim='effect')
-            flow_factor = flow_factor.assign_coords(effect=effect_ids)
-            flow_factors.append(flow_factor)
+        # Use np.nan for missing effects (not 0!) to distinguish "not defined" from "zero"
+        flow_factors = [
+            xr.concat(
+                [xr.DataArray(flow.effects_per_flow_hour.get(eff, np.nan)) for eff in effect_ids],
+                dim='effect',
+            ).assign_coords(effect=effect_ids)
+            for flow in flows_with_effects
+        ]
 
-        # Stack flows
-        result = xr.concat(flow_factors, dim=self.dim_name)
-        result = result.assign_coords({self.dim_name: flow_ids})
-        return result
+        return xr.concat(flow_factors, dim=self.dim_name).assign_coords({self.dim_name: flow_ids})
 
     def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
         """Get previous status for a flow based on its previous_flow_rate.

@@ -972,16 +972,15 @@ class EffectsModel:
             variable = model.rate  # (contributor, time)
             expr = (variable * factors * timestep_duration).sum(contributor_dim)  # (effect, time)
         """
-        # === Flow effects: rate * factors * timestep_duration ===
+        # === Flow effects: rate * effects_per_flow_hour * timestep_duration ===
         flows_model = self.model._flows_model
         if flows_model is not None:
-            factors = flows_model.effect_factors_per_flow_hour
+            factors = flows_model.effects_per_flow_hour
             if factors is not None:
-                # Coords define implicit mask - select matching flows
                 flow_ids = factors.coords[flows_model.dim_name].values
                 rate_subset = flows_model.rate.sel({flows_model.dim_name: flow_ids})
-                # (flow, time) * (flow, effect) → sum over flow → (effect, time)
-                expr = (rate_subset * factors * self.model.timestep_duration).sum(flows_model.dim_name)
+                # fillna(0) converts NaN (missing) to 0 for computation
+                expr = (rate_subset * factors.fillna(0) * self.model.timestep_duration).sum(flows_model.dim_name)
                 self.shares._temporal_exprs.append(expr)
 
         # === Status effects: status * factors * timestep_duration ===
@@ -1001,64 +1000,59 @@ class EffectsModel:
         """Collect status-related effect shares.
 
         Uses property-based factors from StatusesModel:
-        - effect_factors_per_active_hour → status * factors * timestep_duration
-        - effect_factors_per_startup → startup * factors
+        - effects_per_active_hour → status * factors * timestep_duration
+        - effects_per_startup → startup * factors
         """
         dim = statuses_model.dim_name
 
         # effects_per_active_hour: status * factors * timestep_duration
-        factors = statuses_model.effect_factors_per_active_hour
+        factors = statuses_model.effects_per_active_hour
         if factors is not None and statuses_model._batched_status_var is not None:
-            # Coords define implicit mask - select matching elements
             element_ids = factors.coords[dim].values
             status_subset = statuses_model._batched_status_var.sel({dim: element_ids})
-            expr = (status_subset * factors * self.model.timestep_duration).sum(dim)
+            expr = (status_subset * factors.fillna(0) * self.model.timestep_duration).sum(dim)
             self.shares._temporal_exprs.append(expr)
 
         # effects_per_startup: startup * factors
-        factors = statuses_model.effect_factors_per_startup
+        factors = statuses_model.effects_per_startup
         if factors is not None and statuses_model._variables.get('startup') is not None:
-            # Coords define implicit mask - select matching elements
             element_ids = factors.coords[dim].values
             startup_subset = statuses_model._variables['startup'].sel({dim: element_ids})
-            expr = (startup_subset * factors).sum(dim)
+            expr = (startup_subset * factors.fillna(0)).sum(dim)
             self.shares._temporal_exprs.append(expr)
 
     def _collect_investment_shares(self, investments_model) -> None:
         """Collect investment-related effect shares.
 
         Uses property-based factors from InvestmentsModel:
-        - effect_factors_per_size → size * factors (periodic)
-        - effect_factors_fix → invested * factors (periodic, non-mandatory)
-        - effect_factors_retirement → -invested * factors (periodic, non-mandatory)
+        - effects_of_investment_per_size → size * factors (periodic)
+        - effects_of_investment → invested * factors (periodic, non-mandatory)
+        - effects_of_retirement → -invested * factors (periodic, non-mandatory)
         """
         dim = investments_model.dim_name
 
         # effects_of_investment_per_size: size * factors
-        factors = investments_model.effect_factors_per_size
+        factors = investments_model.effects_of_investment_per_size
         if factors is not None:
-            # Coords define implicit mask - select matching elements
             element_ids = factors.coords[dim].values
             size_subset = investments_model._variables['size'].sel({dim: element_ids})
-            expr = (size_subset * factors).sum(dim)
+            expr = (size_subset * factors.fillna(0)).sum(dim)
             self.shares._periodic_exprs.append(expr)
 
         # effects_of_investment (non-mandatory): invested * factors
-        factors = investments_model.effect_factors_fix
+        factors = investments_model.effects_of_investment
         if factors is not None and investments_model._variables.get('invested') is not None:
-            # Coords define implicit mask - select matching elements
             element_ids = factors.coords[dim].values
             invested_subset = investments_model._variables['invested'].sel({dim: element_ids})
-            expr = (invested_subset * factors).sum(dim)
+            expr = (invested_subset * factors.fillna(0)).sum(dim)
             self.shares._periodic_exprs.append(expr)
 
         # effects_of_retirement: -invested * factors (variable part)
-        factors = investments_model.effect_factors_retirement
+        factors = investments_model.effects_of_retirement
         if factors is not None and investments_model._variables.get('invested') is not None:
-            # Coords define implicit mask - select matching elements
             element_ids = factors.coords[dim].values
             invested_subset = investments_model._variables['invested'].sel({dim: element_ids})
-            expr = (invested_subset * (-factors)).sum(dim)
+            expr = (invested_subset * (-factors.fillna(0))).sum(dim)
             self.shares._periodic_exprs.append(expr)
 
         # Constant shares (mandatory fixed, retirement constants) - add directly
