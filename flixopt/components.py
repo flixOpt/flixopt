@@ -1541,6 +1541,73 @@ class StoragesModel:
         """Dimension name for storage elements."""
         return self.element_type.value  # 'storage'
 
+    # --- Investment Cached Properties ---
+
+    @functools.cached_property
+    def mandatory_investment_ids(self) -> list[str]:
+        """List of storage IDs with mandatory investment."""
+        return [s.label_full for s in self.storages_with_investment if s.capacity_in_flow_hours.mandatory]
+
+    @functools.cached_property
+    def _size_lower(self) -> xr.DataArray:
+        """(storage,) - minimum size for investment storages."""
+        from .features import InvestmentHelpers
+
+        element_ids = self.investment_ids
+        values = [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_investment]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def _size_upper(self) -> xr.DataArray:
+        """(storage,) - maximum size for investment storages."""
+        from .features import InvestmentHelpers
+
+        element_ids = self.investment_ids
+        values = [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_investment]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def _linked_periods_mask(self) -> xr.DataArray | None:
+        """(storage, period) - linked periods for investment storages. None if no linking."""
+        from .features import InvestmentHelpers
+
+        linked_list = [s.capacity_in_flow_hours.linked_periods for s in self.storages_with_investment]
+        if not any(lp is not None for lp in linked_list):
+            return None
+
+        element_ids = self.investment_ids
+        values = [lp if lp is not None else np.nan for lp in linked_list]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def _mandatory_mask(self) -> xr.DataArray:
+        """(storage,) bool - True if mandatory, False if optional."""
+        element_ids = self.investment_ids
+        values = [s.capacity_in_flow_hours.mandatory for s in self.storages_with_investment]
+        return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: element_ids})
+
+    @functools.cached_property
+    def _optional_lower(self) -> xr.DataArray | None:
+        """(storage,) - minimum size for optional investment storages."""
+        if not self.optional_investment_ids:
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = self.optional_investment_ids
+        values = [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_optional_investment]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def _optional_upper(self) -> xr.DataArray | None:
+        """(storage,) - maximum size for optional investment storages."""
+        if not self.optional_investment_ids:
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = self.optional_investment_ids
+        values = [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_optional_investment]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+
     def create_variables(self) -> None:
         """Create batched variables for all storages.
 
@@ -1852,42 +1919,25 @@ class StoragesModel:
         dim = self.dim_name
         element_ids = self.investment_ids
         non_mandatory_ids = self.optional_investment_ids
-        mandatory_ids = [eid for eid in element_ids if self._invest_params[eid].mandatory]
+        mandatory_ids = self.mandatory_investment_ids
 
         # Get base coords
         base_coords = self.model.get_coords(['period', 'scenario'])
         base_coords_dict = dict(base_coords) if base_coords is not None else {}
 
-        # Collect bounds
-        size_min = InvestmentHelpers.stack_bounds(
-            [self._invest_params[eid].minimum_or_fixed_size for eid in element_ids],
-            element_ids,
-            dim,
-        )
-        size_max = InvestmentHelpers.stack_bounds(
-            [self._invest_params[eid].maximum_or_fixed_size for eid in element_ids],
-            element_ids,
-            dim,
-        )
-        linked_periods_list = [self._invest_params[eid].linked_periods for eid in element_ids]
+        # Use cached properties for bounds
+        size_min = self._size_lower
+        size_max = self._size_upper
 
         # Handle linked_periods masking
-        if any(lp is not None for lp in linked_periods_list):
-            linked_periods = InvestmentHelpers.stack_bounds(
-                [lp if lp is not None else np.nan for lp in linked_periods_list],
-                element_ids,
-                dim,
-            )
+        linked_periods = self._linked_periods_mask
+        if linked_periods is not None:
             linked = linked_periods.fillna(1.0)
             size_min = size_min * linked
             size_max = size_max * linked
 
-        # Build mandatory mask
-        mandatory_mask = xr.DataArray(
-            [self._invest_params[eid].mandatory for eid in element_ids],
-            dims=[dim],
-            coords={dim: element_ids},
-        )
+        # Use cached mandatory mask
+        mandatory_mask = self._mandatory_mask
 
         # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
         lower_bounds = xr.where(mandatory_mask, size_min, 0)
@@ -1918,23 +1968,13 @@ class StoragesModel:
             )
             self._variables['invested'] = invested_var
 
-            # State-controlled bounds constraints
-            min_bounds = InvestmentHelpers.stack_bounds(
-                [self._invest_params[eid].minimum_or_fixed_size for eid in non_mandatory_ids],
-                non_mandatory_ids,
-                dim,
-            )
-            max_bounds = InvestmentHelpers.stack_bounds(
-                [self._invest_params[eid].maximum_or_fixed_size for eid in non_mandatory_ids],
-                non_mandatory_ids,
-                dim,
-            )
+            # State-controlled bounds constraints using cached properties
             InvestmentHelpers.add_optional_size_bounds(
                 model=self.model,
                 size_var=size_var,
                 invested_var=invested_var,
-                min_bounds=min_bounds,
-                max_bounds=max_bounds,
+                min_bounds=self._optional_lower,
+                max_bounds=self._optional_upper,
                 element_ids=non_mandatory_ids,
                 dim_name=dim,
                 name_prefix='storage',
