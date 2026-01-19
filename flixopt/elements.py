@@ -2350,6 +2350,13 @@ class ComponentStatusesModel:
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
         pass
 
+    # === Variable accessor properties ===
+
+    @property
+    def status(self) -> linopy.Variable | None:
+        """Batched component status variable with (component, time) dims."""
+        return self.model.variables['component|status'] if 'component|status' in self.model.variables else None
+
     def get_variable(self, var_name: str, component_id: str):
         """Get variable slice for a specific component."""
         dim = self.dim_name
