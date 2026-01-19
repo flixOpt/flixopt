@@ -15,7 +15,6 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .config import CONFIG
 from .core import PlausibilityError
 from .features import ShareAllocationModel
 from .structure import (
@@ -1016,8 +1015,11 @@ class EffectCollectionModel(Submodel):
 
     @property
     def is_type_level(self) -> bool:
-        """Check if using type-level (batched) modeling."""
-        return CONFIG.Modeling.mode == 'type_level'
+        """Check if using type-level (batched) modeling.
+
+        Always returns True - type-level mode is the only supported mode.
+        """
+        return True
 
     def add_share_to_effects(
         self,

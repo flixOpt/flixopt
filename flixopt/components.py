@@ -17,7 +17,7 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, InvestmentProxy, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
+from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
@@ -395,7 +395,7 @@ class Storage(Component):
         With flow rates in m3/h, the charge state is therefore in m3.
     """
 
-    submodel: StorageModel | None
+    submodel: StorageModelProxy | InterclusterStorageModel | None
 
     def __init__(
         self,
@@ -447,19 +447,19 @@ class Storage(Component):
         self.balanced = balanced
         self.cluster_mode = cluster_mode
 
-    def create_model(self, model: FlowSystemModel) -> StorageModel | StorageModelProxy:
-        """Create the appropriate storage model based on cluster_mode and flow system state.
+    def create_model(self, model: FlowSystemModel) -> InterclusterStorageModel | StorageModelProxy:
+        """Create the appropriate storage model based on cluster_mode.
 
         For intercluster modes ('intercluster', 'intercluster_cyclic'), uses
         :class:`InterclusterStorageModel` which implements S-N linking.
-        For type-level mode with basic storages, uses :class:`StorageModelProxy`.
-        For other modes, uses the base :class:`StorageModel`.
+        For basic storages, uses :class:`StorageModelProxy` which provides
+        element-level access to the batched StoragesModel.
 
         Args:
             model: The FlowSystemModel to add constraints to.
 
         Returns:
-            StorageModel, InterclusterStorageModel, or StorageModelProxy instance.
+            InterclusterStorageModel or StorageModelProxy instance.
         """
         self._plausibility_checks()
 
@@ -471,13 +471,11 @@ class Storage(Component):
         )
 
         if is_intercluster:
-            # Intercluster storages always use traditional approach (too complex to batch)
+            # Intercluster storages use standalone model (too complex to batch)
             self.submodel = InterclusterStorageModel(model, self)
-        elif model._type_level_mode:
-            # Basic storages use proxy in type-level mode
-            self.submodel = StorageModelProxy(model, self)
         else:
-            self.submodel = StorageModel(model, self)
+            # Basic storages use proxy to batched StoragesModel
+            self.submodel = StorageModelProxy(model, self)
 
         return self.submodel
 
@@ -824,10 +822,6 @@ class TransmissionModel(ComponentModel):
         """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
         super()._do_modeling()
 
-        # In DCE mode, skip constraint creation - constraints will be added later
-        if self._model._dce_mode:
-            return
-
         # first direction
         self.create_transmission_equation('dir1', self.element.in1, self.element.out1)
 
@@ -879,10 +873,6 @@ class LinearConverterModel(ComponentModel):
         """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
 
-        # In DCE mode, skip constraint creation - constraints will be added later
-        if self._model._dce_mode:
-            return
-
         # Create conversion factor constraints if specified
         if self.element.conversion_factors:
             all_input_flows = set(self.element.inputs)
@@ -920,287 +910,11 @@ class LinearConverterModel(ComponentModel):
             )
 
 
-class StorageModel(ComponentModel):
-    """Mathematical model implementation for Storage components.
-
-    Creates optimization variables and constraints for charge state tracking,
-    storage balance equations, and optional investment sizing.
-
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Storage/>
-
-    Note:
-        This class uses a template method pattern. Subclasses (e.g., InterclusterStorageModel)
-        can override individual methods to customize behavior without duplicating code.
-    """
-
-    element: Storage
-
-    def __init__(self, model: FlowSystemModel, element: Storage):
-        super().__init__(model, element)
-
-    def _do_modeling(self):
-        """Create charge state variables, energy balance equations, and optional investment submodels."""
-        super()._do_modeling()
-        # In DCE mode, skip variable/constraint creation - will be added later
-        if self._model._dce_mode:
-            return
-        self._create_storage_variables()
-        self._add_netto_discharge_constraint()
-        self._add_energy_balance_constraint()
-        self._add_cluster_cyclic_constraint()
-        self._add_investment_model()
-        self._add_initial_final_constraints()
-        self._add_balanced_sizes_constraint()
-
-    def _create_storage_variables(self):
-        """Create charge_state and netto_discharge variables."""
-        lb, ub = self._absolute_charge_state_bounds
-        self.add_variables(
-            lower=lb,
-            upper=ub,
-            coords=self._model.get_coords(extra_timestep=True),
-            short_name='charge_state',
-            category=VariableCategory.CHARGE_STATE,
-        )
-        self.add_variables(
-            coords=self._model.get_coords(),
-            short_name='netto_discharge',
-            category=VariableCategory.NETTO_DISCHARGE,
-        )
-
-    def _add_netto_discharge_constraint(self):
-        """Add constraint: netto_discharge = discharging - charging."""
-        self.add_constraints(
-            self.netto_discharge
-            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
-            short_name='netto_discharge',
-        )
-
-    def _add_energy_balance_constraint(self):
-        """Add energy balance constraint linking charge states across timesteps."""
-        self.add_constraints(self._build_energy_balance_lhs() == 0, short_name='charge_state')
-
-    def _add_cluster_cyclic_constraint(self):
-        """For 'cyclic' cluster mode: each cluster's start equals its end."""
-        if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
-            self.add_constraints(
-                self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
-                short_name='cluster_cyclic',
-            )
-
-    def _add_investment_model(self):
-        """Create InvestmentModel and add capacity-scaled bounds if using investment sizing."""
-        if isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            self.add_submodels(
-                InvestmentModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=self.label_of_element,
-                    parameters=self.element.capacity_in_flow_hours,
-                    size_category=VariableCategory.STORAGE_SIZE,
-                ),
-                short_name='investment',
-            )
-            BoundingPatterns.scaled_bounds(
-                self,
-                variable=self.charge_state,
-                scaling_variable=self.investment.size,
-                relative_bounds=self._relative_charge_state_bounds,
-            )
-
-    def _add_initial_final_constraints(self):
-        """Add initial and final charge state constraints.
-
-        For clustered systems with 'independent' or 'cyclic' mode, these constraints
-        are skipped because:
-        - 'independent': Each cluster has free start/end SOC
-        - 'cyclic': Start == end is handled by _add_cluster_cyclic_constraint,
-          but no specific initial value is enforced
-        """
-        # Skip initial/final constraints for clustered systems with independent/cyclic mode
-        # These modes should have free or cyclic SOC, not a fixed initial value per cluster
-        if self._model.flow_system.clusters is not None and self.element.cluster_mode in (
-            'independent',
-            'cyclic',
-        ):
-            return
-
-        if self.element.initial_charge_state is not None:
-            if isinstance(self.element.initial_charge_state, str):
-                self.add_constraints(
-                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1),
-                    short_name='initial_charge_state',
-                )
-            else:
-                self.add_constraints(
-                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
-                    short_name='initial_charge_state',
-                )
-
-        if self.element.maximal_final_charge_state is not None:
-            self.add_constraints(
-                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
-                short_name='final_charge_max',
-            )
-
-        if self.element.minimal_final_charge_state is not None:
-            self.add_constraints(
-                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
-                short_name='final_charge_min',
-            )
-
-    def _add_balanced_sizes_constraint(self):
-        """Add constraint ensuring charging and discharging capacities are equal."""
-        if self.element.balanced:
-            self.add_constraints(
-                self.element.charging.submodel._investment.size - self.element.discharging.submodel._investment.size
-                == 0,
-                short_name='balanced_sizes',
-            )
-
-    def _build_energy_balance_lhs(self):
-        """Build the left-hand side of the energy balance constraint.
-
-        The energy balance equation is:
-            charge_state[t+1] = charge_state[t] * (1 - loss)^dt
-                              + charge_rate * eta_charge * dt
-                              - discharge_rate / eta_discharge * dt
-
-        Rearranged as LHS = 0:
-            charge_state[t+1] - charge_state[t] * (1 - loss)^dt
-            - charge_rate * eta_charge * dt
-            + discharge_rate / eta_discharge * dt = 0
-
-        Returns:
-            The LHS expression (should equal 0).
-        """
-        charge_state = self.charge_state
-        rel_loss = self.element.relative_loss_per_hour
-        timestep_duration = self._model.timestep_duration
-        charge_rate = self.element.charging.submodel.flow_rate
-        discharge_rate = self.element.discharging.submodel.flow_rate
-        eff_charge = self.element.eta_charge
-        eff_discharge = self.element.eta_discharge
-
-        return (
-            charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rate * eff_charge * timestep_duration
-            + discharge_rate * timestep_duration / eff_discharge
-        )
-
-    @property
-    def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
-        """Get absolute bounds for charge_state variable.
-
-        For base StorageModel, charge_state represents absolute SOC with bounds
-        derived from relative bounds scaled by capacity.
-
-        Note:
-            InterclusterStorageModel overrides this to provide symmetric bounds
-            since charge_state represents ΔE (relative change from cluster start).
-        """
-        relative_lower_bound, relative_upper_bound = self._relative_charge_state_bounds
-
-        if self.element.capacity_in_flow_hours is None:
-            return 0, np.inf
-        elif isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            cap_min = self.element.capacity_in_flow_hours.minimum_or_fixed_size
-            cap_max = self.element.capacity_in_flow_hours.maximum_or_fixed_size
-            return (
-                relative_lower_bound * cap_min,
-                relative_upper_bound * cap_max,
-            )
-        else:
-            cap = self.element.capacity_in_flow_hours
-            return (
-                relative_lower_bound * cap,
-                relative_upper_bound * cap,
-            )
-
-    @functools.cached_property
-    def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
-        """
-        Get relative charge state bounds with final timestep values.
-
-        Returns:
-            Tuple of (minimum_bounds, maximum_bounds) DataArrays extending to final timestep
-        """
-        timesteps_extra = self._model.flow_system.timesteps_extra
-
-        # Get the original bounds (may be scalar or have time dim)
-        rel_min = self.element.relative_minimum_charge_state
-        rel_max = self.element.relative_maximum_charge_state
-
-        # Get final minimum charge state
-        if self.element.relative_minimum_final_charge_state is None:
-            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
-        else:
-            min_final_value = self.element.relative_minimum_final_charge_state
-
-        # Get final maximum charge state
-        if self.element.relative_maximum_final_charge_state is None:
-            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
-        else:
-            max_final_value = self.element.relative_maximum_final_charge_state
-
-        # Build bounds arrays for timesteps_extra (includes final timestep)
-        # Handle case where original data may be scalar (no time dim)
-        if 'time' in rel_min.dims:
-            # Original has time dim - concat with final value
-            min_final_da = (
-                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
-            )
-            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
-            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
-        else:
-            # Original is scalar - broadcast to full time range (constant value)
-            min_bounds = rel_min.expand_dims(time=timesteps_extra)
-
-        if 'time' in rel_max.dims:
-            # Original has time dim - concat with final value
-            max_final_da = (
-                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
-            )
-            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
-            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
-        else:
-            # Original is scalar - broadcast to full time range (constant value)
-            max_bounds = rel_max.expand_dims(time=timesteps_extra)
-
-        # Ensure both bounds have matching dimensions (broadcast once here,
-        # so downstream code doesn't need to handle dimension mismatches)
-        return xr.broadcast(min_bounds, max_bounds)
-
-    @property
-    def _investment(self) -> InvestmentModel | None:
-        """Deprecated alias for investment"""
-        return self.investment
-
-    @property
-    def investment(self) -> InvestmentModel | None:
-        """Investment feature"""
-        if 'investment' not in self.submodels:
-            return None
-        return self.submodels['investment']
-
-    @property
-    def charge_state(self) -> linopy.Variable:
-        """Charge state variable"""
-        return self['charge_state']
-
-    @property
-    def netto_discharge(self) -> linopy.Variable:
-        """Netto discharge variable"""
-        return self['netto_discharge']
-
-
-class InterclusterStorageModel(StorageModel):
+class InterclusterStorageModel(ComponentModel):
     """Storage model with inter-cluster linking for clustered optimization.
 
-    This class extends :class:`StorageModel` to support inter-cluster storage linking
-    when using time series aggregation (clustering). It implements the S-N linking model
+    This is a standalone model for storages with ``cluster_mode='intercluster'``
+    or ``cluster_mode='intercluster_cyclic'``. It implements the S-N linking model
     from Blanke et al. (2022) to properly value seasonal storage in clustered optimizations.
 
     The Problem with Naive Clustering
@@ -1246,11 +960,15 @@ class InterclusterStorageModel(StorageModel):
 
     Variables Created
     -----------------
+    - ``charge_state``: Relative change in SOC (ΔE) within each cluster.
+    - ``netto_discharge``: Net discharge rate (discharge - charge).
     - ``SOC_boundary``: Absolute SOC at each original period boundary.
       Shape: (n_original_clusters + 1,) plus any period/scenario dimensions.
 
     Constraints Created
     -------------------
+    - ``netto_discharge``: Links netto_discharge to charge/discharge flows.
+    - ``charge_state``: Energy balance within clusters.
     - ``cluster_start``: Forces ΔE = 0 at start of each representative cluster.
     - ``link``: Links consecutive SOC_boundary values via delta_SOC.
     - ``cyclic`` or ``initial_SOC_boundary``: Initial/final boundary condition.
@@ -1268,7 +986,6 @@ class InterclusterStorageModel(StorageModel):
 
     See Also
     --------
-    :class:`StorageModel` : Base storage model without inter-cluster linking.
     :class:`Storage` : The element class that creates this model.
 
     Example
@@ -1291,6 +1008,97 @@ class InterclusterStorageModel(StorageModel):
         # Access the SOC_boundary in results
         soc_boundary = fs_clustered.solution['seasonal_storage|SOC_boundary']
     """
+
+    element: Storage
+
+    def __init__(self, model: FlowSystemModel, element: Storage):
+        super().__init__(model, element)
+
+    # =========================================================================
+    # Variable and Constraint Creation
+    # =========================================================================
+
+    def _do_modeling(self):
+        """Create charge state variables, energy balance equations, and inter-cluster linking."""
+        super()._do_modeling()
+        self._create_storage_variables()
+        self._add_netto_discharge_constraint()
+        self._add_energy_balance_constraint()
+        self._add_investment_model()
+        self._add_balanced_sizes_constraint()
+        self._add_intercluster_linking()
+
+    def _create_storage_variables(self):
+        """Create charge_state and netto_discharge variables."""
+        lb, ub = self._absolute_charge_state_bounds
+        self.add_variables(
+            lower=lb,
+            upper=ub,
+            coords=self._model.get_coords(extra_timestep=True),
+            short_name='charge_state',
+            category=VariableCategory.CHARGE_STATE,
+        )
+        self.add_variables(
+            coords=self._model.get_coords(),
+            short_name='netto_discharge',
+            category=VariableCategory.NETTO_DISCHARGE,
+        )
+
+    def _add_netto_discharge_constraint(self):
+        """Add constraint: netto_discharge = discharging - charging."""
+        self.add_constraints(
+            self.netto_discharge
+            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
+            short_name='netto_discharge',
+        )
+
+    def _add_energy_balance_constraint(self):
+        """Add energy balance constraint linking charge states across timesteps."""
+        self.add_constraints(self._build_energy_balance_lhs() == 0, short_name='charge_state')
+
+    def _build_energy_balance_lhs(self):
+        """Build the left-hand side of the energy balance constraint.
+
+        The energy balance equation is:
+            charge_state[t+1] = charge_state[t] * (1 - loss)^dt
+                              + charge_rate * eta_charge * dt
+                              - discharge_rate / eta_discharge * dt
+
+        Rearranged as LHS = 0:
+            charge_state[t+1] - charge_state[t] * (1 - loss)^dt
+            - charge_rate * eta_charge * dt
+            + discharge_rate / eta_discharge * dt = 0
+
+        Returns:
+            The LHS expression (should equal 0).
+        """
+        charge_state = self.charge_state
+        rel_loss = self.element.relative_loss_per_hour
+        timestep_duration = self._model.timestep_duration
+        charge_rate = self.element.charging.submodel.flow_rate
+        discharge_rate = self.element.discharging.submodel.flow_rate
+        eff_charge = self.element.eta_charge
+        eff_discharge = self.element.eta_discharge
+
+        return (
+            charge_state.isel(time=slice(1, None))
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rate * eff_charge * timestep_duration
+            + discharge_rate * timestep_duration / eff_discharge
+        )
+
+    def _add_balanced_sizes_constraint(self):
+        """Add constraint ensuring charging and discharging capacities are equal."""
+        if self.element.balanced:
+            self.add_constraints(
+                self.element.charging.submodel._investment.size - self.element.discharging.submodel._investment.size
+                == 0,
+                short_name='balanced_sizes',
+            )
+
+    # =========================================================================
+    # Bounds Properties
+    # =========================================================================
 
     @property
     def _absolute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -1316,21 +1124,76 @@ class InterclusterStorageModel(StorageModel):
             # Adding 0.0 converts -0.0 to 0.0 (linopy LP writer bug workaround)
             return -cap + 0.0, cap + 0.0
 
-    def _do_modeling(self):
-        """Create storage model with inter-cluster linking constraints.
+    @functools.cached_property
+    def _relative_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
+        """Get relative charge state bounds with final timestep values."""
+        timesteps_extra = self._model.flow_system.timesteps_extra
 
-        Uses template method pattern: calls parent's _do_modeling, then adds
-        inter-cluster linking. Overrides specific methods to customize behavior.
-        """
-        super()._do_modeling()
-        # In DCE mode, skip constraint creation - constraints will be added later
-        if self._model._dce_mode:
-            return
-        self._add_intercluster_linking()
+        rel_min = self.element.relative_minimum_charge_state
+        rel_max = self.element.relative_maximum_charge_state
 
-    def _add_cluster_cyclic_constraint(self):
-        """Skip cluster cyclic constraint - handled by inter-cluster linking."""
-        pass
+        # Get final minimum charge state
+        if self.element.relative_minimum_final_charge_state is None:
+            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
+        else:
+            min_final_value = self.element.relative_minimum_final_charge_state
+
+        # Get final maximum charge state
+        if self.element.relative_maximum_final_charge_state is None:
+            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
+        else:
+            max_final_value = self.element.relative_maximum_final_charge_state
+
+        # Build bounds arrays for timesteps_extra (includes final timestep)
+        if 'time' in rel_min.dims:
+            min_final_da = (
+                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+            )
+            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
+            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
+        else:
+            min_bounds = rel_min.expand_dims(time=timesteps_extra)
+
+        if 'time' in rel_max.dims:
+            max_final_da = (
+                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+            )
+            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
+            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
+        else:
+            max_bounds = rel_max.expand_dims(time=timesteps_extra)
+
+        return xr.broadcast(min_bounds, max_bounds)
+
+    # =========================================================================
+    # Variable Access Properties
+    # =========================================================================
+
+    @property
+    def _investment(self) -> InvestmentModel | None:
+        """Deprecated alias for investment."""
+        return self.investment
+
+    @property
+    def investment(self) -> InvestmentModel | None:
+        """Investment feature."""
+        if 'investment' not in self.submodels:
+            return None
+        return self.submodels['investment']
+
+    @property
+    def charge_state(self) -> linopy.Variable:
+        """Charge state variable."""
+        return self['charge_state']
+
+    @property
+    def netto_discharge(self) -> linopy.Variable:
+        """Netto discharge variable."""
+        return self['netto_discharge']
+
+    # =========================================================================
+    # Investment Model
+    # =========================================================================
 
     def _add_investment_model(self):
         """Create InvestmentModel with symmetric bounds for ΔE."""
@@ -1355,9 +1218,9 @@ class InterclusterStorageModel(StorageModel):
                 short_name='charge_state|ub',
             )
 
-    def _add_initial_final_constraints(self):
-        """Skip initial/final constraints - handled by SOC_boundary in inter-cluster linking."""
-        pass
+    # =========================================================================
+    # Inter-Cluster Linking
+    # =========================================================================
 
     def _add_intercluster_linking(self) -> None:
         """Add inter-cluster storage linking following the S-K model from Blanke et al. (2022).

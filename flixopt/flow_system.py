@@ -1400,13 +1400,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
         self.connect_and_transform()
         self.create_model()
-
-        # Use configured modeling mode
-        if CONFIG.Modeling.mode == 'type_level':
-            self.model.do_modeling_type_level()
-        else:
-            self.model.do_modeling()
-
+        self.model.do_modeling()
         return self
 
     def solve(self, solver: _Solver) -> FlowSystem:
