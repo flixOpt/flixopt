@@ -1442,6 +1442,9 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                     'shutdown': 'shutdown',
                     'inactive': 'inactive',
                     'startup_count': 'startup_count',
+                    'size': 'size',  # Investment variable
+                    'invested': 'invested',  # Investment variable
+                    'hours': 'hours',  # Flow hours tracking
                 }
                 for flow_id in var.coords['flow'].values:
                     element_var = var.sel(flow=flow_id, drop=True)

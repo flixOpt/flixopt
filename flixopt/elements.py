@@ -2236,7 +2236,7 @@ class BusesModel(TypeModel):
             # Skip if both sides are scalar zeros (no flows connected)
             if isinstance(lhs, (int, float)) and isinstance(rhs, (int, float)):
                 continue
-            constraint_name = f'{self.element_type.value}|{bus.label}|balance'
+            constraint_name = f'{bus.label_full}|balance'
             self.model.add_constraints(
                 lhs == rhs,
                 name=constraint_name,
@@ -2322,13 +2322,39 @@ class BusModelProxy(ElementModel):
 
     def _do_modeling(self):
         """Skip modeling - BusesModel already created everything."""
-        # Register flow variables from FlowsModel in our local registry for results_structure
+        # Build public variables dict with individual flow names for backward compatibility
+        self._public_variables: dict[str, linopy.Variable] = {}
+        self._public_constraints: dict[str, linopy.Constraint] = {}
+
         flows_model = self._model._flows_model
         if flows_model is not None:
             for flow in self.element.inputs + self.element.outputs:
                 flow_rate = flows_model.get_variable('rate', flow.label_full)
                 if flow_rate is not None:
-                    self.register_variable(flow_rate, flow.label_full)
+                    self._public_variables[f'{flow.label_full}|flow_rate'] = flow_rate
+
+        # Add virtual supply/demand variables if bus has imbalance
+        if self._buses_model is not None and self.label_full in self._buses_model.imbalance_ids:
+            if self.virtual_supply is not None:
+                self._public_variables[f'{self.label_full}|virtual_supply'] = self.virtual_supply
+            if self.virtual_demand is not None:
+                self._public_variables[f'{self.label_full}|virtual_demand'] = self.virtual_demand
+
+        # Register balance constraint - constraint name is '{label_full}|balance'
+        balance_con_name = f'{self.label_full}|balance'
+        if self._buses_model is not None and balance_con_name in self._model.constraints:
+            balance_con = self._model.constraints[balance_con_name]
+            self._public_constraints[balance_con_name] = balance_con
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """Return variables dict with individual flow names for backward compatibility."""
+        return self._public_variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """Return constraints dict with individual element names for backward compatibility."""
+        return self._public_constraints
 
     def results_structure(self):
         # Get flow rate variable names from FlowsModel

@@ -859,7 +859,11 @@ class EffectsModel:
                     all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
 
         # Add all expressions to periodic constraint
-        self._eq_periodic.lhs -= sum(all_exprs)
+        # NOTE: Reindex each expression to match _effect_index to ensure proper coordinate alignment.
+        # This is necessary because linopy/xarray may reorder coordinates during arithmetic operations.
+        for expr in all_exprs:
+            reindexed = expr.reindex({'effect': self._effect_index})
+            self._eq_periodic.lhs -= reindexed
 
         # Add constant effects for all models
         self._add_constant_effects(flows_model)
