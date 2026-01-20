@@ -354,8 +354,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         For RangeIndex (segmented systems), simply appends the next integer.
         """
         if isinstance(timesteps, pd.RangeIndex):
-            # For RangeIndex, just add one more integer
-            return pd.RangeIndex(len(timesteps) + 1, name='time')
+            # For RangeIndex, preserve start and step, extend by one step
+            new_stop = timesteps.stop + timesteps.step
+            return pd.RangeIndex(start=timesteps.start, stop=new_stop, step=timesteps.step, name='time')
 
         if hours_of_last_timestep is None:
             hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
@@ -544,9 +545,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
             )
 
-            # Update timestep_duration DataArray if it exists in the dataset
+            # Update timestep_duration DataArray if it exists in the dataset and new value is computed
             # This prevents stale data after resampling operations
-            if 'timestep_duration' in dataset.data_vars:
+            # Skip for RangeIndex (segmented systems) where timestep_duration is None
+            if 'timestep_duration' in dataset.data_vars and timestep_duration is not None:
                 dataset['timestep_duration'] = timestep_duration
 
         # Update time-related attributes only when new values are provided/computed

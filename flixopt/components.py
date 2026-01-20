@@ -1556,7 +1556,22 @@ class InterclusterStorageModel(StorageModel):
         # relative_loss_per_hour is per-hour, so we need to convert offsets to hours
         # Keep as DataArray to respect per-period/scenario values
         rel_loss = _scalar_safe_reduce(self.element.relative_loss_per_hour, 'time', 'mean')
-        mean_timestep_duration = _scalar_safe_reduce(self._model.timestep_duration, 'time', 'mean')
+
+        # Compute cumulative hours for accurate offset calculation with non-uniform timesteps
+        timestep_duration = self._model.timestep_duration
+        if isinstance(timestep_duration, xr.DataArray) and 'time' in timestep_duration.dims:
+            # Use cumsum for accurate hours offset with non-uniform timesteps
+            # Prepend 0 so offset 0 gives 0 hours, offset 1 gives first duration, etc.
+            cumulative_hours = timestep_duration.cumsum('time')
+            # Shift so index 0 = 0, index 1 = duration[0], etc.
+            cumulative_hours = xr.concat(
+                [xr.zeros_like(timestep_duration.isel(time=0)), cumulative_hours.isel(time=slice(None, -1))],
+                dim='time',
+            )
+        else:
+            # Scalar or no time dim: fall back to mean-based calculation
+            mean_timestep_duration = _scalar_safe_reduce(timestep_duration, 'time', 'mean')
+            cumulative_hours = None
 
         # Use actual time dimension size (may be smaller than timesteps_per_cluster for segmented systems)
         actual_time_size = charge_state.sizes['time']
@@ -1574,8 +1589,11 @@ class InterclusterStorageModel(StorageModel):
             cs_t = cs_t.assign_coords(original_cluster=np.arange(n_original_clusters))
 
             # Apply decay factor (1-loss)^hours to SOC_boundary per Eq. 9
-            # Convert timestep offset to hours
-            hours_offset = offset * mean_timestep_duration
+            # Convert timestep offset to hours using cumulative duration for non-uniform timesteps
+            if cumulative_hours is not None:
+                hours_offset = cumulative_hours.isel(time=offset)
+            else:
+                hours_offset = offset * mean_timestep_duration
             decay_t = (1 - rel_loss) ** hours_offset
             combined = soc_d * decay_t + cs_t
 

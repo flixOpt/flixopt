@@ -1640,12 +1640,15 @@ class FlowSystemDatasetIO:
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
-        # Resolve timestep_duration if present as DataArray reference
+        # Resolve timestep_duration if present (DataArray reference or concrete value)
         timestep_duration = None
         if 'timestep_duration' in reference_structure:
             ref_value = reference_structure['timestep_duration']
             if isinstance(ref_value, str) and ref_value.startswith(':::'):
                 timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
+            else:
+                # Concrete value (e.g., list from expand())
+                timestep_duration = ref_value
 
         # Get timesteps - convert integer index to RangeIndex for segmented systems
         time_index = ds.indexes['time']

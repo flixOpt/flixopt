@@ -786,6 +786,8 @@ class Clustering:
     @property
     def n_representatives(self) -> int:
         """Number of representative timesteps after clustering."""
+        if self.is_segmented:
+            return self.n_clusters * self.n_segments
         return self.n_clusters * self.timesteps_per_cluster
 
     # ==========================================================================
@@ -838,8 +840,11 @@ class Clustering:
         """Integer positions where clusters start in reduced timesteps.
 
         Returns:
-            1D array: [0, T, 2T, ...] where T = timesteps_per_cluster.
+            1D array: [0, T, 2T, ...] where T = timesteps_per_cluster (or n_segments if segmented).
         """
+        if self.is_segmented:
+            n_timesteps = self.n_clusters * self.n_segments
+            return np.arange(0, n_timesteps, self.n_segments)
         n_timesteps = self.n_clusters * self.timesteps_per_cluster
         return np.arange(0, n_timesteps, self.timesteps_per_cluster)
 

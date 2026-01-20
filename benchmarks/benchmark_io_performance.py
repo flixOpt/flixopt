@@ -54,7 +54,7 @@ def create_large_flow_system(
     # Create demand profile with daily pattern
     base_demand = 100 + 50 * np.sin(2 * np.pi * np.arange(n_timesteps) / 24)
 
-    for i in range(n_components // 2):
+    for i in range(n_components):
         bus = buses[i % n_buses]
         # Add noise to create unique profiles
         profile = base_demand + np.random.normal(0, 10, n_timesteps)

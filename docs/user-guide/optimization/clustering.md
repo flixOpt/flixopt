@@ -109,9 +109,9 @@ fs_clustered = flow_system.transform.cluster(
 | Method | Description |
 |--------|-------------|
 | `'hierarchical'` | Produces consistent hierarchical groupings (default) |
-| `'k_means'` | Fast, good for most cases |
-| `'k_medoids'` | Uses actual periods as representatives |
-| `'k_maxoids'` | Maximizes representativeness |
+| `'kmeans'` | Fast, good for most cases |
+| `'kmedoids'` | Uses actual periods as representatives |
+| `'kmaxoids'` | Maximizes representativeness |
 | `'averaging'` | Simple averaging of similar periods |
 
 **Representation methods** (`ClusterConfig.representation`):
