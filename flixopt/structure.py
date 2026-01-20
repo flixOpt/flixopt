@@ -878,6 +878,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         # Propagate component status_parameters to flows BEFORE collecting them
         # This matches the behavior in ComponentModel._do_modeling() but happens earlier
         # so FlowsModel knows which flows need status variables
+        from .components import Transmission
         from .interface import StatusParameters
 
         for component in self.flow_system.components.values():
@@ -895,6 +896,39 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                         flow.status_parameters.link_to_flow_system(
                             self.flow_system, f'{flow.label_full}|status_parameters'
                         )
+            # Transmissions with absolute_losses need status variables on their flows
+            # Also need relative_minimum > 0 to link status to flow rate properly
+            if isinstance(component, Transmission):
+                if component.absolute_losses is not None and np.any(component.absolute_losses != 0):
+                    # Only input flows need status for absolute_losses constraint
+                    input_flows = [component.in1]
+                    if component.in2 is not None:
+                        input_flows.append(component.in2)
+                    for flow in input_flows:
+                        if flow.status_parameters is None:
+                            flow.status_parameters = StatusParameters()
+                            flow.status_parameters.link_to_flow_system(
+                                self.flow_system, f'{flow.label_full}|status_parameters'
+                            )
+                        # Ensure relative_minimum is positive so status links to rate
+                        # Handle scalar, numpy array, and xarray DataArray
+                        rel_min = flow.relative_minimum
+                        needs_update = (
+                            rel_min is None
+                            or (np.isscalar(rel_min) and rel_min <= 0)
+                            or (isinstance(rel_min, np.ndarray) and np.all(rel_min <= 0))
+                            or (isinstance(rel_min, xr.DataArray) and np.all(rel_min.values <= 0))
+                        )
+                        if needs_update:
+                            from .config import CONFIG
+
+                            epsilon = CONFIG.Modeling.epsilon
+                            # If relative_minimum is already a DataArray, replace with
+                            # epsilon while preserving shape (but ensure float dtype)
+                            if isinstance(rel_min, xr.DataArray):
+                                flow.relative_minimum = xr.full_like(rel_min, epsilon, dtype=float)
+                            else:
+                                flow.relative_minimum = epsilon
 
         # Collect all flows from all components
         all_flows = []
@@ -979,16 +1013,18 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         record('storages_investment_constraints')
 
         # Collect components for batched handling
+        from .components import Transmission
         from .elements import ComponentsModel, PreventSimultaneousFlowsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
         converters_with_piecewise = [
             c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
         ]
+        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
 
         # Create type-level model for all component-level batched variables/constraints
         self._components_model = ComponentsModel(
-            self, components_with_status, converters_with_piecewise, self._flows_model
+            self, components_with_status, converters_with_piecewise, transmissions, self._flows_model
         )
         self._components_model.create_variables()
 
@@ -1011,6 +1047,11 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._components_model.create_piecewise_conversion_constraints()
 
         record('piecewise_converters')
+
+        # Create transmission constraints (handled by ComponentsModel)
+        self._components_model.create_transmission_constraints()
+
+        record('transmissions')
 
         # Collect components with prevent_simultaneous_flows
         components_with_prevent_simultaneous = [

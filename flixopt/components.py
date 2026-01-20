@@ -805,51 +805,22 @@ class Transmission(Component):
 
 
 class TransmissionModel(ComponentModel):
+    """Lightweight proxy for Transmission elements when using type-level modeling.
+
+    Transmission constraints are created by ComponentsModel.create_transmission_constraints().
+    This proxy exists for:
+    - Results structure compatibility
+    - Submodel registration in FlowSystemModel
+    """
+
     element: Transmission
 
-    def __init__(self, model: FlowSystemModel, element: Transmission):
-        if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
-            for flow in element.inputs + element.outputs:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
-
-        super().__init__(model, element)
-
     def _do_modeling(self):
-        """Create transmission efficiency equations and optional absolute loss constraints for both flow directions"""
+        """No-op: transmission constraints handled by ComponentsModel."""
         super()._do_modeling()
-
-        # first direction
-        self.create_transmission_equation('dir1', self.element.in1, self.element.out1)
-
-        # second direction:
-        if self.element.in2 is not None:
-            self.create_transmission_equation('dir2', self.element.in2, self.element.out2)
-
-        # equate size of both directions
-        if self.element.balanced:
-            # eq: in1.size = in2.size
-            self.add_constraints(
-                self.element.in1.submodel._investment.size == self.element.in2.submodel._investment.size,
-                short_name='same_size',
-            )
-
-    def create_transmission_equation(self, name: str, in_flow: Flow, out_flow: Flow) -> linopy.Constraint:
-        """Creates an Equation for the Transmission efficiency and adds it to the model"""
-        # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
-        rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
-        con_transmission = self.add_constraints(
-            out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
-            short_name=name,
-        )
-
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
-            con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
-
-        return con_transmission
+        # Transmission efficiency constraints are now created by
+        # ComponentsModel.create_transmission_constraints()
+        pass
 
 
 class LinearConverterModel(ComponentModel):

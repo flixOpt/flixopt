@@ -451,16 +451,16 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions using new API (flow_system.solution)
+        # Assertions using batched variable naming (flow|status, flow|rate)
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1)|status'].values,
+            flow_system.solution['flow|status'].sel(flow='Rohr(Rohr1)').values,
             np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
             'Status does not work properly',
         )
 
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1)|flow_rate'].values * 0.8 - 20,
-            flow_system.solution['Rohr(Rohr2)|flow_rate'].values,
+            flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr1)').values * 0.8 - 20,
+            flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr2)').values,
             'Losses are not computed correctly',
         )
 
@@ -517,25 +517,25 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions using new API (flow_system.solution)
+        # Assertions using batched variable naming (flow|status, flow|rate, flow|size)
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1a)|status'].values,
+            flow_system.solution['flow|status'].sel(flow='Rohr(Rohr1a)').values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
         # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
-        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        in1_flow = flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr1a)').values
         expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr1b)').values,
             expected_out1_flow,
             'Losses are not computed correctly',
         )
 
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1a)|size'].item(),
-            flow_system.solution['Rohr(Rohr2a)|size'].item(),
+            flow_system.solution['flow|size'].sel(flow='Rohr(Rohr1a)').item(),
+            flow_system.solution['flow|size'].sel(flow='Rohr(Rohr2a)').item(),
             'The Investments are not equated correctly',
         )
 
@@ -598,26 +598,26 @@ class TestTransmissionModel:
 
         flow_system.optimize(highs_solver)
 
-        # Assertions using new API (flow_system.solution)
+        # Assertions using batched variable naming (flow|status, flow|rate, flow|size)
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1a)|status'].values,
+            flow_system.solution['flow|status'].sel(flow='Rohr(Rohr1a)').values,
             np.array([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
             'Status does not work properly',
         )
 
         # Verify output flow matches input flow minus losses (relative 20% + absolute 20)
-        in1_flow = flow_system.solution['Rohr(Rohr1a)|flow_rate'].values
+        in1_flow = flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr1a)').values
         expected_out1_flow = in1_flow * 0.8 - np.array([20 if val > 0.1 else 0 for val in in1_flow])
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr1b)|flow_rate'].values,
+            flow_system.solution['flow|rate'].sel(flow='Rohr(Rohr1b)').values,
             expected_out1_flow,
             'Losses are not computed correctly',
         )
 
-        assert flow_system.solution['Rohr(Rohr1a)|size'].item() > 11
+        assert flow_system.solution['flow|size'].sel(flow='Rohr(Rohr1a)').item() > 11
 
         assert_almost_equal_numeric(
-            flow_system.solution['Rohr(Rohr2a)|size'].item(),
+            flow_system.solution['flow|size'].sel(flow='Rohr(Rohr2a)').item(),
             10,
             'Sizing does not work properly',
         )
