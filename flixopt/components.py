@@ -1561,11 +1561,12 @@ class InterclusterStorageModel(StorageModel):
         timestep_duration = self._model.timestep_duration
         if isinstance(timestep_duration, xr.DataArray) and 'time' in timestep_duration.dims:
             # Use cumsum for accurate hours offset with non-uniform timesteps
-            # Prepend 0 so offset 0 gives 0 hours, offset 1 gives first duration, etc.
-            cumulative_hours = timestep_duration.cumsum('time')
-            # Shift so index 0 = 0, index 1 = duration[0], etc.
+            # Build cumulative_hours with N+1 elements to match charge_state's extra timestep:
+            # index 0 = 0 hours, index i = sum of durations[0:i], index N = total duration
+            cumsum = timestep_duration.cumsum('time')
+            # Prepend 0 at the start, giving [0, cumsum[0], cumsum[1], ..., cumsum[N-1]]
             cumulative_hours = xr.concat(
-                [xr.zeros_like(timestep_duration.isel(time=0)), cumulative_hours.isel(time=slice(None, -1))],
+                [xr.zeros_like(timestep_duration.isel(time=0)), cumsum],
                 dim='time',
             )
         else:

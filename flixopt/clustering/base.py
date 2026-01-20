@@ -428,8 +428,13 @@ class ClusteringResults:
         if first.segment_centers is None:
             return None
 
-        # tsam's segment_centers may be None even with segments configured
-        return None
+        n_segments = first.n_segments
+        return self._build_property_array(
+            lambda cr: np.array(cr.segment_centers),
+            base_dims=['cluster', 'segment'],
+            base_coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
+            name='segment_centers',
+        )
 
     @property
     def position_within_segment(self) -> xr.DataArray | None:
@@ -526,11 +531,17 @@ class ClusteringResults:
         return tuple(key_parts)
 
     def _get_dim_values(self, dim: str) -> list | None:
-        """Get unique values for a dimension, or None if dimension not present."""
+        """Get unique values for a dimension, or None if dimension not present.
+
+        Preserves insertion order to ensure .isel() positional indexing matches
+        the original FlowSystem dimension order.
+        """
         if dim not in self._dim_names:
             return None
         idx = self._dim_names.index(dim)
-        return sorted(set(k[idx] for k in self._results.keys()))
+        # Use dict.fromkeys to preserve insertion order while removing duplicates
+        values = [k[idx] for k in self._results.keys()]
+        return list(dict.fromkeys(values))
 
     def _build_property_array(
         self,
