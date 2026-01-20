@@ -279,24 +279,24 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify batched piecewise variables exist
-        assert 'piecewise_conversion|inside_piece' in model.variables
-        assert 'piecewise_conversion|lambda0' in model.variables
-        assert 'piecewise_conversion|lambda1' in model.variables
+        # Verify batched piecewise variables exist (tied to component dimension)
+        assert 'component|piecewise_conversion|inside_piece' in model.variables
+        assert 'component|piecewise_conversion|lambda0' in model.variables
+        assert 'component|piecewise_conversion|lambda1' in model.variables
 
         # Check dimensions of batched variables
-        inside_piece = model.variables['piecewise_conversion|inside_piece']
-        assert 'converter' in inside_piece.dims
+        inside_piece = model.variables['component|piecewise_conversion|inside_piece']
+        assert 'component' in inside_piece.dims
         assert 'segment' in inside_piece.dims
         assert 'time' in inside_piece.dims
 
         # Verify batched constraints exist
-        assert 'piecewise_conversion|lambda_sum' in model.constraints
-        assert 'piecewise_conversion|single_segment' in model.constraints
+        assert 'component|piecewise_conversion|lambda_sum' in model.constraints
+        assert 'component|piecewise_conversion|single_segment' in model.constraints
 
         # Verify coupling constraints for each flow
-        assert 'piecewise_conversion|Converter(input)|coupling' in model.constraints
-        assert 'piecewise_conversion|Converter(output)|coupling' in model.constraints
+        assert 'component|piecewise_conversion|Converter(input)|coupling' in model.constraints
+        assert 'component|piecewise_conversion|Converter(output)|coupling' in model.constraints
 
     def test_piecewise_conversion_with_status(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with PiecewiseConversion and StatusParameters (batched model)."""
@@ -335,21 +335,21 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify batched piecewise variables exist
-        assert 'piecewise_conversion|inside_piece' in model.variables
-        assert 'piecewise_conversion|lambda0' in model.variables
-        assert 'piecewise_conversion|lambda1' in model.variables
+        # Verify batched piecewise variables exist (tied to component dimension)
+        assert 'component|piecewise_conversion|inside_piece' in model.variables
+        assert 'component|piecewise_conversion|lambda0' in model.variables
+        assert 'component|piecewise_conversion|lambda1' in model.variables
 
         # Status variable should exist (handled by ComponentsModel)
         assert 'component|status' in model.variables
 
         # Verify batched constraints exist
-        assert 'piecewise_conversion|lambda_sum' in model.constraints
-        assert 'piecewise_conversion|single_segment' in model.constraints
+        assert 'component|piecewise_conversion|lambda_sum' in model.constraints
+        assert 'component|piecewise_conversion|single_segment' in model.constraints
 
         # Verify coupling constraints for each flow
-        assert 'piecewise_conversion|Converter(input)|coupling' in model.constraints
-        assert 'piecewise_conversion|Converter(output)|coupling' in model.constraints
+        assert 'component|piecewise_conversion|Converter(input)|coupling' in model.constraints
+        assert 'component|piecewise_conversion|Converter(output)|coupling' in model.constraints
 
 
 if __name__ == '__main__':

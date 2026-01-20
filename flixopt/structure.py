@@ -860,7 +860,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         import time
 
-        from .components import LinearConverter, LinearConvertersModel, PiecewiseConvertersModel, Storage, StoragesModel
+        from .components import LinearConverter, LinearConvertersModel, Storage, StoragesModel
         from .elements import BusesModel, FlowsModel
 
         timings = {}
@@ -978,13 +978,18 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('storages_investment_constraints')
 
-        # Collect components with status_parameters for batched status handling
+        # Collect components for batched handling
         from .elements import ComponentsModel, PreventSimultaneousFlowsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+        converters_with_piecewise = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
+        ]
 
-        # Create type-level model for component status
-        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
+        # Create type-level model for all component-level batched variables/constraints
+        self._components_model = ComponentsModel(
+            self, components_with_status, converters_with_piecewise, self._flows_model
+        )
         self._components_model.create_variables()
 
         record('component_status_variables')
@@ -1000,6 +1005,12 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._components_model.create_effect_shares()
 
         record('component_status_effects')
+
+        # Create piecewise conversion variables and constraints (handled by ComponentsModel)
+        self._components_model.create_piecewise_conversion_variables()
+        self._components_model.create_piecewise_conversion_constraints()
+
+        record('piecewise_converters')
 
         # Collect components with prevent_simultaneous_flows
         components_with_prevent_simultaneous = [
@@ -1024,18 +1035,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._linear_converters_model.create_constraints()
 
         record('linear_converters')
-
-        # Collect LinearConverters with piecewise_conversion
-        converters_with_piecewise = [
-            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
-        ]
-
-        # Create type-level model for batched piecewise conversion constraints
-        self._piecewise_converters_model = PiecewiseConvertersModel(self, converters_with_piecewise, self._flows_model)
-        self._piecewise_converters_model.create_variables()
-        self._piecewise_converters_model.create_constraints()
-
-        record('piecewise_converters')
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it

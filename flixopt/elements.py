@@ -1411,6 +1411,7 @@ class FlowsModel(TypeModel):
 
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
+        name_prefix = f'{dim}|piecewise_effects'  # Tied to element type (flow)
         piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
             self.model,
             element_ids,
@@ -1418,7 +1419,7 @@ class FlowsModel(TypeModel):
             dim,
             segment_mask,
             base_coords,
-            'piecewise_effects',
+            name_prefix,
         )
 
         # Build zero_point array if any flows are non-mandatory
@@ -1438,7 +1439,7 @@ class FlowsModel(TypeModel):
             segment_mask,
             zero_point,
             dim,
-            'piecewise_effects',
+            name_prefix,
         )
 
         # Create coupling constraint for size (origin)
@@ -1450,7 +1451,7 @@ class FlowsModel(TypeModel):
             piecewise_vars['lambda1'],
             origin_starts,
             origin_ends,
-            'piecewise_effects|size|coupling',
+            f'{name_prefix}|size|coupling',
         )
 
         # Create share variables and coupling constraints for each effect
@@ -1467,7 +1468,7 @@ class FlowsModel(TypeModel):
                 lower=-np.inf,  # Shares can be negative (e.g., costs)
                 upper=np.inf,
                 coords=share_coords,
-                name=f'piecewise_effects|{effect_name}',
+                name=f'{name_prefix}|{effect_name}',
             )
 
             # Create coupling constraint for this share
@@ -1479,12 +1480,12 @@ class FlowsModel(TypeModel):
                 piecewise_vars['lambda1'],
                 starts,
                 ends,
-                f'piecewise_effects|{effect_name}|coupling',
+                f'{name_prefix}|{effect_name}|coupling',
             )
 
             # Add to effects (sum over element dimension for periodic share)
             self.model.effects.add_share_to_effects(
-                name=f'piecewise_effects_{effect_name}',
+                name=f'{name_prefix}|{effect_name}',
                 expressions={effect_name: share_var.sum(dim)},
                 target='periodic',
             )
@@ -2347,10 +2348,11 @@ class ComponentModel(ElementModel):
 
 
 class ComponentsModel:
-    """Type-level model for batched component status across multiple components.
+    """Type-level model for batched component-level variables and constraints.
 
-    This handles component-level status variables and constraints for ALL components
-    with status_parameters in a single instance with batched variables.
+    This handles component-level modeling for ALL components including:
+    - Status variables and constraints for components with status_parameters
+    - Piecewise conversion constraints for LinearConverters with piecewise_conversion
 
     Component status is derived from flow statuses:
     - Single-flow component: status == flow_status
@@ -2360,39 +2362,47 @@ class ComponentsModel:
     - Batched `component|status` variable with component dimension
     - Batched constraints linking component status to flow statuses
     - Status features (active_hours, startup, shutdown, etc.) via StatusHelpers
+    - Batched piecewise conversion variables and constraints
 
     Example:
-        >>> component_statuses = ComponentsModel(
+        >>> components_model = ComponentsModel(
         ...     model=flow_system_model,
-        ...     components=components_with_status,
+        ...     components_with_status=components_with_status,
+        ...     converters_with_piecewise=converters_with_piecewise,
         ...     flows_model=flows_model,
         ... )
-        >>> component_statuses.create_variables()
-        >>> component_statuses.create_constraints()
-        >>> component_statuses.create_status_features()
-        >>> component_statuses.create_effect_shares()
+        >>> components_model.create_variables()
+        >>> components_model.create_constraints()
+        >>> components_model.create_status_features()
+        >>> components_model.create_piecewise_conversion_variables()
+        >>> components_model.create_piecewise_conversion_constraints()
     """
 
     def __init__(
         self,
         model: FlowSystemModel,
-        components: list[Component],
+        components_with_status: list[Component],
+        converters_with_piecewise: list,  # list[LinearConverter] - avoid circular import
         flows_model: FlowsModel,
     ):
-        """Initialize the type-level component status model.
+        """Initialize the type-level component model.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            components: List of components with status_parameters.
-            flows_model: The FlowsModel that owns flow status variables.
+            components_with_status: List of components with status_parameters.
+            converters_with_piecewise: List of LinearConverters with piecewise_conversion.
+            flows_model: The FlowsModel that owns flow variables.
         """
+        from .features import PiecewiseHelpers
 
         self._logger = logging.getLogger('flixopt')
         self.model = model
-        self.components = components
+        self.components = components_with_status
+        self.converters_with_piecewise = converters_with_piecewise
         self._flows_model = flows_model
-        self.element_ids: list[str] = [c.label for c in components]
+        self.element_ids: list[str] = [c.label for c in components_with_status]
         self.dim_name = 'component'
+        self._PiecewiseHelpers = PiecewiseHelpers
 
         # Variables dict
         self._variables: dict[str, linopy.Variable] = {}
@@ -2400,7 +2410,13 @@ class ComponentsModel:
         # Status feature variables (active_hours, startup, shutdown, etc.) created by StatusHelpers
         self._status_variables: dict[str, linopy.Variable] = {}
 
-        self._logger.debug(f'ComponentsModel initialized: {len(components)} components with status')
+        # Piecewise conversion variables
+        self._piecewise_variables: dict[str, linopy.Variable] = {}
+
+        self._logger.debug(
+            f'ComponentsModel initialized: {len(components_with_status)} with status, '
+            f'{len(converters_with_piecewise)} with piecewise conversion'
+        )
 
     # --- Cached Properties ---
 
@@ -2442,6 +2458,129 @@ class ComponentsModel:
             counts,
             dims=['component'],
             coords={'component': self.element_ids},
+        )
+
+    # --- Piecewise Conversion Properties ---
+
+    @cached_property
+    def _piecewise_element_ids(self) -> list[str]:
+        """Element IDs for converters with piecewise conversion."""
+        return [c.label for c in self.converters_with_piecewise]
+
+    @cached_property
+    def _piecewise_segment_counts(self) -> dict[str, int]:
+        """Dict mapping converter_id -> number of segments."""
+        return {
+            c.label: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.converters_with_piecewise
+        }
+
+    @cached_property
+    def _piecewise_max_segments(self) -> int:
+        """Maximum segment count across all converters."""
+        if not self.converters_with_piecewise:
+            return 0
+        return max(self._piecewise_segment_counts.values())
+
+    @cached_property
+    def _piecewise_segment_mask(self) -> xr.DataArray:
+        """(component, segment) mask: 1=valid, 0=padded."""
+        _, mask = self._PiecewiseHelpers.collect_segment_info(
+            self._piecewise_element_ids, self._piecewise_segment_counts, self.dim_name
+        )
+        return mask
+
+    @cached_property
+    def _piecewise_flow_breakpoints(self) -> dict[str, tuple[xr.DataArray, xr.DataArray]]:
+        """Dict mapping flow_id -> (starts, ends) padded DataArrays."""
+        # Collect all flow ids that appear in piecewise conversions
+        all_flow_ids: set[str] = set()
+        for conv in self.converters_with_piecewise:
+            for flow_label in conv.piecewise_conversion.piecewises:
+                flow_id = conv.flows[flow_label].label_full
+                all_flow_ids.add(flow_id)
+
+        result = {}
+        for flow_id in all_flow_ids:
+            breakpoints: dict[str, tuple[list[float], list[float]]] = {}
+            for conv in self.converters_with_piecewise:
+                # Check if this converter has this flow
+                found = False
+                for flow_label, piecewise in conv.piecewise_conversion.piecewises.items():
+                    if conv.flows[flow_label].label_full == flow_id:
+                        starts = [p.start for p in piecewise]
+                        ends = [p.end for p in piecewise]
+                        breakpoints[conv.label] = (starts, ends)
+                        found = True
+                        break
+                if not found:
+                    # This converter doesn't have this flow - use zeros
+                    breakpoints[conv.label] = (
+                        [0.0] * self._piecewise_max_segments,
+                        [0.0] * self._piecewise_max_segments,
+                    )
+
+            starts, ends = self._PiecewiseHelpers.pad_breakpoints(
+                self._piecewise_element_ids, breakpoints, self._piecewise_max_segments, self.dim_name
+            )
+            result[flow_id] = (starts, ends)
+
+        return result
+
+    @cached_property
+    def piecewise_segment_counts(self) -> xr.DataArray | None:
+        """(component,) - number of segments per converter with piecewise conversion."""
+        if not self.converters_with_piecewise:
+            return None
+        counts = [len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.converters_with_piecewise]
+        return xr.DataArray(
+            counts,
+            dims=[self.dim_name],
+            coords={self.dim_name: self._piecewise_element_ids},
+        )
+
+    @cached_property
+    def piecewise_segment_mask(self) -> xr.DataArray | None:
+        """(component, segment) - 1=valid segment, 0=padded."""
+        if not self.converters_with_piecewise:
+            return None
+        return self._piecewise_segment_mask
+
+    @cached_property
+    def piecewise_breakpoints(self) -> xr.Dataset | None:
+        """Dataset with (component, segment, flow) breakpoints.
+
+        Variables:
+            - starts: segment start values
+            - ends: segment end values
+        """
+        if not self.converters_with_piecewise:
+            return None
+
+        # Collect all flows
+        all_flows = list(self._piecewise_flow_breakpoints.keys())
+        n_components = len(self._piecewise_element_ids)
+        n_segments = self._piecewise_max_segments
+        n_flows = len(all_flows)
+
+        starts_data = np.zeros((n_components, n_segments, n_flows))
+        ends_data = np.zeros((n_components, n_segments, n_flows))
+
+        for f_idx, flow_id in enumerate(all_flows):
+            starts_2d, ends_2d = self._piecewise_flow_breakpoints[flow_id]
+            starts_data[:, :, f_idx] = starts_2d.values
+            ends_data[:, :, f_idx] = ends_2d.values
+
+        coords = {
+            self.dim_name: self._piecewise_element_ids,
+            'segment': list(range(n_segments)),
+            'flow': all_flows,
+        }
+
+        return xr.Dataset(
+            {
+                'starts': xr.DataArray(starts_data, dims=[self.dim_name, 'segment', 'flow'], coords=coords),
+                'ends': xr.DataArray(ends_data, dims=[self.dim_name, 'segment', 'flow'], coords=coords),
+            }
         )
 
     def create_variables(self) -> None:
@@ -2605,6 +2744,90 @@ class ComponentsModel:
     def create_effect_shares(self) -> None:
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
         pass
+
+    # === Piecewise Conversion Methods ===
+
+    def create_piecewise_conversion_variables(self) -> dict[str, linopy.Variable]:
+        """Create batched piecewise conversion variables.
+
+        Returns:
+            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
+        """
+        if not self.converters_with_piecewise:
+            return {}
+
+        base_coords = self.model.get_coords(['time', 'period', 'scenario'])
+        name_prefix = 'component|piecewise_conversion'
+
+        self._piecewise_variables = self._PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            self._piecewise_element_ids,
+            self._piecewise_max_segments,
+            self.dim_name,
+            self._piecewise_segment_mask,
+            base_coords,
+            name_prefix,
+        )
+
+        self._logger.debug(
+            f'ComponentsModel created piecewise variables for {len(self.converters_with_piecewise)} converters'
+        )
+        return self._piecewise_variables
+
+    def create_piecewise_conversion_constraints(self) -> None:
+        """Create batched piecewise constraints and coupling constraints."""
+        if not self.converters_with_piecewise:
+            return
+
+        name_prefix = 'component|piecewise_conversion'
+
+        # Get zero_point for each converter (status variable if available)
+        # TODO: Integrate status from ComponentsModel when converters overlap
+        zero_point = None
+
+        # Create lambda_sum and single_segment constraints
+        self._PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            self._piecewise_variables,
+            self._piecewise_segment_mask,
+            zero_point,
+            self.dim_name,
+            name_prefix,
+        )
+
+        # Create coupling constraints for each flow
+        flow_rate = self._flows_model._variables['rate']
+        lambda0 = self._piecewise_variables['lambda0']
+        lambda1 = self._piecewise_variables['lambda1']
+
+        for flow_id, (starts, ends) in self._piecewise_flow_breakpoints.items():
+            # Select this flow's rate variable
+            flow_rate_for_flow = flow_rate.sel(flow=flow_id)
+
+            # Create coupling constraint
+            # The reconstructed value has (component, time, ...) dims
+            reconstructed = (lambda0 * starts + lambda1 * ends).sum('segment')
+
+            # Map flow_id -> component (converter)
+            flow_to_component = {}
+            for conv in self.converters_with_piecewise:
+                for flow in list(conv.inputs) + list(conv.outputs):
+                    if flow.label_full == flow_id:
+                        flow_to_component[flow_id] = conv.label
+                        break
+
+            if flow_id in flow_to_component:
+                comp_id = flow_to_component[flow_id]
+                # Select this component's reconstructed value
+                reconstructed_for_comp = reconstructed.sel(component=comp_id)
+                self.model.add_constraints(
+                    flow_rate_for_flow == reconstructed_for_comp,
+                    name=f'{name_prefix}|{flow_id}|coupling',
+                )
+
+        self._logger.debug(
+            f'ComponentsModel created piecewise constraints for {len(self.converters_with_piecewise)} converters'
+        )
 
     # === Variable accessor properties ===
 
