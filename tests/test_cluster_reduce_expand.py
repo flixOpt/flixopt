@@ -769,7 +769,7 @@ class TestPeakSelection:
 
     def test_extremes_max_value_parameter_accepted(self, timesteps_8_days):
         """Verify extremes max_value parameter is accepted."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -785,7 +785,7 @@ class TestPeakSelection:
 
     def test_extremes_min_value_parameter_accepted(self, timesteps_8_days):
         """Verify extremes min_value parameter is accepted."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -802,7 +802,7 @@ class TestPeakSelection:
 
     def test_extremes_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
         """Verify extremes config captures day with maximum demand."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -998,7 +998,7 @@ class TestSegmentation:
 
     def test_segment_config_creates_segmented_system(self, timesteps_8_days):
         """Test that SegmentConfig creates a segmented FlowSystem."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1022,7 +1022,7 @@ class TestSegmentation:
 
     def test_segmented_system_has_variable_timestep_durations(self, timesteps_8_days):
         """Test that segmented systems have variable timestep durations."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1044,7 +1044,7 @@ class TestSegmentation:
 
     def test_segmented_system_optimizes(self, solver_fixture, timesteps_8_days):
         """Test that segmented systems can be optimized."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1069,7 +1069,7 @@ class TestSegmentation:
 
     def test_segmented_expand_restores_original_timesteps(self, solver_fixture, timesteps_8_days):
         """Test that expand() restores the original timestep count for segmented systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1093,7 +1093,7 @@ class TestSegmentation:
 
     def test_segmented_expand_preserves_objective(self, solver_fixture, timesteps_8_days):
         """Test that expand() preserves the objective value for segmented systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1114,7 +1114,7 @@ class TestSegmentation:
 
     def test_segmented_expand_has_correct_flow_rates(self, solver_fixture, timesteps_8_days):
         """Test that expanded flow rates have correct timestep count."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1136,7 +1136,7 @@ class TestSegmentation:
 
     def test_segmented_statistics_after_expand(self, solver_fixture, timesteps_8_days):
         """Test that statistics accessor works after expanding segmented system."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1160,7 +1160,7 @@ class TestSegmentation:
 
     def test_segmented_timestep_mapping_uses_segment_assignments(self, timesteps_8_days):
         """Test that timestep_mapping correctly maps original timesteps to segments."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1188,7 +1188,7 @@ class TestSegmentation:
         incorrectly for segmented systems, causing total_effects to not match the
         solution's objective value.
         """
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         # Create system with specified timestep frequency
         n_timesteps = 72 if freq == '1h' else 36  # 3 days worth
@@ -1231,7 +1231,7 @@ class TestSegmentationWithStorage:
 
     def test_segmented_storage_optimizes(self, solver_fixture, timesteps_8_days):
         """Test that segmented systems with storage can be optimized."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
 
@@ -1249,7 +1249,7 @@ class TestSegmentationWithStorage:
 
     def test_segmented_storage_expand(self, solver_fixture, timesteps_8_days):
         """Test that segmented storage systems can be expanded."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
 
@@ -1273,7 +1273,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
         """Test segmentation with multiple periods."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1294,7 +1294,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_with_periods_expand(self, solver_fixture, timesteps_8_days, periods_2):
         """Test expansion of segmented multi-period systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1318,7 +1318,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_different_clustering_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that different periods can have different cluster assignments."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1346,7 +1346,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_expand_maps_correctly_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that expand maps values correctly for each period independently."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1381,7 +1381,7 @@ class TestSegmentationIO:
 
     def test_segmented_roundtrip(self, solver_fixture, timesteps_8_days, tmp_path):
         """Test that segmented systems survive IO round-trip."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1411,7 +1411,7 @@ class TestSegmentationIO:
 
     def test_segmented_expand_after_load(self, solver_fixture, timesteps_8_days, tmp_path):
         """Test that expand works after loading segmented system."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 

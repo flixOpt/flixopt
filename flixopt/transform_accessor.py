@@ -20,7 +20,7 @@ from .modeling import _scalar_safe_reduce
 from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
-    from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
+    from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
 
     from .clustering import Clustering
     from .flow_system import FlowSystem
@@ -98,7 +98,7 @@ class TransformAccessor:
         Returns:
             ClusterConfig with weights set (either user-provided or auto-calculated).
         """
-        from tsam.config import ClusterConfig
+        from tsam import ClusterConfig
 
         # User provided ClusterConfig with weights - use as-is
         if cluster is not None and cluster.weights is not None:
@@ -1334,7 +1334,7 @@ class TransformAccessor:
         Examples:
             Basic clustering with peak preservation:
 
-            >>> from tsam.config import ExtremeConfig
+            >>> from tsam import ExtremeConfig
             >>> fs_clustered = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',

@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     if aggregated:
         # Use the transform.cluster() API with tsam 3.0
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         extremes = None
         if keep_extreme_periods:
