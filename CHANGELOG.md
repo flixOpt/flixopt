@@ -83,7 +83,7 @@ fs_clustered = flow_system.transform.cluster(
     n_clusters=12,                    # 12 typical days from a year
     cluster_duration='1D',            # Each cluster represents one day
     cluster=ClusterConfig(method='hierarchical'),
-    extremes=ExtremeConfig(add_peaks_for=['HeatDemand(Q)|fixed_relative_profile']),
+    extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
 )
 fs_clustered.optimize(solver)
 
@@ -262,7 +262,7 @@ from tsam import ClusterConfig, ExtremeConfig
 fs.transform.cluster(
     n_clusters=8,
     cluster=ClusterConfig(method='hierarchical'),
-    extremes=ExtremeConfig(add_peaks_for=['demand']),
+    extremes=ExtremeConfig(method='new_cluster', max_value=['demand']),
 )
 ```
 
@@ -272,9 +272,9 @@ fs.transform.cluster(
 |--------------|---------------|
 | `cluster_method` | `cluster=ClusterConfig(method=...)` |
 | `representation_method` | `cluster=ClusterConfig(representation=...)` |
-| `time_series_for_high_peaks` | `extremes=ExtremeConfig(add_peaks_for=[...])` |
-| `time_series_for_low_peaks` | `extremes=ExtremeConfig(add_valleys_for=[...])` |
-| `extreme_period_method` | `extremes=ExtremeConfig(period_selection_method=...)` |
+| `time_series_for_high_peaks` | `extremes=ExtremeConfig(max_value=[...])` |
+| `time_series_for_low_peaks` | `extremes=ExtremeConfig(min_value=[...])` |
+| `extreme_period_method` | `extremes=ExtremeConfig(method=...)` |
 | `predef_cluster_order` | `predef_cluster_assignments` |
 
 #### Other Breaking Changes
