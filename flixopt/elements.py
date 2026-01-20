@@ -1335,17 +1335,13 @@ class FlowsModel(TypeModel):
         )
 
     def _create_piecewise_effects(self) -> None:
-        """Create piecewise effect submodels for flows with piecewise_effects_of_investment.
+        """Create batched piecewise effects for flows with piecewise_effects_of_investment.
 
-        Piecewise effects require individual submodels (not batchable) because they
-        involve SOS2 constraints with per-element segment definitions.
-
-        For each flow with piecewise_effects_of_investment:
-        - Gets the size variable slice for that flow
-        - Gets the invested variable slice if applicable (for zero_point)
-        - Creates a PiecewiseEffectsModel submodel
+        Uses PiecewiseHelpers for pad-to-max batching across all flows with
+        piecewise effects. Creates batched segment variables, share variables,
+        and coupling constraints.
         """
-        from .features import PiecewiseEffectsModel
+        from .features import PiecewiseHelpers
 
         dim = self.dim_name
         size_var = self._variables.get('size')
@@ -1362,31 +1358,138 @@ class FlowsModel(TypeModel):
         if not flows_with_piecewise:
             return
 
-        for flow in flows_with_piecewise:
-            flow_id = flow.label_full
-            params = self._invest_params[flow_id]
+        element_ids = [f.label_full for f in flows_with_piecewise]
 
-            # Get size variable for this flow
-            flow_size = size_var.sel({dim: flow_id})
+        # Collect segment counts
+        segment_counts = {
+            f.label_full: len(self._invest_params[f.label_full].piecewise_effects_of_investment.piecewise_origin)
+            for f in flows_with_piecewise
+        }
 
-            # Get invested variable for zero_point (if non-mandatory)
-            flow_invested = None
-            if not params.mandatory and invested_var is not None:
-                if flow_id in invested_var.coords.get(dim, []):
-                    flow_invested = invested_var.sel({dim: flow_id})
+        # Build segment mask
+        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(element_ids, segment_counts, dim)
 
-            # Create piecewise effects model
-            piecewise_model = PiecewiseEffectsModel(
-                model=self.model,
-                label_of_element=flow_id,
-                label_of_model=f'{flow_id}|PiecewiseEffects',
-                piecewise_origin=(flow_size.name, params.piecewise_effects_of_investment.piecewise_origin),
-                piecewise_shares=params.piecewise_effects_of_investment.piecewise_shares,
-                zero_point=flow_invested,
+        # Collect origin breakpoints (for size)
+        origin_breakpoints = {}
+        for f in flows_with_piecewise:
+            fid = f.label_full
+            piecewise_origin = self._invest_params[fid].piecewise_effects_of_investment.piecewise_origin
+            starts = [p.start for p in piecewise_origin]
+            ends = [p.end for p in piecewise_origin]
+            origin_breakpoints[fid] = (starts, ends)
+
+        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(
+            element_ids, origin_breakpoints, max_segments, dim
+        )
+
+        # Collect all effect names across all flows
+        all_effect_names: set[str] = set()
+        for f in flows_with_piecewise:
+            fid = f.label_full
+            shares = self._invest_params[fid].piecewise_effects_of_investment.piecewise_shares
+            all_effect_names.update(shares.keys())
+
+        # Collect breakpoints for each effect
+        effect_breakpoints: dict[str, tuple[xr.DataArray, xr.DataArray]] = {}
+        for effect_name in all_effect_names:
+            breakpoints = {}
+            for f in flows_with_piecewise:
+                fid = f.label_full
+                shares = self._invest_params[fid].piecewise_effects_of_investment.piecewise_shares
+                if effect_name in shares:
+                    piecewise = shares[effect_name]
+                    starts = [p.start for p in piecewise]
+                    ends = [p.end for p in piecewise]
+                else:
+                    # This flow doesn't have this effect - use NaN (will be masked)
+                    starts = [0.0] * segment_counts[fid]
+                    ends = [0.0] * segment_counts[fid]
+                breakpoints[fid] = (starts, ends)
+
+            starts, ends = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
+            effect_breakpoints[effect_name] = (starts, ends)
+
+        # Create batched piecewise variables
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            element_ids,
+            max_segments,
+            dim,
+            segment_mask,
+            base_coords,
+            'piecewise_effects',
+        )
+
+        # Build zero_point array if any flows are non-mandatory
+        zero_point = None
+        if invested_var is not None:
+            non_mandatory_ids = [fid for fid in element_ids if not self._invest_params[fid].mandatory]
+            if non_mandatory_ids:
+                # Select invested for non-mandatory flows in this batch
+                available_ids = [fid for fid in non_mandatory_ids if fid in invested_var.coords.get(dim, [])]
+                if available_ids:
+                    zero_point = invested_var.sel({dim: element_ids})
+
+        # Create piecewise constraints
+        PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            piecewise_vars,
+            segment_mask,
+            zero_point,
+            dim,
+            'piecewise_effects',
+        )
+
+        # Create coupling constraint for size (origin)
+        size_subset = size_var.sel({dim: element_ids})
+        PiecewiseHelpers.create_coupling_constraint(
+            self.model,
+            size_subset,
+            piecewise_vars['lambda0'],
+            piecewise_vars['lambda1'],
+            origin_starts,
+            origin_ends,
+            'piecewise_effects|size|coupling',
+        )
+
+        # Create share variables and coupling constraints for each effect
+        import pandas as pd
+
+        coords_dict = {dim: pd.Index(element_ids, name=dim)}
+        if base_coords is not None:
+            coords_dict.update(dict(base_coords))
+        share_coords = xr.Coordinates(coords_dict)
+
+        for effect_name in all_effect_names:
+            # Create batched share variable
+            share_var = self.model.add_variables(
+                lower=-np.inf,  # Shares can be negative (e.g., costs)
+                upper=np.inf,
+                coords=share_coords,
+                name=f'piecewise_effects|{effect_name}',
             )
-            piecewise_model.do_modeling()
 
-            logger.debug(f'Created piecewise effects for {flow_id}')
+            # Create coupling constraint for this share
+            starts, ends = effect_breakpoints[effect_name]
+            PiecewiseHelpers.create_coupling_constraint(
+                self.model,
+                share_var,
+                piecewise_vars['lambda0'],
+                piecewise_vars['lambda1'],
+                starts,
+                ends,
+                f'piecewise_effects|{effect_name}|coupling',
+            )
+
+            # Add to effects (sum over element dimension for periodic share)
+            self.model.effects.add_share_to_effects(
+                name=f'piecewise_effects_{effect_name}',
+                expressions={effect_name: share_var.sum(dim)},
+                target='periodic',
+            )
+
+        logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
     # === Investment effect properties (used by EffectsModel) ===
 

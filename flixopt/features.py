@@ -767,6 +767,233 @@ class MaskHelpers:
         return {e.label: [f.label_full for f in get_flows(e)] for e in elements}
 
 
+class PiecewiseHelpers:
+    """Static helper methods for batched piecewise linear modeling.
+
+    Enables batching of piecewise constraints across multiple elements with
+    potentially different segment counts using the "pad to max" approach.
+
+    Pattern:
+        1. Collect segment counts from elements
+        2. Build segment mask (valid vs padded segments)
+        3. Pad breakpoints to max segment count
+        4. Create batched variables (inside_piece, lambda0, lambda1)
+        5. Create batched constraints
+
+    Variables created (all with element and segment dimensions):
+        - inside_piece: binary, 1 if segment is active
+        - lambda0: continuous [0,1], weight for segment start
+        - lambda1: continuous [0,1], weight for segment end
+
+    Constraints:
+        - lambda0 + lambda1 == inside_piece (per element, segment)
+        - sum(inside_piece, segment) <= 1 or zero_point (per element)
+        - var == sum(lambda0 * starts + lambda1 * ends) (coupling)
+    """
+
+    @staticmethod
+    def collect_segment_info(
+        element_ids: list[str],
+        segment_counts: dict[str, int],
+        dim_name: str,
+    ) -> tuple[int, xr.DataArray]:
+        """Collect segment counts and build validity mask.
+
+        Args:
+            element_ids: List of element identifiers.
+            segment_counts: Dict mapping element_id -> number of segments.
+            dim_name: Name for the element dimension.
+
+        Returns:
+            max_segments: Maximum segment count across all elements.
+            segment_mask: (element, segment) DataArray, 1=valid, 0=padded.
+        """
+        max_segments = max(segment_counts.values())
+
+        # Build segment validity mask
+        mask_data = np.zeros((len(element_ids), max_segments))
+        for i, eid in enumerate(element_ids):
+            n_segments = segment_counts[eid]
+            mask_data[i, :n_segments] = 1
+
+        segment_mask = xr.DataArray(
+            mask_data,
+            dims=[dim_name, 'segment'],
+            coords={dim_name: element_ids, 'segment': list(range(max_segments))},
+        )
+
+        return max_segments, segment_mask
+
+    @staticmethod
+    def pad_breakpoints(
+        element_ids: list[str],
+        breakpoints: dict[str, tuple[list[float], list[float]]],
+        max_segments: int,
+        dim_name: str,
+    ) -> tuple[xr.DataArray, xr.DataArray]:
+        """Pad breakpoints to (element, segment) arrays.
+
+        Args:
+            element_ids: List of element identifiers.
+            breakpoints: Dict mapping element_id -> (starts, ends) lists.
+            max_segments: Maximum segment count to pad to.
+            dim_name: Name for the element dimension.
+
+        Returns:
+            starts: (element, segment) DataArray of segment start values.
+            ends: (element, segment) DataArray of segment end values.
+        """
+        starts_data = np.zeros((len(element_ids), max_segments))
+        ends_data = np.zeros((len(element_ids), max_segments))
+
+        for i, eid in enumerate(element_ids):
+            element_starts, element_ends = breakpoints[eid]
+            n_segments = len(element_starts)
+            starts_data[i, :n_segments] = element_starts
+            ends_data[i, :n_segments] = element_ends
+            # Padded segments remain 0, which is fine since they're masked out
+
+        coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
+        starts = xr.DataArray(starts_data, dims=[dim_name, 'segment'], coords=coords)
+        ends = xr.DataArray(ends_data, dims=[dim_name, 'segment'], coords=coords)
+
+        return starts, ends
+
+    @staticmethod
+    def create_piecewise_variables(
+        model: FlowSystemModel,
+        element_ids: list[str],
+        max_segments: int,
+        dim_name: str,
+        segment_mask: xr.DataArray,
+        base_coords: xr.Coordinates | None,
+        name_prefix: str,
+    ) -> dict[str, linopy.Variable]:
+        """Create batched piecewise variables.
+
+        Args:
+            model: The FlowSystemModel.
+            element_ids: List of element identifiers.
+            max_segments: Number of segments (after padding).
+            dim_name: Name for the element dimension.
+            segment_mask: (element, segment) validity mask.
+            base_coords: Additional coordinates (time, period, scenario).
+            name_prefix: Prefix for variable names.
+
+        Returns:
+            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
+        """
+        import pandas as pd
+
+        # Build coordinates
+        coords_dict = {
+            dim_name: pd.Index(element_ids, name=dim_name),
+            'segment': pd.Index(list(range(max_segments)), name='segment'),
+        }
+        if base_coords is not None:
+            coords_dict.update(dict(base_coords))
+
+        full_coords = xr.Coordinates(coords_dict)
+
+        # inside_piece: binary, but upper=0 for padded segments
+        inside_piece = model.add_variables(
+            lower=0,
+            upper=segment_mask,  # 0 for padded, 1 for valid
+            binary=True,
+            coords=full_coords,
+            name=f'{name_prefix}|inside_piece',
+        )
+
+        # lambda0, lambda1: continuous [0, 1], but upper=0 for padded segments
+        lambda0 = model.add_variables(
+            lower=0,
+            upper=segment_mask,
+            coords=full_coords,
+            name=f'{name_prefix}|lambda0',
+        )
+
+        lambda1 = model.add_variables(
+            lower=0,
+            upper=segment_mask,
+            coords=full_coords,
+            name=f'{name_prefix}|lambda1',
+        )
+
+        return {
+            'inside_piece': inside_piece,
+            'lambda0': lambda0,
+            'lambda1': lambda1,
+        }
+
+    @staticmethod
+    def create_piecewise_constraints(
+        model: FlowSystemModel,
+        variables: dict[str, linopy.Variable],
+        segment_mask: xr.DataArray,
+        zero_point: linopy.Variable | xr.DataArray | None,
+        dim_name: str,
+        name_prefix: str,
+    ) -> None:
+        """Create batched piecewise constraints.
+
+        Creates:
+            - lambda0 + lambda1 == inside_piece (for valid segments only)
+            - sum(inside_piece, segment) <= 1 or zero_point
+
+        Args:
+            model: The FlowSystemModel.
+            variables: Dict with 'inside_piece', 'lambda0', 'lambda1'.
+            segment_mask: (element, segment) validity mask.
+            zero_point: Optional variable/array for zero-point constraint.
+            dim_name: Name for the element dimension.
+            name_prefix: Prefix for constraint names.
+        """
+        inside_piece = variables['inside_piece']
+        lambda0 = variables['lambda0']
+        lambda1 = variables['lambda1']
+
+        # Constraint: lambda0 + lambda1 == inside_piece (only for valid segments)
+        # For padded segments, all variables are 0, so constraint is 0 == 0 (trivially satisfied)
+        model.add_constraints(
+            lambda0 + lambda1 == inside_piece,
+            name=f'{name_prefix}|lambda_sum',
+        )
+
+        # Constraint: sum(inside_piece) <= 1 (or <= zero_point)
+        # This ensures at most one segment is active per element
+        rhs = 1 if zero_point is None else zero_point
+        model.add_constraints(
+            inside_piece.sum('segment') <= rhs,
+            name=f'{name_prefix}|single_segment',
+        )
+
+    @staticmethod
+    def create_coupling_constraint(
+        model: FlowSystemModel,
+        target_var: linopy.Variable,
+        lambda0: linopy.Variable,
+        lambda1: linopy.Variable,
+        starts: xr.DataArray,
+        ends: xr.DataArray,
+        name: str,
+    ) -> None:
+        """Create variable coupling constraint.
+
+        Creates: target_var == sum(lambda0 * starts + lambda1 * ends, segment)
+
+        Args:
+            model: The FlowSystemModel.
+            target_var: The variable to couple (e.g., flow_rate, size).
+            lambda0: Lambda0 variable from create_piecewise_variables.
+            lambda1: Lambda1 variable from create_piecewise_variables.
+            starts: (element, segment) array of segment start values.
+            ends: (element, segment) array of segment end values.
+            name: Name for the constraint.
+        """
+        reconstructed = (lambda0 * starts + lambda1 * ends).sum('segment')
+        model.add_constraints(target_var == reconstructed, name=name)
+
+
 class InvestmentModel(Submodel):
     """Mathematical model implementation for investment decisions.
 

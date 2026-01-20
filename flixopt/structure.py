@@ -860,7 +860,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         import time
 
-        from .components import LinearConverter, LinearConvertersModel, Storage, StoragesModel
+        from .components import LinearConverter, LinearConvertersModel, PiecewiseConvertersModel, Storage, StoragesModel
         from .elements import BusesModel, FlowsModel
 
         timings = {}
@@ -1024,6 +1024,18 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._linear_converters_model.create_constraints()
 
         record('linear_converters')
+
+        # Collect LinearConverters with piecewise_conversion
+        converters_with_piecewise = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
+        ]
+
+        # Create type-level model for batched piecewise conversion constraints
+        self._piecewise_converters_model = PiecewiseConvertersModel(self, converters_with_piecewise, self._flows_model)
+        self._piecewise_converters_model.create_variables()
+        self._piecewise_converters_model.create_constraints()
+
+        record('piecewise_converters')
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it

@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, InvestmentProxy, MaskHelpers, PiecewiseModel
+from .features import InvestmentModel, InvestmentProxy, MaskHelpers
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
@@ -873,29 +873,10 @@ class LinearConverterModel(ComponentModel):
         """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
         super()._do_modeling()
 
-        # Conversion factor constraints are now handled by LinearConvertersModel (batched)
-        # Only create piecewise conversion constraints here
-        if self.element.conversion_factors:
-            # Handled by LinearConvertersModel at type-level
-            pass
-        else:
-            # TODO: Improve Inclusion of StatusParameters. Instead of creating a Binary in every flow, the binary could only be part of the Piece itself
-            piecewise_conversion = {
-                self.element.flows[flow].submodel.flow_rate.name: piecewise
-                for flow, piecewise in self.element.piecewise_conversion.items()
-            }
-
-            self.piecewise_conversion = self.add_submodels(
-                PiecewiseModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    label_of_model=f'{self.label_of_element}',
-                    piecewise_variables=piecewise_conversion,
-                    zero_point=self.status.status if self.status is not None else False,
-                    dims=('time', 'period', 'scenario'),
-                ),
-                short_name='PiecewiseConversion',
-            )
+        # Both conversion factor and piecewise conversion constraints are now handled
+        # by type-level models (LinearConvertersModel and PiecewiseConvertersModel)
+        # This model is kept for component-specific logic and results structure
+        pass
 
 
 class LinearConvertersModel:
@@ -1098,6 +1079,183 @@ class LinearConvertersModel:
                 )
 
         self._logger.debug(f'LinearConvertersModel created batched constraints for {len(self.converters)} converters')
+
+
+class PiecewiseConvertersModel:
+    """Type-level model for batched piecewise conversion constraints across LinearConverters.
+
+    Handles piecewise conversion constraints for ALL LinearConverters with piecewise_conversion
+    using the "pad to max" batching approach from PiecewiseHelpers.
+
+    Pattern:
+        - Collect all converters with piecewise_conversion
+        - Find max segments across all converters
+        - Create batched segment variables (inside_piece, lambda0, lambda1)
+        - Create batched segment constraints (lambda_sum, single_segment)
+        - Create coupling constraints for each flow
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        converters: list[LinearConverter],
+        flows_model,  # FlowsModel - avoid circular import
+    ):
+        """Initialize the type-level model for piecewise LinearConverters.
+
+        Args:
+            model: The FlowSystemModel to create constraints in.
+            converters: List of LinearConverters with piecewise_conversion.
+            flows_model: The FlowsModel containing flow_rate variables.
+        """
+        import logging
+
+        from .features import PiecewiseHelpers
+
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.converters = converters
+        self._flows_model = flows_model
+        self.element_ids: list[str] = [c.label for c in converters]
+        self.dim_name = 'converter'
+        self._PiecewiseHelpers = PiecewiseHelpers
+
+        self._logger.debug(f'PiecewiseConvertersModel initialized: {len(converters)} converters')
+
+    @functools.cached_property
+    def _segment_counts(self) -> dict[str, int]:
+        """Dict mapping converter_id -> number of segments."""
+        return {c.label: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.converters}
+
+    @functools.cached_property
+    def _max_segments(self) -> int:
+        """Maximum segment count across all converters."""
+        if not self.converters:
+            return 0
+        return max(self._segment_counts.values())
+
+    @functools.cached_property
+    def _segment_mask(self) -> xr.DataArray:
+        """(converter, segment) mask: 1=valid, 0=padded."""
+        _, mask = self._PiecewiseHelpers.collect_segment_info(self.element_ids, self._segment_counts, self.dim_name)
+        return mask
+
+    @functools.cached_property
+    def _flow_breakpoints(self) -> dict[str, tuple[xr.DataArray, xr.DataArray]]:
+        """Dict mapping flow_id -> (starts, ends) padded DataArrays.
+
+        Returns breakpoints for each flow that appears in any piecewise_conversion.
+        Format: flow_id -> ((converter, segment) starts, (converter, segment) ends)
+        """
+        # Collect all flow ids that appear in piecewise conversions
+        all_flow_ids: set[str] = set()
+        for conv in self.converters:
+            for flow_label in conv.piecewise_conversion.piecewises:
+                flow_id = conv.flows[flow_label].label_full
+                all_flow_ids.add(flow_id)
+
+        result = {}
+        for flow_id in all_flow_ids:
+            breakpoints: dict[str, tuple[list[float], list[float]]] = {}
+            for conv in self.converters:
+                # Check if this converter has this flow
+                found = False
+                for flow_label, piecewise in conv.piecewise_conversion.piecewises.items():
+                    if conv.flows[flow_label].label_full == flow_id:
+                        starts = [p.start for p in piecewise]
+                        ends = [p.end for p in piecewise]
+                        breakpoints[conv.label] = (starts, ends)
+                        found = True
+                        break
+                if not found:
+                    # This converter doesn't have this flow - use zeros
+                    breakpoints[conv.label] = ([0.0] * self._max_segments, [0.0] * self._max_segments)
+
+            starts, ends = self._PiecewiseHelpers.pad_breakpoints(
+                self.element_ids, breakpoints, self._max_segments, self.dim_name
+            )
+            result[flow_id] = (starts, ends)
+
+        return result
+
+    def create_variables(self) -> dict[str, linopy.Variable]:
+        """Create batched piecewise variables.
+
+        Returns:
+            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
+        """
+        if not self.converters:
+            return {}
+
+        base_coords = self.model.get_coords(['time', 'period', 'scenario'])
+
+        self._variables = self._PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            self.element_ids,
+            self._max_segments,
+            self.dim_name,
+            self._segment_mask,
+            base_coords,
+            'piecewise_conversion',
+        )
+
+        self._logger.debug(f'PiecewiseConvertersModel created variables for {len(self.converters)} converters')
+        return self._variables
+
+    def create_constraints(self) -> None:
+        """Create batched piecewise constraints and coupling constraints."""
+        if not self.converters:
+            return
+
+        # Get zero_point for each converter (status variable if available)
+        # For now, use None - status handling will be integrated later
+        # TODO: Integrate status from ComponentsModel
+        zero_point = None
+
+        # Create lambda_sum and single_segment constraints
+        self._PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            self._variables,
+            self._segment_mask,
+            zero_point,
+            self.dim_name,
+            'piecewise_conversion',
+        )
+
+        # Create coupling constraints for each flow
+        flow_rate = self._flows_model._variables['rate']
+        lambda0 = self._variables['lambda0']
+        lambda1 = self._variables['lambda1']
+
+        for flow_id, (starts, ends) in self._flow_breakpoints.items():
+            # Select this flow's rate variable
+            # flow_rate has (flow, time, ...) dims
+            flow_rate_for_flow = flow_rate.sel(flow=flow_id)
+
+            # Create coupling constraint
+            # Need to select by converter for flows that belong to converters
+            # The reconstructed value has (converter, time, ...) dims
+            reconstructed = (lambda0 * starts + lambda1 * ends).sum('segment')
+
+            # We need to align flow_rate to the converter dimension
+            # Each flow only belongs to one converter, so we need to map flow -> converter
+            flow_to_converter = {}
+            for conv in self.converters:
+                for flow in list(conv.inputs) + list(conv.outputs):
+                    if flow.label_full == flow_id:
+                        flow_to_converter[flow_id] = conv.label
+                        break
+
+            if flow_id in flow_to_converter:
+                conv_id = flow_to_converter[flow_id]
+                # Select just this converter's reconstructed value
+                reconstructed_for_conv = reconstructed.sel(converter=conv_id)
+                self.model.add_constraints(
+                    flow_rate_for_flow == reconstructed_for_conv,
+                    name=f'piecewise_conversion|{flow_id}|coupling',
+                )
+
+        self._logger.debug(f'PiecewiseConvertersModel created constraints for {len(self.converters)} converters')
 
 
 class InterclusterStorageModel(ComponentModel):
@@ -2408,12 +2566,13 @@ class StoragesModel:
         return result
 
     def _create_piecewise_effects(self) -> None:
-        """Create piecewise effect submodels for storages with piecewise_effects_of_investment.
+        """Create batched piecewise effects for storages with piecewise_effects_of_investment.
 
-        Piecewise effects require individual submodels (not batchable) because they
-        involve SOS2 constraints with per-element segment definitions.
+        Uses PiecewiseHelpers for pad-to-max batching across all storages with
+        piecewise effects. Creates batched segment variables, share variables,
+        and coupling constraints.
         """
-        from .features import PiecewiseEffectsModel
+        from .features import PiecewiseHelpers
 
         dim = self.dim_name
         size_var = self._variables.get('size')
@@ -2432,31 +2591,137 @@ class StoragesModel:
         if not storages_with_piecewise:
             return
 
-        for storage in storages_with_piecewise:
-            storage_id = storage.label_full
-            params = self._invest_params[storage_id]
+        element_ids = [s.label_full for s in storages_with_piecewise]
 
-            # Get size variable for this storage
-            storage_size = size_var.sel({dim: storage_id})
+        # Collect segment counts
+        segment_counts = {
+            s.label_full: len(self._invest_params[s.label_full].piecewise_effects_of_investment.piecewise_origin)
+            for s in storages_with_piecewise
+        }
 
-            # Get invested variable for zero_point (if non-mandatory)
-            storage_invested = None
-            if not params.mandatory and invested_var is not None:
-                if storage_id in invested_var.coords.get(dim, []):
-                    storage_invested = invested_var.sel({dim: storage_id})
+        # Build segment mask
+        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(element_ids, segment_counts, dim)
 
-            # Create piecewise effects model
-            piecewise_model = PiecewiseEffectsModel(
-                model=self.model,
-                label_of_element=storage_id,
-                label_of_model=f'{storage_id}|PiecewiseEffects',
-                piecewise_origin=(storage_size.name, params.piecewise_effects_of_investment.piecewise_origin),
-                piecewise_shares=params.piecewise_effects_of_investment.piecewise_shares,
-                zero_point=storage_invested,
+        # Collect origin breakpoints (for size)
+        origin_breakpoints = {}
+        for s in storages_with_piecewise:
+            sid = s.label_full
+            piecewise_origin = self._invest_params[sid].piecewise_effects_of_investment.piecewise_origin
+            starts = [p.start for p in piecewise_origin]
+            ends = [p.end for p in piecewise_origin]
+            origin_breakpoints[sid] = (starts, ends)
+
+        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(
+            element_ids, origin_breakpoints, max_segments, dim
+        )
+
+        # Collect all effect names across all storages
+        all_effect_names: set[str] = set()
+        for s in storages_with_piecewise:
+            sid = s.label_full
+            shares = self._invest_params[sid].piecewise_effects_of_investment.piecewise_shares
+            all_effect_names.update(shares.keys())
+
+        # Collect breakpoints for each effect
+        effect_breakpoints: dict[str, tuple[xr.DataArray, xr.DataArray]] = {}
+        for effect_name in all_effect_names:
+            breakpoints = {}
+            for s in storages_with_piecewise:
+                sid = s.label_full
+                shares = self._invest_params[sid].piecewise_effects_of_investment.piecewise_shares
+                if effect_name in shares:
+                    piecewise = shares[effect_name]
+                    starts = [p.start for p in piecewise]
+                    ends = [p.end for p in piecewise]
+                else:
+                    # This storage doesn't have this effect - use zeros
+                    starts = [0.0] * segment_counts[sid]
+                    ends = [0.0] * segment_counts[sid]
+                breakpoints[sid] = (starts, ends)
+
+            starts, ends = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
+            effect_breakpoints[effect_name] = (starts, ends)
+
+        # Create batched piecewise variables
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            element_ids,
+            max_segments,
+            dim,
+            segment_mask,
+            base_coords,
+            'storage_piecewise_effects',
+        )
+
+        # Build zero_point array if any storages are non-mandatory
+        zero_point = None
+        if invested_var is not None:
+            non_mandatory_ids = [sid for sid in element_ids if not self._invest_params[sid].mandatory]
+            if non_mandatory_ids:
+                available_ids = [sid for sid in non_mandatory_ids if sid in invested_var.coords.get(dim, [])]
+                if available_ids:
+                    zero_point = invested_var.sel({dim: element_ids})
+
+        # Create piecewise constraints
+        PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            piecewise_vars,
+            segment_mask,
+            zero_point,
+            dim,
+            'storage_piecewise_effects',
+        )
+
+        # Create coupling constraint for size (origin)
+        size_subset = size_var.sel({dim: element_ids})
+        PiecewiseHelpers.create_coupling_constraint(
+            self.model,
+            size_subset,
+            piecewise_vars['lambda0'],
+            piecewise_vars['lambda1'],
+            origin_starts,
+            origin_ends,
+            'storage_piecewise_effects|size|coupling',
+        )
+
+        # Create share variables and coupling constraints for each effect
+        import pandas as pd
+
+        coords_dict = {dim: pd.Index(element_ids, name=dim)}
+        if base_coords is not None:
+            coords_dict.update(dict(base_coords))
+        share_coords = xr.Coordinates(coords_dict)
+
+        for effect_name in all_effect_names:
+            # Create batched share variable
+            share_var = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=share_coords,
+                name=f'storage_piecewise_effects|{effect_name}',
             )
-            piecewise_model.do_modeling()
 
-            logger.debug(f'Created piecewise effects for storage {storage_id}')
+            # Create coupling constraint for this share
+            starts, ends = effect_breakpoints[effect_name]
+            PiecewiseHelpers.create_coupling_constraint(
+                self.model,
+                share_var,
+                piecewise_vars['lambda0'],
+                piecewise_vars['lambda1'],
+                starts,
+                ends,
+                f'storage_piecewise_effects|{effect_name}|coupling',
+            )
+
+            # Add to effects (sum over element dimension for periodic share)
+            self.model.effects.add_share_to_effects(
+                name=f'storage_piecewise_effects_{effect_name}',
+                expressions={effect_name: share_var.sum(dim)},
+                target='periodic',
+            )
+
+        logger.debug(f'Created batched piecewise effects for {len(element_ids)} storages')
 
 
 class StorageModelProxy(ComponentModel):
