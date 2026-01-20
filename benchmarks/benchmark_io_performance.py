@@ -7,6 +7,7 @@ Usage:
     python benchmarks/benchmark_io_performance.py
 """
 
+import tempfile
 import time
 from typing import NamedTuple
 
@@ -38,7 +39,7 @@ def create_large_flow_system(
         n_components: Number of sink/source pairs (default 125).
 
     Returns:
-        Configured FlowSystem ready for optimization.
+        Configured FlowSystem.
     """
     timesteps = pd.date_range('2024-01-01', periods=n_timesteps, freq='4h')
     periods = pd.Index([2028 + i * 2 for i in range(n_periods)], name='period')
@@ -110,7 +111,6 @@ def run_io_benchmarks(
     n_timesteps: int = 2190,
     n_periods: int = 12,
     n_components: int = 125,
-    n_clusters: int = 8,
     iterations: int = 5,
 ) -> dict[str, BenchmarkResult]:
     """Run IO performance benchmarks.
@@ -119,7 +119,6 @@ def run_io_benchmarks(
         n_timesteps: Number of timesteps for the FlowSystem.
         n_periods: Number of periods.
         n_components: Number of components (sink/source pairs).
-        n_clusters: Number of clusters for aggregation.
         iterations: Number of benchmark iterations.
 
     Returns:
@@ -132,61 +131,52 @@ def run_io_benchmarks(
     print(f'  Timesteps: {n_timesteps}')
     print(f'  Periods: {n_periods}')
     print(f'  Components: {n_components}')
-    print(f'  Clusters: {n_clusters}')
     print(f'  Iterations: {iterations}')
 
-    # Create and prepare FlowSystem
+    # Create FlowSystem
     print('\n1. Creating FlowSystem...')
     fs = create_large_flow_system(n_timesteps, n_periods, n_components)
     print(f'   Components: {len(fs.components)}')
 
-    print('\n2. Clustering and solving...')
-    fs_clustered = fs.transform.cluster(n_clusters=n_clusters, cluster_duration='1D')
-
-    # Try Gurobi first, fall back to HiGHS if not available
-    try:
-        solver = fx.solvers.GurobiSolver()
-        fs_clustered.optimize(solver)
-    except Exception as e:
-        if 'gurobi' in str(e).lower() or 'license' in str(e).lower():
-            print(f'   Gurobi not available ({e}), falling back to HiGHS...')
-            solver = fx.solvers.HighsSolver()
-            fs_clustered.optimize(solver)
-        else:
-            raise
-
-    print('\n3. Expanding...')
-    fs_expanded = fs_clustered.transform.expand()
-    print(f'   Expanded timesteps: {len(fs_expanded.timesteps)}')
-
-    # Create dataset with solution
-    print('\n4. Creating dataset...')
-    ds = fs_expanded.to_dataset(include_solution=True)
+    # Create dataset
+    print('\n2. Creating dataset...')
+    ds = fs.to_dataset()
     print(f'   Variables: {len(ds.data_vars)}')
     print(f'   Size: {ds.nbytes / 1e6:.1f} MB')
 
     results = {}
 
     # Benchmark to_dataset
-    print('\n5. Benchmarking to_dataset()...')
-    result = benchmark_function(lambda: fs_expanded.to_dataset(include_solution=True), iterations=iterations)
+    print('\n3. Benchmarking to_dataset()...')
+    result = benchmark_function(lambda: fs.to_dataset(), iterations=iterations)
     results['to_dataset'] = result
     print(f'   Mean: {result.mean_ms:.1f}ms (std: {result.std_ms:.1f}ms)')
 
     # Benchmark from_dataset
-    print('\n6. Benchmarking from_dataset()...')
+    print('\n4. Benchmarking from_dataset()...')
     result = benchmark_function(lambda: fx.FlowSystem.from_dataset(ds), iterations=iterations)
     results['from_dataset'] = result
     print(f'   Mean: {result.mean_ms:.1f}ms (std: {result.std_ms:.1f}ms)')
 
+    # Benchmark NetCDF round-trip
+    print('\n5. Benchmarking NetCDF round-trip...')
+    with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
+        tmp_path = f.name
+
+    def netcdf_roundtrip():
+        fs.to_netcdf(tmp_path, overwrite=True)
+        return fx.FlowSystem.from_netcdf(tmp_path)
+
+    result = benchmark_function(netcdf_roundtrip, iterations=iterations)
+    results['netcdf_roundtrip'] = result
+    print(f'   Mean: {result.mean_ms:.1f}ms (std: {result.std_ms:.1f}ms)')
+
     # Verify restoration
-    print('\n7. Verification...')
+    print('\n6. Verification...')
     fs_restored = fx.FlowSystem.from_dataset(ds)
     print(f'   Components restored: {len(fs_restored.components)}')
     print(f'   Timesteps restored: {len(fs_restored.timesteps)}')
-    print(f'   Has solution: {fs_restored.solution is not None}')
-    if fs_restored.solution is not None:
-        print(f'   Solution variables: {len(fs_restored.solution.data_vars)}')
+    print(f'   Periods restored: {len(fs_restored.periods)}')
 
     # Summary
     print('\n' + '=' * 70)
@@ -194,6 +184,9 @@ def run_io_benchmarks(
     print('=' * 70)
     for name, res in results.items():
         print(f'  {name}: {res.mean_ms:.1f}ms (+/- {res.std_ms:.1f}ms)')
+
+    total_ms = results['to_dataset'].mean_ms + results['from_dataset'].mean_ms
+    print(f'\n  Total (to + from): {total_ms:.1f}ms')
 
     return results
 
