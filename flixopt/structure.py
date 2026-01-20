@@ -397,6 +397,76 @@ class StorageVarName:
     INVESTED = 'storage|invested'
 
 
+class ConverterVarName:
+    """Central variable naming for Converter type-level models.
+
+    All variable and constraint names for ConvertersModel should reference these constants.
+    Pattern: converter|{variable_name}
+    """
+
+    # === Piecewise Conversion Variables ===
+    # Prefix for all piecewise-related names (used by PiecewiseHelpers)
+    PIECEWISE_PREFIX = 'converter|piecewise_conversion'
+
+    # Full variable names (prefix + suffix added by PiecewiseHelpers)
+    PIECEWISE_INSIDE = f'{PIECEWISE_PREFIX}|inside_piece'
+    PIECEWISE_LAMBDA0 = f'{PIECEWISE_PREFIX}|lambda0'
+    PIECEWISE_LAMBDA1 = f'{PIECEWISE_PREFIX}|lambda1'
+
+
+# Constraint names for ConvertersModel
+class _ConverterConstraint:
+    """Constraint names for ConvertersModel.
+
+    Constraints can have 3 levels: converter|{var}|{constraint_type}
+    """
+
+    # Linear conversion constraints (indexed by equation number)
+    CONVERSION = 'converter|conversion'  # Base name, actual: converter|conversion_{eq_idx}
+
+    # Piecewise conversion constraints
+    PIECEWISE_LAMBDA_SUM = 'converter|piecewise_conversion|lambda_sum'
+    PIECEWISE_SINGLE_SEGMENT = 'converter|piecewise_conversion|single_segment'
+    PIECEWISE_COUPLING = 'converter|piecewise_conversion|coupling'  # Per-flow: {base}|{flow_id}|coupling
+
+
+ConverterVarName.Constraint = _ConverterConstraint
+
+
+class TransmissionVarName:
+    """Central variable naming for Transmission type-level models.
+
+    All variable and constraint names for TransmissionsModel should reference these constants.
+    Pattern: transmission|{variable_name}
+
+    Note: Transmissions currently don't create variables (only constraints linking flows).
+    """
+
+    pass  # No variables yet - transmissions only create constraints
+
+
+# Constraint names for TransmissionsModel
+class _TransmissionConstraint:
+    """Constraint names for TransmissionsModel.
+
+    Batched constraints with transmission dimension: transmission|{constraint_type}
+    """
+
+    # Efficiency constraints (batched with transmission dimension)
+    DIR1 = 'transmission|dir1'  # Direction 1: out1 == in1 * (1 - rel_losses) [+ abs_losses]
+    DIR2 = 'transmission|dir2'  # Direction 2: out2 == in2 * (1 - rel_losses) [+ abs_losses]
+
+    # Size constraints
+    BALANCED = 'transmission|balanced'  # in1.size == in2.size
+
+    # Status coupling (for absolute losses)
+    IN1_STATUS_COUPLING = 'transmission|in1_status_coupling'
+    IN2_STATUS_COUPLING = 'transmission|in2_status_coupling'
+
+
+TransmissionVarName.Constraint = _TransmissionConstraint
+
+
 class EffectVarName:
     """Central variable naming for Effect models."""
 

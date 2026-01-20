@@ -20,11 +20,13 @@ from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
     ComponentVarName,
+    ConverterVarName,
     Element,
     ElementModel,
     ElementType,
     FlowSystemModel,
     FlowVarName,
+    TransmissionVarName,
     TypeModel,
     VariableType,
     register_class_for_io,
@@ -1214,7 +1216,17 @@ class FlowsModel(TypeModel):
         self.add_constraints(flow_rate >= size * rel_min, name='rate_invest_lb')
 
     def _create_status_investment_bounds(self, flows: list[Flow]) -> None:
-        """Create bounds for flows with both status and investment."""
+        """Create bounds for flows with both status and investment.
+
+        Three constraints are needed:
+        1. rate <= status * M (big-M): forces status=1 when rate>0
+        2. rate <= size * rel_max: limits rate by actual invested size
+        3. rate >= (status - 1) * M + size * rel_min: enforces minimum when status=1
+
+        Together these ensure:
+        - status=0 implies rate=0
+        - status=1 implies size*rel_min <= rate <= size*rel_max
+        """
         dim = self.dim_name  # 'flow'
         flow_ids = [f.label_full for f in flows]
         flow_rate = self._variables['rate'].sel({dim: flow_ids})
@@ -1226,13 +1238,19 @@ class FlowsModel(TypeModel):
         rel_min = self.effective_relative_minimum.sel({dim: flow_ids})
         max_size = self.size_maximum.sel({dim: flow_ids})
 
-        # Upper bound: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='rate_status_invest_ub')
+        # Upper bound 1: rate <= status * M where M = max_size * relative_max
+        # This forces status=1 when rate>0 (big-M formulation)
+        big_m_upper = max_size * rel_max
+        self.add_constraints(flow_rate <= status * big_m_upper, name='rate_status_invest_ub')
+
+        # Upper bound 2: rate <= size * relative_max
+        # This limits rate to the actual invested size
+        self.add_constraints(flow_rate <= size * rel_max, name='rate_invest_ub')
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
         # big_M = max_size * relative_min
-        big_m = max_size * rel_min
-        rhs = (status - 1) * big_m + size * rel_min
+        big_m_lower = max_size * rel_min
+        rhs = (status - 1) * big_m_lower + size * rel_min
         self.add_constraints(flow_rate >= rhs, name='rate_status_invest_lb')
 
     def create_investment_model(self) -> None:
@@ -2838,7 +2856,7 @@ class ConvertersModel:
                 )
                 self.model.add_constraints(
                     flow_sum_subset == 0,
-                    name=f'converter|conversion_{eq_idx}',
+                    name=f'{ConverterVarName.Constraint.CONVERSION}_{eq_idx}',
                 )
 
         self._logger.debug(
@@ -2983,7 +3001,6 @@ class ConvertersModel:
             return {}
 
         base_coords = self.model.get_coords(['time', 'period', 'scenario'])
-        name_prefix = 'converter|piecewise_conversion'
 
         self._piecewise_variables = self._PiecewiseHelpers.create_piecewise_variables(
             self.model,
@@ -2992,7 +3009,7 @@ class ConvertersModel:
             self._piecewise_dim_name,
             self._piecewise_segment_mask,
             base_coords,
-            name_prefix,
+            ConverterVarName.PIECEWISE_PREFIX,
         )
 
         self._logger.debug(
@@ -3005,8 +3022,6 @@ class ConvertersModel:
         if not self.converters_with_piecewise:
             return
 
-        name_prefix = 'converter|piecewise_conversion'
-
         # Get zero_point for each converter (status variable if available)
         # TODO: Integrate status from ComponentsModel when converters overlap
         zero_point = None
@@ -3018,7 +3033,7 @@ class ConvertersModel:
             self._piecewise_segment_mask,
             zero_point,
             self._piecewise_dim_name,
-            name_prefix,
+            ConverterVarName.PIECEWISE_PREFIX,
         )
 
         # Create coupling constraints for each flow
@@ -3048,7 +3063,7 @@ class ConvertersModel:
                 reconstructed_for_conv = reconstructed.sel(converter=conv_id)
                 self.model.add_constraints(
                     flow_rate_for_flow == reconstructed_for_conv,
-                    name=f'{name_prefix}|{flow_id}|coupling',
+                    name=f'{ConverterVarName.Constraint.PIECEWISE_COUPLING}|{flow_id}',
                 )
 
         self._logger.debug(
@@ -3057,11 +3072,13 @@ class ConvertersModel:
 
 
 class TransmissionsModel:
-    """Type-level model for transmission efficiency constraints.
+    """Type-level model for batched transmission efficiency constraints.
 
-    Handles Transmission components:
+    Handles Transmission components with batched constraints:
     - Efficiency: out = in * (1 - rel_losses) - status * abs_losses
     - Balanced size: in1.size == in2.size
+
+    All constraints have a 'transmission' dimension for proper batching.
 
     Example:
         >>> transmissions_model = TransmissionsModel(
@@ -3094,39 +3111,7 @@ class TransmissionsModel:
 
         self._logger.debug(f'TransmissionsModel initialized: {len(transmissions)} transmissions')
 
-    @cached_property
-    def _relative_losses(self) -> xr.DataArray:
-        """(transmission, time, ...) relative losses. 0 if None."""
-        if not self.transmissions:
-            return xr.DataArray()
-        values = []
-        for t in self.transmissions:
-            loss = t.relative_losses if t.relative_losses is not None else 0
-            values.append(loss)
-        return self._stack_data(values, 'relative_losses')
-
-    @cached_property
-    def _absolute_losses(self) -> xr.DataArray:
-        """(transmission, time, ...) absolute losses. 0 if None."""
-        if not self.transmissions:
-            return xr.DataArray()
-        values = []
-        for t in self.transmissions:
-            loss = t.absolute_losses if t.absolute_losses is not None else 0
-            values.append(loss)
-        return self._stack_data(values, 'absolute_losses')
-
-    @cached_property
-    def _has_absolute_losses(self) -> xr.DataArray:
-        """(transmission,) bool mask for transmissions with absolute losses."""
-        if not self.transmissions:
-            return xr.DataArray()
-        has_abs = [t.absolute_losses is not None and np.any(t.absolute_losses != 0) for t in self.transmissions]
-        return xr.DataArray(
-            has_abs,
-            dims=['transmission'],
-            coords={'transmission': self.element_ids},
-        )
+    # === Flow Mapping Properties ===
 
     @cached_property
     def _bidirectional(self) -> list:
@@ -3134,12 +3119,108 @@ class TransmissionsModel:
         return [t for t in self.transmissions if t.in2 is not None]
 
     @cached_property
+    def _bidirectional_ids(self) -> list[str]:
+        """Element IDs for bidirectional transmissions."""
+        return [t.label for t in self._bidirectional]
+
+    @cached_property
     def _balanced(self) -> list:
         """List of transmissions with balanced=True."""
         return [t for t in self.transmissions if t.balanced]
 
-    def _stack_data(self, values: list, name: str) -> xr.DataArray:
-        """Stack transmission data into (transmission, time, ...) array."""
+    @cached_property
+    def _balanced_ids(self) -> list[str]:
+        """Element IDs for balanced transmissions."""
+        return [t.label for t in self._balanced]
+
+    # === Flow Masks for Batched Selection ===
+
+    def _build_flow_mask(self, transmission_ids: list[str], flow_getter) -> xr.DataArray:
+        """Build (transmission, flow) mask: 1 if flow belongs to transmission.
+
+        Args:
+            transmission_ids: List of transmission labels to include.
+            flow_getter: Function that takes a transmission and returns its flow label_full.
+        """
+        all_flow_ids = self._flows_model.element_ids
+        mask_data = np.zeros((len(transmission_ids), len(all_flow_ids)))
+
+        for t_idx, t_id in enumerate(transmission_ids):
+            t = next(t for t in self.transmissions if t.label == t_id)
+            flow_id = flow_getter(t)
+            if flow_id in all_flow_ids:
+                f_idx = all_flow_ids.index(flow_id)
+                mask_data[t_idx, f_idx] = 1.0
+
+        return xr.DataArray(
+            mask_data,
+            dims=[self.dim_name, 'flow'],
+            coords={self.dim_name: transmission_ids, 'flow': all_flow_ids},
+        )
+
+    @cached_property
+    def _in1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is in1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.in1.label_full)
+
+    @cached_property
+    def _out1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is out1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.out1.label_full)
+
+    @cached_property
+    def _in2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is in2."""
+        return self._build_flow_mask(self._bidirectional_ids, lambda t: t.in2.label_full)
+
+    @cached_property
+    def _out2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is out2."""
+        return self._build_flow_mask(self._bidirectional_ids, lambda t: t.out2.label_full)
+
+    # === Loss Properties ===
+
+    @cached_property
+    def _relative_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) relative losses. 0 if None."""
+        if not self.transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self.transmissions:
+            loss = t.relative_losses if t.relative_losses is not None else 0
+            values.append(loss)
+        return self._stack_data(values)
+
+    @cached_property
+    def _absolute_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) absolute losses. 0 if None."""
+        if not self.transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self.transmissions:
+            loss = t.absolute_losses if t.absolute_losses is not None else 0
+            values.append(loss)
+        return self._stack_data(values)
+
+    @cached_property
+    def _has_absolute_losses_mask(self) -> xr.DataArray:
+        """(transmission,) bool mask for transmissions with absolute losses."""
+        if not self.transmissions:
+            return xr.DataArray()
+        has_abs = [t.absolute_losses is not None and np.any(t.absolute_losses != 0) for t in self.transmissions]
+        return xr.DataArray(
+            has_abs,
+            dims=[self.dim_name],
+            coords={self.dim_name: self.element_ids},
+        )
+
+    @cached_property
+    def _transmissions_with_abs_losses(self) -> list[str]:
+        """Element IDs for transmissions with absolute losses."""
+        return [t.label for t in self.transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)]
+
+    def _stack_data(self, values: list) -> xr.DataArray:
+        """Stack transmission data into (transmission, [time, ...]) array."""
         if not values:
             return xr.DataArray()
 
@@ -3147,101 +3228,98 @@ class TransmissionsModel:
         arrays = []
         for i, val in enumerate(values):
             if isinstance(val, xr.DataArray):
-                arr = val.expand_dims({'transmission': [self.element_ids[i]]})
+                arr = val.expand_dims({self.dim_name: [self.element_ids[i]]})
             else:
-                # Scalar - broadcast to model coords
-                coords = self.model.get_coords()
-                arr = xr.DataArray(val, coords=coords)
-                arr = arr.expand_dims({'transmission': [self.element_ids[i]]})
+                # Scalar - create simple array
+                arr = xr.DataArray(
+                    val,
+                    dims=[self.dim_name],
+                    coords={self.dim_name: [self.element_ids[i]]},
+                )
             arrays.append(arr)
 
-        return xr.concat(arrays, dim='transmission')
+        return xr.concat(arrays, dim=self.dim_name)
 
     def create_constraints(self) -> None:
         """Create batched transmission efficiency constraints.
 
-        Creates:
-        - Direction 1: out1 == in1 * (1 - rel_losses) [+ in1.status * abs_losses]
-        - Direction 2: out2 == in2 * (1 - rel_losses) [+ in2.status * abs_losses] (bidirectional only)
+        Uses mask-based batching: mask[transmission, flow] = 1 if flow belongs to transmission.
+        Broadcasting (flow_rate * mask).sum('flow') gives (transmission, time, ...) rates.
+
+        Creates batched constraints with transmission dimension:
+        - Direction 1: out1 == in1 * (1 - rel_losses) - in1_status * abs_losses
+        - Direction 2: out2 == in2 * (1 - rel_losses) - in2_status * abs_losses (bidirectional only)
         - Balanced: in1.size == in2.size (balanced only)
         """
         if not self.transmissions:
             return
 
+        con = TransmissionVarName.Constraint
         flow_rate = self._flows_model._variables['rate']
 
-        # Direction 1: All transmissions
-        for t in self.transmissions:
-            in1_rate = flow_rate.sel(flow=t.in1.label_full)
-            out1_rate = flow_rate.sel(flow=t.out1.label_full)
-            rel_losses = t.relative_losses if t.relative_losses is not None else 0
+        # === Direction 1: All transmissions (batched) ===
+        # Use masks to batch flow selection: (flow_rate * mask).sum('flow') -> (transmission, time, ...)
+        in1_rate = (flow_rate * self._in1_mask).sum('flow')
+        out1_rate = (flow_rate * self._out1_mask).sum('flow')
+        rel_losses = self._relative_losses
+        abs_losses = self._absolute_losses
 
-            # out1 == in1 * (1 - rel_losses)
-            con = self.model.add_constraints(
-                out1_rate == in1_rate * (1 - rel_losses),
-                name=f'transmission|{t.label}|dir1',
-            )
+        # Build the efficiency expression: in1 * (1 - rel_losses) - abs_losses_term
+        efficiency_expr = in1_rate * (1 - rel_losses)
 
-            # Add absolute losses if present
-            if t.absolute_losses is not None and np.any(t.absolute_losses != 0):
-                in1_status = self._flows_model._variables['status'].sel(flow=t.in1.label_full)
-                con.lhs += in1_status * t.absolute_losses
+        # Add absolute losses term if any transmission has them
+        if self._transmissions_with_abs_losses:
+            flow_status = self._flows_model._variables['status']
+            in1_status = (flow_status * self._in1_mask).sum('flow')
+            efficiency_expr = efficiency_expr - in1_status * abs_losses
 
-                # For flows with investment, also add constraint to force status=1 when rate > 0
-                # rate <= M * status (forces status=1 when rate > 0)
-                # M is the maximum possible rate (maximum_size * relative_maximum)
-                from .interface import InvestParameters
+        # out1 == in1 * (1 - rel_losses) - in1_status * abs_losses
+        self.model.add_constraints(
+            out1_rate == efficiency_expr,
+            name=con.DIR1,
+        )
 
-                if isinstance(t.in1.size, InvestParameters):
-                    max_size = t.in1.size.maximum_or_fixed_size
-                    rel_max = t.in1.relative_maximum if t.in1.relative_maximum is not None else 1
-                    big_m = max_size * rel_max
-                    self.model.add_constraints(
-                        in1_rate <= big_m * in1_status,
-                        name=f'transmission|{t.label}|in1_status_coupling',
-                    )
+        # === Direction 2: Bidirectional transmissions only (batched) ===
+        if self._bidirectional:
+            in2_rate = (flow_rate * self._in2_mask).sum('flow')
+            out2_rate = (flow_rate * self._out2_mask).sum('flow')
+            rel_losses_bidir = self._relative_losses.sel({self.dim_name: self._bidirectional_ids})
+            abs_losses_bidir = self._absolute_losses.sel({self.dim_name: self._bidirectional_ids})
 
-        # Direction 2: Bidirectional transmissions only
-        for t in self._bidirectional:
-            in2_rate = flow_rate.sel(flow=t.in2.label_full)
-            out2_rate = flow_rate.sel(flow=t.out2.label_full)
-            rel_losses = t.relative_losses if t.relative_losses is not None else 0
+            # Build the efficiency expression for direction 2
+            efficiency_expr_2 = in2_rate * (1 - rel_losses_bidir)
 
-            # out2 == in2 * (1 - rel_losses)
-            con = self.model.add_constraints(
-                out2_rate == in2_rate * (1 - rel_losses),
-                name=f'transmission|{t.label}|dir2',
-            )
+            # Add absolute losses for bidirectional if any have them
+            bidir_with_abs = [t.label for t in self._bidirectional if t.label in self._transmissions_with_abs_losses]
+            if bidir_with_abs:
+                flow_status = self._flows_model._variables['status']
+                in2_status = (flow_status * self._in2_mask).sum('flow')
+                efficiency_expr_2 = efficiency_expr_2 - in2_status * abs_losses_bidir
 
-            # Add absolute losses if present
-            if t.absolute_losses is not None and np.any(t.absolute_losses != 0):
-                in2_status = self._flows_model._variables['status'].sel(flow=t.in2.label_full)
-                con.lhs += in2_status * t.absolute_losses
-
-                # For flows with investment, also add constraint to force status=1 when rate > 0
-                # rate <= M * status (forces status=1 when rate > 0)
-                # M is the maximum possible rate (maximum_size * relative_maximum)
-                from .interface import InvestParameters
-
-                if isinstance(t.in2.size, InvestParameters):
-                    max_size = t.in2.size.maximum_or_fixed_size
-                    rel_max = t.in2.relative_maximum if t.in2.relative_maximum is not None else 1
-                    big_m = max_size * rel_max
-                    self.model.add_constraints(
-                        in2_rate <= big_m * in2_status,
-                        name=f'transmission|{t.label}|in2_status_coupling',
-                    )
-
-        # Balanced constraints: in1.size == in2.size
-        for t in self._balanced:
-            in1_size = self._flows_model._variables['size'].sel(flow=t.in1.label_full)
-            in2_size = self._flows_model._variables['size'].sel(flow=t.in2.label_full)
+            # out2 == in2 * (1 - rel_losses) - in2_status * abs_losses
             self.model.add_constraints(
-                in1_size == in2_size,
-                name=f'transmission|{t.label}|balanced',
+                out2_rate == efficiency_expr_2,
+                name=con.DIR2,
             )
 
-        self._logger.debug(f'TransmissionsModel created constraints for {len(self.transmissions)} transmissions')
+        # === Balanced constraints: in1.size == in2.size (batched) ===
+        if self._balanced:
+            flow_size = self._flows_model._variables['size']
+            # Build masks for balanced transmissions only
+            in1_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in1.label_full)
+            in2_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in2.label_full)
+
+            in1_size_batched = (flow_size * in1_size_mask).sum('flow')
+            in2_size_batched = (flow_size * in2_size_mask).sum('flow')
+
+            self.model.add_constraints(
+                in1_size_batched == in2_size_batched,
+                name=con.BALANCED,
+            )
+
+        self._logger.debug(
+            f'TransmissionsModel created batched constraints for {len(self.transmissions)} transmissions'
+        )
 
 
 class PreventSimultaneousFlowsModel:
