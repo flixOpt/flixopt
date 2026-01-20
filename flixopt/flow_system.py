@@ -1534,8 +1534,24 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                         # Only expand batched type-level variables to unrolled names
                         is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
                         if is_batched:
-                            suffix = f'|{cat.value}'
-                            matching.extend(v for v in solution_vars if v.endswith(suffix))
+                            # Handle size categories specially - they use |size suffix but different labels
+                            if cat == VariableCategory.FLOW_SIZE:
+                                flow_labels = set(self.flows.keys())
+                                matching.extend(
+                                    v
+                                    for v in solution_vars
+                                    if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                                )
+                            elif cat == VariableCategory.STORAGE_SIZE:
+                                storage_labels = set(self.storages.keys())
+                                matching.extend(
+                                    v
+                                    for v in solution_vars
+                                    if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                                )
+                            else:
+                                suffix = f'|{cat.value}'
+                                matching.extend(v for v in solution_vars if v.endswith(suffix))
             # Remove duplicates while preserving order
             seen = set()
             matching = [v for v in matching if not (v in seen or seen.add(v))]

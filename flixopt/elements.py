@@ -1291,7 +1291,6 @@ class FlowsModel(TypeModel):
             return
 
         from .features import InvestmentHelpers
-        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
 
         # Build params dict for easy access
         self._invest_params = {f.label_full: f.size for f in self.flows_with_investment}
@@ -1333,10 +1332,10 @@ class FlowsModel(TypeModel):
         )
         self._variables['size'] = size_var
 
-        # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
-        if expansion_category is not None:
-            self.model.variable_categories[size_var.name] = expansion_category
+        # Register category as FLOW_SIZE for statistics accessor
+        from .structure import VariableCategory
+
+        self.model.variable_categories[size_var.name] = VariableCategory.FLOW_SIZE
 
         # === flow|invested variable (non-mandatory only) ===
         if non_mandatory_ids:

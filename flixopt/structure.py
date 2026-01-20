@@ -911,16 +911,66 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
     def _populate_names_from_type_level_models(self):
         """Populate element variable/constraint names from type-level models."""
 
+        # Suffix mappings for unrolling (must match _unroll_batched_solution)
+        flow_suffix_map = {
+            'status': 'status',
+            'active_hours': 'active_hours',
+            'uptime': 'uptime',
+            'downtime': 'downtime',
+            'startup': 'startup',
+            'shutdown': 'shutdown',
+            'inactive': 'inactive',
+            'startup_count': 'startup_count',
+            'size': 'size',
+            'invested': 'invested',
+            'hours': 'hours',
+        }
+
+        # Storage suffixes: batched variable suffix -> unrolled variable suffix
+        # Must match _unroll_batched_solution's mapping
+        storage_suffix_map = {
+            'charge': 'charge_state',  # storage|charge -> Speicher|charge_state
+            'netto': 'netto_discharge',  # storage|netto -> Speicher|netto_discharge
+            'size': 'size',
+            'invested': 'invested',
+        }
+
         # Helper to find variables/constraints that contain a specific element ID in a dimension
+        # Returns UNROLLED variable names (e.g., 'Element|flow_rate' not 'flow|rate')
         def _find_vars_for_element(element_id: str, dim_name: str) -> list[str]:
-            """Find all variable names that have this element in their dimension."""
+            """Find all variable names that have this element in their dimension.
+
+            Returns the unrolled variable names that will exist in the solution after
+            _unroll_batched_solution is called.
+            """
             var_names = []
             for var_name in self.variables:
                 var = self.variables[var_name]
                 if dim_name in var.dims:
                     try:
                         if element_id in var.coords[dim_name].values:
-                            var_names.append(var_name)
+                            # Determine the unrolled name based on the batched variable pattern
+                            if dim_name == 'flow' and var_name.startswith('flow|'):
+                                suffix = var_name[5:]  # Remove 'flow|' prefix
+                                mapped_suffix = flow_suffix_map.get(suffix, f'flow_{suffix}')
+                                unrolled_name = f'{element_id}|{mapped_suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'storage' and var_name.startswith('storage|'):
+                                suffix = var_name[8:]  # Remove 'storage|' prefix
+                                mapped_suffix = storage_suffix_map.get(suffix, suffix)
+                                unrolled_name = f'{element_id}|{mapped_suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'bus' and var_name.startswith('bus|'):
+                                suffix = var_name[4:]  # Remove 'bus|' prefix
+                                unrolled_name = f'{element_id}|{suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'effect' and var_name.startswith('effect|'):
+                                suffix = var_name[7:]  # Remove 'effect|' prefix
+                                unrolled_name = f'{element_id}|{suffix}'
+                                var_names.append(unrolled_name)
+                            else:
+                                # Fallback - use original name
+                                var_names.append(var_name)
                     except (KeyError, AttributeError):
                         pass
             return var_names
