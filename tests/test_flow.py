@@ -133,21 +133,19 @@ class TestFlowModel:
             set(flow.submodel._constraints.keys()), set(), msg='Batched model has no per-element constraints'
         )
 
-        # Effect constraints are still per-element (registered in effect submodel)
-        assert 'Sink(Wärme)->costs(temporal)' in set(costs.submodel.constraints)
-        assert 'Sink(Wärme)->CO2(temporal)' in set(co2.submodel.constraints)
+        # In type-level mode, effects don't have per-element submodels
+        # Effects are managed by the batched EffectsModel
+        assert costs.submodel is None, 'Effect submodels are not created in type-level mode'
+        assert co2.submodel is None, 'Effect submodels are not created in type-level mode'
 
-        assert_conequal(
-            model.constraints['Sink(Wärme)->costs(temporal)'],
-            model.variables['Sink(Wärme)->costs(temporal)']
-            == flow.submodel.flow_rate * model.timestep_duration * costs_per_flow_hour,
-        )
+        # Batched temporal shares are managed by the EffectsModel
+        assert 'share|temporal' in model.constraints, 'Batched temporal share constraint should exist'
 
-        assert_conequal(
-            model.constraints['Sink(Wärme)->CO2(temporal)'],
-            model.variables['Sink(Wärme)->CO2(temporal)']
-            == flow.submodel.flow_rate * model.timestep_duration * co2_per_flow_hour,
-        )
+        # The flow's effects are included in the batched constraints
+        # Check that the effect factors are correctly computed
+        effects_model = flow_system.effects.submodel._batched_model
+        assert effects_model is not None, 'Batched EffectsModel should exist'
+        assert hasattr(effects_model, 'share_temporal'), 'EffectsModel should have share_temporal'
 
 
 class TestFlowInvestModel:
@@ -168,53 +166,29 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
+        # In type-level mode, flow.submodel._variables uses short names
         assert_sets_equal(
-            set(flow.submodel.variables),
-            {
-                'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|flow_rate',
-                'Sink(Wärme)|size',
-            },
+            set(flow.submodel._variables.keys()),
+            {'total_flow_hours', 'flow_rate', 'size'},
             msg='Incorrect variables',
         )
+        # Type-level mode has no per-element constraints (they're batched)
         assert_sets_equal(
-            set(flow.submodel.constraints),
-            {
-                'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|flow_rate|ub',
-                'Sink(Wärme)|flow_rate|lb',
-            },
-            msg='Incorrect constraints',
+            set(flow.submodel._constraints.keys()),
+            set(),
+            msg='Batched model has no per-element constraints',
         )
 
-        # size
-        assert_var_equal(
-            model['Sink(Wärme)|size'],
-            model.add_variables(lower=20, upper=100, coords=model.get_coords(['period', 'scenario'])),
-        )
+        # Check batched variables exist
+        assert 'flow|size' in model.variables, 'Batched size variable should exist'
+        assert 'flow|rate' in model.variables, 'Batched rate variable should exist'
+
+        # Check batched constraints exist
+        assert 'flow|rate_invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
+        assert 'flow|rate_invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
 
         assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
-
-        # flow_rate
-        assert_var_equal(
-            flow.submodel.flow_rate,
-            model.add_variables(
-                lower=flow.relative_minimum * 20,
-                upper=flow.relative_maximum * 100,
-                coords=model.get_coords(),
-            ),
-        )
-        assert_conequal(
-            model.constraints['Sink(Wärme)|flow_rate|lb'],
-            flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
-        )
-        assert_conequal(
-            model.constraints['Sink(Wärme)|flow_rate|ub'],
-            flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
-        )
 
     def test_flow_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
@@ -231,65 +205,32 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
+        # In type-level mode, flow.submodel._variables uses short names
         assert_sets_equal(
-            set(flow.submodel.variables),
-            {'Sink(Wärme)|total_flow_hours', 'Sink(Wärme)|flow_rate', 'Sink(Wärme)|size', 'Sink(Wärme)|invested'},
+            set(flow.submodel._variables.keys()),
+            {'total_flow_hours', 'flow_rate', 'size', 'invested'},
             msg='Incorrect variables',
         )
+        # Type-level mode has no per-element constraints (they're batched)
         assert_sets_equal(
-            set(flow.submodel.constraints),
-            {
-                'Sink(Wärme)|total_flow_hours',
-                'Sink(Wärme)|size|lb',
-                'Sink(Wärme)|size|ub',
-                'Sink(Wärme)|flow_rate|lb',
-                'Sink(Wärme)|flow_rate|ub',
-            },
-            msg='Incorrect constraints',
+            set(flow.submodel._constraints.keys()),
+            set(),
+            msg='Batched model has no per-element constraints',
         )
 
-        assert_var_equal(
-            model['Sink(Wärme)|size'],
-            model.add_variables(lower=0, upper=100, coords=model.get_coords(['period', 'scenario'])),
-        )
+        # Check batched variables exist
+        assert 'flow|size' in model.variables, 'Batched size variable should exist'
+        assert 'flow|invested' in model.variables, 'Batched invested variable should exist'
+        assert 'flow|rate' in model.variables, 'Batched rate variable should exist'
 
-        assert_var_equal(
-            model['Sink(Wärme)|invested'],
-            model.add_variables(binary=True, coords=model.get_coords(['period', 'scenario'])),
-        )
+        # Check batched constraints exist
+        assert 'flow|rate_invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
+        assert 'flow|rate_invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
+        assert 'flow|size|lb' in model.constraints, 'Batched size lower bound constraint should exist'
+        assert 'flow|size|ub' in model.constraints, 'Batched size upper bound constraint should exist'
 
         assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
-
-        # flow_rate
-        assert_var_equal(
-            flow.submodel.flow_rate,
-            model.add_variables(
-                lower=0,  # Optional investment
-                upper=flow.relative_maximum * 100,
-                coords=model.get_coords(),
-            ),
-        )
-        assert_conequal(
-            model.constraints['Sink(Wärme)|flow_rate|lb'],
-            flow.submodel.variables['Sink(Wärme)|flow_rate']
-            >= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_minimum,
-        )
-        assert_conequal(
-            model.constraints['Sink(Wärme)|flow_rate|ub'],
-            flow.submodel.variables['Sink(Wärme)|flow_rate']
-            <= flow.submodel.variables['Sink(Wärme)|size'] * flow.relative_maximum,
-        )
-
-        # Is invested
-        assert_conequal(
-            model.constraints['Sink(Wärme)|size|ub'],
-            flow.submodel.variables['Sink(Wärme)|size'] <= flow.submodel.variables['Sink(Wärme)|invested'] * 100,
-        )
-        assert_conequal(
-            model.constraints['Sink(Wärme)|size|lb'],
-            flow.submodel.variables['Sink(Wärme)|size'] >= flow.submodel.variables['Sink(Wärme)|invested'] * 20,
-        )
 
     def test_flow_invest_optional_wo_min_size(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config

@@ -1326,10 +1326,67 @@ class FlowsModel(TypeModel):
             dim_name=dim,
         )
 
+        # Piecewise effects (requires per-element submodels, not batchable)
+        self._create_piecewise_effects()
+
         logger.debug(
             f'FlowsModel created investment variables: {len(element_ids)} flows '
             f'({len(mandatory_ids)} mandatory, {len(non_mandatory_ids)} optional)'
         )
+
+    def _create_piecewise_effects(self) -> None:
+        """Create piecewise effect submodels for flows with piecewise_effects_of_investment.
+
+        Piecewise effects require individual submodels (not batchable) because they
+        involve SOS2 constraints with per-element segment definitions.
+
+        For each flow with piecewise_effects_of_investment:
+        - Gets the size variable slice for that flow
+        - Gets the invested variable slice if applicable (for zero_point)
+        - Creates a PiecewiseEffectsModel submodel
+        """
+        from .features import PiecewiseEffectsModel
+
+        dim = self.dim_name
+        size_var = self._variables.get('size')
+        invested_var = self._variables.get('invested')
+
+        if size_var is None:
+            return
+
+        # Find flows with piecewise effects
+        flows_with_piecewise = [
+            f for f in self.flows_with_investment if f.size.piecewise_effects_of_investment is not None
+        ]
+
+        if not flows_with_piecewise:
+            return
+
+        for flow in flows_with_piecewise:
+            flow_id = flow.label_full
+            params = self._invest_params[flow_id]
+
+            # Get size variable for this flow
+            flow_size = size_var.sel({dim: flow_id})
+
+            # Get invested variable for zero_point (if non-mandatory)
+            flow_invested = None
+            if not params.mandatory and invested_var is not None:
+                if flow_id in invested_var.coords.get(dim, []):
+                    flow_invested = invested_var.sel({dim: flow_id})
+
+            # Create piecewise effects model
+            piecewise_model = PiecewiseEffectsModel(
+                model=self.model,
+                label_of_element=flow_id,
+                label_of_model=f'{flow_id}|PiecewiseEffects',
+                piecewise_origin=(flow_size.name, params.piecewise_effects_of_investment.piecewise_origin),
+                piecewise_shares=params.piecewise_effects_of_investment.piecewise_shares,
+                zero_point=flow_invested,
+            )
+            piecewise_model.do_modeling()
+
+            logger.debug(f'Created piecewise effects for {flow_id}')
 
     # === Investment effect properties (used by EffectsModel) ===
 
@@ -2145,30 +2202,15 @@ class ComponentModel(ElementModel):
         super().__init__(model, element)
 
     def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
+        """Create variables, constraints, and nested submodels.
+
+        Note: status_parameters setup is done in FlowSystemModel.do_modeling() preprocessing,
+        before FlowsModel is created. This ensures FlowsModel knows which flows need status variables.
+        """
         super()._do_modeling()
 
-        all_flows = self.element.inputs + self.element.outputs
-
-        # Set status_parameters on flows if needed
-        if self.element.status_parameters:
-            for flow in all_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
-
-        if self.element.prevent_simultaneous_flows:
-            for flow in self.element.prevent_simultaneous_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
-
         # Create FlowModelProxy for each flow (variables/constraints handled by FlowsModel)
-        for flow in all_flows:
+        for flow in self.element.inputs + self.element.outputs:
             self.add_submodels(flow.create_model(self._model), short_name=flow.label)
         # Status and prevent_simultaneous constraints handled by type-level models
 

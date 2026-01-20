@@ -2194,6 +2194,9 @@ class StoragesModel:
             dim_name=dim,
         )
 
+        # Piecewise effects (requires per-element submodels, not batchable)
+        self._create_piecewise_effects()
+
         logger.debug(
             f'StoragesModel created investment variables: {len(element_ids)} storages '
             f'({len(mandatory_ids)} mandatory, {len(non_mandatory_ids)} optional)'
@@ -2318,6 +2321,142 @@ class StoragesModel:
         if element_id is not None:
             return var.sel({self.dim_name: element_id})
         return var
+
+    # === Investment effect properties (used by EffectsModel) ===
+
+    @functools.cached_property
+    def invest_effects_per_size(self) -> xr.DataArray | None:
+        """Combined effects_of_investment_per_size with (storage, effect) dims."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment_per_size', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def invest_effects_of_investment(self) -> xr.DataArray | None:
+        """Combined effects_of_investment with (storage, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def invest_effects_of_retirement(self) -> xr.DataArray | None:
+        """Combined effects_of_retirement with (storage, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+        from .features import InvestmentHelpers
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_retirement', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @functools.cached_property
+    def mandatory_invest_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        result = []
+        for eid in self.investment_ids:
+            params = self._invest_params[eid]
+            if params.mandatory and params.effects_of_investment:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_investment.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+    @functools.cached_property
+    def retirement_constant_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        result = []
+        for eid in self.optional_investment_ids:
+            params = self._invest_params[eid]
+            if params.effects_of_retirement:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_retirement.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+    def _create_piecewise_effects(self) -> None:
+        """Create piecewise effect submodels for storages with piecewise_effects_of_investment.
+
+        Piecewise effects require individual submodels (not batchable) because they
+        involve SOS2 constraints with per-element segment definitions.
+        """
+        from .features import PiecewiseEffectsModel
+
+        dim = self.dim_name
+        size_var = self._variables.get('size')
+        invested_var = self._variables.get('invested')
+
+        if size_var is None:
+            return
+
+        # Find storages with piecewise effects
+        storages_with_piecewise = [
+            s
+            for s in self.storages_with_investment
+            if s.capacity_in_flow_hours.piecewise_effects_of_investment is not None
+        ]
+
+        if not storages_with_piecewise:
+            return
+
+        for storage in storages_with_piecewise:
+            storage_id = storage.label_full
+            params = self._invest_params[storage_id]
+
+            # Get size variable for this storage
+            storage_size = size_var.sel({dim: storage_id})
+
+            # Get invested variable for zero_point (if non-mandatory)
+            storage_invested = None
+            if not params.mandatory and invested_var is not None:
+                if storage_id in invested_var.coords.get(dim, []):
+                    storage_invested = invested_var.sel({dim: storage_id})
+
+            # Create piecewise effects model
+            piecewise_model = PiecewiseEffectsModel(
+                model=self.model,
+                label_of_element=storage_id,
+                label_of_model=f'{storage_id}|PiecewiseEffects',
+                piecewise_origin=(storage_size.name, params.piecewise_effects_of_investment.piecewise_origin),
+                piecewise_shares=params.piecewise_effects_of_investment.piecewise_shares,
+                zero_point=storage_invested,
+            )
+            piecewise_model.do_modeling()
+
+            logger.debug(f'Created piecewise effects for storage {storage_id}')
 
 
 class StorageModelProxy(ComponentModel):

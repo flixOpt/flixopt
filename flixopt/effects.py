@@ -659,11 +659,16 @@ class EffectsModel:
 
         dt = self.model.timestep_duration
 
-        # === Temporal shares ===
+        # === Temporal shares (from flows) ===
         self._create_temporal_shares(flows_model, dt)
 
-        # === Periodic shares ===
+        # === Periodic shares (from flows) ===
         self._create_periodic_shares(flows_model)
+
+        # === Periodic shares (from storages) ===
+        storages_model = self.model._storages_model
+        if storages_model is not None:
+            self._create_storage_periodic_shares(storages_model)
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""
@@ -763,6 +768,71 @@ class EffectsModel:
 
         # Retirement constant parts (using FlowsModel property)
         for element_id, effects_dict in flows_model.retirement_constant_effects:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|invest_retire_const',
+                expressions=effects_dict,
+                target='periodic',
+            )
+
+    def _create_storage_periodic_shares(self, storages_model) -> None:
+        """Create periodic investment shares for storages.
+
+        Similar to _create_periodic_shares but for StoragesModel.
+        Handles effects_per_size, effects_of_investment, effects_of_retirement,
+        and constant effects.
+        """
+        # Check if storages_model has investment data
+        factors = storages_model.invest_effects_per_size
+        if factors is None:
+            self._add_constant_storage_investment_shares(storages_model)
+            return
+
+        dim = storages_model.dim_name
+        size = storages_model.size.sel({dim: factors.coords[dim].values})
+
+        # share|storage_periodic: size * effects_of_investment_per_size
+        self.share_storage_periodic = self.model.add_variables(
+            lower=-np.inf,
+            upper=np.inf,
+            coords=self._share_coords(dim, factors.coords[dim], temporal=False),
+            name='share|storage_periodic',
+        )
+        self.model.add_constraints(
+            self.share_storage_periodic == size * factors.fillna(0),
+            name='share|storage_periodic',
+        )
+
+        # Collect all periodic contributions from storages
+        exprs = [self.share_storage_periodic.sum(dim)]
+
+        if storages_model.invested is not None:
+            if (f := storages_model.invest_effects_of_investment) is not None:
+                exprs.append((storages_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+            if (f := storages_model.invest_effects_of_retirement) is not None:
+                exprs.append((storages_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
+
+        self._eq_periodic.lhs -= sum(exprs)
+
+        # Constant shares (mandatory fixed, retirement constants)
+        self._add_constant_storage_investment_shares(storages_model)
+
+    def _add_constant_storage_investment_shares(self, storages_model) -> None:
+        """Add constant (non-variable) investment shares for storages.
+
+        This handles:
+        - Mandatory fixed effects (always incurred, not dependent on invested variable)
+        - Retirement constant parts (the +factor in -invested*factor + factor)
+        """
+        # Mandatory fixed effects (using StoragesModel property)
+        for element_id, effects_dict in storages_model.mandatory_invest_effects:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|invest_fix',
+                expressions=effects_dict,
+                target='periodic',
+            )
+
+        # Retirement constant parts (using StoragesModel property)
+        for element_id, effects_dict in storages_model.retirement_constant_effects:
             self.model.effects.add_share_to_effects(
                 name=f'{element_id}|invest_retire_const',
                 expressions=effects_dict,
