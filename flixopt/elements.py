@@ -1391,7 +1391,7 @@ class FlowsModel(TypeModel):
     # === Investment effect properties (used by EffectsModel) ===
 
     @cached_property
-    def invest_effects_per_size(self) -> xr.DataArray | None:
+    def effects_per_size(self) -> xr.DataArray | None:
         """Combined effects_of_investment_per_size with (flow, effect) dims."""
         if not hasattr(self, '_invest_params'):
             return None
@@ -1406,7 +1406,7 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @cached_property
-    def invest_effects_of_investment(self) -> xr.DataArray | None:
+    def effects_of_investment(self) -> xr.DataArray | None:
         """Combined effects_of_investment with (flow, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params'):
             return None
@@ -1421,7 +1421,7 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @cached_property
-    def invest_effects_of_retirement(self) -> xr.DataArray | None:
+    def effects_of_retirement(self) -> xr.DataArray | None:
         """Combined effects_of_retirement with (flow, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params'):
             return None
@@ -1466,7 +1466,7 @@ class FlowsModel(TypeModel):
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @cached_property
-    def mandatory_invest_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for mandatory investments with fixed effects.
 
         These are constant effects always incurred, not dependent on the invested variable.
@@ -1489,7 +1489,7 @@ class FlowsModel(TypeModel):
         return result
 
     @cached_property
-    def retirement_constant_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for retirement constant parts.
 
         For optional investments with effects_of_retirement, this is the constant "+factor"

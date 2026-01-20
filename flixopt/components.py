@@ -2325,7 +2325,7 @@ class StoragesModel:
     # === Investment effect properties (used by EffectsModel) ===
 
     @functools.cached_property
-    def invest_effects_per_size(self) -> xr.DataArray | None:
+    def effects_per_size(self) -> xr.DataArray | None:
         """Combined effects_of_investment_per_size with (storage, effect) dims."""
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
@@ -2340,7 +2340,7 @@ class StoragesModel:
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @functools.cached_property
-    def invest_effects_of_investment(self) -> xr.DataArray | None:
+    def effects_of_investment(self) -> xr.DataArray | None:
         """Combined effects_of_investment with (storage, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
@@ -2355,7 +2355,7 @@ class StoragesModel:
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @functools.cached_property
-    def invest_effects_of_retirement(self) -> xr.DataArray | None:
+    def effects_of_retirement(self) -> xr.DataArray | None:
         """Combined effects_of_retirement with (storage, effect) dims for non-mandatory."""
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
@@ -2370,7 +2370,7 @@ class StoragesModel:
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
     @functools.cached_property
-    def mandatory_invest_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return []
@@ -2389,7 +2389,7 @@ class StoragesModel:
         return result
 
     @functools.cached_property
-    def retirement_constant_effects(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
         """List of (element_id, effects_dict) for retirement constant parts."""
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return []

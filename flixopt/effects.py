@@ -662,13 +662,8 @@ class EffectsModel:
         # === Temporal shares (from flows) ===
         self._create_temporal_shares(flows_model, dt)
 
-        # === Periodic shares (from flows) ===
+        # === Periodic shares (from flows and storages) ===
         self._create_periodic_shares(flows_model)
-
-        # === Periodic shares (from storages) ===
-        storages_model = self.model._storages_model
-        if storages_model is not None:
-            self._create_storage_periodic_shares(storages_model)
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""
@@ -715,126 +710,89 @@ class EffectsModel:
         self._eq_per_timestep.lhs -= sum(exprs)
 
     def _create_periodic_shares(self, flows_model) -> None:
-        """Create share|periodic and add all periodic contributions to effect|periodic."""
-        # Check if flows_model has investment data
-        factors = flows_model.invest_effects_per_size
-        if factors is None:
-            self._add_constant_investment_shares(flows_model)
+        """Create share|periodic and add all periodic contributions to effect|periodic.
+
+        Collects investment effects from both flows and storages into a unified share.
+        """
+        # Collect all models with investment effects
+        models_with_effects = []
+
+        # Add flows model if it has effects
+        if flows_model.effects_per_size is not None:
+            models_with_effects.append(flows_model)
+
+        # Add storages model if it exists and has effects
+        storages_model = self.model._storages_model
+        if storages_model is not None and storages_model.effects_per_size is not None:
+            models_with_effects.append(storages_model)
+
+        if not models_with_effects:
+            # No share variable needed, just add constant effects
+            self._add_constant_effects(flows_model)
+            if storages_model is not None:
+                self._add_constant_effects(storages_model)
             return
 
-        dim = flows_model.dim_name
-        size = flows_model.size.sel({dim: factors.coords[dim].values})
+        # Create share|periodic for each model with effects_per_size
+        all_exprs = []
+        for i, type_model in enumerate(models_with_effects):
+            factors = type_model.effects_per_size
+            dim = type_model.dim_name
+            size = type_model.size.sel({dim: factors.coords[dim].values})
 
-        # share|periodic: size * effects_of_investment_per_size
-        self.share_periodic = self.model.add_variables(
-            lower=-np.inf,
-            upper=np.inf,
-            coords=self._share_coords(dim, factors.coords[dim], temporal=False),
-            name='share|periodic',
-        )
-        self.model.add_constraints(
-            self.share_periodic == size * factors.fillna(0),
-            name='share|periodic',
-        )
+            # Create share variable for this model
+            var_name = 'share|periodic' if i == 0 else f'share|periodic_{dim}'
+            share_var = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=self._share_coords(dim, factors.coords[dim], temporal=False),
+                name=var_name,
+            )
+            self.model.add_constraints(share_var == size * factors.fillna(0), name=var_name)
 
-        # Collect all periodic contributions
-        exprs = [self.share_periodic.sum(dim)]
+            # Store first share_periodic for backwards compatibility
+            if i == 0:
+                self.share_periodic = share_var
 
-        if flows_model.invested is not None:
-            if (f := flows_model.invest_effects_of_investment) is not None:
-                exprs.append((flows_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
-            if (f := flows_model.invest_effects_of_retirement) is not None:
-                exprs.append((flows_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
+            # Add to expressions
+            all_exprs.append(share_var.sum(dim))
 
-        self._eq_periodic.lhs -= sum(exprs)
+            # Add invested-based effects
+            if type_model.invested is not None:
+                if (f := type_model.effects_of_investment) is not None:
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+                if (f := type_model.effects_of_retirement) is not None:
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
 
-        # Constant shares (mandatory fixed, retirement constants)
-        self._add_constant_investment_shares(flows_model)
+        # Add all expressions to periodic constraint
+        self._eq_periodic.lhs -= sum(all_exprs)
 
-    def _add_constant_investment_shares(self, flows_model) -> None:
-        """Add constant (non-variable) investment shares directly to effect constraints.
+        # Add constant effects for all models
+        self._add_constant_effects(flows_model)
+        if storages_model is not None:
+            self._add_constant_effects(storages_model)
+
+    def _add_constant_effects(self, type_model) -> None:
+        """Add constant (non-variable) investment effects directly to effect constraints.
 
         This handles:
         - Mandatory fixed effects (always incurred, not dependent on invested variable)
         - Retirement constant parts (the +factor in -invested*factor + factor)
+
+        Works with both FlowsModel and StoragesModel.
         """
-        # Mandatory fixed effects (using FlowsModel property)
-        for element_id, effects_dict in flows_model.mandatory_invest_effects:
+        # Mandatory fixed effects
+        for element_id, effects_dict in type_model.effects_of_investment_mandatory:
             self.model.effects.add_share_to_effects(
-                name=f'{element_id}|invest_fix',
+                name=f'{element_id}|effects_fix',
                 expressions=effects_dict,
                 target='periodic',
             )
 
-        # Retirement constant parts (using FlowsModel property)
-        for element_id, effects_dict in flows_model.retirement_constant_effects:
+        # Retirement constant parts
+        for element_id, effects_dict in type_model.effects_of_retirement_constant:
             self.model.effects.add_share_to_effects(
-                name=f'{element_id}|invest_retire_const',
-                expressions=effects_dict,
-                target='periodic',
-            )
-
-    def _create_storage_periodic_shares(self, storages_model) -> None:
-        """Create periodic investment shares for storages.
-
-        Similar to _create_periodic_shares but for StoragesModel.
-        Handles effects_per_size, effects_of_investment, effects_of_retirement,
-        and constant effects.
-        """
-        # Check if storages_model has investment data
-        factors = storages_model.invest_effects_per_size
-        if factors is None:
-            self._add_constant_storage_investment_shares(storages_model)
-            return
-
-        dim = storages_model.dim_name
-        size = storages_model.size.sel({dim: factors.coords[dim].values})
-
-        # share|storage_periodic: size * effects_of_investment_per_size
-        self.share_storage_periodic = self.model.add_variables(
-            lower=-np.inf,
-            upper=np.inf,
-            coords=self._share_coords(dim, factors.coords[dim], temporal=False),
-            name='share|storage_periodic',
-        )
-        self.model.add_constraints(
-            self.share_storage_periodic == size * factors.fillna(0),
-            name='share|storage_periodic',
-        )
-
-        # Collect all periodic contributions from storages
-        exprs = [self.share_storage_periodic.sum(dim)]
-
-        if storages_model.invested is not None:
-            if (f := storages_model.invest_effects_of_investment) is not None:
-                exprs.append((storages_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
-            if (f := storages_model.invest_effects_of_retirement) is not None:
-                exprs.append((storages_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
-
-        self._eq_periodic.lhs -= sum(exprs)
-
-        # Constant shares (mandatory fixed, retirement constants)
-        self._add_constant_storage_investment_shares(storages_model)
-
-    def _add_constant_storage_investment_shares(self, storages_model) -> None:
-        """Add constant (non-variable) investment shares for storages.
-
-        This handles:
-        - Mandatory fixed effects (always incurred, not dependent on invested variable)
-        - Retirement constant parts (the +factor in -invested*factor + factor)
-        """
-        # Mandatory fixed effects (using StoragesModel property)
-        for element_id, effects_dict in storages_model.mandatory_invest_effects:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|invest_fix',
-                expressions=effects_dict,
-                target='periodic',
-            )
-
-        # Retirement constant parts (using StoragesModel property)
-        for element_id, effects_dict in storages_model.retirement_constant_effects:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|invest_retire_const',
+                name=f'{element_id}|effects_retire_const',
                 expressions=effects_dict,
                 target='periodic',
             )
