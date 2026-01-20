@@ -409,6 +409,100 @@ class EffectModel(ElementModel):
             self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')
 
 
+class ShareAllocationProxy:
+    """Proxy providing backward-compatible interface to batched effect variables.
+
+    Simulates the ShareAllocationModel interface but returns variables from EffectsModel.
+    """
+
+    def __init__(self, effects_model: EffectsModel, effect_id: str, component: Literal['temporal', 'periodic']):
+        self._effects_model = effects_model
+        self._effect_id = effect_id
+        self._component = component
+        self._model = effects_model.model
+
+    @property
+    def label_full(self) -> str:
+        return f'{self._effect_id}({self._component})'
+
+    @property
+    def total(self) -> linopy.Variable:
+        """Total variable for this component (temporal or periodic)."""
+        if self._component == 'temporal':
+            return self._effects_model.temporal.sel(effect=self._effect_id)
+        else:
+            return self._effects_model.periodic.sel(effect=self._effect_id)
+
+    @property
+    def total_per_timestep(self) -> linopy.Variable:
+        """Per-timestep variable (only for temporal component)."""
+        if self._component != 'temporal':
+            raise AttributeError('Only temporal component has total_per_timestep')
+        return self._effects_model.per_timestep.sel(effect=self._effect_id)
+
+
+class EffectModelProxy(ElementModel):
+    """Proxy for Effect elements when using type-level (batched) modeling.
+
+    Instead of creating its own variables, this proxy provides access to the
+    variables created by EffectsModel. This enables the same interface (.total,
+    .temporal, .periodic) while avoiding duplicate variable/constraint creation.
+    """
+
+    element: Effect  # Type hint
+
+    def __init__(self, model: FlowSystemModel, element: Effect, effects_model: EffectsModel):
+        self._effects_model = effects_model
+        self._effect_id = element.label
+        super().__init__(model, element)
+
+        # Create proxy accessors for temporal and periodic
+        self.temporal = ShareAllocationProxy(effects_model, self._effect_id, 'temporal')
+        self.periodic = ShareAllocationProxy(effects_model, self._effect_id, 'periodic')
+
+        # Register variables from EffectsModel in our local registry with INDIVIDUAL element names
+        # The variable names must match what the old EffectModel created
+        self.register_variable(effects_model.total.sel(effect=self._effect_id), self._effect_id)
+        self.register_variable(effects_model.temporal.sel(effect=self._effect_id), f'{self._effect_id}(temporal)')
+        self.register_variable(effects_model.periodic.sel(effect=self._effect_id), f'{self._effect_id}(periodic)')
+        self.register_variable(
+            effects_model.per_timestep.sel(effect=self._effect_id), f'{self._effect_id}(temporal)|per_timestep'
+        )
+
+        # Register constraints with individual element names
+        # EffectsModel creates batched constraints; we map them to individual names
+        self.register_constraint(model.constraints['effect|total'].sel(effect=self._effect_id), self._effect_id)
+        self.register_constraint(
+            model.constraints['effect|temporal'].sel(effect=self._effect_id), f'{self._effect_id}(temporal)'
+        )
+        self.register_constraint(
+            model.constraints['effect|periodic'].sel(effect=self._effect_id), f'{self._effect_id}(periodic)'
+        )
+        self.register_constraint(
+            model.constraints['effect|per_timestep'].sel(effect=self._effect_id),
+            f'{self._effect_id}(temporal)|per_timestep',
+        )
+
+    def _do_modeling(self):
+        """Skip modeling - EffectsModel already created everything."""
+        pass
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """Return registered variables with individual element names (not batched names)."""
+        return self._variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """Return registered constraints with individual element names (not batched names)."""
+        return self._constraints
+
+    @property
+    def total(self) -> linopy.Variable:
+        """Total effect variable from EffectsModel."""
+        return self._effects_model.total.sel(effect=self._effect_id)
+
+
 class EffectsModel:
     """Type-level model for ALL effects with batched variables using 'effect' dimension.
 
@@ -1119,6 +1213,11 @@ class EffectCollectionModel(Submodel):
                 effects=list(self.effects.values()),
             )
             self._batched_model.create_variables()
+
+            # Create proxy submodels for backward compatibility
+            # This allows code to access effect.submodel.variables, etc.
+            for effect in self.effects.values():
+                effect.submodel = EffectModelProxy(self._model, effect, self._batched_model)
 
             # Add cross-effect shares using batched model
             self._add_share_between_effects_batched()

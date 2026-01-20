@@ -986,9 +986,12 @@ class InterclusterStorageModel(ComponentModel):
 
     def _add_netto_discharge_constraint(self):
         """Add constraint: netto_discharge = discharging - charging."""
+        # Access flow rates from type-level FlowsModel
+        flows_model = self._model._flows_model
+        charge_rate = flows_model.get_variable('rate', self.element.charging.label_full)
+        discharge_rate = flows_model.get_variable('rate', self.element.discharging.label_full)
         self.add_constraints(
-            self.netto_discharge
-            == self.element.discharging.submodel.flow_rate - self.element.charging.submodel.flow_rate,
+            self.netto_discharge == discharge_rate - charge_rate,
             short_name='netto_discharge',
         )
 
@@ -1015,8 +1018,10 @@ class InterclusterStorageModel(ComponentModel):
         charge_state = self.charge_state
         rel_loss = self.element.relative_loss_per_hour
         timestep_duration = self._model.timestep_duration
-        charge_rate = self.element.charging.submodel.flow_rate
-        discharge_rate = self.element.discharging.submodel.flow_rate
+        # Access flow rates from type-level FlowsModel
+        flows_model = self._model._flows_model
+        charge_rate = flows_model.get_variable('rate', self.element.charging.label_full)
+        discharge_rate = flows_model.get_variable('rate', self.element.discharging.label_full)
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
@@ -1030,9 +1035,12 @@ class InterclusterStorageModel(ComponentModel):
     def _add_balanced_sizes_constraint(self):
         """Add constraint ensuring charging and discharging capacities are equal."""
         if self.element.balanced:
+            # Access investment sizes from type-level FlowsModel
+            flows_model = self._model._flows_model
+            charge_size = flows_model.get_variable('size', self.element.charging.label_full)
+            discharge_size = flows_model.get_variable('size', self.element.discharging.label_full)
             self.add_constraints(
-                self.element.charging.submodel._investment.size - self.element.discharging.submodel._investment.size
-                == 0,
+                charge_size - discharge_size == 0,
                 short_name='balanced_sizes',
             )
 
@@ -1760,7 +1768,37 @@ class StoragesModel:
         # === Cluster cyclic constraints ===
         self._add_batched_cluster_cyclic_constraints(charge_state)
 
+        # === Balanced flow sizes constraint ===
+        self._add_balanced_flow_sizes_constraint()
+
         logger.debug(f'StoragesModel created batched constraints for {len(self.elements)} storages')
+
+    def _add_balanced_flow_sizes_constraint(self) -> None:
+        """Add constraint ensuring charging and discharging flow capacities are equal for balanced storages."""
+        balanced_storages = [s for s in self.elements if s.balanced]
+        if not balanced_storages:
+            return
+
+        # Access flow size variables from FlowsModel
+        flows_model = self._flows_model
+        size_var = flows_model.get_variable('size')
+        if size_var is None:
+            return
+
+        flow_dim = flows_model.dim_name  # 'flow'
+
+        for storage in balanced_storages:
+            charge_id = storage.charging.label_full
+            discharge_id = storage.discharging.label_full
+            # Check if both flows have investment
+            if charge_id not in flows_model.investment_ids or discharge_id not in flows_model.investment_ids:
+                continue
+            charge_size = size_var.sel({flow_dim: charge_id})
+            discharge_size = size_var.sel({flow_dim: discharge_id})
+            self.model.add_constraints(
+                charge_size - discharge_size == 0,
+                name=f'storage|{storage.label}|balanced_sizes',
+            )
 
     def _stack_parameter(self, values: list, element_ids: list | None = None) -> xr.DataArray:
         """Stack parameter values into DataArray with storage dimension."""
@@ -2366,24 +2404,15 @@ class StorageModelProxy(ComponentModel):
                         self._model.flow_system, f'{flow.label_full}|status_parameters'
                     )
 
-        # Flow models are handled by FlowsModel, just register submodels
-        for flow in all_flows:
-            flow.create_model(self._model)
-            self.add_submodels(flow.submodel, short_name=flow.label)
-
-        # Note: Investment model is handled by StoragesModel's InvestmentsModel
-        # The batched investment creates size/invested variables for all storages at once
-        # StorageModelProxy.investment property provides access to the batched variables
-
-        # Handle balanced sizes constraint (for flows with investment)
-        if self.element.balanced:
-            # Get size variables from flows' investment models
-            charge_size = self.element.charging.submodel.investment.size
-            discharge_size = self.element.discharging.submodel.investment.size
-            self._model.add_constraints(
-                charge_size - discharge_size == 0,
-                name=f'{self.label_of_element}|balanced_sizes',
-            )
+        # Note: All storage modeling is now handled by StoragesModel type-level model:
+        # - Variables: charge_state, netto_discharge, size, invested
+        # - Constraints: netto_discharge, energy_balance, initial/final, balanced_sizes
+        #
+        # Flow modeling is handled by FlowsModel type-level model.
+        # Investment modeling for storages is handled by StoragesModel.create_investment_model().
+        # The balanced_sizes constraint is handled by StoragesModel._add_balanced_flow_sizes_constraint().
+        #
+        # This proxy class only exists for backwards compatibility.
 
     @property
     def investment(self):

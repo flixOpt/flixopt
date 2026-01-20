@@ -721,37 +721,62 @@ class FlowModelProxy(ElementModel):
         self._flows_model = model._flows_model
         super().__init__(model, element)
 
+        # Public variables dict with full element names (for .variables property)
+        self._public_variables: dict[str, linopy.Variable] = {}
+
         # Register variables from FlowsModel in our local registry
-        # so properties like self.flow_rate work
+        # Short names go to _variables (for property access like self['flow_rate'])
+        # Full names go to _public_variables (for .variables property that tests use)
         if self._flows_model is not None:
-            # Note: FlowsModel uses new names 'rate' and 'hours', but we register with legacy names
-            # for backward compatibility with property access (self.flow_rate, self.total_flow_hours)
+            # Flow rate
             flow_rate = self._flows_model.get_variable('rate', self.label_full)
             self.register_variable(flow_rate, 'flow_rate')
+            self._public_variables[f'{self.label_full}|flow_rate'] = flow_rate
 
+            # Total flow hours
             total_flow_hours = self._flows_model.get_variable('hours', self.label_full)
             self.register_variable(total_flow_hours, 'total_flow_hours')
+            self._public_variables[f'{self.label_full}|total_flow_hours'] = total_flow_hours
 
             # Status if applicable
             if self.label_full in self._flows_model.status_ids:
                 status = self._flows_model.get_variable('status', self.label_full)
                 self.register_variable(status, 'status')
+                self._public_variables[f'{self.label_full}|status'] = status
+
+                # Active hours
+                active_hours = self._flows_model.get_variable('active_hours', self.label_full)
+                if active_hours is not None:
+                    self.register_variable(active_hours, 'active_hours')
+                    self._public_variables[f'{self.label_full}|active_hours'] = active_hours
 
             # Investment variables if applicable (from FlowsModel)
             if self.label_full in self._flows_model.investment_ids:
                 size = self._flows_model.get_variable('size', self.label_full)
                 if size is not None:
                     self.register_variable(size, 'size')
+                    self._public_variables[f'{self.label_full}|size'] = size
 
                 if self.label_full in self._flows_model.optional_investment_ids:
                     invested = self._flows_model.get_variable('invested', self.label_full)
                     if invested is not None:
                         self.register_variable(invested, 'invested')
+                        self._public_variables[f'{self.label_full}|invested'] = invested
 
     def _do_modeling(self):
         """Skip modeling - FlowsModel already created everything via StatusHelpers."""
         # Status features are handled by StatusHelpers in FlowsModel
         pass
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """Return variables with full element names (for backward compatibility with tests)."""
+        return self._public_variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """Return registered constraints with individual element names (not batched names)."""
+        return self._constraints
 
     @property
     def with_status(self) -> bool:
@@ -2297,13 +2322,21 @@ class BusModelProxy(ElementModel):
 
     def _do_modeling(self):
         """Skip modeling - BusesModel already created everything."""
-        # Register flow variables in our local registry for results_structure
-        for flow in self.element.inputs + self.element.outputs:
-            self.register_variable(flow.submodel.flow_rate, flow.label_full)
+        # Register flow variables from FlowsModel in our local registry for results_structure
+        flows_model = self._model._flows_model
+        if flows_model is not None:
+            for flow in self.element.inputs + self.element.outputs:
+                flow_rate = flows_model.get_variable('rate', flow.label_full)
+                if flow_rate is not None:
+                    self.register_variable(flow_rate, flow.label_full)
 
     def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+        # Get flow rate variable names from FlowsModel
+        flows_model = self._model._flows_model
+        flow_rate_var = flows_model.get_variable('rate') if flows_model else None
+        rate_name = flow_rate_var.name if flow_rate_var is not None else 'flow|rate'
+        inputs = [rate_name for _ in self.element.inputs]
+        outputs = [rate_name for _ in self.element.outputs]
         if self.virtual_supply is not None:
             inputs.append(self.virtual_supply.name)
         if self.virtual_demand is not None:
@@ -2337,21 +2370,36 @@ class ComponentModel(ElementModel):
         # Status and prevent_simultaneous constraints handled by type-level models
 
     def results_structure(self):
+        # Get flow rate variable names from FlowsModel
+        flows_model = self._model._flows_model
+        flow_rate_var = flows_model.get_variable('rate') if flows_model else None
+        rate_name = flow_rate_var.name if flow_rate_var is not None else 'flow|rate'
         return {
             **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
+            'inputs': [rate_name for _ in self.element.inputs],
+            'outputs': [rate_name for _ in self.element.outputs],
             'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
         }
 
     @property
     def previous_status(self) -> xr.DataArray | None:
-        """Previous status of the component, derived from its flows"""
+        """Previous status of the component, derived from its flows.
+
+        Note: This property is deprecated and will be removed. Use FlowsModel/ComponentsModel instead.
+        """
         if self.element.status_parameters is None:
             raise ValueError(f'status_parameters not present in \n{self}\nCant access previous_status')
 
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.inputs + self.element.outputs]
-        previous_status = [da for da in previous_status if da is not None]
+        # Get previous_status from FlowsModel
+        flows_model = self._model._flows_model
+        if flows_model is None:
+            return None
+
+        previous_status = []
+        for flow in self.element.inputs + self.element.outputs:
+            prev = flows_model.get_previous_status(flow)
+            if prev is not None:
+                previous_status.append(prev)
 
         if not previous_status:  # Empty list
             return None
