@@ -800,7 +800,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._buses_model: TypeModel | None = None  # Reference to BusesModel
         self._storages_model = None  # Reference to StoragesModel
         self._components_model = None  # Reference to ComponentsModel
-        self._linear_converters_model = None  # Reference to LinearConvertersModel
+        self._converters_model = None  # Reference to ConvertersModel
+        self._transmissions_model = None  # Reference to TransmissionsModel
         self._prevent_simultaneous_model = None  # Reference to PreventSimultaneousFlowsModel
 
     def add_variables(
@@ -860,8 +861,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         import time
 
-        from .components import LinearConverter, LinearConvertersModel, Storage, StoragesModel
-        from .elements import BusesModel, FlowsModel
+        from .components import LinearConverter, Storage, StoragesModel
+        from .elements import BusesModel, ConvertersModel, FlowsModel, TransmissionsModel
 
         timings = {}
 
@@ -1017,15 +1018,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         from .elements import ComponentsModel, PreventSimultaneousFlowsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+        converters_with_factors = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
+        ]
         converters_with_piecewise = [
             c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
         ]
         transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
 
-        # Create type-level model for all component-level batched variables/constraints
-        self._components_model = ComponentsModel(
-            self, components_with_status, converters_with_piecewise, transmissions, self._flows_model
-        )
+        # Create type-level model for component status variables/constraints
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
         self._components_model.create_variables()
 
         record('component_status_variables')
@@ -1042,14 +1044,19 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('component_status_effects')
 
-        # Create piecewise conversion variables and constraints (handled by ComponentsModel)
-        self._components_model.create_piecewise_conversion_variables()
-        self._components_model.create_piecewise_conversion_constraints()
+        # Create converters model (linear conversion factors + piecewise)
+        self._converters_model = ConvertersModel(
+            self, converters_with_factors, converters_with_piecewise, self._flows_model
+        )
+        self._converters_model.create_linear_constraints()
+        self._converters_model.create_piecewise_variables()
+        self._converters_model.create_piecewise_constraints()
 
-        record('piecewise_converters')
+        record('converters')
 
-        # Create transmission constraints (handled by ComponentsModel)
-        self._components_model.create_transmission_constraints()
+        # Create transmissions model
+        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
+        self._transmissions_model.create_constraints()
 
         record('transmissions')
 
@@ -1065,17 +1072,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._prevent_simultaneous_model.create_constraints()
 
         record('prevent_simultaneous')
-
-        # Collect LinearConverters with conversion_factors (not piecewise)
-        converters_with_factors = [
-            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
-        ]
-
-        # Create type-level model for batched conversion constraints
-        self._linear_converters_model = LinearConvertersModel(self, converters_with_factors, self._flows_model)
-        self._linear_converters_model.create_constraints()
-
-        record('linear_converters')
 
         # Create component models (without flow modeling - flows handled by FlowsModel)
         # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
@@ -1121,6 +1117,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
                 'component_status_constraints',
                 'component_status_features',
                 'component_status_effects',
+                'converters',
+                'transmissions',
                 'prevent_simultaneous',
                 'components',
                 'buses',
