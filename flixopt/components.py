@@ -1614,11 +1614,12 @@ class StoragesModel:
             self.model.variable_categories[charge_state.name] = expansion_category
 
         # === storage|netto: ALL storages ===
-        temporal_coords = self.model.get_coords(self.model.temporal_dims)
+        # Use full coords (including scenarios) not just temporal_dims
+        full_coords = self.model.get_coords()
         netto_discharge_coords = xr.Coordinates(
             {
                 dim: pd.Index(self.element_ids, name=dim),
-                **{d: temporal_coords[d] for d in temporal_coords},
+                **{d: full_coords[d] for d in full_coords},
             }
         )
 

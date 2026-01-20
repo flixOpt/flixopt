@@ -1346,27 +1346,39 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if config is False:
             return  # All vary per scenario, no constraints needed
 
-        suffix = f'|{parameter_type}'
+        # Map parameter types to batched variable names
+        batched_var_map = {'flow_rate': 'flow|rate', 'size': 'flow|size'}
+        batched_var_name = batched_var_map[parameter_type]
+
+        if batched_var_name not in self.variables:
+            return  # Variable doesn't exist (e.g., no flows with investment)
+
+        batched_var = self.variables[batched_var_name]
+        if 'scenario' not in batched_var.dims:
+            return  # No scenario dimension, nothing to equalize
+
+        all_flow_labels = list(batched_var.coords['flow'].values)
+
         if config is True:
-            # All should be scenario-independent
-            vars_to_constrain = [var for var in self.variables if var.endswith(suffix)]
+            # All flows should be scenario-independent
+            flows_to_constrain = all_flow_labels
         else:
             # Only those in the list should be scenario-independent
-            all_vars = [var for var in self.variables if var.endswith(suffix)]
-            to_equalize = {f'{element}{suffix}' for element in config}
-            vars_to_constrain = [var for var in all_vars if var in to_equalize]
+            flows_to_constrain = [f for f in config if f in all_flow_labels]
+            # Validate that all specified flows exist
+            missing = [f for f in config if f not in all_flow_labels]
+            if missing:
+                param_name = (
+                    'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
+                )
+                logger.warning(f'{param_name} contains labels not in {batched_var_name}: {missing}')
 
-        # Validate that all specified variables exist
-        missing_vars = [v for v in vars_to_constrain if v not in self.variables]
-        if missing_vars:
-            param_name = 'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
-            raise ValueError(f'{param_name} contains invalid labels: {missing_vars}')
-
-        logger.debug(f'Adding scenario equality constraints for {len(vars_to_constrain)} {parameter_type} variables')
-        for var in vars_to_constrain:
+        logger.debug(f'Adding scenario equality constraints for {len(flows_to_constrain)} {parameter_type} variables')
+        for flow_label in flows_to_constrain:
+            var_slice = batched_var.sel(flow=flow_label)
             self.add_constraints(
-                self.variables[var].isel(scenario=0) == self.variables[var].isel(scenario=slice(1, None)),
-                name=f'{var}|scenario_independent',
+                var_slice.isel(scenario=0) == var_slice.isel(scenario=slice(1, None)),
+                name=f'{flow_label}|{parameter_type}|scenario_independent',
             )
 
     def _add_scenario_equality_constraints(self):

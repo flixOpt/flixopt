@@ -1515,8 +1515,32 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         category_set = set(categories)
 
-        if self._variable_categories:
-            # Use registered categories
+        # Prefixes for batched type-level variables that should be expanded to individual elements
+        batched_prefixes = ('flow|', 'storage|', 'bus|', 'effect|', 'share|', 'converter|', 'transmission|')
+
+        if self._variable_categories and self._solution is not None:
+            # Use registered categories, but handle batched variables that were unrolled
+            # Categories may have batched names (e.g., 'flow|rate') but solution has
+            # unrolled names (e.g., 'Boiler(Q_th)|flow_rate')
+            solution_vars = set(self._solution.data_vars)
+            matching = []
+            for name, cat in self._variable_categories.items():
+                if cat in category_set:
+                    if name in solution_vars:
+                        # Direct match - variable exists in solution (batched or not)
+                        matching.append(name)
+                    else:
+                        # Variable not in solution - check if it was unrolled
+                        # Only expand batched type-level variables to unrolled names
+                        is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
+                        if is_batched:
+                            suffix = f'|{cat.value}'
+                            matching.extend(v for v in solution_vars if v.endswith(suffix))
+            # Remove duplicates while preserving order
+            seen = set()
+            matching = [v for v in matching if not (v in seen or seen.add(v))]
+        elif self._variable_categories:
+            # No solution - return registered batched names
             matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
         elif self._solution is not None:
             # Fallback for old files without categories: match by suffix pattern

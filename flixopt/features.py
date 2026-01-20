@@ -157,15 +157,15 @@ class InvestmentHelpers:
         element_ids: list[str],
         dim_name: str,
     ) -> xr.DataArray | None:
-        """Build factor array with (element, effect) dims from effects dict.
+        """Build factor array with (element, effect, ...) dims from effects dict.
 
         Args:
-            effects_dict: Dict mapping effect_name -> DataArray(element_dim).
+            effects_dict: Dict mapping effect_name -> DataArray(element_dim) or DataArray(element_dim, time).
             element_ids: Element IDs (for ordering).
             dim_name: Element dimension name.
 
         Returns:
-            DataArray with (element, effect) dims, or None if empty.
+            DataArray with (element, effect) or (element, effect, time) dims, or None if empty.
         """
         if not effects_dict:
             return None
@@ -174,7 +174,9 @@ class InvestmentHelpers:
         effect_arrays = [effects_dict[eff] for eff in effect_ids]
         result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
 
-        return result.transpose(dim_name, 'effect')
+        # Transpose to put element first, then effect, then any other dims (like time)
+        dims_order = [dim_name, 'effect'] + [d for d in result.dims if d not in (dim_name, 'effect')]
+        return result.transpose(*dims_order)
 
     @staticmethod
     def stack_bounds(
@@ -289,6 +291,7 @@ class StatusHelpers:
         element_ids: list[str],
         attr: str,
         dim_name: str,
+        time_coords: xr.DataArray | None = None,
     ) -> dict[str, xr.DataArray]:
         """Collect status effects from params into a dict of DataArrays.
 
@@ -297,9 +300,10 @@ class StatusHelpers:
             element_ids: List of element IDs to collect from.
             attr: Attribute name on StatusParameters (e.g., 'effects_per_active_hour').
             dim_name: Dimension name for the DataArrays.
+            time_coords: Optional time coordinates for time-varying effects.
 
         Returns:
-            Dict mapping effect_name -> DataArray with element dimension.
+            Dict mapping effect_name -> DataArray with element dimension (and time if time-varying).
         """
         # Find all effect names across all elements
         all_effects: set[str] = set()
@@ -314,10 +318,36 @@ class StatusHelpers:
         result = {}
         for effect_name in all_effects:
             values = []
+            is_time_varying = False
+            time_length = None
+
             for eid in element_ids:
                 effects = getattr(params[eid], attr) or {}
-                values.append(effects.get(effect_name, np.nan))
-            result[effect_name] = xr.DataArray(values, dims=[dim_name], coords={dim_name: element_ids})
+                val = effects.get(effect_name, np.nan)
+
+                # Check if this value is time-varying
+                if isinstance(val, (np.ndarray, xr.DataArray)) and np.asarray(val).ndim > 0:
+                    is_time_varying = True
+                    time_length = len(np.asarray(val))
+                values.append(val)
+
+            if is_time_varying and time_length is not None:
+                # Convert to 2D array (element, time)
+                data = np.zeros((len(element_ids), time_length))
+                for i, val in enumerate(values):
+                    if isinstance(val, (np.ndarray, xr.DataArray)):
+                        data[i, :] = np.asarray(val)
+                    elif np.isnan(val) if np.isscalar(val) else False:
+                        data[i, :] = np.nan
+                    else:
+                        data[i, :] = val  # Broadcast scalar
+
+                coords = {dim_name: element_ids}
+                if time_coords is not None:
+                    coords['time'] = time_coords
+                result[effect_name] = xr.DataArray(data, dims=[dim_name, 'time'], coords=coords)
+            else:
+                result[effect_name] = xr.DataArray(values, dims=[dim_name], coords={dim_name: element_ids})
 
         return result
 
@@ -827,35 +857,89 @@ class PiecewiseHelpers:
     @staticmethod
     def pad_breakpoints(
         element_ids: list[str],
-        breakpoints: dict[str, tuple[list[float], list[float]]],
+        breakpoints: dict[str, tuple[list, list]],
         max_segments: int,
         dim_name: str,
+        time_coords: xr.DataArray | None = None,
     ) -> tuple[xr.DataArray, xr.DataArray]:
-        """Pad breakpoints to (element, segment) arrays.
+        """Pad breakpoints to (element, segment) or (element, segment, time) arrays.
+
+        Handles both scalar and time-varying (array) breakpoints.
 
         Args:
             element_ids: List of element identifiers.
             breakpoints: Dict mapping element_id -> (starts, ends) lists.
+                Values can be scalars or time-varying arrays.
             max_segments: Maximum segment count to pad to.
             dim_name: Name for the element dimension.
+            time_coords: Optional time coordinates for time-varying breakpoints.
 
         Returns:
-            starts: (element, segment) DataArray of segment start values.
-            ends: (element, segment) DataArray of segment end values.
+            starts: (element, segment) or (element, segment, time) DataArray.
+            ends: (element, segment) or (element, segment, time) DataArray.
         """
-        starts_data = np.zeros((len(element_ids), max_segments))
-        ends_data = np.zeros((len(element_ids), max_segments))
-
-        for i, eid in enumerate(element_ids):
+        # Detect if any breakpoints are time-varying (arrays/xr.DataArray with dim > 0)
+        is_time_varying = False
+        time_length = None
+        for eid in element_ids:
             element_starts, element_ends = breakpoints[eid]
-            n_segments = len(element_starts)
-            starts_data[i, :n_segments] = element_starts
-            ends_data[i, :n_segments] = element_ends
-            # Padded segments remain 0, which is fine since they're masked out
+            for val in list(element_starts) + list(element_ends):
+                if isinstance(val, xr.DataArray):
+                    # Check if it has any dimensions (not a scalar)
+                    if val.ndim > 0:
+                        is_time_varying = True
+                        time_length = val.shape[0]
+                        break
+                elif isinstance(val, np.ndarray):
+                    # Check if it's not a 0-d array
+                    if val.ndim > 0 and val.size > 1:
+                        is_time_varying = True
+                        time_length = len(val)
+                        break
+            if is_time_varying:
+                break
 
-        coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
-        starts = xr.DataArray(starts_data, dims=[dim_name, 'segment'], coords=coords)
-        ends = xr.DataArray(ends_data, dims=[dim_name, 'segment'], coords=coords)
+        if is_time_varying and time_length is not None:
+            # 3D arrays: (element, segment, time)
+            starts_data = np.zeros((len(element_ids), max_segments, time_length))
+            ends_data = np.zeros((len(element_ids), max_segments, time_length))
+
+            for i, eid in enumerate(element_ids):
+                element_starts, element_ends = breakpoints[eid]
+                n_segments = len(element_starts)
+                for j in range(n_segments):
+                    start_val = element_starts[j]
+                    end_val = element_ends[j]
+                    # Handle scalar vs array values
+                    if isinstance(start_val, (np.ndarray, xr.DataArray)):
+                        starts_data[i, j, :] = np.asarray(start_val)
+                    else:
+                        starts_data[i, j, :] = start_val
+                    if isinstance(end_val, (np.ndarray, xr.DataArray)):
+                        ends_data[i, j, :] = np.asarray(end_val)
+                    else:
+                        ends_data[i, j, :] = end_val
+
+            # Build coordinates including time if available
+            coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
+            if time_coords is not None:
+                coords['time'] = time_coords
+            starts = xr.DataArray(starts_data, dims=[dim_name, 'segment', 'time'], coords=coords)
+            ends = xr.DataArray(ends_data, dims=[dim_name, 'segment', 'time'], coords=coords)
+        else:
+            # 2D arrays: (element, segment) - scalar breakpoints
+            starts_data = np.zeros((len(element_ids), max_segments))
+            ends_data = np.zeros((len(element_ids), max_segments))
+
+            for i, eid in enumerate(element_ids):
+                element_starts, element_ends = breakpoints[eid]
+                n_segments = len(element_starts)
+                starts_data[i, :n_segments] = element_starts
+                ends_data[i, :n_segments] = element_ends
+
+            coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
+            starts = xr.DataArray(starts_data, dims=[dim_name, 'segment'], coords=coords)
+            ends = xr.DataArray(ends_data, dims=[dim_name, 'segment'], coords=coords)
 
         return starts, ends
 

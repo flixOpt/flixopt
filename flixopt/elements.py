@@ -1592,8 +1592,9 @@ class FlowsModel(TypeModel):
         element_ids = [eid for eid in self.status_ids if self._status_params[eid].effects_per_active_hour]
         if not element_ids:
             return None
+        time_coords = self.model.flow_system.timesteps
         effects_dict = StatusHelpers.collect_status_effects(
-            self._status_params, element_ids, 'effects_per_active_hour', self.dim_name
+            self._status_params, element_ids, 'effects_per_active_hour', self.dim_name, time_coords
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
@@ -1607,8 +1608,9 @@ class FlowsModel(TypeModel):
         element_ids = [eid for eid in self.status_ids if self._status_params[eid].effects_per_startup]
         if not element_ids:
             return None
+        time_coords = self.model.flow_system.timesteps
         effects_dict = StatusHelpers.collect_status_effects(
-            self._status_params, element_ids, 'effects_per_startup', self.dim_name
+            self._status_params, element_ids, 'effects_per_startup', self.dim_name, time_coords
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
 
@@ -2306,18 +2308,23 @@ class BusModelProxy(ElementModel):
     element: Bus  # Type hint
 
     def __init__(self, model: FlowSystemModel, element: Bus):
-        self.virtual_supply: linopy.Variable | None = None
-        self.virtual_demand: linopy.Variable | None = None
         # Set _buses_model BEFORE super().__init__() for consistency
         self._buses_model = model._buses_model
+
+        # Pre-fetch virtual supply/demand BEFORE super().__init__() because
+        # _do_modeling() is called during super().__init__() and needs them
+        self.virtual_supply: linopy.Variable | None = None
+        self.virtual_demand: linopy.Variable | None = None
+        if self._buses_model is not None and element.label_full in self._buses_model.imbalance_ids:
+            self.virtual_supply = self._buses_model.get_variable('virtual_supply', element.label_full)
+            self.virtual_demand = self._buses_model.get_variable('virtual_demand', element.label_full)
+
         super().__init__(model, element)
 
-        # Register variables from BusesModel in our local registry
-        if self._buses_model is not None and self.label_full in self._buses_model.imbalance_ids:
-            self.virtual_supply = self._buses_model.get_variable('virtual_supply', self.label_full)
+        # Register variables from BusesModel in our local registry (after super().__init__)
+        if self.virtual_supply is not None:
             self.register_variable(self.virtual_supply, 'virtual_supply')
-
-            self.virtual_demand = self._buses_model.get_variable('virtual_demand', self.label_full)
+        if self.virtual_demand is not None:
             self.register_variable(self.virtual_demand, 'virtual_demand')
 
     def _do_modeling(self):
@@ -3001,8 +3008,14 @@ class ConvertersModel:
                         [0.0] * self._piecewise_max_segments,
                     )
 
+            # Get time coordinates from model for time-varying breakpoints
+            time_coords = self.model.flow_system.timesteps
             starts, ends = self._PiecewiseHelpers.pad_breakpoints(
-                self._piecewise_element_ids, breakpoints, self._piecewise_max_segments, self._piecewise_dim_name
+                self._piecewise_element_ids,
+                breakpoints,
+                self._piecewise_max_segments,
+                self._piecewise_dim_name,
+                time_coords=time_coords,
             )
             result[flow_id] = (starts, ends)
 
