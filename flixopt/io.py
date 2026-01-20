@@ -753,7 +753,9 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
         else:
             new_data_vars[name] = var
 
-    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
+    # Preserve non-dimension coordinates (filter out stacked dim coords)
+    preserved_coords = {k: v for k, v in ds.coords.items() if not k.startswith(stacked_prefix)}
+    return xr.Dataset(new_data_vars, coords=preserved_coords, attrs=ds.attrs)
 
 
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
