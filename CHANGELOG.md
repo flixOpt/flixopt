@@ -53,30 +53,37 @@ Until here -->
 
 ## [6.0.0] - Upcoming
 
-**Summary**: Major release featuring a complete rewrite of the clustering/aggregation system with tsam integration, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
+**Summary**: Major release featuring tsam v3 migration, complete rewrite of the clustering/aggregation system, 2-3x faster I/O for large systems, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
 
 !!! warning "Breaking Changes"
     This release removes `ClusteredOptimization` and `ClusteringParameters` which were deprecated in v5.0.0. Use `flow_system.transform.cluster()` instead. See [Migration](#migration-from-clusteredoptimization) below.
 
+    The clustering API now uses tsam v3's configuration objects (`ClusterConfig`, `ExtremeConfig`) instead of individual parameters. See [tsam v3 Migration](#tsam-v3-migration) below.
+
 ### Key Features
 
-- **Clustering/Aggregation Rework** (#549, #552) - Complete rewrite with tsam integration, inter-cluster storage linking, and 4 storage modes
+- **tsam v3 Migration** (#584) - Updated to tsam 3.0+ with new configuration-based API
+- **Clustering/Aggregation Rework** (#549, #552, #584) - Complete rewrite with tsam integration, inter-cluster storage linking, segmentation support, and 4 storage modes
+- **I/O Performance** (#584) - 2-3x faster NetCDF I/O for large systems via variable stacking
 - **plotly Plotting Accessor** (#548) - Universal xarray plotting with automatic faceting
 - **Comparison Module** (#550) - Compare multiple FlowSystems side-by-side
 - **Improved Notebooks** (#542, #551) - Better tutorial data and faster CI execution
 
 ### ✨ Added
 
-#### Time-Series Clustering (#549, #552)
+#### Time-Series Clustering (#549, #552, #584)
 
 Reduce large time series to representative typical periods for faster investment optimization, then expand results back to full resolution.
 
 ```python
+from tsam import ClusterConfig, ExtremeConfig
+
 # Stage 1: Cluster and optimize (fast sizing)
 fs_clustered = flow_system.transform.cluster(
     n_clusters=12,                    # 12 typical days from a year
     cluster_duration='1D',            # Each cluster represents one day
-    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+    cluster=ClusterConfig(method='hierarchical'),
+    extremes=ExtremeConfig(add_peaks_for=['HeatDemand(Q)|fixed_relative_profile']),
 )
 fs_clustered.optimize(solver)
 
@@ -99,14 +106,13 @@ fs_expanded = fs_clustered.transform.expand()
 |-----------|-------------|
 | `n_clusters` | Number of representative periods to create |
 | `cluster_duration` | Duration of each cluster (e.g., `'1D'`, `'24h'`, or hours as float) |
-| `time_series_for_high_peaks` | Time series labels whose peaks should be preserved |
-| `time_series_for_low_peaks` | Time series labels whose minima should be preserved |
-| `cluster_method` | Algorithm: `'hierarchical'` (default), `'k_means'`, `'k_medoids'`, `'k_maxoids'`, `'averaging'` |
-| `representation_method` | How to represent clusters: `'medoidRepresentation'` (default), `'meanRepresentation'`, `'distributionAndMinMaxRepresentation'` |
-| `extreme_period_method` | How to handle extreme periods: `'append'`, `'new_cluster_center'`, `'replace_cluster_center'` |
-| `rescale_cluster_periods` | Whether to rescale cluster periods to match original statistics (default: `True`) |
-| `predef_cluster_order` | Predefined cluster assignment for reproducibility |
+| `weights` | Dict mapping variable names to importance weights for clustering |
+| `cluster` | `ClusterConfig` object for clustering algorithm settings (method, representation, etc.) |
+| `extremes` | `ExtremeConfig` object for peak/valley preservation settings |
+| `predef_cluster_assignments` | Predefined cluster assignment for reproducibility |
 | `**tsam_kwargs` | Additional arguments passed to tsam |
+
+See [tsam documentation](https://tsam.readthedocs.io/) for `ClusterConfig` and `ExtremeConfig` options.
 
 **Key Features**:
 
@@ -141,6 +147,32 @@ charge_state = fs_expanded.solution['SeasonalPit|charge_state']
     Use `'intercluster_cyclic'` (default) for seasonal storage like pit storage or underground thermal storage.
     Use `'cyclic'` for short-term storage like batteries or hot water tanks where only daily patterns matter.
     Use `'independent'` for quick estimates when storage behavior isn't critical.
+
+#### Time-Series Segmentation (#584)
+
+New `transform.segment()` method for piecewise-constant time-series approximation. Useful for reducing problem size while preserving temporal structure:
+
+```python
+# Segment time series into 24 segments per day
+fs_segmented = flow_system.transform.segment(
+    segment_duration='1D',
+    n_segments=24,
+)
+fs_segmented.optimize(solver)
+fs_expanded = fs_segmented.transform.expand()
+```
+
+#### I/O Performance Improvements (#584)
+
+- **Variable stacking**: 2-3x faster NetCDF I/O for large systems by grouping variables with same dimensions
+- **Fast DataArray construction**: Bypasses slow xarray internals (~15x faster per variable)
+- **Version tracking**: Datasets now include `flixopt_version` attribute for compatibility checking
+
+```python
+# Version is automatically stored
+ds = flow_system.to_dataset()
+print(ds.attrs['flixopt_version'])  # e.g., '6.0.0'
+```
 
 #### Plotly Accessor (#548)
 
@@ -211,6 +243,41 @@ comp.diff('baseline')  # vs named case
 - Existing plotting infrastructure automatically handles faceting by `'case'`
 
 ### 💥 Breaking Changes
+
+#### tsam v3 Migration
+
+The clustering API now uses tsam v3's configuration objects instead of individual parameters:
+
+```python
+# Old API (v5.x with tsam 2.x)
+fs.transform.cluster(
+    n_clusters=8,
+    cluster_method='hierarchical',
+    time_series_for_high_peaks=['demand'],
+)
+
+# New API (v6.x with tsam 3.x)
+from tsam import ClusterConfig, ExtremeConfig
+
+fs.transform.cluster(
+    n_clusters=8,
+    cluster=ClusterConfig(method='hierarchical'),
+    extremes=ExtremeConfig(add_peaks_for=['demand']),
+)
+```
+
+**Parameter mapping:**
+
+| Old Parameter | New Parameter |
+|--------------|---------------|
+| `cluster_method` | `cluster=ClusterConfig(method=...)` |
+| `representation_method` | `cluster=ClusterConfig(representation=...)` |
+| `time_series_for_high_peaks` | `extremes=ExtremeConfig(add_peaks_for=[...])` |
+| `time_series_for_low_peaks` | `extremes=ExtremeConfig(add_valleys_for=[...])` |
+| `extreme_period_method` | `extremes=ExtremeConfig(period_selection_method=...)` |
+| `predef_cluster_order` | `predef_cluster_assignments` |
+
+#### Other Breaking Changes
 
 - `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
 
@@ -345,6 +412,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
 ### 📦 Dependencies
 
+- **tsam**: Updated from `>= 2.3.1, < 3` to `>= 3.0.0, < 4` (#584)
 - Updated `mkdocs-material` to v9.7.1
 - Updated `mkdocstrings-python` to v1.19.0
 - Updated `ruff` to v0.14.10
