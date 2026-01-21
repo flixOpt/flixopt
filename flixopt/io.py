@@ -563,7 +563,10 @@ def save_dataset_to_netcdf(
     # Convert all DataArray attrs to JSON strings
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    for var_name in ds.data_vars:
+    coord_names = set(ds.coords)
+    for var_name in variables:
+        if var_name in coord_names:
+            continue
         var = variables[var_name]
         if var.attrs:  # Only if there are attrs
             var.attrs = {'attrs': json.dumps(var.attrs)}
@@ -581,7 +584,7 @@ def save_dataset_to_netcdf(
             path,
             encoding=None
             if compression == 0
-            else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
+            else {name: {'zlib': True, 'complevel': compression} for name in variables if name not in coord_names},
             engine='netcdf4',
         )
 
@@ -607,8 +610,11 @@ def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
     """
     new_data_vars = {}
     variables = ds.variables
+    coord_names = set(ds.coords)
 
-    for name in ds.data_vars:
+    for name in variables:
+        if name in coord_names:
+            continue
         var = variables[name]
         dims = var.dims
         data = var.values
@@ -723,8 +729,11 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
     """
     new_data_vars = {}
     variables = ds.variables
+    coord_names = set(ds.coords)
 
-    for name in ds.data_vars:
+    for name in variables:
+        if name in coord_names:
+            continue
         var = variables[name]
         # Find stacked dimension (if any)
         stacked_dim = None
@@ -783,14 +792,8 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     # Restore DataArray attrs (before unstacking, as stacked vars have no individual attrs)
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    for var_name in ds.data_vars:
+    for var_name in variables:
         var = variables[var_name]
-        if 'attrs' in var.attrs:
-            var.attrs = json.loads(var.attrs['attrs'])
-
-    # Restore coordinate attrs
-    for coord_name in ds.coords:
-        var = variables[coord_name]
         if 'attrs' in var.attrs:
             var.attrs = json.loads(var.attrs['attrs'])
 
@@ -1584,8 +1587,11 @@ class FlowSystemDatasetIO:
         """
         solution_var_names: dict[str, str] = {}  # Maps original_name -> ds_name
         config_var_names: list[str] = []
+        coord_names = set(ds.coords)
 
-        for name in ds.data_vars:
+        for name in ds.variables:
+            if name in coord_names:
+                continue
             if name.startswith(cls.SOLUTION_PREFIX):
                 solution_var_names[name[len(cls.SOLUTION_PREFIX) :]] = name
             else:
