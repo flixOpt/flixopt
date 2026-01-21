@@ -210,7 +210,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
         # For RangeIndex (segmented systems), computed_timestep_duration is None
         if timestep_duration is not None:
-            self.timestep_duration = timestep_duration
+            self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
         elif computed_timestep_duration is not None:
             self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
         else:

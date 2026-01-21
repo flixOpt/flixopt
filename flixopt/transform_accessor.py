@@ -161,7 +161,8 @@ class TransformAccessor:
 
         def _weight_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            weights = np.array([occurrences.get(c, 1) for c in range(n_clusters)])
+            # Missing clusters contribute zero weight (not 1)
+            weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
             return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
 
         weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}

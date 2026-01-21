@@ -664,13 +664,13 @@ def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Da
     """
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    data_var_names = set(ds.data_vars)
+    coord_names = set(ds.coords)
 
-    # Group variables by their dimensions
+    # Group data variables by their dimensions (preserve insertion order for deterministic stacking)
     groups = defaultdict(list)
-    for name in data_var_names:
-        var = variables[name]
-        groups[var.dims].append(name)
+    for name in variables:
+        if name not in coord_names:
+            groups[variables[name].dims].append(name)
 
     new_data_vars = {}
     for dims, var_names in groups.items():
