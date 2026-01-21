@@ -81,6 +81,7 @@ class Boiler(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if fuel_flow is None:
@@ -96,6 +97,7 @@ class Boiler(LinearConverter):
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
         self.fuel_flow = fuel_flow
         self.thermal_flow = thermal_flow
@@ -176,6 +178,7 @@ class Power2Heat(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if electrical_flow is None:
@@ -191,6 +194,7 @@ class Power2Heat(LinearConverter):
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
 
         self.electrical_flow = electrical_flow
@@ -271,6 +275,7 @@ class HeatPump(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if electrical_flow is None:
@@ -287,6 +292,7 @@ class HeatPump(LinearConverter):
             conversion_factors=[],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
         self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
@@ -368,6 +374,7 @@ class CoolingTower(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if electrical_flow is None:
@@ -381,6 +388,7 @@ class CoolingTower(LinearConverter):
             outputs=[],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
 
         self.electrical_flow = electrical_flow
@@ -472,6 +480,7 @@ class CHP(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if fuel_flow is None:
@@ -492,6 +501,7 @@ class CHP(LinearConverter):
             conversion_factors=[{}, {}],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
 
         self.fuel_flow = fuel_flow
@@ -602,6 +612,7 @@ class HeatPumpWithSource(LinearConverter):
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # Validate required parameters
         if electrical_flow is None:
@@ -619,6 +630,7 @@ class HeatPumpWithSource(LinearConverter):
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
+            color=color,
         )
         self.electrical_flow = electrical_flow
         self.heat_source_flow = heat_source_flow

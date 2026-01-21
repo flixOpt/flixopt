@@ -239,6 +239,103 @@ class TopologyAccessor:
             self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
         return self._effect_units
 
+    def _invalidate_color_caches(self) -> None:
+        """Reset all color caches so they are rebuilt on next access."""
+        self._carrier_colors = None
+        self._component_colors = None
+        self._bus_colors = None
+
+    def set_component_color(self, label: str, color: str) -> None:
+        """Set the color for a single component.
+
+        Args:
+            label: Component label.
+            color: Color string (hex like '#FF0000', named like 'red', etc.).
+
+        Raises:
+            KeyError: If component with given label doesn't exist.
+
+        Examples:
+            >>> flow_system.topology.set_component_color('Boiler', '#D35400')
+            >>> flow_system.topology.set_component_color('CHP', 'darkred')
+        """
+        if label not in self._fs.components:
+            raise KeyError(f"Component '{label}' not found. Available: {list(self._fs.components.keys())}")
+        self._fs.components[label].color = color
+        self._invalidate_color_caches()
+
+    def set_component_colors(
+        self,
+        colors: dict[str, str | list[str]] | str,
+        overwrite: bool = True,
+    ) -> dict[str, str]:
+        """Set colors for multiple components at once.
+
+        Args:
+            colors: Color configuration:
+                - ``str``: Colorscale name for all components (e.g., ``'turbo'``)
+                - ``dict``: Component-to-color mapping (``{'Boiler': 'red'}``) or
+                  colorscale-to-components (``{'Blues': ['Wind1', 'Wind2']}``)
+            overwrite: If False, skip components that already have colors.
+
+        Returns:
+            Mapping of colors that were actually assigned.
+
+        Examples:
+            >>> flow_system.topology.set_component_colors('turbo')
+            >>> flow_system.topology.set_component_colors({'Boiler': 'red', 'CHP': '#0000FF'})
+            >>> flow_system.topology.set_component_colors({'Blues': ['Wind1', 'Wind2']})
+            >>> flow_system.topology.set_component_colors('turbo', overwrite=False)
+        """
+        components = self._fs.components
+
+        # Normalize to {label: color} mapping
+        if isinstance(colors, str):
+            color_map = process_colors(colors, list(components.keys()))
+        else:
+            color_map = {}
+            for key, value in colors.items():
+                if isinstance(value, list):
+                    # Colorscale -> component list
+                    missing = [c for c in value if c not in components]
+                    if missing:
+                        raise KeyError(f'Components not found: {missing}')
+                    color_map.update(process_colors(key, value))
+                else:
+                    # Direct assignment
+                    if key not in components:
+                        raise KeyError(f"Component '{key}' not found")
+                    color_map[key] = value
+
+        # Apply colors (respecting overwrite flag)
+        result = {}
+        for label, color in color_map.items():
+            if overwrite or components[label].color is None:
+                components[label].color = color
+                result[label] = color
+
+        self._invalidate_color_caches()
+        return result
+
+    def set_carrier_color(self, carrier: str, color: str) -> None:
+        """Set the color for a carrier.
+
+        This affects bus colors derived from this carrier.
+
+        Args:
+            carrier: Carrier name (case-insensitive).
+            color: Color string (hex like '#FF0000', named like 'red', etc.).
+
+        Examples:
+            >>> flow_system.topology.set_carrier_color('electricity', '#FECB52')
+            >>> flow_system.topology.set_carrier_color('heat', 'firebrick')
+        """
+        carrier_obj = self._fs.get_carrier(carrier)
+        if carrier_obj is None:
+            raise KeyError(f"Carrier '{carrier}' not found.")
+        carrier_obj.color = color
+        self._invalidate_color_caches()
+
     def infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
         """
         Get network topology information as dictionaries.

@@ -243,6 +243,21 @@ comp.diff('baseline')  # vs named case
 - Mirrors all `StatisticsPlotAccessor` methods (`balance`, `carrier_balance`, `flows`, `sizes`, `duration_curve`, `effects`, `charge_states`, `heatmap`, `storage`)
 - Existing plotting infrastructure automatically handles faceting by `'case'`
 
+#### Component Color Parameter (#585)
+
+All component classes now accept a `color` parameter for visualization customization:
+
+```python
+# Set color at instantiation
+boiler = fx.Boiler('Boiler', ..., color='#D35400')
+storage = fx.Storage('Battery', ..., color='green')
+
+# Bulk assignment via topology accessor
+flow_system.topology.set_component_colors({'Boiler': 'red', 'CHP': 'blue'})
+flow_system.topology.set_component_colors({'Oranges': ['Solar1', 'Solar2']})  # Colorscale
+flow_system.topology.set_component_colors('turbo', overwrite=False)  # Only unset colors
+```
+
 ### 💥 Breaking Changes
 
 #### tsam v3 Migration
