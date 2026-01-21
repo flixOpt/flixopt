@@ -1204,7 +1204,7 @@ class FlowsModel(TypeModel):
             dim_name=dim,
         )
 
-        # Piecewise effects (requires per-element submodels, not batchable)
+        # Piecewise effects (handled per-element, not batchable)
         self._create_piecewise_effects()
 
         logger.debug(

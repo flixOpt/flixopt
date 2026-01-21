@@ -973,7 +973,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Creates a new FlowSystem with copies of all elements, but without:
         - The solution dataset
         - The optimization model
-        - Element submodels and variable/constraint names
+        - Element variable/constraint names
 
         This is useful for creating variations of a FlowSystem for different
         optimization scenarios without affecting the original.
@@ -1599,11 +1599,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._solution is not None
 
     def _invalidate_model(self) -> None:
-        """Invalidate the model and element submodels when structure changes.
+        """Invalidate the model when structure changes.
 
         This clears the model, resets the ``connected_and_transformed`` flag,
-        clears all element submodels and variable/constraint names, and invalidates
-        the topology accessor cache.
+        clears all element variable/constraint names, and invalidates the
+        topology accessor cache.
 
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
@@ -1618,7 +1618,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
         self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
-            element.submodel = None
             element._variable_names = []
             element._constraint_names = []
 
@@ -1628,7 +1627,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         This method unlocks the FlowSystem by clearing:
         - The solution dataset
         - The optimization model
-        - All element submodels and variable/constraint names
+        - All element variable/constraint names
         - The connected_and_transformed flag
 
         After calling reset(), the FlowSystem can be modified again
