@@ -6,7 +6,8 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 !!! tip
 
-    If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
+    If upgrading from v5.x, see the [Migration Guide v6](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v6/).
+    If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide v3](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ---
 

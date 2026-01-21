@@ -39,6 +39,16 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | [08a-Aggregation](08a-aggregation.ipynb) | Speed up large problems with resampling and two-stage optimization |
 | [08b-Rolling Horizon](08b-rolling-horizon.ipynb) | Decompose large problems into sequential time segments |
 
+## Clustering
+
+| Notebook | Description |
+|----------|-------------|
+| [08c-Clustering](08c-clustering.ipynb) | Reduce timesteps using typical periods with tsam integration |
+| [08c2-Storage Modes](08c2-clustering-storage-modes.ipynb) | Compare storage behavior modes in clustered systems |
+| [08d-Multi-Period Clustering](08d-clustering-multiperiod.ipynb) | Clustering with multiple periods and scenarios |
+| [08f-Segmentation](08f-clustering-segmentation.ipynb) | Intra-period segmentation for variable timestep durations |
+| [08e-Clustering Internals](08e-clustering-internals.ipynb) | Deep dive into clustering data structures and algorithms |
+
 ## Results
 
 | Notebook | Description |
@@ -61,4 +71,7 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | Periods, scenarios, weights | Scenarios |
 | `transform.resample()`, `fix_sizes()` | Aggregation |
 | `optimize.rolling_horizon()` | Rolling Horizon |
+| `transform.cluster()`, typical periods | Clustering |
+| `cluster_mode`, inter-cluster storage | Storage Modes |
+| `transform.expand()`, segmentation | Segmentation |
 | `statistics`, `topology`, plotting | Plotting |
