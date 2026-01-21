@@ -15,10 +15,10 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, Flow
-from .features import MaskHelpers
+from .features import InvestmentEffectsMixin, MaskHelpers, concat_with_coords
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
-from .structure import FlowSystemModel, VariableCategory, register_class_for_io
+from .structure import ElementType, FlowSystemModel, TypeModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
     import linopy
@@ -756,7 +756,7 @@ class Transmission(Component):
         self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
 
 
-class StoragesModel:
+class StoragesModel(InvestmentEffectsMixin, TypeModel):
     """Type-level model for ALL basic (non-intercluster) storages in a FlowSystem.
 
     Unlike StorageModel (one per Storage instance), StoragesModel handles ALL
@@ -778,6 +778,8 @@ class StoragesModel:
         >>> storages_model.create_investment_constraints()
     """
 
+    element_type = ElementType.STORAGE
+
     def __init__(
         self,
         model: FlowSystemModel,
@@ -791,16 +793,8 @@ class StoragesModel:
             elements: List of basic (non-intercluster) Storage elements.
             flows_model: The FlowsModel containing flow_rate variables.
         """
-        from .structure import ElementType
-
-        self.model = model
-        self.elements = elements
-        self.element_ids: list[str] = [s.label_full for s in elements]
+        super().__init__(model, elements)
         self._flows_model = flows_model
-        self.element_type = ElementType.STORAGE
-
-        # Storage for created variables
-        self._variables: dict[str, linopy.Variable] = {}
 
         # Categorize by features
         self.storages_with_investment: list[Storage] = [
@@ -818,11 +812,6 @@ class StoragesModel:
         # Set reference on each storage element
         for storage in elements:
             storage._storages_model = self
-
-    @property
-    def dim_name(self) -> str:
-        """Dimension name for storage elements."""
-        return self.element_type.value  # 'storage'
 
     # --- Investment Cached Properties ---
 
@@ -913,32 +902,19 @@ class StoragesModel:
         - storage|charge: For ALL storages (with storage dimension, extra timestep)
         - storage|netto: For ALL storages (with storage dimension)
         """
-        import pandas as pd
-
         from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
 
         if not self.elements:
             return
 
-        dim = self.dim_name  # 'storage'
-
         # === storage|charge: ALL storages (with extra timestep) ===
         lower_bounds = self._collect_charge_state_bounds('lower')
         upper_bounds = self._collect_charge_state_bounds('upper')
 
-        # Get coords with extra timestep
-        coords_extra = self.model.get_coords(extra_timestep=True)
-        charge_state_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **{d: coords_extra[d] for d in coords_extra},
-            }
-        )
-
         charge_state = self.model.add_variables(
             lower=lower_bounds,
             upper=upper_bounds,
-            coords=charge_state_coords,
+            coords=self._build_coords(dims=None, extra_timestep=True),
             name='storage|charge',
         )
         self._variables['charge'] = charge_state
@@ -949,17 +925,8 @@ class StoragesModel:
             self.model.variable_categories[charge_state.name] = expansion_category
 
         # === storage|netto: ALL storages ===
-        # Use full coords (including scenarios) not just temporal_dims
-        full_coords = self.model.get_coords()
-        netto_discharge_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **{d: full_coords[d] for d in full_coords},
-            }
-        )
-
         netto_discharge = self.model.add_variables(
-            coords=netto_discharge_coords,
+            coords=self._build_coords(dims=None),
             name='storage|netto',
         )
         self._variables['netto'] = netto_discharge
@@ -1002,7 +969,7 @@ class StoragesModel:
             else:
                 bounds_list.append(ub if isinstance(ub, xr.DataArray) else xr.DataArray(ub))
 
-        return xr.concat(bounds_list, dim=dim, coords='minimal').assign_coords({dim: self.element_ids})
+        return concat_with_coords(bounds_list, dim, self.element_ids)
 
     def _get_relative_charge_state_bounds(self, storage: Storage) -> tuple[xr.DataArray, xr.DataArray]:
         """Get relative charge state bounds with final timestep values."""
@@ -1138,10 +1105,9 @@ class StoragesModel:
 
     def _stack_parameter(self, values: list, element_ids: list | None = None) -> xr.DataArray:
         """Stack parameter values into DataArray with storage dimension."""
-        dim = self.dim_name
         ids = element_ids if element_ids is not None else self.element_ids
         das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
-        return xr.concat(das, dim=dim, coords='minimal').assign_coords({dim: ids})
+        return concat_with_coords(das, self.dim_name, ids)
 
     def _add_batched_initial_final_constraints(self, charge_state) -> None:
         """Add batched initial and final charge state constraints."""
@@ -1354,8 +1320,8 @@ class StoragesModel:
         # Stack relative bounds with storage dimension
         # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
         dim = self.dim_name
-        rel_lower_stacked = xr.concat(rel_lowers, dim=dim, coords='minimal').assign_coords({dim: self.investment_ids})
-        rel_upper_stacked = xr.concat(rel_uppers, dim=dim, coords='minimal').assign_coords({dim: self.investment_ids})
+        rel_lower_stacked = concat_with_coords(rel_lowers, dim, self.investment_ids)
+        rel_upper_stacked = concat_with_coords(rel_uppers, dim, self.investment_ids)
 
         # Select charge_state for investment storages only
         cs_investment = charge_state.sel({dim: self.investment_ids})
@@ -1446,90 +1412,7 @@ class StoragesModel:
             return var.sel({self.dim_name: element_id})
         return var
 
-    # === Investment effect properties (used by EffectsModel) ===
-
-    @functools.cached_property
-    def effects_per_size(self) -> xr.DataArray | None:
-        """Combined effects_of_investment_per_size with (storage, effect) dims."""
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_investment_per_size', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @functools.cached_property
-    def effects_of_investment(self) -> xr.DataArray | None:
-        """Combined effects_of_investment with (storage, effect) dims for non-mandatory."""
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_investment', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @functools.cached_property
-    def effects_of_retirement(self) -> xr.DataArray | None:
-        """Combined effects_of_retirement with (storage, effect) dims for non-mandatory."""
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_retirement', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @functools.cached_property
-    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return []
-
-        result = []
-        for eid in self.investment_ids:
-            params = self._invest_params[eid]
-            if params.mandatory and params.effects_of_investment:
-                effects_dict = {
-                    k: v
-                    for k, v in params.effects_of_investment.items()
-                    if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
-
-    @functools.cached_property
-    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for retirement constant parts."""
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return []
-
-        result = []
-        for eid in self.optional_investment_ids:
-            params = self._invest_params[eid]
-            if params.effects_of_retirement:
-                effects_dict = {
-                    k: v
-                    for k, v in params.effects_of_retirement.items()
-                    if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
+    # Investment effect properties are provided by InvestmentEffectsMixin
 
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for storages with piecewise_effects_of_investment.
@@ -1747,6 +1630,31 @@ class InterclusterStoragesModel:
         """Dimension name for intercluster storage elements."""
         return 'intercluster_storage'
 
+    def _build_coords(
+        self,
+        dims: tuple[str, ...] | None = ('time',),
+        element_ids: list[str] | None = None,
+        extra_timestep: bool = False,
+    ) -> xr.Coordinates:
+        """Build coordinates with element dimension + model dimensions."""
+        import pandas as pd
+
+        if element_ids is None:
+            element_ids = self.element_ids
+
+        coord_dict = {self.dim_name: pd.Index(element_ids, name=self.dim_name)}
+        model_coords = self.model.get_coords(dims=dims, extra_timestep=extra_timestep)
+        if model_coords is not None:
+            if dims is None:
+                for dim, coord in model_coords.items():
+                    coord_dict[dim] = coord
+            else:
+                for dim in dims:
+                    if dim in model_coords:
+                        coord_dict[dim] = model_coords[dim]
+
+        return xr.Coordinates(coord_dict)
+
     def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
         """Get a variable, optionally selecting a specific element."""
         var = self._variables.get(name)
@@ -1762,8 +1670,6 @@ class InterclusterStoragesModel:
 
     def create_variables(self) -> None:
         """Create batched variables for all intercluster storages."""
-        import pandas as pd
-
         if not self.elements:
             return
 
@@ -1771,34 +1677,18 @@ class InterclusterStoragesModel:
 
         # charge_state: (intercluster_storage, time+1, ...) - relative SOC change
         lb, ub = self._compute_charge_state_bounds()
-        coords_extra = self.model.get_coords(extra_timestep=True)
-        charge_state_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **{d: coords_extra[d] for d in coords_extra},
-            }
-        )
-
         charge_state = self.model.add_variables(
             lower=lb,
             upper=ub,
-            coords=charge_state_coords,
+            coords=self._build_coords(dims=None, extra_timestep=True),
             name=f'{dim}|charge_state',
         )
         self._variables['charge_state'] = charge_state
         self.model.variable_categories[charge_state.name] = VariableCategory.CHARGE_STATE
 
         # netto_discharge: (intercluster_storage, time, ...) - net discharge rate
-        coords = self.model.get_coords()
-        netto_coords = xr.Coordinates(
-            {
-                dim: pd.Index(self.element_ids, name=dim),
-                **{d: coords[d] for d in coords},
-            }
-        )
-
         netto_discharge = self.model.add_variables(
-            coords=netto_coords,
+            coords=self._build_coords(dims=None),
             name=f'{dim}|netto_discharge',
         )
         self._variables['netto_discharge'] = netto_discharge
@@ -1859,8 +1749,8 @@ class InterclusterStoragesModel:
             uppers.append(cap_bounds.upper)
 
         # Stack bounds
-        lower = xr.concat(lowers, dim=dim).assign_coords({dim: self.element_ids})
-        upper = xr.concat(uppers, dim=dim).assign_coords({dim: self.element_ids})
+        lower = concat_with_coords(lowers, dim, self.element_ids)
+        upper = concat_with_coords(uppers, dim, self.element_ids)
 
         soc_boundary = self.model.add_variables(
             lower=lower,

@@ -622,20 +622,30 @@ class TypeModel(ABC):
         self._constraints[name] = constraint
         return constraint
 
-    def _build_coords(self, dims: tuple[str, ...] | None = ('time',)) -> xr.Coordinates:
+    def _build_coords(
+        self,
+        dims: tuple[str, ...] | None = ('time',),
+        element_ids: list[str] | None = None,
+        extra_timestep: bool = False,
+    ) -> xr.Coordinates:
         """Build coordinate dict with element-type dimension + model dimensions.
 
         Args:
             dims: Tuple of dimension names from the model. If None, includes ALL model dimensions.
+            element_ids: Subset of element IDs. If None, uses all self.element_ids.
+            extra_timestep: If True, extends time dimension by 1 (for charge_state boundaries).
 
         Returns:
             xarray Coordinates with element-type dim (e.g., 'flow') + requested dims.
         """
+        if element_ids is None:
+            element_ids = self.element_ids
+
         # Use element-type-specific dimension name (e.g., 'flow', 'storage')
-        coord_dict: dict[str, Any] = {self.dim_name: pd.Index(self.element_ids, name=self.dim_name)}
+        coord_dict: dict[str, Any] = {self.dim_name: pd.Index(element_ids, name=self.dim_name)}
 
         # Add model dimensions
-        model_coords = self.model.get_coords(dims=dims)
+        model_coords = self.model.get_coords(dims=dims, extra_timestep=extra_timestep)
         if model_coords is not None:
             if dims is None:
                 # Include all model coords

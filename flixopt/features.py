@@ -25,6 +25,27 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
+def concat_with_coords(
+    arrays: list[xr.DataArray],
+    dim: str,
+    coords: list,
+) -> xr.DataArray:
+    """Concatenate arrays along dim and assign coordinates.
+
+    This is a common pattern used when stacking per-element arrays into
+    a batched array with proper element dimension coordinates.
+
+    Args:
+        arrays: List of DataArrays to concatenate.
+        dim: Dimension name to concatenate along.
+        coords: Coordinate values to assign to the dimension.
+
+    Returns:
+        Concatenated DataArray with proper coordinates assigned.
+    """
+    return xr.concat(arrays, dim=dim, coords='minimal').assign_coords({dim: coords})
+
+
 class InvestmentHelpers:
     """Static helper methods for investment constraint creation.
 
@@ -166,7 +187,7 @@ class InvestmentHelpers:
 
         effect_ids = list(effects_dict.keys())
         effect_arrays = [effects_dict[eff] for eff in effect_ids]
-        result = xr.concat(effect_arrays, dim='effect').assign_coords(effect=effect_ids)
+        result = concat_with_coords(effect_arrays, 'effect', effect_ids)
 
         # Transpose to put element first, then effect, then any other dims (like time)
         dims_order = [dim_name, 'effect'] + [d for d in result.dims if d not in (dim_name, 'effect')]
@@ -239,6 +260,112 @@ class InvestmentHelpers:
             expanded.append(arr)
 
         return xr.concat(expanded, dim=dim_name, coords='minimal')
+
+
+class InvestmentEffectsMixin:
+    """Mixin providing cached investment effect properties.
+
+    Used by FlowsModel and StoragesModel to avoid code duplication.
+    Requires the class to have:
+        - _invest_params: dict[str, InvestParameters]
+        - investment_ids: list[str]
+        - optional_investment_ids: list[str]
+        - dim_name: str
+    """
+
+    # These will be set by the concrete class
+    _invest_params: dict
+    investment_ids: list
+    optional_investment_ids: list
+    dim_name: str
+
+    @property
+    def effects_per_size(self) -> xr.DataArray | None:
+        """Combined effects_of_investment_per_size with (element, effect) dims."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+
+        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment_per_size', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @property
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """Combined effects_of_investment with (element, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_investment', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @property
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """Combined effects_of_retirement with (element, effect) dims for non-mandatory."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return None
+
+        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
+        if not element_ids:
+            return None
+        effects_dict = InvestmentHelpers.collect_effects(
+            self._invest_params, element_ids, 'effects_of_retirement', self.dim_name
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+
+    @property
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects.
+
+        These are constant effects always incurred, not dependent on the invested variable.
+        Returns empty list if no such effects exist.
+        """
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        import numpy as np
+
+        result = []
+        for eid in self.investment_ids:
+            params = self._invest_params[eid]
+            if params.mandatory and params.effects_of_investment:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_investment.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+    @property
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        if not hasattr(self, '_invest_params') or not self._invest_params:
+            return []
+
+        import numpy as np
+
+        result = []
+        for eid in self.optional_investment_ids:
+            params = self._invest_params[eid]
+            if params.effects_of_retirement:
+                effects_dict = {
+                    k: v
+                    for k, v in params.effects_of_retirement.items()
+                    if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
 
 
 class StatusHelpers:

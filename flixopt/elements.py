@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers
+from .features import InvestmentEffectsMixin, MaskHelpers, concat_with_coords
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -680,7 +680,7 @@ class Flow(Element):
 # =============================================================================
 
 
-class FlowsModel(TypeModel):
+class FlowsModel(InvestmentEffectsMixin, TypeModel):
     """Type-level model for ALL flows in a FlowSystem.
 
     Unlike FlowModel (one per Flow instance), FlowsModel handles ALL flows
@@ -923,20 +923,7 @@ class FlowsModel(TypeModel):
         Args:
             dims: Dimensions to include. None means ALL model dimensions.
         """
-        # Build coordinates with subset element-type dimension (e.g., 'flow')
-        dim = self.dim_name
-        coord_dict = {dim: pd.Index(element_ids, name=dim)}
-        model_coords = self.model.get_coords(dims=dims)
-        if model_coords is not None:
-            if dims is None:
-                # Include all model coords
-                for d, coord in model_coords.items():
-                    coord_dict[d] = coord
-            else:
-                for d in dims:
-                    if d in model_coords:
-                        coord_dict[d] = model_coords[d]
-        coords = xr.Coordinates(coord_dict)
+        coords = self._build_coords(dims=dims, element_ids=element_ids)
 
         # Create variable
         full_name = f'{self.element_type.value}|{name}'
@@ -1370,52 +1357,8 @@ class FlowsModel(TypeModel):
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
-    # === Investment effect properties (used by EffectsModel) ===
-
-    @cached_property
-    def effects_per_size(self) -> xr.DataArray | None:
-        """Combined effects_of_investment_per_size with (flow, effect) dims."""
-        if not hasattr(self, '_invest_params'):
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_investment_per_size', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @cached_property
-    def effects_of_investment(self) -> xr.DataArray | None:
-        """Combined effects_of_investment with (flow, effect) dims for non-mandatory."""
-        if not hasattr(self, '_invest_params'):
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_investment', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @cached_property
-    def effects_of_retirement(self) -> xr.DataArray | None:
-        """Combined effects_of_retirement with (flow, effect) dims for non-mandatory."""
-        if not hasattr(self, '_invest_params'):
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
-        if not element_ids:
-            return None
-        effects_dict = InvestmentHelpers.collect_effects(
-            self._invest_params, element_ids, 'effects_of_retirement', self.dim_name
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
+    # === Status effect properties (used by EffectsModel) ===
+    # Investment effect properties are provided by InvestmentEffectsMixin
 
     @cached_property
     def status_effects_per_active_hour(self) -> xr.DataArray | None:
@@ -1448,53 +1391,6 @@ class FlowsModel(TypeModel):
             self._status_params, element_ids, 'effects_per_startup', self.dim_name, time_coords
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, self.dim_name)
-
-    @cached_property
-    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for mandatory investments with fixed effects.
-
-        These are constant effects always incurred, not dependent on the invested variable.
-        Returns empty list if no such effects exist.
-        """
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return []
-
-        result = []
-        for eid in self.investment_ids:
-            params = self._invest_params[eid]
-            if params.mandatory and params.effects_of_investment:
-                effects_dict = {
-                    k: v
-                    for k, v in params.effects_of_investment.items()
-                    if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
-
-    @cached_property
-    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for retirement constant parts.
-
-        For optional investments with effects_of_retirement, this is the constant "+factor"
-        part of the formula: -invested * factor + factor.
-        Returns empty list if no such effects exist.
-        """
-        if not hasattr(self, '_invest_params') or not self._invest_params:
-            return []
-
-        result = []
-        for eid in self.optional_investment_ids:
-            params = self._invest_params[eid]
-            if params.effects_of_retirement:
-                effects_dict = {
-                    k: v
-                    for k, v in params.effects_of_retirement.items()
-                    if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
 
     def create_status_model(self) -> None:
         """Create status variables and constraints for flows with status.
@@ -1614,7 +1510,7 @@ class FlowsModel(TypeModel):
         ]
 
         # Use coords='minimal' to handle dimension mismatches (some effects may have 'period', some don't)
-        return xr.concat(flow_factors, dim=self.dim_name, coords='minimal').assign_coords({self.dim_name: flow_ids})
+        return concat_with_coords(flow_factors, self.dim_name, flow_ids)
 
     def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
         """Get previous status for a flow based on its previous_flow_rate.
@@ -1985,15 +1881,7 @@ class BusesModel(TypeModel):
         **kwargs,
     ) -> None:
         """Create a variable for a subset of elements."""
-        # Build coordinates with subset element-type dimension (e.g., 'bus')
-        dim = self.dim_name
-        coord_dict = {dim: pd.Index(element_ids, name=dim)}
-        model_coords = self.model.get_coords(dims=dims)
-        if model_coords is not None:
-            for d in dims:
-                if d in model_coords:
-                    coord_dict[d] = model_coords[d]
-        coords = xr.Coordinates(coord_dict)
+        coords = self._build_coords(dims=dims, element_ids=element_ids)
 
         # Create variable
         full_name = f'{self.element_type.value}|{name}'
