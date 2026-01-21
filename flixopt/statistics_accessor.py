@@ -180,36 +180,45 @@ def _style_area_as_bar(fig: go.Figure) -> None:
 
     default_colors = px.colors.qualitative.Plotly
 
-    # Build color map and classify traces from base figure
-    # trace.name -> color, trace.name -> 'positive'|'negative'|'mixed'|'zero'
+    # Build color map from base figure traces
+    # trace.name -> color
     color_map: dict[str, str] = {}
-    class_map: dict[str, str] = {}
-
     for i, trace in enumerate(fig.data):
-        # Get color
         if hasattr(trace, 'line') and trace.line and trace.line.color:
             color_map[trace.name] = trace.line.color
         else:
             color_map[trace.name] = default_colors[i % len(default_colors)]
 
-        # Classify based on y values
+    # Classify traces by aggregating sign info across ALL traces (including animation frames)
+    # trace.name -> 'positive'|'negative'|'mixed'|'zero'
+    class_map: dict[str, str] = {}
+    sign_flags: dict[str, dict[str, bool]] = {}  # trace.name -> {'has_pos': bool, 'has_neg': bool}
+
+    for trace in _iter_all_traces(fig):
+        if trace.name not in sign_flags:
+            sign_flags[trace.name] = {'has_pos': False, 'has_neg': False}
+
         y_vals = trace.y
-        if y_vals is None or len(y_vals) == 0:
-            class_map[trace.name] = 'zero'
-        else:
+        if y_vals is not None and len(y_vals) > 0:
             y_arr = np.asarray(y_vals)
             y_clean = y_arr[np.abs(y_arr) > 1e-9]
-            if len(y_clean) == 0:
-                class_map[trace.name] = 'zero'
-            else:
-                has_pos = np.any(y_clean > 0)
-                has_neg = np.any(y_clean < 0)
-                if has_pos and has_neg:
-                    class_map[trace.name] = 'mixed'
-                elif has_neg:
-                    class_map[trace.name] = 'negative'
-                else:
-                    class_map[trace.name] = 'positive'
+            if len(y_clean) > 0:
+                if np.any(y_clean > 0):
+                    sign_flags[trace.name]['has_pos'] = True
+                if np.any(y_clean < 0):
+                    sign_flags[trace.name]['has_neg'] = True
+
+    # Compute class_map from aggregated sign flags
+    for name, flags in sign_flags.items():
+        has_pos, has_neg = flags['has_pos'], flags['has_neg']
+        if has_pos and has_neg:
+            class_map[name] = 'mixed'
+        elif has_neg:
+            class_map[name] = 'negative'
+        elif has_pos:
+            class_map[name] = 'positive'
+        else:
+            class_map[name] = 'zero'
 
     def style_trace(trace: go.Scatter) -> None:
         """Apply bar-like styling to a single trace."""
@@ -260,12 +269,9 @@ def _apply_unified_hover(fig: go.Figure, unit: str = '', decimals: int = 1) -> N
         trace.hovertemplate = hover_template
 
     # Layout settings for unified hover
-    fig.update_layout(
-        hovermode='x unified',
-        xaxis_showspikes=True,
-        xaxis_spikecolor='gray',
-        xaxis_spikethickness=1,
-    )
+    fig.update_layout(hovermode='x unified')
+    # Apply spike settings to all x-axes (for faceted plots with xaxis, xaxis2, xaxis3, etc.)
+    fig.update_xaxes(showspikes=True, spikecolor='gray', spikethickness=1)
 
 
 # --- Helper functions ---
