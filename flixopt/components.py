@@ -172,8 +172,9 @@ class LinearConverter(Component):
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
-        super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data)
+        super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data, color=color)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -417,6 +418,7 @@ class Storage(Component):
         balanced: bool = False,
         cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
@@ -425,6 +427,7 @@ class Storage(Component):
             outputs=[discharging],
             prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
+            color=color,
         )
 
         self.charging = charging
@@ -744,6 +747,7 @@ class Transmission(Component):
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         super().__init__(
             label,
@@ -754,6 +758,7 @@ class Transmission(Component):
             if in2 is None or prevent_simultaneous_flows_in_both_directions is False
             else [in1, in2],
             meta_data=meta_data,
+            color=color,
         )
         self.in1 = in1
         self.out1 = out1
@@ -1795,6 +1800,7 @@ class Source(Component):
         outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
+        color: str | None = None,
     ):
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
@@ -1802,6 +1808,7 @@ class Source(Component):
             outputs=outputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
+            color=color,
         )
 
 
@@ -1888,6 +1895,7 @@ class Sink(Component):
         inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
+        color: str | None = None,
     ):
         """Initialize a Sink (consumes flow from the system).
 
@@ -1897,6 +1905,7 @@ class Sink(Component):
             meta_data: Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
                 across the element's inputs by wiring that restriction into the base Component setup.
+            color: Optional color for visualizations.
         """
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
@@ -1905,4 +1914,5 @@ class Sink(Component):
             inputs=inputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
+            color=color,
         )
