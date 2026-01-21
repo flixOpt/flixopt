@@ -11,7 +11,7 @@ import linopy
 import numpy as np
 
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
-from .structure import FlowSystemModel, Submodel
+from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -37,6 +37,7 @@ class InvestmentModel(Submodel):
         label_of_element: The label of the parent (Element). Used to construct the full label of the model.
         parameters: The parameters of the feature model.
         label_of_model: The label of the model. This is needed to construct the full label of the model.
+        size_category: Category for the size variable (FLOW_SIZE, STORAGE_SIZE, or SIZE for generic).
     """
 
     parameters: InvestParameters
@@ -47,9 +48,11 @@ class InvestmentModel(Submodel):
         label_of_element: str,
         parameters: InvestParameters,
         label_of_model: str | None = None,
+        size_category: VariableCategory = VariableCategory.SIZE,
     ):
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
+        self._size_category = size_category
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
@@ -69,6 +72,7 @@ class InvestmentModel(Submodel):
             lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
+            category=self._size_category,
         )
 
         if not self.parameters.mandatory:
@@ -76,6 +80,7 @@ class InvestmentModel(Submodel):
                 binary=True,
                 coords=self._model.get_coords(['period', 'scenario']),
                 short_name='invested',
+                category=VariableCategory.INVESTED,
             )
             BoundingPatterns.bounds_with_state(
                 self,
@@ -193,7 +198,12 @@ class StatusModel(Submodel):
         # Create a separate binary 'inactive' variable when needed for downtime tracking or explicit use
         # When not needed, the expression (1 - self.status) can be used instead
         if self.parameters.use_downtime_tracking:
-            inactive = self.add_variables(binary=True, short_name='inactive', coords=self._model.get_coords())
+            inactive = self.add_variables(
+                binary=True,
+                short_name='inactive',
+                coords=self._model.get_coords(),
+                category=VariableCategory.INACTIVE,
+            )
             self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
         # 3. Total duration tracking
@@ -207,12 +217,23 @@ class StatusModel(Submodel):
             ),
             short_name='active_hours',
             coords=['period', 'scenario'],
+            category=VariableCategory.TOTAL,
         )
 
         # 4. Switch tracking using existing pattern
         if self.parameters.use_startup_tracking:
-            self.add_variables(binary=True, short_name='startup', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='shutdown', coords=self.get_coords())
+            self.add_variables(
+                binary=True,
+                short_name='startup',
+                coords=self.get_coords(),
+                category=VariableCategory.STARTUP,
+            )
+            self.add_variables(
+                binary=True,
+                short_name='shutdown',
+                coords=self.get_coords(),
+                category=VariableCategory.SHUTDOWN,
+            )
 
             # Determine previous_state: None means relaxed (no constraint at t=0)
             previous_state = self._previous_status.isel(time=-1) if self._previous_status is not None else None
@@ -233,6 +254,7 @@ class StatusModel(Submodel):
                     upper=self.parameters.startup_limit,
                     coords=self._model.get_coords(('period', 'scenario')),
                     short_name='startup_count',
+                    category=VariableCategory.STARTUP_COUNT,
                 )
                 # Sum over all temporal dimensions (time, and cluster if present)
                 startup_temporal_dims = [d for d in self.startup.dims if d not in ('period', 'scenario')]
@@ -387,12 +409,14 @@ class PieceModel(Submodel):
             binary=True,
             short_name='inside_piece',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.INSIDE_PIECE,
         )
         self.lambda0 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda0',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.LAMBDA0,
         )
 
         self.lambda1 = self.add_variables(
@@ -400,6 +424,7 @@ class PieceModel(Submodel):
             upper=1,
             short_name='lambda1',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.LAMBDA1,
         )
 
         # Create constraints
@@ -495,6 +520,7 @@ class PiecewiseModel(Submodel):
                     coords=self._model.get_coords(self.dims),
                     binary=True,
                     short_name='zero_point',
+                    category=VariableCategory.ZERO_POINT,
                 )
                 rhs = self.zero_point
             else:
@@ -619,6 +645,7 @@ class ShareAllocationModel(Submodel):
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
             name=self.label_full,
             short_name='total',
+            category=VariableCategory.TOTAL,
         )
         # eq: sum = sum(share_i) # skalar
         self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
@@ -629,6 +656,7 @@ class ShareAllocationModel(Submodel):
                 upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
                 coords=self._model.get_coords(self._dims),
                 short_name='per_timestep',
+                category=VariableCategory.PER_TIMESTEP,
             )
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
@@ -668,10 +696,13 @@ class ShareAllocationModel(Submodel):
         if name in self.shares:
             self.share_constraints[name].lhs -= expression
         else:
+            # Temporal shares (with 'time' dim) are segment totals that need division
+            category = VariableCategory.SHARE if 'time' in dims else None
             self.shares[name] = self.add_variables(
                 coords=self._model.get_coords(dims),
                 name=f'{name}->{self.label_full}',
                 short_name=name,
+                category=category,
             )
 
             self.share_constraints[name] = self.add_constraints(

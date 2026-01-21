@@ -48,6 +48,7 @@ nav:
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
     - Migration & Updates:
+      - Migration Guide v6: user-guide/migration-guide-v6.md
       - Migration Guide v5: user-guide/migration-guide-v5.md
       - Migration Guide v3: user-guide/migration-guide-v3.md
       - Release Notes: changelog.md
@@ -76,6 +77,7 @@ nav:
         - Introduction: notebooks/08c-clustering.ipynb
         - Storage Modes: notebooks/08c2-clustering-storage-modes.ipynb
         - Multi-Period: notebooks/08d-clustering-multiperiod.ipynb
+        - Segmentation: notebooks/08f-clustering-segmentation.ipynb
         - Internals: notebooks/08e-clustering-internals.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb

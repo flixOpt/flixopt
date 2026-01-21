@@ -190,20 +190,24 @@ if __name__ == '__main__':
         optimizations.append(optimization)
 
     if aggregated:
-        # Use the new transform.cluster() API
-        # Note: time_series_for_high_peaks/low_peaks expect string labels matching dataset variables
-        time_series_for_high_peaks = ['Wärmelast(Q_th_Last)|fixed_relative_profile'] if keep_extreme_periods else None
-        time_series_for_low_peaks = (
-            ['Stromlast(P_el_Last)|fixed_relative_profile', 'Wärmelast(Q_th_Last)|fixed_relative_profile']
-            if keep_extreme_periods
-            else None
-        )
+        # Use the transform.cluster() API with tsam 3.0
+        from tsam import ExtremeConfig
+
+        extremes = None
+        if keep_extreme_periods:
+            extremes = ExtremeConfig(
+                method='new_cluster',
+                max_value=['Wärmelast(Q_th_Last)|fixed_relative_profile'],
+                min_value=[
+                    'Stromlast(P_el_Last)|fixed_relative_profile',
+                    'Wärmelast(Q_th_Last)|fixed_relative_profile',
+                ],
+            )
 
         clustered_fs = flow_system.copy().transform.cluster(
             n_clusters=n_clusters,
             cluster_duration=cluster_duration,
-            time_series_for_high_peaks=time_series_for_high_peaks,
-            time_series_for_low_peaks=time_series_for_low_peaks,
+            extremes=extremes,
         )
         t_start = timeit.default_timer()
         clustered_fs.optimize(fx.solvers.HighsSolver(0.01 / 100, 60))

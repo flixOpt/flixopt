@@ -614,28 +614,39 @@ def get_dataarray_stats(arr: xr.DataArray) -> dict:
     return stats
 
 
-def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True) -> xr.Dataset:
+def drop_constant_arrays(
+    ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True, atol: float = 1e-10
+) -> xr.Dataset:
     """Drop variables with constant values along a dimension.
 
     Args:
         ds: Input dataset to filter.
         dim: Dimension along which to check for constant values.
         drop_arrays_without_dim: If True, also drop variables that don't have the specified dimension.
+        atol: Absolute tolerance for considering values as constant (based on max - min).
 
     Returns:
         Dataset with constant variables removed.
     """
     drop_vars = []
+    # Use ds.variables for faster access (avoids _construct_dataarray overhead)
+    variables = ds.variables
 
-    for name, da in ds.data_vars.items():
+    for name in ds.data_vars:
+        var = variables[name]
         # Skip variables without the dimension
-        if dim not in da.dims:
+        if dim not in var.dims:
             if drop_arrays_without_dim:
                 drop_vars.append(name)
             continue
 
-        # Check if variable is constant along the dimension
-        if (da.max(dim, skipna=True) == da.min(dim, skipna=True)).all().item():
+        # Check if variable is constant along the dimension using numpy (ptp < atol)
+        axis = var.dims.index(dim)
+        data = var.values
+        # Use numpy operations directly for speed
+        with np.errstate(invalid='ignore'):  # Ignore NaN warnings
+            ptp = np.nanmax(data, axis=axis) - np.nanmin(data, axis=axis)
+        if np.all(ptp < atol):
             drop_vars.append(name)
 
     if drop_vars:
