@@ -56,11 +56,13 @@ flow_system.solve(fx.solvers.HighsSolver())
 For large problems, use time series clustering to reduce computational complexity:
 
 ```python
+from tsam import ExtremeConfig
+
 # Cluster to 12 typical days
 fs_clustered = flow_system.transform.cluster(
     n_clusters=12,
     cluster_duration='1D',
-    time_series_for_high_peaks=['HeatDemand(Q)|fixed_relative_profile'],
+    extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
 )
 
 # Optimize the clustered system

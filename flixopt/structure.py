@@ -13,6 +13,7 @@ import re
 import warnings
 from dataclasses import dataclass
 from difflib import get_close_matches
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,6 +40,107 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
     from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
 logger = logging.getLogger('flixopt')
+
+
+def _ensure_coords(
+    data: xr.DataArray | float | int,
+    coords: xr.Coordinates | dict,
+) -> xr.DataArray | float:
+    """Broadcast data to coords if needed.
+
+    This is used at the linopy interface to ensure bounds are properly broadcasted
+    to the target variable shape. Linopy needs at least one bound to have all
+    dimensions to determine the variable shape.
+
+    Note: Infinity values (-inf, inf) are kept as scalars because linopy uses
+    special checks like `if (lower != -inf)` that fail with DataArrays.
+    """
+    # Handle both dict and xr.Coordinates
+    if isinstance(coords, dict):
+        coord_dims = list(coords.keys())
+    else:
+        coord_dims = list(coords.dims)
+
+    # Keep infinity values as scalars (linopy uses them for special checks)
+    if not isinstance(data, xr.DataArray):
+        if np.isinf(data):
+            return data
+        # Finite scalar - create full DataArray
+        return xr.DataArray(data, coords=coords, dims=coord_dims)
+
+    if set(data.dims) == set(coord_dims):
+        # Has all dims - ensure correct order
+        if data.dims != tuple(coord_dims):
+            return data.transpose(*coord_dims)
+        return data
+
+    # Broadcast to full coords (broadcast_like ensures correct dim order)
+    template = xr.DataArray(coords=coords, dims=coord_dims)
+    return data.broadcast_like(template)
+
+
+class VariableCategory(Enum):
+    """Fine-grained variable categories - names mirror variable names.
+
+    Each variable type has its own category for precise handling during
+    segment expansion and statistics calculation.
+    """
+
+    # === State variables ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Rate/Power variables ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+
+    # === Binary events ===
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Effect variables ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # All temporal contributions (flow, active, startup)
+    TOTAL = 'total'  # Effect total (per period/scenario)
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Effect total over all periods
+
+    # === Investment ===
+    SIZE = 'size'  # Generic investment size (for backwards compatibility)
+    FLOW_SIZE = 'flow_size'  # Flow investment size
+    STORAGE_SIZE = 'storage_size'  # Storage capacity size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Counting/Duration ===
+    STARTUP_COUNT = 'startup_count'  # Count of startups
+    DURATION = 'duration'  # Duration tracking (uptime/downtime)
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA0 = 'lambda0'  # Interpolation weight
+    LAMBDA1 = 'lambda1'  # Interpolation weight
+    ZERO_POINT = 'zero_point'  # Zero point handling
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# === Logical Groupings for Segment Expansion ===
+# Default behavior (not listed): repeat value within segment
+
+EXPAND_INTERPOLATE: set[VariableCategory] = {VariableCategory.CHARGE_STATE}
+"""State variables that should be interpolated between segment boundaries."""
+
+EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableCategory.SHARE}
+"""Segment totals that should be divided by expansion factor to preserve sums."""
+
+EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
+"""Binary events that should appear only at the first timestep of the segment."""
+
 
 CLASS_REGISTRY = {}
 
@@ -97,6 +199,25 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self.flow_system = flow_system
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
+        self.variable_categories: dict[str, VariableCategory] = {}
+
+    def add_variables(
+        self,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        coords: xr.Coordinates | None = None,
+        **kwargs,
+    ) -> linopy.Variable:
+        """Override to ensure bounds are broadcasted to coords shape.
+
+        Linopy uses the union of all DataArray dimensions to determine variable shape.
+        This override ensures at least one bound has all target dimensions when coords
+        is provided, allowing internal data to remain compact (scalars, 1D arrays).
+        """
+        if coords is not None:
+            lower = _ensure_coords(lower, coords)
+            upper = _ensure_coords(upper, coords)
+        return super().add_variables(lower=lower, upper=upper, coords=coords, **kwargs)
 
     def do_modeling(self):
         # Create all element models
@@ -777,8 +898,11 @@ class Interface:
 
         array = arrays_dict[array_name]
 
-        # Handle null values with warning
-        if array.isnull().any():
+        # Handle null values with warning (use numpy for performance - 200x faster than xarray)
+        has_nulls = (np.issubdtype(array.dtype, np.floating) and np.any(np.isnan(array.values))) or (
+            array.dtype == object and pd.isna(array.values).any()
+        )
+        if has_nulls:
             logger.error(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
             if 'time' in array.dims:
                 array = array.dropna(dim='time', how='all')
@@ -992,7 +1116,19 @@ class Interface:
             reference_structure.pop('__class__', None)
 
             # Create arrays dictionary from dataset variables
-            arrays_dict = {name: array for name, array in ds.data_vars.items()}
+            # Use ds.variables with coord_cache for faster DataArray construction
+            variables = ds.variables
+            coord_cache = {k: ds.coords[k] for k in ds.coords}
+            coord_names = set(coord_cache)
+            arrays_dict = {
+                name: xr.DataArray(
+                    variables[name],
+                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
+                    name=name,
+                )
+                for name in variables
+                if name not in coord_names
+            }
 
             # Resolve all references using the centralized method
             resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
@@ -1603,8 +1739,22 @@ class Submodel(SubmodelsMixin):
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
 
-    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
-        """Create and register a variable in one step"""
+    def add_variables(
+        self,
+        short_name: str = None,
+        category: VariableCategory = None,
+        **kwargs: Any,
+    ) -> linopy.Variable:
+        """Create and register a variable in one step.
+
+        Args:
+            short_name: Short name for the variable (used as suffix in full name).
+            category: Category for segment expansion handling. See VariableCategory.
+            **kwargs: Additional arguments passed to linopy.Model.add_variables().
+
+        Returns:
+            The created linopy Variable.
+        """
         if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
@@ -1612,6 +1762,11 @@ class Submodel(SubmodelsMixin):
 
         variable = self._model.add_variables(**kwargs)
         self.register_variable(variable, short_name)
+
+        # Register category in FlowSystemModel for segment expansion handling
+        if category is not None:
+            self._model.variable_categories[variable.name] = category
+
         return variable
 
     def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:

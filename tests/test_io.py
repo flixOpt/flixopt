@@ -189,5 +189,130 @@ def test_tqdm_cleanup_on_exception():
     progress_bar.close()  # Should not raise even if already closed
 
 
+class TestNetCDFRoundtrip:
+    """Tests for NetCDF save/load round-trip functionality."""
+
+    def test_netcdf_roundtrip_basic(self, tmp_path, flow_system):
+        """Test basic NetCDF round-trip preserves FlowSystem."""
+        path = tmp_path / 'test_flow_system.nc'
+
+        flow_system.to_netcdf(path)
+        restored = fx.FlowSystem.from_netcdf(path)
+
+        assert flow_system == restored
+
+    def test_netcdf_roundtrip_preserves_flixopt_version(self, tmp_path, flow_system):
+        """Test that flixopt_version is stored in NetCDF file."""
+        from flixopt import __version__
+        from flixopt.io import load_dataset_from_netcdf
+
+        path = tmp_path / 'test_version.nc'
+        flow_system.to_netcdf(path)
+
+        ds = load_dataset_from_netcdf(path)
+        assert 'flixopt_version' in ds.attrs
+        assert ds.attrs['flixopt_version'] == __version__
+
+    def test_dataset_roundtrip_preserves_flixopt_version(self, flow_system):
+        """Test that flixopt_version is stored in dataset."""
+        from flixopt import __version__
+
+        ds = flow_system.to_dataset()
+
+        assert 'flixopt_version' in ds.attrs
+        assert ds.attrs['flixopt_version'] == __version__
+
+    def test_netcdf_roundtrip_preserves_timesteps(self, tmp_path, flow_system):
+        """Test that timesteps are preserved correctly after round-trip."""
+        import pandas as pd
+
+        path = tmp_path / 'test_timesteps.nc'
+        flow_system.to_netcdf(path)
+        restored = fx.FlowSystem.from_netcdf(path)
+
+        assert len(restored.timesteps) == len(flow_system.timesteps)
+        if isinstance(flow_system.timesteps, pd.DatetimeIndex):
+            pd.testing.assert_index_equal(restored.timesteps, flow_system.timesteps)
+
+    def test_netcdf_roundtrip_preserves_periods(self, tmp_path):
+        """Test that periods are preserved correctly after round-trip."""
+        import pandas as pd
+
+        timesteps = pd.date_range('2020-01-01', periods=10, freq='h')
+        periods = pd.Index([2020, 2030, 2040], name='period')
+
+        fs = fx.FlowSystem(timesteps=timesteps, periods=periods)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', is_objective=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50)]),
+        )
+
+        path = tmp_path / 'test_periods.nc'
+        fs.to_netcdf(path)
+        restored = fx.FlowSystem.from_netcdf(path)
+
+        assert restored.periods is not None
+        pd.testing.assert_index_equal(restored.periods, periods)
+
+    def test_netcdf_roundtrip_preserves_scenarios(self, tmp_path):
+        """Test that scenarios are preserved correctly after round-trip."""
+        import pandas as pd
+
+        timesteps = pd.date_range('2020-01-01', periods=10, freq='h')
+        scenarios = pd.Index(['A', 'B'], name='scenario')
+
+        fs = fx.FlowSystem(timesteps=timesteps, scenarios=scenarios)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', is_objective=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50)]),
+        )
+
+        path = tmp_path / 'test_scenarios.nc'
+        fs.to_netcdf(path)
+        restored = fx.FlowSystem.from_netcdf(path)
+
+        assert restored.scenarios is not None
+        pd.testing.assert_index_equal(restored.scenarios, scenarios)
+
+    def test_netcdf_roundtrip_with_clustering(self, tmp_path):
+        """Test that clustered FlowSystem survives NetCDF round-trip."""
+        import numpy as np
+        import pandas as pd
+
+        pytest.importorskip('tsam.config', reason='tsam.config not available')
+
+        timesteps = pd.date_range('2023-01-01', periods=48, freq='h')
+
+        # Create varying demand profile (sine wave pattern)
+        demand_profile = np.sin(np.linspace(0, 4 * np.pi, 48)) * 0.4 + 0.6
+
+        fs = fx.FlowSystem(timesteps)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', is_objective=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        )
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        path = tmp_path / 'test_clustered.nc'
+        fs_clustered.to_netcdf(path)
+        restored = fx.FlowSystem.from_netcdf(path)
+
+        assert restored.clustering is not None
+        assert len(restored.clusters) == len(fs_clustered.clusters)
+
+
 if __name__ == '__main__':
     pytest.main(['-v', '--disable-warnings'])

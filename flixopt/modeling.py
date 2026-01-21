@@ -1,13 +1,100 @@
 import logging
+from typing import Any
 
 import linopy
 import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .structure import Submodel
+from .structure import Submodel, VariableCategory
 
 logger = logging.getLogger('flixopt')
+
+
+def _scalar_safe_isel(data: xr.DataArray | Any, indexers: dict) -> xr.DataArray | Any:
+    """Apply isel if data has the required dimensions, otherwise return data as-is.
+
+    This allows parameters to remain compact (scalar or lower-dimensional) while still
+    being usable in constraint expressions that use .isel() for slicing.
+
+    Args:
+        data: DataArray or scalar value
+        indexers: Dictionary of {dim: indexer} for isel
+
+    Returns:
+        Sliced DataArray if dims exist, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    # Only apply isel if data has all the required dimensions
+    if all(dim in data.dims for dim in indexers):
+        return data.isel(indexers)
+    return data
+
+
+def _scalar_safe_isel_drop(data: xr.DataArray | Any, dim: str, index: int) -> xr.DataArray | Any:
+    """Apply isel with drop=True if data has the dimension, otherwise return data as-is.
+
+    Useful for cases like selecting the last value of a potentially reduced array:
+    - If data has time dimension: returns data.isel(time=-1, drop=True)
+    - If data is reduced (no time dimension): returns data unchanged (already represents constant)
+
+    Args:
+        data: DataArray or scalar value
+        dim: Dimension name to select from
+        index: Index to select (e.g., -1 for last, 0 for first)
+
+    Returns:
+        Selected value with dimension dropped if dim exists, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    if dim in data.dims:
+        return data.isel({dim: index}, drop=True)
+    return data
+
+
+def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean') -> xr.DataArray | Any:
+    """Apply reduction (mean/sum/etc) over dimension if it exists, otherwise return data as-is.
+
+    Useful for aggregating over time dimension when data may be scalar (constant):
+    - If data has time dimension: returns getattr(data, method)(dim)
+    - If data is reduced (no time dimension): returns data unchanged (already represents constant)
+
+    Args:
+        data: DataArray or scalar value
+        dim: Dimension name to reduce over
+        method: Reduction method ('mean', 'sum', 'min', 'max', etc.)
+
+    Returns:
+        Reduced value if dim exists, otherwise original data
+    """
+    if not isinstance(data, xr.DataArray):
+        return data
+    if dim in data.dims:
+        return getattr(data, method)(dim)
+    return data
+
+
+def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
+    """Check if two DataArrays are element-wise equal within tolerance.
+
+    Args:
+        a: First DataArray
+        b: Second DataArray
+        rtol: Relative tolerance (default matches np.allclose)
+        atol: Absolute tolerance (default matches np.allclose)
+
+    Returns:
+        True if all elements are close (including matching NaN positions)
+    """
+    # Fast path: same dims and shape - use numpy directly
+    if a.dims == b.dims and a.shape == b.shape:
+        return np.allclose(a.values, b.values, rtol=rtol, atol=atol, equal_nan=True)
+
+    # Slow path: broadcast to common shape, then use numpy
+    a_bc, b_bc = xr.broadcast(a, b)
+    return np.allclose(a_bc.values, b_bc.values, rtol=rtol, atol=atol, equal_nan=True)
 
 
 class ModelingUtilitiesAbstract:
@@ -204,6 +291,7 @@ class ModelingPrimitives:
         short_name: str = None,
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
+        category: VariableCategory = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
         """Creates a variable constrained to equal a given expression.
 
@@ -218,6 +306,7 @@ class ModelingPrimitives:
             short_name: Short name for display purposes
             bounds: Optional (lower_bound, upper_bound) tuple for the tracker variable
             coords: Coordinate dimensions for the variable (None uses all model coords)
+            category: Category for segment expansion handling. See VariableCategory.
 
         Returns:
             Tuple of (tracker_variable, tracking_constraint)
@@ -226,7 +315,9 @@ class ModelingPrimitives:
             raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
 
         if not bounds:
-            tracker = model.add_variables(name=name, coords=model.get_coords(coords), short_name=short_name)
+            tracker = model.add_variables(
+                name=name, coords=model.get_coords(coords), short_name=short_name, category=category
+            )
         else:
             tracker = model.add_variables(
                 lower=bounds[0] if bounds[0] is not None else -np.inf,
@@ -234,6 +325,7 @@ class ModelingPrimitives:
                 name=name,
                 coords=model.get_coords(coords),
                 short_name=short_name,
+                category=category,
             )
 
         # Constraint: tracker = expression
@@ -303,6 +395,7 @@ class ModelingPrimitives:
             coords=state.coords,
             name=name,
             short_name=short_name,
+            category=VariableCategory.DURATION,
         )
 
         constraints = {}
@@ -340,7 +433,7 @@ class ModelingPrimitives:
             constraints['lb'] = model.add_constraints(
                 duration
                 >= (state.isel({duration_dim: slice(None, -1)}) - state.isel({duration_dim: slice(1, None)}))
-                * minimum_duration.isel({duration_dim: slice(None, -1)}),
+                * _scalar_safe_isel(minimum_duration, {duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
 
@@ -351,7 +444,7 @@ class ModelingPrimitives:
                     if not isinstance(previous_duration, xr.DataArray)
                     else float(previous_duration.max().item())
                 )
-                min0 = float(minimum_duration.isel({duration_dim: 0}).max().item())
+                min0 = float(_scalar_safe_isel(minimum_duration, {duration_dim: 0}).max().item())
                 if prev > 0 and prev < min0:
                     constraints['initial_lb'] = model.add_constraints(
                         state.isel({duration_dim: 0}) == 1, name=f'{duration.name}|initial_lb'
@@ -474,7 +567,7 @@ class BoundingPatterns:
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
-        if np.allclose(lower_bound, upper_bound, atol=1e-10, equal_nan=True):
+        if _xr_allclose(lower_bound, upper_bound):
             fix_constraint = model.add_constraints(variable == state * upper_bound, name=f'{name}|fix')
             return [fix_constraint]
 
@@ -516,7 +609,7 @@ class BoundingPatterns:
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
-        if np.allclose(rel_lower, rel_upper, atol=1e-10, equal_nan=True):
+        if _xr_allclose(rel_lower, rel_upper):
             return [model.add_constraints(variable == scaling_variable * rel_lower, name=f'{name}|fixed')]
 
         upper_constraint = model.add_constraints(variable <= scaling_variable * rel_upper, name=f'{name}|ub')

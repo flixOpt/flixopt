@@ -366,6 +366,56 @@ class DataConverter:
         broadcasted = source_data.broadcast_like(target_template)
         return broadcasted.transpose(*target_dims)
 
+    @staticmethod
+    def _validate_dataarray_dims(
+        data: xr.DataArray, target_coords: dict[str, pd.Index], target_dims: tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Validate that DataArray dims are a subset of target dims (without broadcasting).
+
+        This method validates compatibility without expanding to full dimensions,
+        allowing data to remain in compact form. Broadcasting happens later at
+        the linopy interface (FlowSystemModel.add_variables).
+
+        Also reduces constant dimensions and transposes data to canonical dimension
+        order (matching target_dims order).
+
+        Args:
+            data: DataArray to validate
+            target_coords: Target coordinates {dim_name: coordinate_index}
+            target_dims: Target dimension names in canonical order
+
+        Returns:
+            DataArray with validated dims, reduced constants, transposed to canonical order
+
+        Raises:
+            ConversionError: If data has dimensions not in target_dims,
+                           or coordinate values don't match
+        """
+        # Validate: all data dimensions must exist in target
+        extra_dims = set(data.dims) - set(target_dims)
+        if extra_dims:
+            raise ConversionError(f'Data has dimensions {extra_dims} not in target dimensions {target_dims}')
+
+        # Validate: coordinate compatibility for overlapping dimensions
+        for dim in data.dims:
+            if dim in data.coords and dim in target_coords:
+                data_coords = data.coords[dim]
+                target_coords_for_dim = target_coords[dim]
+
+                if not np.array_equal(data_coords.values, target_coords_for_dim.values):
+                    raise ConversionError(
+                        f'Coordinate mismatch for dimension "{dim}". Data and target coordinates have different values.'
+                    )
+
+        # Transpose to canonical dimension order (subset of target_dims that data has)
+        if data.dims:
+            canonical_order = tuple(d for d in target_dims if d in data.dims)
+            if data.dims != canonical_order:
+                data = data.transpose(*canonical_order)
+
+        return data
+
     @classmethod
     def to_dataarray(
         cls,
@@ -480,8 +530,9 @@ class DataConverter:
                 f'Unsupported data type: {type(data).__name__}. Supported types: {", ".join(supported_types)}'
             )
 
-        # Broadcast intermediate result to target specification
-        return cls._broadcast_dataarray_to_target_specification(intermediate, validated_coords, target_dims)
+        # Validate dims are compatible (no broadcasting - data stays compact)
+        # Broadcasting happens at FlowSystemModel.add_variables() via _ensure_coords
+        return cls._validate_dataarray_dims(intermediate, validated_coords, target_dims)
 
     @staticmethod
     def _validate_and_prepare_target_coordinates(
@@ -563,28 +614,39 @@ def get_dataarray_stats(arr: xr.DataArray) -> dict:
     return stats
 
 
-def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True) -> xr.Dataset:
+def drop_constant_arrays(
+    ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True, atol: float = 1e-10
+) -> xr.Dataset:
     """Drop variables with constant values along a dimension.
 
     Args:
         ds: Input dataset to filter.
         dim: Dimension along which to check for constant values.
         drop_arrays_without_dim: If True, also drop variables that don't have the specified dimension.
+        atol: Absolute tolerance for considering values as constant (based on max - min).
 
     Returns:
         Dataset with constant variables removed.
     """
     drop_vars = []
+    # Use ds.variables for faster access (avoids _construct_dataarray overhead)
+    variables = ds.variables
 
-    for name, da in ds.data_vars.items():
+    for name in ds.data_vars:
+        var = variables[name]
         # Skip variables without the dimension
-        if dim not in da.dims:
+        if dim not in var.dims:
             if drop_arrays_without_dim:
                 drop_vars.append(name)
             continue
 
-        # Check if variable is constant along the dimension
-        if (da.max(dim, skipna=True) == da.min(dim, skipna=True)).all().item():
+        # Check if variable is constant along the dimension using numpy (ptp < atol)
+        axis = var.dims.index(dim)
+        data = var.values
+        # Use numpy operations directly for speed
+        with np.errstate(invalid='ignore'):  # Ignore NaN warnings
+            ptp = np.nanmax(data, axis=axis) - np.nanmin(data, axis=axis)
+        if np.all(ptp < atol):
             drop_vars.append(name)
 
     if drop_vars:

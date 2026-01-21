@@ -1,24 +1,16 @@
 """
-Base classes and data structures for time series aggregation (clustering).
+Clustering classes for time series aggregation.
 
-This module provides an abstraction layer for time series aggregation that
-supports multiple backends (TSAM, manual/external, etc.).
-
-Terminology:
-- "cluster" = a group of similar time chunks (e.g., similar days grouped together)
-- "typical period" = a representative time chunk for a cluster (TSAM terminology)
-- "cluster duration" = the length of each time chunk (e.g., 24h for daily clustering)
-
-Note: This is separate from the model's "period" dimension (years/months) and
-"scenario" dimension. The aggregation operates on the 'time' dimension.
-
-All data structures use xarray for consistent handling of coordinates.
+This module provides wrapper classes around tsam's clustering functionality:
+- `ClusteringResults`: Collection of tsam ClusteringResult objects for multi-dim (period, scenario) data
+- `Clustering`: Top-level class stored on FlowSystem after clustering
 """
 
 from __future__ import annotations
 
-import warnings
-from dataclasses import dataclass
+import functools
+import json
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -26,6 +18,11 @@ import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from tsam import AggregationResult
+    from tsam import ClusteringResult as TsamClusteringResult
+
     from ..color_processing import ColorType
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
@@ -44,7 +41,7 @@ def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -
         plotly_kwargs.setdefault(slot, value)
 
 
-def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | None = None) -> xr.DataArray:
+def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> xr.DataArray:
     """Select from DataArray by period/scenario if those dimensions exist."""
     if 'period' in da.dims and period is not None:
         da = da.sel(period=period)
@@ -53,483 +50,1323 @@ def _select_dims(da: xr.DataArray, period: str | None = None, scenario: str | No
     return da
 
 
-@dataclass
-class ClusterStructure:
-    """Structure information for inter-cluster storage linking.
+def combine_slices(
+    slices: dict[tuple, np.ndarray],
+    extra_dims: list[str],
+    dim_coords: dict[str, list],
+    output_dim: str,
+    output_coord: Any,
+    attrs: dict | None = None,
+) -> xr.DataArray:
+    """Combine {(dim_values): 1D_array} dict into a DataArray.
 
-    This class captures the hierarchical structure of time series clustering,
-    which is needed for proper storage state-of-charge tracking across
-    typical periods when using cluster().
+    This utility simplifies the common pattern of iterating over extra dimensions
+    (like period, scenario), processing each slice, and combining results.
 
-    Note: The "original_cluster" dimension indexes the original cluster-sized
-    time segments (e.g., 0..364 for 365 days), NOT the model's "period" dimension
-    (years). Each original segment gets assigned to a representative cluster.
+    Args:
+        slices: Dict mapping dimension value tuples to 1D numpy arrays.
+            Keys are tuples like ('period1', 'scenario1') matching extra_dims order.
+        extra_dims: Dimension names in order (e.g., ['period', 'scenario']).
+        dim_coords: Dict mapping dimension names to coordinate values.
+        output_dim: Name of the output dimension (typically 'time').
+        output_coord: Coordinate values for output dimension.
+        attrs: Optional DataArray attributes.
 
-    Attributes:
-        cluster_order: Maps original cluster index → representative cluster ID.
-            dims: [original_cluster] for simple case, or
-            [original_cluster, period, scenario] for multi-period/scenario systems.
-            Values are cluster IDs (0 to n_clusters-1).
-        cluster_occurrences: Count of how many original time chunks each cluster represents.
-            dims: [cluster] for simple case, or [cluster, period, scenario] for multi-dim.
-        n_clusters: Number of distinct clusters (typical periods).
-        timesteps_per_cluster: Number of timesteps in each cluster (e.g., 24 for daily).
+    Returns:
+        DataArray with dims [output_dim, *extra_dims].
+
+    Raises:
+        ValueError: If slices is empty.
+        KeyError: If a required key is missing from slices.
 
     Example:
-        For 365 days clustered into 8 typical days:
-        - cluster_order: shape (365,), values 0-7 indicating which cluster each day belongs to
-        - cluster_occurrences: shape (8,), e.g., [45, 46, 46, 46, 46, 45, 45, 46]
-        - n_clusters: 8
-        - timesteps_per_cluster: 24 (for hourly data)
+        >>> slices = {
+        ...     ('P1', 'base'): np.array([1, 2, 3]),
+        ...     ('P1', 'high'): np.array([4, 5, 6]),
+        ...     ('P2', 'base'): np.array([7, 8, 9]),
+        ...     ('P2', 'high'): np.array([10, 11, 12]),
+        ... }
+        >>> result = combine_slices(
+        ...     slices,
+        ...     extra_dims=['period', 'scenario'],
+        ...     dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
+        ...     output_dim='time',
+        ...     output_coord=[0, 1, 2],
+        ... )
+        >>> result.dims
+        ('time', 'period', 'scenario')
+    """
+    if not slices:
+        raise ValueError('slices cannot be empty')
 
-        For multi-scenario (e.g., 2 scenarios):
-        - cluster_order: shape (365, 2) with dims [original_cluster, scenario]
-        - cluster_occurrences: shape (8, 2) with dims [cluster, scenario]
+    first = next(iter(slices.values()))
+    n_output = len(first)
+    shape = [n_output] + [len(dim_coords[d]) for d in extra_dims]
+    data = np.empty(shape, dtype=first.dtype)
+
+    for combo in np.ndindex(*shape[1:]):
+        key = tuple(dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True))
+        try:
+            data[(slice(None),) + combo] = slices[key]
+        except KeyError:
+            raise KeyError(f'Missing slice for key {key} (extra_dims={extra_dims})') from None
+
+    return xr.DataArray(
+        data,
+        dims=[output_dim] + extra_dims,
+        coords={output_dim: output_coord, **dim_coords},
+        attrs=attrs or {},
+    )
+
+
+def _cluster_occurrences(cr: TsamClusteringResult) -> np.ndarray:
+    """Compute cluster occurrences from ClusteringResult."""
+    counts = Counter(cr.cluster_assignments)
+    return np.array([counts.get(i, 0) for i in range(cr.n_clusters)])
+
+
+def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.ndarray:
+    """Build mapping from original timesteps to representative timestep indices.
+
+    For segmented systems, the mapping uses segment_assignments from tsam to map
+    each original timestep position to its corresponding segment index.
+    """
+    timesteps_per_cluster = cr.n_timesteps_per_period
+    # For segmented systems, representative time dimension has n_segments entries
+    # For non-segmented, it has timesteps_per_cluster entries
+    n_segments = cr.n_segments
+    is_segmented = n_segments is not None
+    time_dim_size = n_segments if is_segmented else timesteps_per_cluster
+
+    # For segmented systems, tsam provides segment_assignments which maps
+    # each position within a period to its segment index
+    segment_assignments = cr.segment_assignments if is_segmented else None
+
+    mapping = np.zeros(n_timesteps, dtype=np.int32)
+    for period_idx, cluster_id in enumerate(cr.cluster_assignments):
+        for pos in range(timesteps_per_cluster):
+            orig_idx = period_idx * timesteps_per_cluster + pos
+            if orig_idx < n_timesteps:
+                if is_segmented and segment_assignments is not None:
+                    # For segmented: use tsam's segment_assignments to get segment index
+                    # segment_assignments[cluster_id][pos] gives the segment index
+                    segment_idx = segment_assignments[cluster_id][pos]
+                    mapping[orig_idx] = int(cluster_id) * time_dim_size + segment_idx
+                else:
+                    # Non-segmented: direct position mapping
+                    mapping[orig_idx] = int(cluster_id) * time_dim_size + pos
+    return mapping
+
+
+class ClusteringResults:
+    """Collection of tsam ClusteringResult objects for multi-dimensional data.
+
+    Manages multiple ClusteringResult objects keyed by (period, scenario) tuples
+    and provides convenient access and multi-dimensional DataArray building.
+
+    Follows xarray-like patterns with `.dims`, `.coords`, `.sel()`, and `.isel()`.
+
+    Attributes:
+        dims: Tuple of dimension names, e.g., ('period', 'scenario').
+        coords: Dict mapping dimension names to their coordinate values.
+
+    Example:
+        >>> results = ClusteringResults({(): cr}, dim_names=[])
+        >>> results.n_clusters
+        2
+        >>> results.cluster_assignments  # Returns DataArray
+        <xarray.DataArray (original_cluster: 3)>
+
+        >>> # Multi-dimensional case
+        >>> results = ClusteringResults(
+        ...     {(2024, 'high'): cr1, (2024, 'low'): cr2},
+        ...     dim_names=['period', 'scenario'],
+        ... )
+        >>> results.dims
+        ('period', 'scenario')
+        >>> results.coords
+        {'period': [2024], 'scenario': ['high', 'low']}
+        >>> results.sel(period=2024, scenario='high')  # Label-based
+        <tsam ClusteringResult>
+        >>> results.isel(period=0, scenario=1)  # Index-based
+        <tsam ClusteringResult>
     """
 
-    cluster_order: xr.DataArray
-    cluster_occurrences: xr.DataArray
-    n_clusters: int | xr.DataArray
-    timesteps_per_cluster: int
+    def __init__(
+        self,
+        results: dict[tuple, TsamClusteringResult],
+        dim_names: list[str],
+    ):
+        """Initialize ClusteringResults.
 
-    def __post_init__(self):
-        """Validate and ensure proper DataArray formatting."""
-        # Ensure cluster_order is a DataArray with proper dims
-        if not isinstance(self.cluster_order, xr.DataArray):
-            self.cluster_order = xr.DataArray(self.cluster_order, dims=['original_cluster'], name='cluster_order')
-        elif self.cluster_order.name is None:
-            self.cluster_order = self.cluster_order.rename('cluster_order')
+        Args:
+            results: Dict mapping (period, scenario) tuples to tsam ClusteringResult objects.
+                For simple cases without periods/scenarios, use {(): result}.
+            dim_names: Names of extra dimensions, e.g., ['period', 'scenario'].
+        """
+        if not results:
+            raise ValueError('results cannot be empty')
+        self._results = results
+        self._dim_names = dim_names
 
-        # Ensure cluster_occurrences is a DataArray with proper dims
-        if not isinstance(self.cluster_occurrences, xr.DataArray):
-            self.cluster_occurrences = xr.DataArray(
-                self.cluster_occurrences, dims=['cluster'], name='cluster_occurrences'
+    # ==========================================================================
+    # xarray-like interface
+    # ==========================================================================
+
+    @property
+    def dims(self) -> tuple[str, ...]:
+        """Dimension names as tuple (xarray-like)."""
+        return tuple(self._dim_names)
+
+    @property
+    def dim_names(self) -> list[str]:
+        """Dimension names as list (backwards compatibility)."""
+        return list(self._dim_names)
+
+    @property
+    def coords(self) -> dict[str, list]:
+        """Coordinate values for each dimension (xarray-like).
+
+        Returns:
+            Dict mapping dimension names to lists of coordinate values.
+        """
+        return {dim: self._get_dim_values(dim) for dim in self._dim_names}
+
+    def sel(self, **kwargs: Any) -> TsamClusteringResult:
+        """Select result by dimension labels (xarray-like).
+
+        Args:
+            **kwargs: Dimension name=value pairs, e.g., period=2024, scenario='high'.
+
+        Returns:
+            The tsam ClusteringResult for the specified combination.
+
+        Raises:
+            KeyError: If no result found for the specified combination.
+
+        Example:
+            >>> results.sel(period=2024, scenario='high')
+            <tsam ClusteringResult>
+        """
+        key = self._make_key(**kwargs)
+        if key not in self._results:
+            raise KeyError(f'No result found for {kwargs}')
+        return self._results[key]
+
+    def isel(self, **kwargs: int) -> TsamClusteringResult:
+        """Select result by dimension indices (xarray-like).
+
+        Args:
+            **kwargs: Dimension name=index pairs, e.g., period=0, scenario=1.
+
+        Returns:
+            The tsam ClusteringResult for the specified combination.
+
+        Raises:
+            IndexError: If index is out of range for a dimension.
+
+        Example:
+            >>> results.isel(period=0, scenario=1)
+            <tsam ClusteringResult>
+        """
+        label_kwargs = {}
+        for dim, idx in kwargs.items():
+            coord_values = self._get_dim_values(dim)
+            if coord_values is None:
+                raise KeyError(f"Dimension '{dim}' not found in dims {self.dims}")
+            if idx < 0 or idx >= len(coord_values):
+                raise IndexError(f"Index {idx} out of range for dimension '{dim}' with {len(coord_values)} values")
+            label_kwargs[dim] = coord_values[idx]
+        return self.sel(**label_kwargs)
+
+    def __getitem__(self, key: tuple) -> TsamClusteringResult:
+        """Get result by key tuple."""
+        return self._results[key]
+
+    # === Iteration ===
+
+    def __iter__(self):
+        """Iterate over ClusteringResult objects."""
+        return iter(self._results.values())
+
+    def __len__(self) -> int:
+        """Number of ClusteringResult objects."""
+        return len(self._results)
+
+    def items(self):
+        """Iterate over (key, ClusteringResult) pairs."""
+        return self._results.items()
+
+    def keys(self):
+        """Iterate over keys."""
+        return self._results.keys()
+
+    def values(self):
+        """Iterate over ClusteringResult objects."""
+        return self._results.values()
+
+    # === Properties from first result ===
+
+    @property
+    def _first_result(self) -> TsamClusteringResult:
+        """Get the first ClusteringResult (for structure info)."""
+        return next(iter(self._results.values()))
+
+    @property
+    def n_clusters(self) -> int:
+        """Number of clusters (same for all results)."""
+        return self._first_result.n_clusters
+
+    @property
+    def timesteps_per_cluster(self) -> int:
+        """Number of timesteps per cluster (same for all results)."""
+        return self._first_result.n_timesteps_per_period
+
+    @property
+    def n_original_periods(self) -> int:
+        """Number of original periods (same for all results)."""
+        return self._first_result.n_original_periods
+
+    @property
+    def n_segments(self) -> int | None:
+        """Number of segments per cluster, or None if not segmented."""
+        return self._first_result.n_segments
+
+    # === Multi-dim DataArrays ===
+
+    @property
+    def cluster_assignments(self) -> xr.DataArray:
+        """Maps each original cluster to its typical cluster index.
+
+        Returns:
+            DataArray with dims [original_cluster, period?, scenario?].
+        """
+        # Note: No coords on original_cluster - they cause issues when used as isel() indexer
+        return self._build_property_array(
+            lambda cr: np.array(cr.cluster_assignments),
+            base_dims=['original_cluster'],
+            name='cluster_assignments',
+        )
+
+    @property
+    def cluster_occurrences(self) -> xr.DataArray:
+        """How many original clusters map to each typical cluster.
+
+        Returns:
+            DataArray with dims [cluster, period?, scenario?].
+        """
+        return self._build_property_array(
+            _cluster_occurrences,
+            base_dims=['cluster'],
+            base_coords={'cluster': range(self.n_clusters)},
+            name='cluster_occurrences',
+        )
+
+    @property
+    def cluster_centers(self) -> xr.DataArray:
+        """Which original cluster is the representative (center) for each typical cluster.
+
+        Returns:
+            DataArray with dims [cluster, period?, scenario?].
+        """
+        return self._build_property_array(
+            lambda cr: np.array(cr.cluster_centers),
+            base_dims=['cluster'],
+            base_coords={'cluster': range(self.n_clusters)},
+            name='cluster_centers',
+        )
+
+    @property
+    def segment_assignments(self) -> xr.DataArray | None:
+        """For each timestep within a cluster, which segment it belongs to.
+
+        Returns:
+            DataArray with dims [cluster, time, period?, scenario?], or None if not segmented.
+        """
+        if self._first_result.segment_assignments is None:
+            return None
+        timesteps = self._first_result.n_timesteps_per_period
+        return self._build_property_array(
+            lambda cr: np.array(cr.segment_assignments),
+            base_dims=['cluster', 'time'],
+            base_coords={'cluster': range(self.n_clusters), 'time': range(timesteps)},
+            name='segment_assignments',
+        )
+
+    @property
+    def segment_durations(self) -> xr.DataArray | None:
+        """Duration of each segment in timesteps.
+
+        Returns:
+            DataArray with dims [cluster, segment, period?, scenario?], or None if not segmented.
+        """
+        if self._first_result.segment_durations is None:
+            return None
+        n_segments = self._first_result.n_segments
+
+        def _get_padded_durations(cr: TsamClusteringResult) -> np.ndarray:
+            """Pad ragged segment durations to uniform shape."""
+            return np.array([list(d) + [np.nan] * (n_segments - len(d)) for d in cr.segment_durations])
+
+        return self._build_property_array(
+            _get_padded_durations,
+            base_dims=['cluster', 'segment'],
+            base_coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
+            name='segment_durations',
+        )
+
+    @property
+    def segment_centers(self) -> xr.DataArray | None:
+        """Center of each intra-period segment.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray or None if no segmentation.
+        """
+        first = self._first_result
+        if first.segment_centers is None:
+            return None
+
+        n_segments = first.n_segments
+        return self._build_property_array(
+            lambda cr: np.array(cr.segment_centers),
+            base_dims=['cluster', 'segment'],
+            base_coords={'cluster': range(self.n_clusters), 'segment': range(n_segments)},
+            name='segment_centers',
+        )
+
+    @property
+    def position_within_segment(self) -> xr.DataArray | None:
+        """Position of each timestep within its segment (0-indexed).
+
+        For each (cluster, time) position, returns how many timesteps into the
+        segment that position is. Used for interpolation within segments.
+
+        Returns:
+            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?].
+            Returns None if no segmentation.
+        """
+        segment_assignments = self.segment_assignments
+        if segment_assignments is None:
+            return None
+
+        def _compute_positions(seg_assigns: np.ndarray) -> np.ndarray:
+            """Compute position within segment for each (cluster, time)."""
+            n_clusters, n_times = seg_assigns.shape
+            positions = np.zeros_like(seg_assigns)
+            for c in range(n_clusters):
+                pos = 0
+                prev_seg = -1
+                for t in range(n_times):
+                    seg = seg_assigns[c, t]
+                    if seg != prev_seg:
+                        pos = 0
+                        prev_seg = seg
+                    positions[c, t] = pos
+                    pos += 1
+            return positions
+
+        # Handle extra dimensions by applying _compute_positions to each slice
+        extra_dims = [d for d in segment_assignments.dims if d not in ('cluster', 'time')]
+
+        if not extra_dims:
+            positions = _compute_positions(segment_assignments.values)
+            return xr.DataArray(
+                positions,
+                dims=['cluster', 'time'],
+                coords=segment_assignments.coords,
+                name='position_within_segment',
             )
-        elif self.cluster_occurrences.name is None:
-            self.cluster_occurrences = self.cluster_occurrences.rename('cluster_occurrences')
+
+        # Multi-dimensional case: compute for each period/scenario slice
+        result = xr.apply_ufunc(
+            _compute_positions,
+            segment_assignments,
+            input_core_dims=[['cluster', 'time']],
+            output_core_dims=[['cluster', 'time']],
+            vectorize=True,
+        )
+        return result.rename('position_within_segment')
+
+    # === Serialization ===
+
+    def to_dict(self) -> dict:
+        """Serialize to dict.
+
+        The dict can be used to reconstruct via from_dict().
+        """
+        return {
+            'dim_names': list(self._dim_names),
+            'results': {self._key_to_str(key): result.to_dict() for key, result in self._results.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ClusteringResults:
+        """Reconstruct from dict.
+
+        Args:
+            d: Dict from to_dict().
+
+        Returns:
+            Reconstructed ClusteringResults.
+        """
+        from tsam import ClusteringResult
+
+        dim_names = d['dim_names']
+        results = {}
+        for key_str, result_dict in d['results'].items():
+            key = cls._str_to_key(key_str, dim_names)
+            results[key] = ClusteringResult.from_dict(result_dict)
+        return cls(results, dim_names)
+
+    # === Private helpers ===
+
+    def _make_key(self, **kwargs: Any) -> tuple:
+        """Create a key tuple from dimension keyword arguments."""
+        key_parts = []
+        for dim in self._dim_names:
+            if dim in kwargs:
+                key_parts.append(kwargs[dim])
+        return tuple(key_parts)
+
+    def _get_dim_values(self, dim: str) -> list | None:
+        """Get unique values for a dimension, or None if dimension not present.
+
+        Preserves insertion order to ensure .isel() positional indexing matches
+        the original FlowSystem dimension order.
+        """
+        if dim not in self._dim_names:
+            return None
+        idx = self._dim_names.index(dim)
+        # Use dict.fromkeys to preserve insertion order while removing duplicates
+        values = [k[idx] for k in self._results.keys()]
+        return list(dict.fromkeys(values))
+
+    def _build_property_array(
+        self,
+        get_data: callable,
+        base_dims: list[str],
+        base_coords: dict | None = None,
+        name: str | None = None,
+    ) -> xr.DataArray:
+        """Build a DataArray property, handling both single and multi-dimensional cases."""
+        base_coords = base_coords or {}
+        periods = self._get_dim_values('period')
+        scenarios = self._get_dim_values('scenario')
+
+        # Build list of (dim_name, values) for dimensions that exist
+        extra_dims = []
+        if periods is not None:
+            extra_dims.append(('period', periods))
+        if scenarios is not None:
+            extra_dims.append(('scenario', scenarios))
+
+        # Simple case: no extra dimensions
+        if not extra_dims:
+            return xr.DataArray(get_data(self._results[()]), dims=base_dims, coords=base_coords, name=name)
+
+        # Multi-dimensional: stack data for each combination
+        first_data = get_data(next(iter(self._results.values())))
+        shape = list(first_data.shape) + [len(vals) for _, vals in extra_dims]
+        data = np.empty(shape, dtype=first_data.dtype)  # Preserve dtype
+
+        for combo in np.ndindex(*[len(vals) for _, vals in extra_dims]):
+            key = tuple(extra_dims[i][1][idx] for i, idx in enumerate(combo))
+            data[(...,) + combo] = get_data(self._results[key])
+
+        dims = base_dims + [dim_name for dim_name, _ in extra_dims]
+        coords = {**base_coords, **{dim_name: vals for dim_name, vals in extra_dims}}
+        return xr.DataArray(data, dims=dims, coords=coords, name=name)
+
+    @staticmethod
+    def _key_to_str(key: tuple) -> str:
+        """Convert key tuple to string for serialization."""
+        if not key:
+            return '__single__'
+        return '|'.join(str(k) for k in key)
+
+    @staticmethod
+    def _str_to_key(key_str: str, dim_names: list[str]) -> tuple:
+        """Convert string back to key tuple."""
+        if key_str == '__single__':
+            return ()
+        parts = key_str.split('|')
+        # Try to convert to int if possible (for period years)
+        result = []
+        for part in parts:
+            try:
+                result.append(int(part))
+            except ValueError:
+                result.append(part)
+        return tuple(result)
 
     def __repr__(self) -> str:
-        n_clusters = (
-            int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
-        )
-        # Handle multi-dimensional cluster_occurrences (with period/scenario dims)
-        occ_data = self.cluster_occurrences
-        extra_dims = [d for d in occ_data.dims if d != 'cluster']
-        if extra_dims:
-            # Multi-dimensional: show shape info instead of individual values
-            occ_info = f'shape={dict(occ_data.sizes)}'
-        else:
-            # Simple case: list of occurrences per cluster
-            occ_info = [int(occ_data.sel(cluster=c).values) for c in range(n_clusters)]
-        return (
-            f'ClusterStructure(\n'
-            f'  {self.n_original_clusters} original periods → {n_clusters} clusters\n'
-            f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
-            f'  occurrences={occ_info}\n'
-            f')'
-        )
+        if not self.dims:
+            return f'ClusteringResults(n_clusters={self.n_clusters})'
+        coords_str = ', '.join(f'{k}: {len(v)}' for k, v in self.coords.items())
+        return f'ClusteringResults(dims={self.dims}, coords=({coords_str}), n_clusters={self.n_clusters})'
 
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for serialization."""
-        ref = {'__class__': self.__class__.__name__}
-        arrays = {}
+    def apply(self, data: xr.Dataset) -> AggregationResults:
+        """Apply clustering to dataset for all (period, scenario) combinations.
 
-        # Store DataArrays with references
-        arrays[str(self.cluster_order.name)] = self.cluster_order
-        ref['cluster_order'] = f':::{self.cluster_order.name}'
+        Args:
+            data: Dataset with time-varying data. Must have 'time' dimension.
+                May have 'period' and/or 'scenario' dimensions matching this object.
 
-        arrays[str(self.cluster_occurrences.name)] = self.cluster_occurrences
-        ref['cluster_occurrences'] = f':::{self.cluster_occurrences.name}'
+        Returns:
+            AggregationResults with full access to aggregated data.
+            Use `.clustering` on the result to get ClusteringResults for IO.
 
-        # Store scalar values
-        if isinstance(self.n_clusters, xr.DataArray):
-            n_clusters_name = self.n_clusters.name or 'n_clusters'
-            n_clusters_da = self.n_clusters.rename(n_clusters_name)
-            arrays[n_clusters_name] = n_clusters_da
-            ref['n_clusters'] = f':::{n_clusters_name}'
-        else:
-            ref['n_clusters'] = int(self.n_clusters)
+        Example:
+            >>> agg_results = clustering_results.apply(dataset)
+            >>> agg_results.clustering  # Get ClusteringResults for IO
+            >>> for key, result in agg_results:
+            ...     print(result.cluster_representatives)
+        """
+        from ..core import drop_constant_arrays
 
-        ref['timesteps_per_cluster'] = self.timesteps_per_cluster
+        results = {}
+        for key, cr in self._results.items():
+            # Build selector for this key
+            selector = dict(zip(self._dim_names, key, strict=False))
 
-        return ref, arrays
+            # Select the slice for this (period, scenario)
+            data_slice = data.sel(**selector, drop=True) if selector else data
+
+            # Drop constant arrays and convert to DataFrame
+            time_varying = drop_constant_arrays(data_slice, dim='time')
+            df = time_varying.to_dataframe()
+
+            # Apply clustering
+            results[key] = cr.apply(df)
+
+        return Clustering._from_aggregation_results(results, self._dim_names)
+
+
+class Clustering:
+    """Clustering information for a FlowSystem.
+
+    Thin wrapper around tsam 3.0's AggregationResult objects, providing:
+    1. Multi-dimensional access for (period, scenario) combinations
+    2. Structure properties (n_clusters, dims, coords, cluster_assignments)
+    3. JSON persistence via ClusteringResults
+
+    Use ``sel()`` to access individual tsam AggregationResult objects for
+    detailed analysis (cluster_representatives, accuracy, plotting).
+
+    Attributes:
+        results: ClusteringResults for structure access (works after JSON load).
+        original_timesteps: Original timesteps before clustering.
+        dims: Dimension names, e.g., ('period', 'scenario').
+        coords: Coordinate values, e.g., {'period': [2024, 2025]}.
+
+    Example:
+        >>> clustering = fs_clustered.clustering
+        >>> clustering.n_clusters
+        8
+        >>> clustering.dims
+        ('period',)
+
+        # Access tsam AggregationResult for detailed analysis
+        >>> result = clustering.sel(period=2024)
+        >>> result.cluster_representatives  # DataFrame
+        >>> result.accuracy  # AccuracyMetrics
+        >>> result.plot.compare()  # tsam's built-in plotting
+    """
+
+    # ==========================================================================
+    # Core properties (delegated to ClusteringResults)
+    # ==========================================================================
+
+    @property
+    def n_clusters(self) -> int:
+        """Number of clusters (typical periods)."""
+        return self.results.n_clusters
+
+    @property
+    def timesteps_per_cluster(self) -> int:
+        """Number of timesteps in each cluster."""
+        return self.results.timesteps_per_cluster
+
+    @property
+    def timesteps_per_period(self) -> int:
+        """Alias for timesteps_per_cluster."""
+        return self.timesteps_per_cluster
 
     @property
     def n_original_clusters(self) -> int:
         """Number of original periods (before clustering)."""
-        return len(self.cluster_order.coords['original_cluster'])
+        return self.results.n_original_periods
 
     @property
-    def has_multi_dims(self) -> bool:
-        """Check if cluster_order has period/scenario dimensions."""
-        return 'period' in self.cluster_order.dims or 'scenario' in self.cluster_order.dims
+    def dim_names(self) -> list[str]:
+        """Names of extra dimensions, e.g., ['period', 'scenario']."""
+        return self.results.dim_names
 
-    def get_cluster_order_for_slice(self, period: str | None = None, scenario: str | None = None) -> np.ndarray:
-        """Get cluster_order for a specific (period, scenario) combination.
+    @property
+    def dims(self) -> tuple[str, ...]:
+        """Dimension names as tuple (xarray-like)."""
+        return self.results.dims
 
-        Args:
-            period: Period label (None if no period dimension).
-            scenario: Scenario label (None if no scenario dimension).
+    @property
+    def coords(self) -> dict[str, list]:
+        """Coordinate values for each dimension (xarray-like).
 
         Returns:
-            1D numpy array of cluster indices for the specified slice.
+            Dict mapping dimension names to lists of coordinate values.
+
+        Example:
+            >>> clustering.coords
+            {'period': [2024, 2025], 'scenario': ['low', 'high']}
         """
-        return _select_dims(self.cluster_order, period, scenario).values.astype(int)
+        return self.results.coords
 
-    def get_cluster_occurrences_for_slice(
-        self, period: str | None = None, scenario: str | None = None
-    ) -> dict[int, int]:
-        """Get cluster occurrence counts for a specific (period, scenario) combination.
+    def sel(
+        self,
+        period: int | str | None = None,
+        scenario: str | None = None,
+    ) -> AggregationResult:
+        """Select AggregationResult by period and/or scenario.
+
+        Access individual tsam AggregationResult objects for detailed analysis.
+
+        Note:
+            This method is only available before saving/loading the FlowSystem.
+            After IO (to_dataset/from_dataset or to_json), the full AggregationResult
+            data is not preserved. Use `results.sel()` for structure-only access
+            after loading.
 
         Args:
-            period: Period label (None if no period dimension).
-            scenario: Scenario label (None if no scenario dimension).
+            period: Period value (e.g., 2024). Required if clustering has periods.
+            scenario: Scenario name (e.g., 'high'). Required if clustering has scenarios.
 
         Returns:
-            Dict mapping cluster ID to occurrence count.
+            The tsam AggregationResult for the specified combination.
+            Access its properties like `cluster_representatives`, `accuracy`, etc.
 
         Raises:
-            ValueError: If period/scenario dimensions exist but no selector was provided.
+            KeyError: If no result found for the specified combination.
+            ValueError: If accessed on a Clustering loaded from JSON/NetCDF.
+
+        Example:
+            >>> result = clustering.sel(period=2024, scenario='high')
+            >>> result.cluster_representatives  # DataFrame with aggregated data
+            >>> result.accuracy  # AccuracyMetrics
+            >>> result.plot.compare()  # tsam's built-in comparison plot
         """
-        occ = _select_dims(self.cluster_occurrences, period, scenario)
-        extra_dims = [d for d in occ.dims if d != 'cluster']
-        if extra_dims:
-            raise ValueError(
-                f'cluster_occurrences has dimensions {extra_dims} that were not selected. '
-                f"Provide 'period' and/or 'scenario' arguments to select a specific slice."
-            )
-        return {int(c): int(occ.sel(cluster=c).values) for c in occ.coords['cluster'].values}
-
-    def plot(self, colors: str | list[str] | None = None, show: bool | None = None) -> PlotResult:
-        """Plot cluster assignment visualization.
-
-        Shows which cluster each original period belongs to, and the
-        number of occurrences per cluster. For multi-period/scenario structures,
-        creates a faceted grid plot.
-
-        Args:
-            colors: Colorscale name (str) or list of colors.
-                Defaults to plotly template's sequential colorscale.
-            show: Whether to display the figure. Defaults to CONFIG.Plotting.default_show.
-
-        Returns:
-            PlotResult containing the figure and underlying data.
-        """
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-
-        n_clusters = (
-            int(self.n_clusters) if isinstance(self.n_clusters, (int, np.integer)) else int(self.n_clusters.values)
-        )
-
-        # Build DataArray with 1-based original_cluster coords
-        cluster_da = self.cluster_order.assign_coords(
-            original_cluster=np.arange(1, self.cluster_order.sizes['original_cluster'] + 1)
-        )
-
-        has_period = 'period' in cluster_da.dims
-        has_scenario = 'scenario' in cluster_da.dims
-
-        # Transpose for heatmap: first dim = y-axis, second dim = x-axis
-        if has_period:
-            cluster_da = cluster_da.transpose('period', 'original_cluster', ...)
-        elif has_scenario:
-            cluster_da = cluster_da.transpose('scenario', 'original_cluster', ...)
-
-        # Data to return (without dummy dims)
-        ds = xr.Dataset({'cluster_order': cluster_da})
-
-        # For plotting: add dummy y-dim if needed (heatmap requires 2D)
-        if not has_period and not has_scenario:
-            plot_da = cluster_da.expand_dims(y=['']).transpose('y', 'original_cluster')
-            plot_ds = xr.Dataset({'cluster_order': plot_da})
-        else:
-            plot_ds = ds
-
-        imshow_kwargs = {'title': f'Cluster Assignment ({self.n_original_clusters} → {n_clusters} clusters)'}
-        if colors is not None:
-            imshow_kwargs['color_continuous_scale'] = colors
-        fig = plot_ds.plotly.imshow(**imshow_kwargs)
-
-        fig.update_coloraxes(colorbar_title='Cluster')
-        if not has_period and not has_scenario:
-            fig.update_yaxes(showticklabels=False)
-
-        plot_result = PlotResult(data=ds, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
-
-@dataclass
-class ClusterResult:
-    """Universal result from any time series aggregation method.
-
-    This dataclass captures all information needed to:
-    1. Transform a FlowSystem to use aggregated (clustered) timesteps
-    2. Expand a solution back to original resolution
-    3. Properly weight results for statistics
-
-    Attributes:
-        timestep_mapping: Maps each original timestep to its representative index.
-            dims: [original_time] for simple case, or
-            [original_time, period, scenario] for multi-period/scenario systems.
-            Values are indices into the representative timesteps (0 to n_representatives-1).
-        n_representatives: Number of representative timesteps after aggregation.
-        representative_weights: Weight for each representative timestep.
-            dims: [time] or [time, period, scenario]
-            Typically equals the number of original timesteps each representative covers.
-            Used as cluster_weight in the FlowSystem.
-        aggregated_data: Time series data aggregated to representative timesteps.
-            Optional - some backends may not aggregate data.
-        cluster_structure: Hierarchical clustering structure for storage linking.
-            Optional - only needed when using cluster() mode.
-        original_data: Reference to original data before aggregation.
-            Optional - useful for expand().
-
-    Example:
-        For 8760 hourly timesteps clustered into 192 representative timesteps (8 clusters x 24h):
-        - timestep_mapping: shape (8760,), values 0-191
-        - n_representatives: 192
-        - representative_weights: shape (192,), summing to 8760
-    """
-
-    timestep_mapping: xr.DataArray
-    n_representatives: int | xr.DataArray
-    representative_weights: xr.DataArray
-    aggregated_data: xr.Dataset | None = None
-    cluster_structure: ClusterStructure | None = None
-    original_data: xr.Dataset | None = None
-
-    def __post_init__(self):
-        """Validate and ensure proper DataArray formatting."""
-        # Ensure timestep_mapping is a DataArray
-        if not isinstance(self.timestep_mapping, xr.DataArray):
-            self.timestep_mapping = xr.DataArray(self.timestep_mapping, dims=['original_time'], name='timestep_mapping')
-        elif self.timestep_mapping.name is None:
-            self.timestep_mapping = self.timestep_mapping.rename('timestep_mapping')
-
-        # Ensure representative_weights is a DataArray
-        # Can be (cluster, time) for 2D structure or (time,) for flat structure
-        if not isinstance(self.representative_weights, xr.DataArray):
-            self.representative_weights = xr.DataArray(self.representative_weights, name='representative_weights')
-        elif self.representative_weights.name is None:
-            self.representative_weights = self.representative_weights.rename('representative_weights')
-
-    def __repr__(self) -> str:
-        n_rep = (
-            int(self.n_representatives)
-            if isinstance(self.n_representatives, (int, np.integer))
-            else int(self.n_representatives.values)
-        )
-        has_structure = self.cluster_structure is not None
-        has_data = self.original_data is not None and self.aggregated_data is not None
-        return (
-            f'ClusterResult(\n'
-            f'  {self.n_original_timesteps} original → {n_rep} representative timesteps\n'
-            f'  weights sum={float(self.representative_weights.sum().values):.0f}\n'
-            f'  cluster_structure={has_structure}, data={has_data}\n'
-            f')'
-        )
-
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for serialization."""
-        ref = {'__class__': self.__class__.__name__}
-        arrays = {}
-
-        # Store DataArrays with references
-        arrays[str(self.timestep_mapping.name)] = self.timestep_mapping
-        ref['timestep_mapping'] = f':::{self.timestep_mapping.name}'
-
-        arrays[str(self.representative_weights.name)] = self.representative_weights
-        ref['representative_weights'] = f':::{self.representative_weights.name}'
-
-        # Store scalar values
-        if isinstance(self.n_representatives, xr.DataArray):
-            n_rep_name = self.n_representatives.name or 'n_representatives'
-            n_rep_da = self.n_representatives.rename(n_rep_name)
-            arrays[n_rep_name] = n_rep_da
-            ref['n_representatives'] = f':::{n_rep_name}'
-        else:
-            ref['n_representatives'] = int(self.n_representatives)
-
-        # Store nested ClusterStructure if present
-        if self.cluster_structure is not None:
-            cs_ref, cs_arrays = self.cluster_structure._create_reference_structure()
-            ref['cluster_structure'] = cs_ref
-            arrays.update(cs_arrays)
-
-        # Skip aggregated_data and original_data - not needed for serialization
-
-        return ref, arrays
+        self._require_full_data('sel()')
+        # Build key from provided args in dim order
+        key_parts = []
+        if 'period' in self._dim_names:
+            if period is None:
+                raise KeyError(f"'period' is required. Available: {self.coords.get('period', [])}")
+            key_parts.append(period)
+        if 'scenario' in self._dim_names:
+            if scenario is None:
+                raise KeyError(f"'scenario' is required. Available: {self.coords.get('scenario', [])}")
+            key_parts.append(scenario)
+        key = tuple(key_parts)
+        if key not in self._aggregation_results:
+            raise KeyError(f'No result found for period={period}, scenario={scenario}')
+        return self._aggregation_results[key]
 
     @property
-    def n_original_timesteps(self) -> int:
-        """Number of original timesteps (before aggregation)."""
-        return len(self.timestep_mapping.coords['original_time'])
+    def is_segmented(self) -> bool:
+        """Whether intra-period segmentation was used.
 
-    def get_expansion_mapping(self) -> xr.DataArray:
-        """Get mapping from original timesteps to representative indices.
+        Segmented systems have variable timestep durations within each cluster,
+        where each segment represents a different number of original timesteps.
+        """
+        return self.results.n_segments is not None
 
-        This is the same as timestep_mapping but ensures proper naming
-        for use in expand().
+    @property
+    def n_segments(self) -> int | None:
+        """Number of segments per cluster, or None if not segmented."""
+        return self.results.n_segments
+
+    @property
+    def cluster_assignments(self) -> xr.DataArray:
+        """Mapping from original periods to cluster IDs.
 
         Returns:
-            DataArray mapping original timesteps to representative indices.
+            DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
         """
-        return self.timestep_mapping.rename('expansion_mapping')
+        return self.results.cluster_assignments
 
-    def get_timestep_mapping_for_slice(self, period: str | None = None, scenario: str | None = None) -> np.ndarray:
-        """Get timestep_mapping for a specific (period, scenario) combination.
+    @property
+    def n_representatives(self) -> int:
+        """Number of representative timesteps after clustering."""
+        if self.is_segmented:
+            return self.n_clusters * self.n_segments
+        return self.n_clusters * self.timesteps_per_cluster
 
-        Args:
-            period: Period label (None if no period dimension).
-            scenario: Scenario label (None if no scenario dimension).
+    # ==========================================================================
+    # Derived properties
+    # ==========================================================================
+
+    @property
+    def cluster_occurrences(self) -> xr.DataArray:
+        """Count of how many original periods each cluster represents.
 
         Returns:
-            1D numpy array of representative timestep indices for the specified slice.
+            DataArray with dims [cluster] or [cluster, period?, scenario?].
         """
-        return _select_dims(self.timestep_mapping, period, scenario).values.astype(int)
+        return self.results.cluster_occurrences
 
-    def expand_data(self, aggregated: xr.DataArray, original_time: xr.DataArray | None = None) -> xr.DataArray:
+    @property
+    def representative_weights(self) -> xr.DataArray:
+        """Weight for each cluster (number of original periods it represents).
+
+        This is the same as cluster_occurrences but named for API consistency.
+        Used as cluster_weight in FlowSystem.
+        """
+        return self.cluster_occurrences.rename('representative_weights')
+
+    @functools.cached_property
+    def timestep_mapping(self) -> xr.DataArray:
+        """Mapping from original timesteps to representative timestep indices.
+
+        Each value indicates which representative timestep index (0 to n_representatives-1)
+        corresponds to each original timestep.
+
+        Note: This property is cached for performance since it's accessed frequently
+        during expand() operations.
+        """
+        return self._build_timestep_mapping()
+
+    @property
+    def metrics(self) -> xr.Dataset:
+        """Clustering quality metrics (RMSE, MAE, etc.).
+
+        Returns:
+            Dataset with dims [time_series, period?, scenario?], or empty Dataset if no metrics.
+        """
+        if self._metrics is None:
+            return xr.Dataset()
+        return self._metrics
+
+    @property
+    def cluster_start_positions(self) -> np.ndarray:
+        """Integer positions where clusters start in reduced timesteps.
+
+        Returns:
+            1D array: [0, T, 2T, ...] where T = timesteps_per_cluster (or n_segments if segmented).
+        """
+        if self.is_segmented:
+            n_timesteps = self.n_clusters * self.n_segments
+            return np.arange(0, n_timesteps, self.n_segments)
+        n_timesteps = self.n_clusters * self.timesteps_per_cluster
+        return np.arange(0, n_timesteps, self.timesteps_per_cluster)
+
+    @property
+    def cluster_centers(self) -> xr.DataArray:
+        """Which original period is the representative (center) for each cluster.
+
+        Returns:
+            DataArray with dims [cluster] containing original period indices.
+        """
+        return self.results.cluster_centers
+
+    @property
+    def segment_assignments(self) -> xr.DataArray | None:
+        """For each timestep within a cluster, which intra-period segment it belongs to.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, time] or None if no segmentation.
+        """
+        return self.results.segment_assignments
+
+    @property
+    def segment_durations(self) -> xr.DataArray | None:
+        """Duration of each intra-period segment in hours.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, segment] or None if no segmentation.
+        """
+        return self.results.segment_durations
+
+    @property
+    def segment_centers(self) -> xr.DataArray | None:
+        """Center of each intra-period segment.
+
+        Only available if segmentation was configured during clustering.
+
+        Returns:
+            DataArray with dims [cluster, segment] or None if no segmentation.
+        """
+        return self.results.segment_centers
+
+    # ==========================================================================
+    # Methods
+    # ==========================================================================
+
+    def expand_data(
+        self,
+        aggregated: xr.DataArray,
+        original_time: pd.DatetimeIndex | None = None,
+    ) -> xr.DataArray:
         """Expand aggregated data back to original timesteps.
 
-        Uses the stored timestep_mapping to map each original timestep to its
-        representative value from the aggregated data. Handles multi-dimensional
-        data with period/scenario dimensions.
+        Uses the timestep_mapping to map each original timestep to its
+        representative value from the aggregated data. Fully vectorized using
+        xarray's advanced indexing - no loops over period/scenario dimensions.
 
         Args:
-            aggregated: DataArray with aggregated (reduced) time dimension.
-            original_time: Original time coordinates. If None, uses coords from
-                original_data if available.
+            aggregated: DataArray with aggregated (cluster, time) or (time,) dimension.
+            original_time: Original time coordinates. Defaults to self.original_timesteps.
 
         Returns:
             DataArray expanded to original timesteps.
-
-        Example:
-            >>> result = fs_clustered.clustering.result
-            >>> aggregated_values = result.aggregated_data['Demand|profile']
-            >>> expanded = result.expand_data(aggregated_values)
-            >>> len(expanded.time) == len(original_timesteps)  # True
         """
         if original_time is None:
-            if self.original_data is None:
-                raise ValueError('original_time required when original_data is not available')
-            original_time = self.original_data.coords['time']
+            original_time = self.original_timesteps
 
-        timestep_mapping = self.timestep_mapping
-        has_cluster_dim = 'cluster' in aggregated.dims
-        timesteps_per_cluster = self.cluster_structure.timesteps_per_cluster if has_cluster_dim else None
+        timestep_mapping = self.timestep_mapping  # Already multi-dimensional DataArray
 
-        def _expand_slice(mapping: np.ndarray, data: xr.DataArray) -> np.ndarray:
-            """Expand a single slice using the mapping."""
-            # Validate that data has only expected dimensions for indexing
-            expected_dims = {'cluster', 'time'} if has_cluster_dim else {'time'}
-            actual_dims = set(data.dims)
-            unexpected_dims = actual_dims - expected_dims
-            if unexpected_dims:
-                raise ValueError(
-                    f'Data slice has unexpected dimensions {unexpected_dims}. '
-                    f'Expected only {expected_dims}. Make sure period/scenario selections are applied.'
-                )
-            if has_cluster_dim:
-                cluster_ids = mapping // timesteps_per_cluster
-                time_within = mapping % timesteps_per_cluster
-                return data.values[cluster_ids, time_within]
-            return data.values[mapping]
+        if 'cluster' not in aggregated.dims:
+            # No cluster dimension: use mapping directly as time index
+            expanded = aggregated.isel(time=timestep_mapping)
+        else:
+            # Has cluster dimension: compute cluster and time indices from mapping
+            # For segmented systems, time dimension is n_segments, not timesteps_per_cluster
+            if self.is_segmented and self.n_segments is not None:
+                time_dim_size = self.n_segments
+            else:
+                time_dim_size = self.timesteps_per_cluster
 
-        # Simple case: no period/scenario dimensions
-        extra_dims = [d for d in timestep_mapping.dims if d != 'original_time']
-        if not extra_dims:
-            expanded_values = _expand_slice(timestep_mapping.values, aggregated)
-            return xr.DataArray(expanded_values, coords={'time': original_time}, dims=['time'], attrs=aggregated.attrs)
+            cluster_indices = timestep_mapping // time_dim_size
+            time_indices = timestep_mapping % time_dim_size
 
-        # Multi-dimensional: expand each slice and recombine
-        dim_coords = {d: list(timestep_mapping.coords[d].values) for d in extra_dims}
-        expanded_slices = {}
-        for combo in np.ndindex(*[len(v) for v in dim_coords.values()]):
-            selector = {d: dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True)}
-            mapping = _select_dims(timestep_mapping, **selector).values
-            data_slice = (
-                _select_dims(aggregated, **selector) if any(d in aggregated.dims for d in selector) else aggregated
-            )
-            expanded_slices[tuple(selector.values())] = xr.DataArray(
-                _expand_slice(mapping, data_slice), coords={'time': original_time}, dims=['time']
-            )
+            # xarray's advanced indexing handles broadcasting across period/scenario dims
+            expanded = aggregated.isel(cluster=cluster_indices, time=time_indices)
 
-        # Concatenate iteratively along each extra dimension
-        result_arrays = expanded_slices
-        for dim in reversed(extra_dims):
-            dim_vals = dim_coords[dim]
-            grouped = {}
-            for key, arr in result_arrays.items():
-                rest_key = key[:-1] if len(key) > 1 else ()
-                grouped.setdefault(rest_key, []).append(arr)
-            result_arrays = {k: xr.concat(v, dim=pd.Index(dim_vals, name=dim)) for k, v in grouped.items()}
-        result = list(result_arrays.values())[0]
-        return result.transpose('time', ...).assign_attrs(aggregated.attrs)
+        # Clean up: drop coordinate artifacts from isel, then rename original_time -> time
+        # The isel operation may leave 'cluster' and 'time' as non-dimension coordinates
+        expanded = expanded.drop_vars(['cluster', 'time'], errors='ignore')
+        expanded = expanded.rename({'original_time': 'time'}).assign_coords(time=original_time)
 
-    def validate(self) -> None:
-        """Validate that all fields are consistent.
+        return expanded.transpose('time', ...).assign_attrs(aggregated.attrs)
 
-        Raises:
-            ValueError: If validation fails.
+    def build_expansion_divisor(
+        self,
+        original_time: pd.DatetimeIndex | None = None,
+    ) -> xr.DataArray:
+        """Build divisor for correcting segment totals when expanding to hourly.
+
+        For segmented systems, each segment value is a total that gets repeated N times
+        when expanded to hourly resolution (where N = segment duration in timesteps).
+        This divisor allows converting those totals back to hourly rates during expansion.
+
+        For each original timestep, returns the number of original timesteps that map
+        to the same (cluster, segment) - i.e., the segment duration in timesteps.
+
+        Fully vectorized using xarray's advanced indexing - no loops over period/scenario.
+
+        Args:
+            original_time: Original time coordinates. Defaults to self.original_timesteps.
+
+        Returns:
+            DataArray with dims ['time'] or ['time', 'period'?, 'scenario'?] containing
+            the number of timesteps in each segment, aligned to original timesteps.
         """
-        n_rep = (
-            int(self.n_representatives)
-            if isinstance(self.n_representatives, (int, np.integer))
-            else int(self.n_representatives.max().values)
+        if not self.is_segmented or self.n_segments is None:
+            raise ValueError('build_expansion_divisor requires a segmented clustering')
+
+        if original_time is None:
+            original_time = self.original_timesteps
+
+        timestep_mapping = self.timestep_mapping  # Already multi-dimensional
+        segment_durations = self.results.segment_durations  # [cluster, segment, period?, scenario?]
+
+        # Decode cluster and segment indices from timestep_mapping
+        # For segmented systems, encoding is: cluster_id * n_segments + segment_idx
+        time_dim_size = self.n_segments
+        cluster_indices = timestep_mapping // time_dim_size
+        segment_indices = timestep_mapping % time_dim_size  # This IS the segment index
+
+        # Get duration for each segment directly
+        # segment_durations[cluster, segment] -> duration
+        divisor = segment_durations.isel(cluster=cluster_indices, segment=segment_indices)
+
+        # Clean up coordinates and rename
+        divisor = divisor.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
+        divisor = divisor.rename({'original_time': 'time'}).assign_coords(time=original_time)
+
+        return divisor.transpose('time', ...).rename('expansion_divisor')
+
+    def get_result(
+        self,
+        period: Any = None,
+        scenario: Any = None,
+    ) -> TsamClusteringResult:
+        """Get the tsam ClusteringResult for a specific (period, scenario).
+
+        Args:
+            period: Period label (if applicable).
+            scenario: Scenario label (if applicable).
+
+        Returns:
+            The tsam ClusteringResult for the specified combination.
+        """
+        return self.results.sel(period=period, scenario=scenario)
+
+    def apply(
+        self,
+        data: pd.DataFrame,
+        period: Any = None,
+        scenario: Any = None,
+    ) -> AggregationResult:
+        """Apply the saved clustering to new data.
+
+        Args:
+            data: DataFrame with time series data to cluster.
+            period: Period label (if applicable).
+            scenario: Scenario label (if applicable).
+
+        Returns:
+            tsam AggregationResult with the clustering applied.
+        """
+        return self.results.sel(period=period, scenario=scenario).apply(data)
+
+    def to_json(self, path: str | Path) -> None:
+        """Save the clustering for reuse.
+
+        Uses ClusteringResults.to_dict() which preserves full tsam ClusteringResult.
+        Can be loaded later with Clustering.from_json() and used with
+        flow_system.transform.apply_clustering().
+
+        Args:
+            path: Path to save the JSON file.
+        """
+        data = {
+            'results': self.results.to_dict(),
+            'original_timesteps': [ts.isoformat() for ts in self.original_timesteps],
+        }
+
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    @classmethod
+    def from_json(
+        cls,
+        path: str | Path,
+        original_timesteps: pd.DatetimeIndex | None = None,
+    ) -> Clustering:
+        """Load a clustering from JSON.
+
+        The loaded Clustering has full apply() support because ClusteringResult
+        is fully preserved via tsam's serialization.
+
+        Args:
+            path: Path to the JSON file.
+            original_timesteps: Original timesteps for the new FlowSystem.
+                If None, uses the timesteps stored in the JSON.
+
+        Returns:
+            A Clustering that can be used with apply_clustering().
+        """
+        with open(path) as f:
+            data = json.load(f)
+
+        results = ClusteringResults.from_dict(data['results'])
+
+        if original_timesteps is None:
+            original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in data['original_timesteps']])
+
+        return cls(
+            results=results,
+            original_timesteps=original_timesteps,
         )
 
-        # Check mapping values are within range
-        max_idx = int(self.timestep_mapping.max().values)
-        if max_idx >= n_rep:
-            raise ValueError(f'timestep_mapping contains index {max_idx} but n_representatives is {n_rep}')
+    # ==========================================================================
+    # Visualization
+    # ==========================================================================
 
-        # Check weights dimensions
-        # representative_weights should have (cluster,) dimension with n_clusters elements
-        # (plus optional period/scenario dimensions)
-        if self.cluster_structure is not None:
-            n_clusters = self.cluster_structure.n_clusters
-            if 'cluster' in self.representative_weights.dims:
-                weights_n_clusters = self.representative_weights.sizes['cluster']
-                if weights_n_clusters != n_clusters:
-                    raise ValueError(
-                        f'representative_weights has {weights_n_clusters} clusters '
-                        f'but cluster_structure has {n_clusters}'
-                    )
+    @property
+    def plot(self) -> ClusteringPlotAccessor:
+        """Access plotting methods for clustering visualization.
 
-        # Check weights sum roughly equals number of original periods
-        # (each weight is how many original periods that cluster represents)
-        # Sum should be checked per period/scenario slice, not across all dimensions
-        if self.cluster_structure is not None:
-            n_original_clusters = self.cluster_structure.n_original_clusters
-            # Sum over cluster dimension only (keep period/scenario if present)
-            weight_sum_per_slice = self.representative_weights.sum(dim='cluster')
-            # Check each slice
-            if weight_sum_per_slice.size == 1:
-                # Simple case: no period/scenario
-                weight_sum = float(weight_sum_per_slice.values)
-                if abs(weight_sum - n_original_clusters) > 1e-6:
-                    warnings.warn(
-                        f'representative_weights sum ({weight_sum}) does not match '
-                        f'n_original_clusters ({n_original_clusters})',
-                        stacklevel=2,
-                    )
+        Returns:
+            ClusteringPlotAccessor with compare(), heatmap(), and clusters() methods.
+        """
+        return ClusteringPlotAccessor(self)
+
+    # ==========================================================================
+    # Private helpers
+    # ==========================================================================
+
+    def _build_timestep_mapping(self) -> xr.DataArray:
+        """Build timestep_mapping DataArray."""
+        n_original = len(self.original_timesteps)
+        original_time_coord = self.original_timesteps.rename('original_time')
+        return self.results._build_property_array(
+            lambda cr: _build_timestep_mapping(cr, n_original),
+            base_dims=['original_time'],
+            base_coords={'original_time': original_time_coord},
+            name='timestep_mapping',
+        )
+
+    def _create_reference_structure(self, include_original_data: bool = True) -> tuple[dict, dict[str, xr.DataArray]]:
+        """Create serialization structure for to_dataset().
+
+        Args:
+            include_original_data: Whether to include original_data in serialization.
+                Set to False for smaller files when plot.compare() isn't needed after IO.
+                Defaults to True.
+
+        Returns:
+            Tuple of (reference_dict, arrays_dict).
+        """
+        arrays = {}
+
+        # Collect original_data arrays
+        # Rename 'time' to 'original_time' to avoid conflict with clustered FlowSystem's time coord
+        original_data_refs = None
+        if include_original_data and self.original_data is not None:
+            original_data_refs = []
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            variables = self.original_data.variables
+            for name in self.original_data.data_vars:
+                var = variables[name]
+                ref_name = f'original_data|{name}'
+                # Rename time dim to avoid xarray alignment issues
+                if 'time' in var.dims:
+                    new_dims = tuple('original_time' if d == 'time' else d for d in var.dims)
+                    arrays[ref_name] = xr.Variable(new_dims, var.values, attrs=var.attrs)
+                else:
+                    arrays[ref_name] = var
+                original_data_refs.append(f':::{ref_name}')
+
+        # NOTE: aggregated_data is NOT serialized - it's identical to the FlowSystem's
+        # main data arrays and would be redundant. After loading, aggregated_data is
+        # reconstructed from the FlowSystem's dataset.
+
+        # Collect metrics arrays
+        metrics_refs = None
+        if self._metrics is not None:
+            metrics_refs = []
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            metrics_vars = self._metrics.variables
+            for name in self._metrics.data_vars:
+                ref_name = f'metrics|{name}'
+                arrays[ref_name] = metrics_vars[name]
+                metrics_refs.append(f':::{ref_name}')
+
+        reference = {
+            '__class__': 'Clustering',
+            'results': self.results.to_dict(),  # Full ClusteringResults serialization
+            'original_timesteps': [ts.isoformat() for ts in self.original_timesteps],
+            '_original_data_refs': original_data_refs,
+            '_metrics_refs': metrics_refs,
+        }
+
+        return reference, arrays
+
+    def __init__(
+        self,
+        results: ClusteringResults | dict | None = None,
+        original_timesteps: pd.DatetimeIndex | list[str] | None = None,
+        original_data: xr.Dataset | None = None,
+        aggregated_data: xr.Dataset | None = None,
+        _metrics: xr.Dataset | None = None,
+        # These are for reconstruction from serialization
+        _original_data_refs: list[str] | None = None,
+        _metrics_refs: list[str] | None = None,
+        # Internal: AggregationResult dict for full data access
+        _aggregation_results: dict[tuple, AggregationResult] | None = None,
+        _dim_names: list[str] | None = None,
+    ):
+        """Initialize Clustering object.
+
+        Args:
+            results: ClusteringResults instance, or dict from to_dict() (for deserialization).
+                Not needed if _aggregation_results is provided.
+            original_timesteps: Original timesteps before clustering.
+            original_data: Original dataset before clustering (for expand/plotting).
+            aggregated_data: Aggregated dataset after clustering (for plotting).
+                After loading from file, this is reconstructed from FlowSystem data.
+            _metrics: Pre-computed metrics dataset.
+            _original_data_refs: Internal: resolved DataArrays from serialization.
+            _metrics_refs: Internal: resolved DataArrays from serialization.
+            _aggregation_results: Internal: dict of AggregationResult for full data access.
+            _dim_names: Internal: dimension names when using _aggregation_results.
+        """
+        # Handle ISO timestamp strings from serialization
+        if (
+            isinstance(original_timesteps, list)
+            and len(original_timesteps) > 0
+            and isinstance(original_timesteps[0], str)
+        ):
+            original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in original_timesteps])
+
+        # Store AggregationResults if provided (full data access)
+        self._aggregation_results = _aggregation_results
+        self._dim_names = _dim_names or []
+
+        # Handle results - only needed for serialization path
+        if results is not None:
+            if isinstance(results, dict):
+                results = ClusteringResults.from_dict(results)
+            self._results_cache = results
+        else:
+            self._results_cache = None
+
+        # Flag indicating this was loaded from serialization (missing full AggregationResult data)
+        self._from_serialization = _aggregation_results is None and results is not None
+
+        self.original_timesteps = original_timesteps if original_timesteps is not None else pd.DatetimeIndex([])
+        self._metrics = _metrics
+
+        # Handle reconstructed data from refs (list of DataArrays)
+        if _original_data_refs is not None and isinstance(_original_data_refs, list):
+            # These are resolved DataArrays from the structure resolver
+            if all(isinstance(da, xr.DataArray) for da in _original_data_refs):
+                # Rename 'original_time' back to 'time' and strip 'original_data|' prefix
+                data_vars = {}
+                for da in _original_data_refs:
+                    if 'original_time' in da.dims:
+                        da = da.rename({'original_time': 'time'})
+                    # Strip 'original_data|' prefix from name (added during serialization)
+                    name = da.name
+                    if name.startswith('original_data|'):
+                        name = name[14:]  # len('original_data|') = 14
+                    data_vars[name] = da.rename(name)
+                self.original_data = xr.Dataset(data_vars)
             else:
-                # Multi-dimensional: check each slice
-                for val in weight_sum_per_slice.values.flat:
-                    if abs(float(val) - n_original_clusters) > 1e-6:
-                        warnings.warn(
-                            f'representative_weights sum per slice ({float(val)}) does not match '
-                            f'n_original_clusters ({n_original_clusters})',
-                            stacklevel=2,
-                        )
-                        break  # Only warn once
+                self.original_data = original_data
+        else:
+            self.original_data = original_data
+
+        self.aggregated_data = aggregated_data
+
+        if _metrics_refs is not None and isinstance(_metrics_refs, list):
+            if all(isinstance(da, xr.DataArray) for da in _metrics_refs):
+                # Strip 'metrics|' prefix from name (added during serialization)
+                data_vars = {}
+                for da in _metrics_refs:
+                    name = da.name
+                    if name.startswith('metrics|'):
+                        name = name[8:]  # len('metrics|') = 8
+                    data_vars[name] = da.rename(name)
+                self._metrics = xr.Dataset(data_vars)
+
+    @property
+    def results(self) -> ClusteringResults:
+        """ClusteringResults for structure access (derived from AggregationResults or cached)."""
+        if self._results_cache is not None:
+            return self._results_cache
+        if self._aggregation_results is not None:
+            # Derive from AggregationResults (cached on first access)
+            self._results_cache = ClusteringResults(
+                {k: r.clustering for k, r in self._aggregation_results.items()},
+                self._dim_names,
+            )
+            return self._results_cache
+        raise ValueError('No results available - neither AggregationResults nor ClusteringResults set')
+
+    @classmethod
+    def _from_aggregation_results(
+        cls,
+        aggregation_results: dict[tuple, AggregationResult],
+        dim_names: list[str],
+        original_timesteps: pd.DatetimeIndex | None = None,
+        original_data: xr.Dataset | None = None,
+    ) -> Clustering:
+        """Create Clustering from AggregationResult dict.
+
+        This is the primary way to create a Clustering with full data access.
+        Called by ClusteringResults.apply() and TransformAccessor.
+
+        Args:
+            aggregation_results: Dict mapping (period, scenario) tuples to AggregationResult.
+            dim_names: Dimension names, e.g., ['period', 'scenario'].
+            original_timesteps: Original timesteps (optional, for expand).
+            original_data: Original dataset (optional, for plotting).
+
+        Returns:
+            Clustering with full AggregationResult access.
+        """
+        return cls(
+            original_timesteps=original_timesteps,
+            original_data=original_data,
+            _aggregation_results=aggregation_results,
+            _dim_names=dim_names,
+        )
+
+    # ==========================================================================
+    # Iteration over AggregationResults (for direct access to tsam results)
+    # ==========================================================================
+
+    def __iter__(self):
+        """Iterate over (key, AggregationResult) pairs.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('iteration')
+        return iter(self._aggregation_results.items())
+
+    def __len__(self) -> int:
+        """Number of (period, scenario) combinations."""
+        if self._aggregation_results is not None:
+            return len(self._aggregation_results)
+        return len(list(self.results.keys()))
+
+    def __getitem__(self, key: tuple) -> AggregationResult:
+        """Get AggregationResult by (period, scenario) key.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('item access')
+        return self._aggregation_results[key]
+
+    def items(self):
+        """Iterate over (key, AggregationResult) pairs.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('items()')
+        return self._aggregation_results.items()
+
+    def keys(self):
+        """Iterate over (period, scenario) keys."""
+        if self._aggregation_results is not None:
+            return self._aggregation_results.keys()
+        return self.results.keys()
+
+    def values(self):
+        """Iterate over AggregationResult objects.
+
+        Raises:
+            ValueError: If accessed on a Clustering loaded from JSON.
+        """
+        self._require_full_data('values()')
+        return self._aggregation_results.values()
+
+    def _require_full_data(self, operation: str) -> None:
+        """Raise error if full AggregationResult data is not available."""
+        if self._from_serialization:
+            raise ValueError(
+                f'{operation} requires full AggregationResult data, '
+                f'but this Clustering was loaded from JSON. '
+                f'Use apply_clustering() to get full results.'
+            )
+
+    def __repr__(self) -> str:
+        return (
+            f'Clustering(\n'
+            f'  {self.n_original_clusters} periods → {self.n_clusters} clusters\n'
+            f'  timesteps_per_cluster={self.timesteps_per_cluster}\n'
+            f'  dims={self.dim_names}\n'
+            f')'
+        )
 
 
 class ClusteringPlotAccessor:
@@ -537,13 +1374,6 @@ class ClusteringPlotAccessor:
 
     Provides visualization methods for comparing original vs aggregated data
     and understanding the clustering structure.
-
-    Example:
-        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-        >>> fs_clustered.clustering.plot.compare()  # timeseries comparison
-        >>> fs_clustered.clustering.plot.compare(kind='duration_curve')  # duration curve
-        >>> fs_clustered.clustering.plot.heatmap()  # structure visualization
-        >>> fs_clustered.clustering.plot.clusters()  # cluster profiles
     """
 
     def __init__(self, clustering: Clustering):
@@ -580,7 +1410,6 @@ class ClusteringPlotAccessor:
         Returns:
             PlotResult containing the comparison figure and underlying data.
         """
-        import pandas as pd
         import plotly.graph_objects as go
 
         from ..config import CONFIG
@@ -590,8 +1419,8 @@ class ClusteringPlotAccessor:
         if kind not in ('timeseries', 'duration_curve'):
             raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
 
-        result = self._clustering.result
-        if result.original_data is None or result.aggregated_data is None:
+        clustering = self._clustering
+        if clustering.original_data is None or clustering.aggregated_data is None:
             raise ValueError('No original/aggregated data available for comparison')
 
         resolved_variables = self._resolve_variables(variables)
@@ -599,21 +1428,25 @@ class ClusteringPlotAccessor:
         # Build Dataset with variables as data_vars
         data_vars = {}
         for var in resolved_variables:
-            original = result.original_data[var]
-            clustered = result.expand_data(result.aggregated_data[var])
+            original = clustering.original_data[var]
+            clustered = clustering.expand_data(clustering.aggregated_data[var])
             combined = xr.concat([original, clustered], dim=pd.Index(['Original', 'Clustered'], name='representation'))
             data_vars[var] = combined
         ds = xr.Dataset(data_vars)
 
-        # Apply selection
         ds = _apply_selection(ds, select)
 
-        # For duration curve: flatten and sort values
         if kind == 'duration_curve':
             sorted_vars = {}
+            # Use variables for faster access (avoids _construct_dataarray overhead)
+            variables = ds.variables
+            rep_values = ds.coords['representation'].values
+            rep_idx = {rep: i for i, rep in enumerate(rep_values)}
             for var in ds.data_vars:
-                for rep in ds.coords['representation'].values:
-                    values = np.sort(ds[var].sel(representation=rep).values.flatten())[::-1]
+                data = variables[var].values
+                for rep in rep_values:
+                    # Direct numpy indexing instead of .sel()
+                    values = np.sort(data[rep_idx[rep]].flatten())[::-1]
                     sorted_vars[(var, rep)] = values
             # Get length from first sorted array
             n = len(next(iter(sorted_vars.values())))
@@ -628,15 +1461,15 @@ class ClusteringPlotAccessor:
                 }
             )
 
-        # Set title based on kind
-        if kind == 'timeseries':
-            title = (
+        title = (
+            (
                 'Original vs Clustered'
                 if len(resolved_variables) > 1
                 else f'Original vs Clustered: {resolved_variables[0]}'
             )
-        else:
-            title = 'Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}'
+            if kind == 'timeseries'
+            else ('Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}')
+        )
 
         # Early return for data_only mode
         if data_only:
@@ -671,15 +1504,24 @@ class ClusteringPlotAccessor:
         return plot_result
 
     def _get_time_varying_variables(self) -> list[str]:
-        """Get list of time-varying variables from original data."""
-        result = self._clustering.result
-        if result.original_data is None:
+        """Get list of time-varying variables from original data that also exist in aggregated data."""
+        if self._clustering.original_data is None:
             return []
+        # Get variables that exist in both original and aggregated data
+        aggregated_vars = (
+            set(self._clustering.aggregated_data.data_vars)
+            if self._clustering.aggregated_data is not None
+            else set(self._clustering.original_data.data_vars)
+        )
         return [
             name
-            for name in result.original_data.data_vars
-            if 'time' in result.original_data[name].dims
-            and not np.isclose(result.original_data[name].min(), result.original_data[name].max())
+            for name in self._clustering.original_data.data_vars
+            if name in aggregated_vars
+            and 'time' in self._clustering.original_data[name].dims
+            and not np.isclose(
+                self._clustering.original_data[name].min(),
+                self._clustering.original_data[name].max(),
+            )
         ]
 
     def _resolve_variables(self, variables: str | list[str] | None) -> list[str]:
@@ -738,35 +1580,20 @@ class ClusteringPlotAccessor:
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
 
-        result = self._clustering.result
-        cs = result.cluster_structure
-        if cs is None:
-            raise ValueError('No cluster structure available')
+        clustering = self._clustering
+        cluster_assignments = clustering.cluster_assignments
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        original_time = clustering.original_timesteps
 
-        cluster_order_da = cs.cluster_order
-        timesteps_per_cluster = cs.timesteps_per_cluster
-        original_time = result.original_data.coords['time'] if result.original_data is not None else None
-
-        # Apply selection if provided
         if select:
-            cluster_order_da = _apply_selection(cluster_order_da.to_dataset(name='cluster'), select)['cluster']
+            cluster_assignments = _apply_selection(cluster_assignments.to_dataset(name='cluster'), select)['cluster']
 
-        # Expand cluster_order to per-timestep: repeat each value timesteps_per_cluster times
-        # Uses np.repeat along axis=0 (original_cluster dim)
-        extra_dims = [d for d in cluster_order_da.dims if d != 'original_cluster']
-        expanded_values = np.repeat(cluster_order_da.values, timesteps_per_cluster, axis=0)
+        # Expand cluster_assignments to per-timestep
+        extra_dims = [d for d in cluster_assignments.dims if d != 'original_cluster']
+        expanded_values = np.repeat(cluster_assignments.values, timesteps_per_cluster, axis=0)
 
-        # Validate length consistency when using original time coordinates
-        if original_time is not None and len(original_time) != expanded_values.shape[0]:
-            raise ValueError(
-                f'Length mismatch: original_time has {len(original_time)} elements but expanded '
-                f'cluster data has {expanded_values.shape[0]} elements '
-                f'(n_clusters={cluster_order_da.sizes.get("original_cluster", len(cluster_order_da))} * '
-                f'timesteps_per_cluster={timesteps_per_cluster})'
-            )
-
-        coords = {'time': original_time} if original_time is not None else {}
-        coords.update({d: cluster_order_da.coords[d].values for d in extra_dims})
+        coords = {'time': original_time}
+        coords.update({d: cluster_assignments.coords[d].values for d in extra_dims})
         cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)
         cluster_da.name = 'cluster'
 
@@ -774,7 +1601,6 @@ class ClusteringPlotAccessor:
         if data_only:
             return PlotResult(data=xr.Dataset({'cluster': cluster_da}), figure=go.Figure())
 
-        # Add dummy y dimension for heatmap visualization (single row)
         heatmap_da = cluster_da.expand_dims('y', axis=-1).assign_coords(y=['Cluster'])
         heatmap_da.name = 'cluster_assignment'
         heatmap_da = heatmap_da.transpose('time', 'y', ...)
@@ -789,7 +1615,6 @@ class ClusteringPlotAccessor:
             **plotly_kwargs,
         )
 
-        # Clean up: hide y-axis since it's just a single row
         fig.update_yaxes(showticklabels=False)
         fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
@@ -839,64 +1664,32 @@ class ClusteringPlotAccessor:
         from ..plot_result import PlotResult
         from ..statistics_accessor import _apply_selection
 
-        result = self._clustering.result
-        cs = result.cluster_structure
-        if result.aggregated_data is None or cs is None:
-            raise ValueError('No aggregated data or cluster structure available')
+        clustering = self._clustering
+        if clustering.aggregated_data is None:
+            raise ValueError('No aggregated data available')
 
-        # Apply selection to aggregated data
-        aggregated_data = _apply_selection(result.aggregated_data, select)
-
-        time_vars = self._get_time_varying_variables()
-        if not time_vars:
-            raise ValueError('No time-varying variables found')
-
-        # Resolve variables
+        aggregated_data = _apply_selection(clustering.aggregated_data, select)
         resolved_variables = self._resolve_variables(variables)
 
-        n_clusters = int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
-        timesteps_per_cluster = cs.timesteps_per_cluster
+        n_clusters = clustering.n_clusters
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        cluster_occurrences = clustering.cluster_occurrences
 
-        # Check dimensions of all variables for consistency
-        has_cluster_dim = None
-        for var in resolved_variables:
-            da = aggregated_data[var]
-            var_has_cluster = 'cluster' in da.dims
-            extra_dims = [d for d in da.dims if d not in ('time', 'cluster')]
-            if extra_dims:
-                raise ValueError(
-                    f'clusters() requires data with only time (or cluster, time) dimensions. '
-                    f'Variable {var!r} has extra dimensions: {extra_dims}. '
-                    f'Use select={{{extra_dims[0]!r}: <value>}} to select a specific {extra_dims[0]}.'
-                )
-            if has_cluster_dim is None:
-                has_cluster_dim = var_has_cluster
-            elif has_cluster_dim != var_has_cluster:
-                raise ValueError(
-                    f'All variables must have consistent dimensions. '
-                    f'Variable {var!r} has {"" if var_has_cluster else "no "}cluster dimension, '
-                    f'but previous variables {"do" if has_cluster_dim else "do not"}.'
-                )
-
-        # Build Dataset with cluster dimension, using labels with occurrence counts
-        # Check if cluster_occurrences has extra dims
-        occ_extra_dims = [d for d in cs.cluster_occurrences.dims if d not in ('cluster',)]
+        # Build cluster labels
+        occ_extra_dims = [d for d in cluster_occurrences.dims if d != 'cluster']
         if occ_extra_dims:
-            # Use simple labels without occurrence counts for multi-dim case
             cluster_labels = [f'Cluster {c}' for c in range(n_clusters)]
         else:
             cluster_labels = [
-                f'Cluster {c} (×{int(cs.cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
+                f'Cluster {c} (×{int(cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
             ]
 
         data_vars = {}
         for var in resolved_variables:
             da = aggregated_data[var]
-            if has_cluster_dim:
-                # Data already has (cluster, time) dims - just update cluster labels
+            if 'cluster' in da.dims:
                 data_by_cluster = da.values
             else:
-                # Data has (time,) dim - reshape to (cluster, time)
                 data_by_cluster = da.values.reshape(n_clusters, timesteps_per_cluster)
             data_vars[var] = xr.DataArray(
                 data_by_cluster,
@@ -908,7 +1701,7 @@ class ClusteringPlotAccessor:
 
         # Early return for data_only mode (include occurrences in result)
         if data_only:
-            data_vars['occurrences'] = cs.cluster_occurrences
+            data_vars['occurrences'] = cluster_occurrences
             return PlotResult(data=xr.Dataset(data_vars), figure=go.Figure())
 
         title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
@@ -930,8 +1723,7 @@ class ClusteringPlotAccessor:
         fig.update_yaxes(matches=None)
         fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
-        # Include occurrences in result data
-        data_vars['occurrences'] = cs.cluster_occurrences
+        data_vars['occurrences'] = cluster_occurrences
         result_data = xr.Dataset(data_vars)
         plot_result = PlotResult(data=result_data, figure=fig)
 
@@ -943,222 +1735,12 @@ class ClusteringPlotAccessor:
         return plot_result
 
 
-@dataclass
-class Clustering:
-    """Information about an aggregation stored on a FlowSystem.
-
-    This is stored on the FlowSystem after aggregation to enable:
-    - expand() to map back to original timesteps
-    - Statistics to properly weight results
-    - Inter-cluster storage linking
-    - Serialization/deserialization of aggregated models
-
-    Attributes:
-        result: The ClusterResult from the aggregation backend.
-        backend_name: Name of the aggregation backend used (e.g., 'tsam', 'manual').
-        metrics: Clustering quality metrics (RMSE, MAE, etc.) as xr.Dataset.
-            Each metric (e.g., 'RMSE', 'MAE') is a DataArray with dims
-            ``[time_series, period?, scenario?]``.
-
-    Example:
-        >>> fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
-        >>> fs_clustered.clustering.n_clusters
-        8
-        >>> fs_clustered.clustering.plot.compare()
-        >>> fs_clustered.clustering.plot.heatmap()
-    """
-
-    result: ClusterResult
-    backend_name: str = 'unknown'
-    metrics: xr.Dataset | None = None
-
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Create reference structure for serialization."""
-        ref = {'__class__': self.__class__.__name__}
-        arrays = {}
-
-        # Store nested ClusterResult
-        result_ref, result_arrays = self.result._create_reference_structure()
-        ref['result'] = result_ref
-        arrays.update(result_arrays)
-
-        # Store scalar values
-        ref['backend_name'] = self.backend_name
-
-        return ref, arrays
-
-    def __repr__(self) -> str:
-        cs = self.result.cluster_structure
-        if cs is not None:
-            n_clusters = (
-                int(cs.n_clusters) if isinstance(cs.n_clusters, (int, np.integer)) else int(cs.n_clusters.values)
-            )
-            structure_info = f'{cs.n_original_clusters} periods → {n_clusters} clusters'
-        else:
-            structure_info = 'no structure'
-        return f'Clustering(\n  backend={self.backend_name!r}\n  {structure_info}\n)'
-
-    @property
-    def plot(self) -> ClusteringPlotAccessor:
-        """Access plotting methods for clustering visualization.
-
-        Returns:
-            ClusteringPlotAccessor with compare(), heatmap(), and clusters() methods.
-
-        Example:
-            >>> fs.clustering.plot.compare()  # timeseries comparison
-            >>> fs.clustering.plot.compare(kind='duration_curve')  # duration curve
-            >>> fs.clustering.plot.heatmap()  # structure visualization
-            >>> fs.clustering.plot.clusters()  # cluster profiles
-        """
-        return ClusteringPlotAccessor(self)
-
-    # Convenience properties delegating to nested objects
-
-    @property
-    def cluster_order(self) -> xr.DataArray:
-        """Which cluster each original period belongs to."""
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.cluster_order
-
-    @property
-    def occurrences(self) -> xr.DataArray:
-        """How many original periods each cluster represents."""
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.cluster_occurrences
-
-    @property
-    def n_clusters(self) -> int:
-        """Number of clusters."""
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        n = self.result.cluster_structure.n_clusters
-        return int(n) if isinstance(n, (int, np.integer)) else int(n.values)
-
-    @property
-    def n_original_clusters(self) -> int:
-        """Number of original periods (before clustering)."""
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.n_original_clusters
-
-    @property
-    def timesteps_per_period(self) -> int:
-        """Number of timesteps in each period/cluster.
-
-        Alias for :attr:`timesteps_per_cluster`.
-        """
-        return self.timesteps_per_cluster
-
-    @property
-    def timesteps_per_cluster(self) -> int:
-        """Number of timesteps in each cluster."""
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-        return self.result.cluster_structure.timesteps_per_cluster
-
-    @property
-    def timestep_mapping(self) -> xr.DataArray:
-        """Mapping from original timesteps to representative timestep indices."""
-        return self.result.timestep_mapping
-
-    @property
-    def cluster_start_positions(self) -> np.ndarray:
-        """Integer positions where clusters start.
-
-        Returns the indices of the first timestep of each cluster.
-        Use these positions to build masks for specific use cases.
-
-        Returns:
-            1D numpy array of positions: [0, T, 2T, ...] where T = timesteps_per_period.
-
-        Example:
-            For 2 clusters with 24 timesteps each:
-            >>> clustering.cluster_start_positions
-            array([0, 24])
-        """
-        if self.result.cluster_structure is None:
-            raise ValueError('No cluster_structure available')
-
-        n_timesteps = self.n_clusters * self.timesteps_per_period
-        return np.arange(0, n_timesteps, self.timesteps_per_period)
-
-    @property
-    def original_timesteps(self) -> pd.DatetimeIndex:
-        """Original timesteps before clustering.
-
-        Derived from the 'original_time' coordinate of timestep_mapping.
-
-        Raises:
-            KeyError: If 'original_time' coordinate is missing from timestep_mapping.
-        """
-        if 'original_time' not in self.result.timestep_mapping.coords:
-            raise KeyError(
-                "timestep_mapping is missing 'original_time' coordinate. "
-                'This may indicate corrupted or incompatible clustering results.'
-            )
-        return pd.DatetimeIndex(self.result.timestep_mapping.coords['original_time'].values)
-
-
-def create_cluster_structure_from_mapping(
-    timestep_mapping: xr.DataArray,
-    timesteps_per_cluster: int,
-) -> ClusterStructure:
-    """Create ClusterStructure from a timestep mapping.
-
-    This is a convenience function for creating ClusterStructure when you
-    have the timestep mapping but not the full clustering metadata.
-
-    Args:
-        timestep_mapping: Mapping from original timesteps to representative indices.
-        timesteps_per_cluster: Number of timesteps per cluster period.
-
-    Returns:
-        ClusterStructure derived from the mapping.
-    """
-    n_original = len(timestep_mapping)
-    n_original_clusters = n_original // timesteps_per_cluster
-
-    # Determine cluster order from the mapping
-    # Each original period maps to the cluster of its first timestep
-    cluster_order = []
-    for p in range(n_original_clusters):
-        start_idx = p * timesteps_per_cluster
-        cluster_idx = int(timestep_mapping.isel(original_time=start_idx).values) // timesteps_per_cluster
-        cluster_order.append(cluster_idx)
-
-    cluster_order_da = xr.DataArray(cluster_order, dims=['original_cluster'], name='cluster_order')
-
-    # Count occurrences of each cluster
-    unique_clusters = np.unique(cluster_order)
-    n_clusters = int(unique_clusters.max()) + 1 if len(unique_clusters) > 0 else 0
-    occurrences = {}
-    for c in unique_clusters:
-        occurrences[int(c)] = sum(1 for x in cluster_order if x == c)
-
-    cluster_occurrences_da = xr.DataArray(
-        [occurrences.get(c, 0) for c in range(n_clusters)],
-        dims=['cluster'],
-        name='cluster_occurrences',
-    )
-
-    return ClusterStructure(
-        cluster_order=cluster_order_da,
-        cluster_occurrences=cluster_occurrences_da,
-        n_clusters=n_clusters,
-        timesteps_per_cluster=timesteps_per_cluster,
-    )
+# Backwards compatibility alias
+AggregationResults = Clustering
 
 
 def _register_clustering_classes():
-    """Register clustering classes for IO.
-
-    Called from flow_system.py after all imports are complete to avoid circular imports.
-    """
+    """Register clustering classes for IO."""
     from ..structure import CLASS_REGISTRY
 
-    CLASS_REGISTRY['ClusterStructure'] = ClusterStructure
-    CLASS_REGISTRY['ClusterResult'] = ClusterResult
     CLASS_REGISTRY['Clustering'] = Clustering
