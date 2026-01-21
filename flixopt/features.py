@@ -12,7 +12,7 @@ import numpy as np
 import xarray as xr
 
 from .modeling import BoundingPatterns
-from .structure import FlowSystemModel, Submodel, VariableCategory
+from .structure import FlowSystemModel, VariableCategory
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
         Piecewise,
         StatusParameters,
     )
-    from .types import Numeric_PS, Numeric_TPS
 
 
 # =============================================================================
@@ -1078,11 +1077,11 @@ class PiecewiseHelpers:
         model.add_constraints(target_var == reconstructed, name=name)
 
 
-class InvestmentModel(Submodel):
+class InvestmentModel:
     """Mathematical model implementation for investment decisions.
 
-    Creates optimization variables and constraints for investment sizing decisions,
-    supporting both binary and continuous sizing with comprehensive effect modeling.
+    Standalone class (not inheriting from Submodel) that creates optimization variables
+    and constraints for investment sizing decisions.
 
     Mathematical Formulation:
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
@@ -1105,13 +1104,70 @@ class InvestmentModel(Submodel):
         label_of_model: str | None = None,
         size_category: VariableCategory = VariableCategory.SIZE,
     ):
+        self._model = model
+        self.label_of_element = label_of_element
+        self.label_of_model = label_of_model if label_of_model is not None else label_of_element
+        self.label_full = self.label_of_model
+
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+        self._submodels: dict[str, PiecewiseEffectsModel] = {}
+
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
         self._size_category = size_category
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+        # Run modeling
+        self._do_modeling()
+
+    def add_variables(
+        self,
+        lower: float | xr.DataArray = -np.inf,
+        upper: float | xr.DataArray = np.inf,
+        coords: xr.Coordinates | None = None,
+        binary: bool = False,
+        short_name: str | None = None,
+        name: str | None = None,
+        category: VariableCategory | None = None,
+    ) -> linopy.Variable:
+        """Add a variable and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        var = self._model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            binary=binary,
+            name=name,
+            category=category,
+        )
+        if short_name:
+            self._variables[short_name] = var
+        # Register category in FlowSystemModel
+        if category is not None:
+            self._model.variable_categories[var.name] = category
+        return var
+
+    def add_constraints(
+        self,
+        expr: linopy.LinearExpression,
+        short_name: str | None = None,
+        name: str | None = None,
+    ) -> linopy.Constraint:
+        """Add a constraint and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        con = self._model.add_constraints(expr, name=name)
+        if short_name:
+            self._constraints[short_name] = con
+        return con
+
+    def add_submodels(self, submodel: PiecewiseEffectsModel, short_name: str) -> PiecewiseEffectsModel:
+        """Register a submodel."""
+        self._submodels[short_name] = submodel
+        return submodel
 
     def _do_modeling(self):
-        super()._do_modeling()
         self._create_variables_and_constraints()
         self._add_effects()
 
@@ -1307,8 +1363,8 @@ class StatusProxy:
         return prev_dict.get(self._element_id)
 
 
-class PieceModel(Submodel):
-    """Class for modeling a linear piece of one or more variables in parallel"""
+class PieceModel:
+    """Standalone class for modeling a linear piece of one or more variables in parallel."""
 
     def __init__(
         self,
@@ -1317,17 +1373,65 @@ class PieceModel(Submodel):
         label_of_model: str,
         dims: Collection[FlowSystemDimensions] | None,
     ):
+        self._model = model
+        self.label_of_element = label_of_element
+        self.label_of_model = label_of_model
+        self.label_full = label_of_model
+
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
         self.lambda1: linopy.Variable | None = None
         self.dims = dims
 
-        super().__init__(model, label_of_element, label_of_model)
+        # Run modeling
+        self._do_modeling()
+
+    def add_variables(
+        self,
+        lower: float | xr.DataArray = -np.inf,
+        upper: float | xr.DataArray = np.inf,
+        coords: xr.Coordinates | None = None,
+        binary: bool = False,
+        short_name: str | None = None,
+        name: str | None = None,
+        category: VariableCategory | None = None,
+    ) -> linopy.Variable:
+        """Add a variable and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        var = self._model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            binary=binary,
+            name=name,
+            category=category,
+        )
+        if short_name:
+            self._variables[short_name] = var
+        if category is not None:
+            self._model.variable_categories[var.name] = category
+        return var
+
+    def add_constraints(
+        self,
+        expr: linopy.LinearExpression,
+        short_name: str | None = None,
+        name: str | None = None,
+    ) -> linopy.Constraint:
+        """Add a constraint and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        con = self._model.add_constraints(expr, name=name)
+        if short_name:
+            self._constraints[short_name] = con
+        return con
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
         # Create variables
         self.inside_piece = self.add_variables(
             binary=True,
@@ -1356,8 +1460,8 @@ class PieceModel(Submodel):
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
 
-class PiecewiseModel(Submodel):
-    """Mathematical model implementation for piecewise linear approximations.
+class PiecewiseModel:
+    """Standalone class for piecewise linear approximations.
 
     Creates optimization variables and constraints for piecewise linear relationships,
     including lambda variables, piece activation binaries, and coupling constraints.
@@ -1388,18 +1492,73 @@ class PiecewiseModel(Submodel):
             zero_point: A variable that can be used to define a zero point for the Piecewise relation. If None or False, no zero point is defined.
             dims: The dimensions used for variable creation. If None, all dimensions are used.
         """
+        self._model = model
+        self.label_of_element = label_of_element
+        self.label_of_model = label_of_model
+        self.label_full = label_of_model
+
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+        self._submodels: dict[str, PieceModel] = {}
+
         self._piecewise_variables = piecewise_variables
         self._zero_point = zero_point
         self.dims = dims
 
         self.pieces: list[PieceModel] = []
         self.zero_point: linopy.Variable | None = None
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+        # Run modeling
+        self._do_modeling()
+
+    def add_variables(
+        self,
+        lower: float | xr.DataArray = -np.inf,
+        upper: float | xr.DataArray = np.inf,
+        coords: xr.Coordinates | None = None,
+        binary: bool = False,
+        short_name: str | None = None,
+        name: str | None = None,
+        category: VariableCategory | None = None,
+    ) -> linopy.Variable:
+        """Add a variable and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        var = self._model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            binary=binary,
+            name=name,
+            category=category,
+        )
+        if short_name:
+            self._variables[short_name] = var
+        if category is not None:
+            self._model.variable_categories[var.name] = category
+        return var
+
+    def add_constraints(
+        self,
+        expr: linopy.LinearExpression,
+        short_name: str | None = None,
+        name: str | None = None,
+    ) -> linopy.Constraint:
+        """Add a constraint and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        con = self._model.add_constraints(expr, name=name)
+        if short_name:
+            self._constraints[short_name] = con
+        return con
+
+    def add_submodels(self, submodel: PieceModel, short_name: str) -> PieceModel:
+        """Register a submodel."""
+        self._submodels[short_name] = submodel
+        return submodel
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
         # Validate all piecewise variables have the same number of segments
         segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
         if not all(count == segment_counts[0] for count in segment_counts):
@@ -1461,7 +1620,9 @@ class PiecewiseModel(Submodel):
             )
 
 
-class PiecewiseEffectsModel(Submodel):
+class PiecewiseEffectsModel:
+    """Standalone class for piecewise effects modeling."""
+
     def __init__(
         self,
         model: FlowSystemModel,
@@ -1471,6 +1632,15 @@ class PiecewiseEffectsModel(Submodel):
         piecewise_shares: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
     ):
+        self._model = model
+        self.label_of_element = label_of_element
+        self.label_of_model = label_of_model
+        self.label_full = label_of_model
+
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+        self._submodels: dict[str, PiecewiseModel] = {}
+
         origin_count = len(piecewise_origin[1])
         share_counts = [len(pw) for pw in piecewise_shares.values()]
         if not all(count == origin_count for count in share_counts):
@@ -1485,12 +1655,57 @@ class PiecewiseEffectsModel(Submodel):
 
         self.piecewise_model: PiecewiseModel | None = None
 
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+        # Run modeling
+        self._do_modeling()
+
+    def add_variables(
+        self,
+        lower: float | xr.DataArray = -np.inf,
+        upper: float | xr.DataArray = np.inf,
+        coords: xr.Coordinates | None = None,
+        binary: bool = False,
+        short_name: str | None = None,
+        name: str | None = None,
+        category: VariableCategory | None = None,
+    ) -> linopy.Variable:
+        """Add a variable and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        var = self._model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            binary=binary,
+            name=name,
+            category=category,
+        )
+        if short_name:
+            self._variables[short_name] = var
+        if category is not None:
+            self._model.variable_categories[var.name] = category
+        return var
+
+    def add_constraints(
+        self,
+        expr: linopy.LinearExpression,
+        short_name: str | None = None,
+        name: str | None = None,
+    ) -> linopy.Constraint:
+        """Add a constraint and register it."""
+        if name is None:
+            name = f'{self.label_of_model}|{short_name}'
+        con = self._model.add_constraints(expr, name=name)
+        if short_name:
+            self._constraints[short_name] = con
+        return con
+
+    def add_submodels(self, submodel: PiecewiseModel, short_name: str) -> PiecewiseModel:
+        """Register a submodel."""
+        self._submodels[short_name] = submodel
+        return submodel
 
     def _do_modeling(self):
         """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
         # Create variables
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
@@ -1524,116 +1739,3 @@ class PiecewiseEffectsModel(Submodel):
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
             target='periodic',
         )
-
-
-class ShareAllocationModel(Submodel):
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        dims: list[FlowSystemDimensions],
-        label_of_element: str | None = None,
-        label_of_model: str | None = None,
-        total_max: Numeric_PS | None = None,
-        total_min: Numeric_PS | None = None,
-        max_per_hour: Numeric_TPS | None = None,
-        min_per_hour: Numeric_TPS | None = None,
-    ):
-        if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
-            raise ValueError("max_per_hour and min_per_hour require 'time' dimension in dims")
-
-        self._dims = dims
-        self.total_per_timestep: linopy.Variable | None = None
-        self.total: linopy.Variable | None = None
-        self.shares: dict[str, linopy.Variable] = {}
-        self.share_constraints: dict[str, linopy.Constraint] = {}
-
-        self._eq_total_per_timestep: linopy.Constraint | None = None
-        self._eq_total: linopy.Constraint | None = None
-
-        # Parameters
-        self._total_max = total_max
-        self._total_min = total_min
-        self._max_per_hour = max_per_hour
-        self._min_per_hour = min_per_hour
-
-        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
-
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
-        # Create variables
-        self.total = self.add_variables(
-            lower=self._total_min if self._total_min is not None else -np.inf,
-            upper=self._total_max if self._total_max is not None else np.inf,
-            coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
-            name=self.label_full,
-            short_name='total',
-            category=VariableCategory.TOTAL,
-        )
-        # eq: sum = sum(share_i) # skalar
-        self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
-
-        if 'time' in self._dims:
-            self.total_per_timestep = self.add_variables(
-                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.timestep_duration,
-                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
-                coords=self._model.get_coords(self._dims),
-                short_name='per_timestep',
-                category=VariableCategory.PER_TIMESTEP,
-            )
-
-            self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
-
-            # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
-            # Sum over all temporal dimensions (time, and cluster if present)
-            weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
-            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.temporal_dims)
-
-    def add_share(
-        self,
-        name: str,
-        expression: linopy.LinearExpression,
-        dims: list[FlowSystemDimensions] | None = None,
-    ):
-        """
-        Add a share to the share allocation model. If the share already exists, the expression is added to the existing share.
-        The expression is added to the right hand side (rhs) of the constraint.
-        The variable representing the total share is on the left hand side (lhs) of the constraint.
-        var_total = sum(expressions)
-
-        Args:
-            name: The name of the share.
-            expression: The expression of the share. Added to the right hand side of the constraint.
-            dims: The dimensions of the share. Defaults to all dimensions. Dims are ordered automatically
-        """
-        if dims is None:
-            dims = self._dims
-        else:
-            if 'time' in dims and 'time' not in self._dims:
-                raise ValueError('Cannot add share with time-dim to a model without time-dim')
-            if 'period' in dims and 'period' not in self._dims:
-                raise ValueError('Cannot add share with period-dim to a model without period-dim')
-            if 'scenario' in dims and 'scenario' not in self._dims:
-                raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
-
-        if name in self.shares:
-            self.share_constraints[name].lhs -= expression
-        else:
-            # Temporal shares (with 'time' dim) are segment totals that need division
-            category = VariableCategory.SHARE if 'time' in dims else None
-            self.shares[name] = self.add_variables(
-                coords=self._model.get_coords(dims),
-                name=f'{name}->{self.label_full}',
-                short_name=name,
-                category=category,
-            )
-
-            self.share_constraints[name] = self.add_constraints(
-                self.shares[name] == expression, name=f'{name}->{self.label_full}'
-            )
-
-            if 'time' not in dims:
-                self._eq_total.lhs -= self.shares[name]
-            else:
-                self._eq_total_per_timestep.lhs -= self.shares[name]
