@@ -1119,13 +1119,15 @@ class Interface:
             # Use ds.variables with coord_cache for faster DataArray construction
             variables = ds.variables
             coord_cache = {k: ds.coords[k] for k in ds.coords}
+            coord_names = set(coord_cache)
             arrays_dict = {
                 name: xr.DataArray(
                     variables[name],
                     coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
                     name=name,
                 )
-                for name in ds.data_vars
+                for name in variables
+                if name not in coord_names
             }
 
             # Resolve all references using the centralized method

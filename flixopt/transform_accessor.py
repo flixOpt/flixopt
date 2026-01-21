@@ -71,13 +71,15 @@ class TransformAccessor:
         group_weights = {group: 1 / count for group, count in group_counts.items()}
 
         weights = {}
-        for name, da in ds.data_vars.items():
-            clustering_group = da.attrs.get('clustering_group')
+        variables = ds.variables
+        for name in ds.data_vars:
+            var_attrs = variables[name].attrs
+            clustering_group = var_attrs.get('clustering_group')
             group_weight = group_weights.get(clustering_group)
             if group_weight is not None:
                 weights[name] = group_weight
             else:
-                weights[name] = da.attrs.get('clustering_weight', 1)
+                weights[name] = var_attrs.get('clustering_weight', 1)
 
         if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
             logger.debug('All Clustering weights were set to 1')
@@ -1029,8 +1031,9 @@ class TransformAccessor:
             Resampled dataset with original dimension structure preserved
         """
         dim_groups = defaultdict(list)
-        for var_name, var in time_dataset.data_vars.items():
-            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
+        variables = time_dataset.variables
+        for var_name in time_dataset.data_vars:
+            dims_key = tuple(sorted(d for d in variables[var_name].dims if d != 'time'))
             dim_groups[dims_key].append(var_name)
 
         # Note: defaultdict is always truthy, so we check length explicitly
@@ -2210,7 +2213,10 @@ class TransformAccessor:
         data_vars = {}
         # Use ds.variables pattern to avoid slow _construct_dataarray calls
         coord_cache = {k: v for k, v in reduced_ds.coords.items()}
-        for name in reduced_ds.data_vars:
+        coord_names = set(coord_cache)
+        for name in reduced_ds.variables:
+            if name in coord_names:
+                continue
             if name in skip_vars or name.startswith('clustering|'):
                 continue
             da = _fast_get_da(reduced_ds, name, coord_cache)
@@ -2230,8 +2236,11 @@ class TransformAccessor:
         reduced_solution = self._fs.solution
         # Use ds.variables pattern to avoid slow _construct_dataarray calls
         sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
+        sol_coord_names = set(sol_coord_cache)
         expanded_sol_vars = {}
-        for name in reduced_solution.data_vars:
+        for name in reduced_solution.variables:
+            if name in sol_coord_names:
+                continue
             da = _fast_get_da(reduced_solution, name, sol_coord_cache)
             expanded_sol_vars[name] = expand_da(da, name, is_solution=True)
         expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)
