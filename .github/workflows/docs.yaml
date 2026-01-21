@@ -170,5 +170,13 @@ jobs:
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
-          mike deploy --push --update-aliases $VERSION latest
-          mike set-default --push latest
+
+          # Check if this is a pre-release (alpha, beta, rc)
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            # Pre-release: deploy version only, don't update "latest"
+            mike deploy --push $VERSION
+          else
+            # Stable release: deploy and update "latest" alias
+            mike deploy --push --update-aliases $VERSION latest
+            mike set-default --push latest
+          fi
