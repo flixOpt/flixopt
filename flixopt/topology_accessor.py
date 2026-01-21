@@ -271,99 +271,51 @@ class TopologyAccessor:
     ) -> dict[str, str]:
         """Set colors for multiple components at once.
 
-        Supports direct color assignment and colorscale-based assignment for groups
-        of components.
-
         Args:
-            colors: Color configuration. Can be:
-                - dict mapping component labels to colors:
-                    ``{'Boiler': 'red', 'CHP': '#0000FF'}``
-                - dict mapping colorscale names to component lists:
-                    ``{'Oranges': ['Solar1', 'Solar2'], 'Blues': ['Wind1', 'Wind2']}``
-                - str colorscale name to apply to all components:
-                    ``'turbo'``
-            overwrite: If True (default), overwrite existing colors. If False,
-                only set colors for components that don't have one yet.
+            colors: Color configuration:
+                - ``str``: Colorscale name for all components (e.g., ``'turbo'``)
+                - ``dict``: Component-to-color mapping (``{'Boiler': 'red'}``) or
+                  colorscale-to-components (``{'Blues': ['Wind1', 'Wind2']}``)
+            overwrite: If False, skip components that already have colors.
 
         Returns:
-            Component-to-color mapping of colors that were actually assigned.
-
-        Raises:
-            KeyError: If any component label doesn't exist.
+            Mapping of colors that were actually assigned.
 
         Examples:
-            Direct color assignment:
-
-            >>> flow_system.topology.set_component_colors(
-            ...     {
-            ...         'Boiler': '#D35400',
-            ...         'CHP': 'darkred',
-            ...         'HeatPump': '#27AE60',
-            ...     }
-            ... )
-
-            Colorscale for component groups:
-
-            >>> flow_system.topology.set_component_colors(
-            ...     {
-            ...         'Oranges': ['Solar1', 'Solar2', 'Solar3'],
-            ...         'Blues': ['Wind1', 'Wind2'],
-            ...         'Battery': 'green',  # Direct assignment still works
-            ...     }
-            ... )
-
-            Apply colorscale to all components:
-
             >>> flow_system.topology.set_component_colors('turbo')
-
-            Only set colors for components without existing colors:
-
+            >>> flow_system.topology.set_component_colors({'Boiler': 'red', 'CHP': '#0000FF'})
+            >>> flow_system.topology.set_component_colors({'Blues': ['Wind1', 'Wind2']})
             >>> flow_system.topology.set_component_colors('turbo', overwrite=False)
         """
-        component_labels = list(self._fs.components.keys())
+        components = self._fs.components
 
-        def _should_set(label: str) -> bool:
-            """Check if we should set color for this component."""
-            return overwrite or self._fs.components[label].color is None
-
-        # Handle string input (colorscale for all components)
+        # Normalize to {label: color} mapping
         if isinstance(colors, str):
-            # Filter to only components we should set
-            labels_to_set = [lbl for lbl in component_labels if _should_set(lbl)]
-            if not labels_to_set:
-                return {}
-            color_mapping = process_colors(colors, labels_to_set)
-            for label, color in color_mapping.items():
-                self._fs.components[label].color = color
-            self._invalidate_color_caches()
-            return color_mapping
+            color_map = process_colors(colors, list(components.keys()))
+        else:
+            color_map = {}
+            for key, value in colors.items():
+                if isinstance(value, list):
+                    # Colorscale -> component list
+                    missing = [c for c in value if c not in components]
+                    if missing:
+                        raise KeyError(f'Components not found: {missing}')
+                    color_map.update(process_colors(key, value))
+                else:
+                    # Direct assignment
+                    if key not in components:
+                        raise KeyError(f"Component '{key}' not found")
+                    color_map[key] = value
 
-        # Handle dict input
-        result_colors: dict[str, str] = {}
-
-        for key, value in colors.items():
-            if isinstance(value, list):
-                # key is colorscale, value is list of components
-                for comp in value:
-                    if comp not in self._fs.components:
-                        raise KeyError(f"Component '{comp}' not found. Available: {component_labels}")
-                # Filter to only components we should set
-                labels_to_set = [lbl for lbl in value if _should_set(lbl)]
-                if labels_to_set:
-                    color_mapping = process_colors(key, labels_to_set)
-                    for label, color in color_mapping.items():
-                        self._fs.components[label].color = color
-                        result_colors[label] = color
-            else:
-                # key is component label, value is color
-                if key not in self._fs.components:
-                    raise KeyError(f"Component '{key}' not found. Available: {component_labels}")
-                if _should_set(key):
-                    self._fs.components[key].color = value
-                    result_colors[key] = value
+        # Apply colors (respecting overwrite flag)
+        result = {}
+        for label, color in color_map.items():
+            if overwrite or components[label].color is None:
+                components[label].color = color
+                result[label] = color
 
         self._invalidate_color_caches()
-        return result_colors
+        return result
 
     def set_carrier_color(self, carrier: str, color: str) -> None:
         """Set the color for a carrier.
