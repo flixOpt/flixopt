@@ -1707,6 +1707,7 @@ class SourceAndSink(Component):
         outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
+        color: str | None = None,
     ):
         super().__init__(
             label,
@@ -1714,6 +1715,7 @@ class SourceAndSink(Component):
             outputs=outputs,
             prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
+            color=color,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
 
