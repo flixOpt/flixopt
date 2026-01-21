@@ -1103,9 +1103,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             timing: If True, print detailed timing breakdown.
 
         Note:
-            FlowsModel, BusesModel, and StoragesModel are implemented.
-            InterclusterStorageModel (for clustered systems with intercluster
-            modes) uses a standalone approach due to its complexity.
+            FlowsModel, BusesModel, StoragesModel, and InterclusterStoragesModel
+            are all implemented as batched type-level models.
         """
         import time
 
@@ -1261,20 +1260,29 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('storages_investment_constraints')
 
-        # Create InterclusterStorageModel for intercluster storages
-        # These are too complex to batch and are handled individually
-        from .components import InterclusterStorageModel
+        # Create batched InterclusterStoragesModel for intercluster storages
+        from .components import InterclusterStoragesModel
 
-        self._intercluster_storage_models: list[InterclusterStorageModel] = []
-        for component in self.flow_system.components.values():
-            if isinstance(component, Storage):
-                clustering = self.flow_system.clustering
-                is_intercluster = clustering is not None and component.cluster_mode in (
+        intercluster_storages: list[Storage] = []
+        clustering = self.flow_system.clustering
+        if clustering is not None:
+            for component in self.flow_system.components.values():
+                if isinstance(component, Storage) and component.cluster_mode in (
                     'intercluster',
                     'intercluster_cyclic',
-                )
-                if is_intercluster:
-                    self._intercluster_storage_models.append(InterclusterStorageModel(self, component))
+                ):
+                    intercluster_storages.append(component)
+
+        self._intercluster_storages_model: InterclusterStoragesModel | None = None
+        if intercluster_storages:
+            self._intercluster_storages_model = InterclusterStoragesModel(
+                self, intercluster_storages, self._flows_model
+            )
+            self._intercluster_storages_model.create_variables()
+            self._intercluster_storages_model.create_constraints()
+            self._intercluster_storages_model.create_investment_model()
+            self._intercluster_storages_model.create_investment_constraints()
+            self._intercluster_storages_model.create_effect_shares()
 
         record('intercluster_storages')
 

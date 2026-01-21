@@ -26,8 +26,8 @@ References
 
 See Also
 --------
-:class:`flixopt.components.InterclusterStorageModel`
-    The storage model that uses these utilities.
+:class:`flixopt.components.InterclusterStoragesModel`
+    The batched storage model that uses these utilities.
 """
 
 from __future__ import annotations

@@ -415,11 +415,11 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Should have charge_state in solution
+        # Should have charge_state in solution (unrolled from batched storage|charge)
         assert 'Battery|charge_state' in fs_clustered.solution
 
         # Independent mode should NOT have SOC_boundary
-        assert 'Battery|SOC_boundary' not in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' not in fs_clustered.solution
 
         # Verify solution is valid (no errors)
         assert fs_clustered.solution is not None
@@ -430,11 +430,11 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Should have charge_state in solution
+        # Should have charge_state in solution (unrolled from batched storage|charge)
         assert 'Battery|charge_state' in fs_clustered.solution
 
         # Cyclic mode should NOT have SOC_boundary (only intercluster modes do)
-        assert 'Battery|SOC_boundary' not in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' not in fs_clustered.solution
 
     def test_storage_cluster_mode_intercluster(self, solver_fixture, timesteps_8_days):
         """Storage with cluster_mode='intercluster' - SOC links across clusters."""
@@ -442,10 +442,10 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Intercluster mode SHOULD have SOC_boundary
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
+        # Intercluster mode SHOULD have SOC_boundary (batched under intercluster_storage type)
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
@@ -458,10 +458,10 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Intercluster_cyclic mode SHOULD have SOC_boundary
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
+        # Intercluster_cyclic mode SHOULD have SOC_boundary (batched under intercluster_storage type)
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # First and last SOC_boundary values should be equal (cyclic constraint)
@@ -479,9 +479,9 @@ class TestInterclusterStorageLinking:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Verify SOC_boundary exists in solution
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        # Verify SOC_boundary exists in solution (batched under intercluster_storage type)
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
     def test_expand_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
@@ -495,7 +495,7 @@ class TestInterclusterStorageLinking:
 
         # After expansion: charge_state should be non-negative (absolute SOC)
         fs_expanded = fs_clustered.transform.expand()
-        cs_after = fs_expanded.solution['Battery|charge_state']
+        cs_after = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # All values should be >= 0 (with small tolerance for numerical issues)
         assert (cs_after >= -0.01).all(), f'Negative charge_state found: min={float(cs_after.min())}'
@@ -513,7 +513,7 @@ class TestInterclusterStorageLinking:
 
         # Expand solution
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['Battery|charge_state']
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # With self-discharge, SOC should decay over time within each period
         # The expanded solution should still be non-negative
@@ -530,15 +530,15 @@ class TestInterclusterStorageLinking:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Get values needed for manual calculation
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
-        cs_clustered = fs_clustered.solution['Battery|charge_state']
+        # Get values needed for manual calculation (batched under intercluster_storage type)
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        cs_clustered = fs_clustered.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
         clustering = fs_clustered.clustering
         cluster_assignments = clustering.cluster_assignments.values
         timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['Battery|charge_state']
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # Manual verification for first few timesteps of first period
         p = 0  # First period
@@ -1243,7 +1243,7 @@ class TestSegmentationWithStorage:
 
         fs_segmented.optimize(solver_fixture)
 
-        # Should have solution with charge_state
+        # Should have solution with charge_state (unrolled from batched storage|charge)
         assert fs_segmented.solution is not None
         assert 'Battery|charge_state' in fs_segmented.solution
 
@@ -1262,7 +1262,7 @@ class TestSegmentationWithStorage:
         fs_segmented.optimize(solver_fixture)
         fs_expanded = fs_segmented.transform.expand()
 
-        # Charge state should be expanded to original timesteps
+        # Charge state should be expanded to original timesteps (unrolled from batched storage|charge)
         charge_state = fs_expanded.solution['Battery|charge_state']
         # charge_state has time dimension = n_original_timesteps + 1
         assert charge_state.sizes['time'] == 193

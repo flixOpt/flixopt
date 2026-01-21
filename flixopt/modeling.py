@@ -10,13 +10,13 @@ from .structure import VariableCategory
 
 
 class ConstraintAdder(Protocol):
-    """Protocol for objects that can add constraints (Submodel, InterclusterStorageModel, InvestmentModel, etc.)."""
+    """Protocol for objects that can add constraints (InvestmentModel, type-level models, etc.)."""
 
     def add_constraints(self, expression: Any, name: str = None, **kwargs) -> linopy.Constraint: ...
 
 
 class ModelInterface(Protocol):
-    """Protocol for full model interface (Submodel-like objects with get_coords, add_variables, add_constraints)."""
+    """Protocol for full model interface with get_coords, add_variables, add_constraints."""
 
     def get_coords(self, coords: Any = None) -> xr.Coordinates: ...
 
