@@ -2218,12 +2218,10 @@ class TransformAccessor:
             if 'cluster' in da.dims and 'time' not in da.dims:
                 continue
             data_vars[name] = expand_da(da, name)
-        attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
+        # Remove timestep_duration reference from attrs - let FlowSystem compute it from timesteps_extra
+        # This ensures proper time coordinates for xarray alignment with N+1 solution timesteps
+        attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs and k != 'timestep_duration'}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
-
-        # Update timestep_duration for original timesteps
-        timestep_duration = FlowSystem.calculate_timestep_duration(original_timesteps_extra)
-        expanded_ds.attrs['timestep_duration'] = timestep_duration.values.tolist()
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 

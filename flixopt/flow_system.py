@@ -664,6 +664,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
+        # For DatetimeIndex, timestep_duration can be computed from timesteps_extra on load
+        # For RangeIndex (segmented systems), it must be saved as it cannot be computed
+        if isinstance(self.timesteps, pd.DatetimeIndex):
+            reference_structure.pop('timestep_duration', None)
+            all_extracted_arrays.pop('timestep_duration', None)
 
         # Extract from components
         components_structure = {}
