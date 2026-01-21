@@ -267,6 +267,7 @@ class TopologyAccessor:
     def set_component_colors(
         self,
         colors: dict[str, str | list[str]] | str,
+        overwrite: bool = True,
     ) -> dict[str, str]:
         """Set colors for multiple components at once.
 
@@ -281,9 +282,11 @@ class TopologyAccessor:
                     ``{'Oranges': ['Solar1', 'Solar2'], 'Blues': ['Wind1', 'Wind2']}``
                 - str colorscale name to apply to all components:
                     ``'turbo'``
+            overwrite: If True (default), overwrite existing colors. If False,
+                only set colors for components that don't have one yet.
 
         Returns:
-            Complete component-to-color mapping after assignment.
+            Component-to-color mapping of colors that were actually assigned.
 
         Raises:
             KeyError: If any component label doesn't exist.
@@ -312,12 +315,24 @@ class TopologyAccessor:
             Apply colorscale to all components:
 
             >>> flow_system.topology.set_component_colors('turbo')
+
+            Only set colors for components without existing colors:
+
+            >>> flow_system.topology.set_component_colors('turbo', overwrite=False)
         """
         component_labels = list(self._fs.components.keys())
 
+        def _should_set(label: str) -> bool:
+            """Check if we should set color for this component."""
+            return overwrite or self._fs.components[label].color is None
+
         # Handle string input (colorscale for all components)
         if isinstance(colors, str):
-            color_mapping = process_colors(colors, component_labels)
+            # Filter to only components we should set
+            labels_to_set = [lbl for lbl in component_labels if _should_set(lbl)]
+            if not labels_to_set:
+                return {}
+            color_mapping = process_colors(colors, labels_to_set)
             for label, color in color_mapping.items():
                 self._fs.components[label].color = color
             self._invalidate_color_caches()
@@ -332,16 +347,20 @@ class TopologyAccessor:
                 for comp in value:
                     if comp not in self._fs.components:
                         raise KeyError(f"Component '{comp}' not found. Available: {component_labels}")
-                color_mapping = process_colors(key, value)
-                for label, color in color_mapping.items():
-                    self._fs.components[label].color = color
-                    result_colors[label] = color
+                # Filter to only components we should set
+                labels_to_set = [lbl for lbl in value if _should_set(lbl)]
+                if labels_to_set:
+                    color_mapping = process_colors(key, labels_to_set)
+                    for label, color in color_mapping.items():
+                        self._fs.components[label].color = color
+                        result_colors[label] = color
             else:
                 # key is component label, value is color
                 if key not in self._fs.components:
                     raise KeyError(f"Component '{key}' not found. Available: {component_labels}")
-                self._fs.components[key].color = value
-                result_colors[key] = value
+                if _should_set(key):
+                    self._fs.components[key].color = value
+                    result_colors[key] = value
 
         self._invalidate_color_caches()
         return result_colors
