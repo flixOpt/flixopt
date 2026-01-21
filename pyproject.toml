@@ -62,11 +62,11 @@ network_viz = [
 ]
 
 # Full feature set (everything except dev tools)
+# NOTE: For clustering features, install tsam v3 manually (not yet on PyPI):
+#   pip install "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+# This will be added back when tsam v3.0 is released on PyPI
 full = [
     "pyvis==0.3.2",  # Visualizing FlowSystem Network
-    # TODO: Replace with PyPI release when tsam v3.0 is available (e.g., "tsam >= 3.0.0, < 4")
-    # Using VCS dependency pinned to v3-rebased branch for SegmentConfig and ExtremeConfig
-    "tsam @ git+https://github.com/FBumann/tsam.git@v3-rebased",
     "scipy >= 1.15.1, < 2", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0, < 14; python_version < '3.14'",  # No Python 3.14 wheels yet (expected Q1 2026)
     "dash >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
@@ -85,7 +85,7 @@ dev = [
     "ruff==0.14.10",
     "pre-commit==4.3.0",
     "pyvis==0.3.2",
-    "tsam @ git+https://github.com/FBumann/tsam.git@v3-rebased",
+    "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa",
     "scipy==1.16.3",  # 1.16.1+ required for Python 3.14 wheels
     "gurobipy==12.0.3; python_version < '3.14'",  # No Python 3.14 wheels yet
     "dash==3.3.0",
