@@ -719,8 +719,6 @@ class EffectCollection(ElementContainer[Effect]):
     Handling all Effects
     """
 
-    submodel: EffectCollectionModel | None
-
     def __init__(self, *effects: Effect, truncate_repr: int | None = None):
         """
         Initialize the EffectCollection.

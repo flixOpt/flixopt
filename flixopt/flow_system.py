@@ -1526,32 +1526,35 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             matching = []
             for name, cat in self._variable_categories.items():
                 if cat in category_set:
-                    if name in solution_vars:
-                        # Direct match - variable exists in solution (batched or not)
+                    is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
+                    if is_batched:
+                        # Batched variables should be expanded to unrolled element names
+                        # Handle size categories specially - they use |size suffix but different labels
+                        if cat == VariableCategory.FLOW_SIZE:
+                            # Only return flows that have investment parameters (not fixed sizes)
+                            from .interface import InvestParameters
+
+                            invest_flow_labels = {
+                                label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
+                            }
+                            matching.extend(
+                                v
+                                for v in solution_vars
+                                if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
+                            )
+                        elif cat == VariableCategory.STORAGE_SIZE:
+                            storage_labels = set(self.storages.keys())
+                            matching.extend(
+                                v
+                                for v in solution_vars
+                                if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                            )
+                        else:
+                            suffix = f'|{cat.value}'
+                            matching.extend(v for v in solution_vars if v.endswith(suffix))
+                    elif name in solution_vars:
+                        # Non-batched variable - direct match
                         matching.append(name)
-                    else:
-                        # Variable not in solution - check if it was unrolled
-                        # Only expand batched type-level variables to unrolled names
-                        is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
-                        if is_batched:
-                            # Handle size categories specially - they use |size suffix but different labels
-                            if cat == VariableCategory.FLOW_SIZE:
-                                flow_labels = set(self.flows.keys())
-                                matching.extend(
-                                    v
-                                    for v in solution_vars
-                                    if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
-                                )
-                            elif cat == VariableCategory.STORAGE_SIZE:
-                                storage_labels = set(self.storages.keys())
-                                matching.extend(
-                                    v
-                                    for v in solution_vars
-                                    if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
-                                )
-                            else:
-                                suffix = f'|{cat.value}'
-                                matching.extend(v for v in solution_vars if v.endswith(suffix))
             # Remove duplicates while preserving order
             seen = set()
             matching = [v for v in matching if not (v in seen or seen.add(v))]
@@ -1565,11 +1568,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for cat in category_set:
                 # Handle new sub-categories that map to old |size suffix
                 if cat == VariableCategory.FLOW_SIZE:
-                    flow_labels = set(self.flows.keys())
+                    # Only return flows that have investment parameters (not fixed sizes)
+                    from .interface import InvestParameters
+
+                    invest_flow_labels = {
+                        label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
+                    }
                     matching.extend(
                         v
                         for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
                     )
                 elif cat == VariableCategory.STORAGE_SIZE:
                     storage_labels = set(self.storages.keys())
