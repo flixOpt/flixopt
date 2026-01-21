@@ -4,7 +4,7 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_dims_compatible, assert_sets_equal, assert_var_equal, create_linopy_model
+from .conftest import assert_conequal, assert_dims_compatible, assert_var_equal, create_linopy_model
 
 
 class TestFlowModel:
@@ -20,26 +20,21 @@ class TestFlowModel:
 
         model = create_linopy_model(flow_system)
 
-        # Constraints are now batched at type-level, select specific flow
-        assert_conequal(
-            model.constraints['flow|hours_eq'].sel(flow='Sink(Wärme)'),
-            flow.submodel.total_flow_hours == (flow.submodel.flow_rate * model.timestep_duration).sum('time'),
-        )
-        assert_var_equal(flow.submodel.flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
-        assert_var_equal(
-            flow.submodel.total_flow_hours,
-            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
-        )
+        # Get variables from type-level model
+        flows_model = model._flows_model
+        flow_label = 'Sink(Wärme)'
+        total_flow_hours = flows_model.get_variable('hours', flow_label)
+        flow_rate = flows_model.get_variable('rate', flow_label)
 
-        # Variables are registered with short names in submodel
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate'},
-            msg='Incorrect variables',
+        # Constraints are batched at type-level, select specific flow
+        assert_conequal(
+            model.constraints['flow|hours_eq'].sel(flow=flow_label),
+            total_flow_hours == (flow_rate * model.timestep_duration).sum('time'),
         )
-        # Constraints are now at type-level (batched), submodel constraints are empty
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()), set(), msg='Batched model has no per-element constraints'
+        assert_var_equal(flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
+        assert_var_equal(
+            total_flow_hours,
+            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
         )
 
     def test_flow(self, basic_flow_system_linopy_coords, coords_config):
@@ -61,14 +56,20 @@ class TestFlowModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
-        # total_flow_hours - now batched at type-level
+        # Get variables from type-level model
+        flows_model = model._flows_model
+        flow_label = 'Sink(Wärme)'
+        total_flow_hours = flows_model.get_variable('hours', flow_label)
+        flow_rate = flows_model.get_variable('rate', flow_label)
+
+        # total_flow_hours - batched at type-level
         assert_conequal(
-            model.constraints['flow|hours_eq'].sel(flow='Sink(Wärme)'),
-            flow.submodel.total_flow_hours == (flow.submodel.flow_rate * model.timestep_duration).sum('time'),
+            model.constraints['flow|hours_eq'].sel(flow=flow_label),
+            total_flow_hours == (flow_rate * model.timestep_duration).sum('time'),
         )
 
         assert_var_equal(
-            flow.submodel.total_flow_hours,
+            total_flow_hours,
             model.add_variables(lower=10, upper=1000, coords=model.get_coords(['period', 'scenario'])),
         )
 
@@ -76,7 +77,7 @@ class TestFlowModel:
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         assert_var_equal(
-            flow.submodel.flow_rate,
+            flow_rate,
             model.add_variables(
                 lower=flow.relative_minimum * 100,
                 upper=flow.relative_maximum * 100,
@@ -84,28 +85,15 @@ class TestFlowModel:
             ),
         )
 
-        # load_factor constraints - now batched at type-level
+        # load_factor constraints - batched at type-level
         assert_conequal(
-            model.constraints['flow|load_factor_min'].sel(flow='Sink(Wärme)'),
-            flow.submodel.total_flow_hours >= model.timestep_duration.sum('time') * 0.1 * 100,
+            model.constraints['flow|load_factor_min'].sel(flow=flow_label),
+            total_flow_hours >= model.timestep_duration.sum('time') * 0.1 * 100,
         )
 
         assert_conequal(
-            model.constraints['flow|load_factor_max'].sel(flow='Sink(Wärme)'),
-            flow.submodel.total_flow_hours <= model.timestep_duration.sum('time') * 0.9 * 100,
-        )
-
-        # Submodel uses short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate'},
-            msg='Incorrect variables',
-        )
-        # Constraints are now at type-level (batched), submodel constraints are empty
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()),
-            set(),
-            msg='Batched model has no per-element constraints',
+            model.constraints['flow|load_factor_max'].sel(flow=flow_label),
+            total_flow_hours <= model.timestep_duration.sum('time') * 0.9 * 100,
         )
 
     def test_effects_per_flow_hour(self, basic_flow_system_linopy_coords, coords_config):
@@ -120,18 +108,6 @@ class TestFlowModel:
         )
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]), fx.Effect('CO2', 't', ''))
         model = create_linopy_model(flow_system)
-        _costs, _co2 = flow_system.effects['costs'], flow_system.effects['CO2']
-
-        # Submodel uses short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate'},
-            msg='Incorrect variables',
-        )
-        # Constraints are now at type-level (batched)
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()), set(), msg='Batched model has no per-element constraints'
-        )
 
         # Batched temporal shares are managed by the EffectsModel
         assert 'share|temporal' in model.constraints, 'Batched temporal share constraint should exist'
@@ -159,19 +135,6 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
 
-        # In type-level mode, flow.submodel._variables uses short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate', 'size'},
-            msg='Incorrect variables',
-        )
-        # Type-level mode has no per-element constraints (they're batched)
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()),
-            set(),
-            msg='Batched model has no per-element constraints',
-        )
-
         # Check batched variables exist
         assert 'flow|size' in model.variables, 'Batched size variable should exist'
         assert 'flow|rate' in model.variables, 'Batched rate variable should exist'
@@ -197,19 +160,6 @@ class TestFlowInvestModel:
 
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
-
-        # In type-level mode, flow.submodel._variables uses short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate', 'size', 'invested'},
-            msg='Incorrect variables',
-        )
-        # Type-level mode has no per-element constraints (they're batched)
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()),
-            set(),
-            msg='Batched model has no per-element constraints',
-        )
 
         # Check batched variables exist
         assert 'flow|size' in model.variables, 'Batched size variable should exist'
@@ -241,19 +191,6 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
         flow_label = 'Sink(Wärme)'
 
-        # Check batched variables exist with expected short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate', 'size', 'invested'},
-            msg='Incorrect variables',
-        )
-        # Type-level mode has no per-element constraints (they're batched)
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()),
-            set(),
-            msg='Batched model has no per-element constraints',
-        )
-
         # Check batched variables exist at model level
         assert 'flow|size' in model.variables
         assert 'flow|invested' in model.variables
@@ -263,7 +200,6 @@ class TestFlowInvestModel:
         # Access individual flow variables using batched approach
         flow_size = model.variables['flow|size'].sel(flow=flow_label, drop=True)
         flow_invested = model.variables['flow|invested'].sel(flow=flow_label, drop=True)
-        _flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
 
         assert_var_equal(
             flow_size,
@@ -300,19 +236,6 @@ class TestFlowInvestModel:
         model = create_linopy_model(flow_system)
         flow_label = 'Sink(Wärme)'
 
-        # Check batched variables exist with expected short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate', 'size'},
-            msg='Incorrect variables',
-        )
-        # Type-level mode has no per-element constraints (they're batched)
-        assert_sets_equal(
-            set(flow.submodel._constraints.keys()),
-            set(),
-            msg='Batched model has no per-element constraints',
-        )
-
         # Check batched variables exist at model level
         assert 'flow|size' in model.variables
         assert 'flow|rate' in model.variables
@@ -347,13 +270,6 @@ class TestFlowInvestModel:
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
         model = create_linopy_model(flow_system)
         flow_label = 'Sink(Wärme)'
-
-        # Check batched variables exist with expected short names
-        assert_sets_equal(
-            set(flow.submodel._variables.keys()),
-            {'total_flow_hours', 'flow_rate', 'size'},
-            msg='Incorrect variables',
-        )
 
         # Access individual flow variables
         flow_size = model.variables['flow|size'].sel(flow=flow_label, drop=True)

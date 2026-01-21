@@ -14,8 +14,8 @@ import xarray as xr
 
 from . import io as fx_io
 from .core import PlausibilityError
-from .elements import Component, ComponentModel, Flow
-from .features import InvestmentModel, InvestmentProxy, MaskHelpers
+from .elements import Component, Flow
+from .features import InvestmentModel, MaskHelpers
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
@@ -161,8 +161,6 @@ class LinearConverter(Component):
 
     """
 
-    submodel: LinearConverterModel | None
-
     def __init__(
         self,
         label: str,
@@ -176,11 +174,6 @@ class LinearConverter(Component):
         super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
-
-    def create_model(self, model: FlowSystemModel) -> LinearConverterModel:
-        self._plausibility_checks()
-        self.submodel = LinearConverterModel(model, self)
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and piecewise_conversion."""
@@ -395,8 +388,6 @@ class Storage(Component):
         With flow rates in m3/h, the charge state is therefore in m3.
     """
 
-    submodel: StorageModelProxy | InterclusterStorageModel | None
-
     def __init__(
         self,
         label: str,
@@ -446,38 +437,6 @@ class Storage(Component):
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
         self.cluster_mode = cluster_mode
-
-    def create_model(self, model: FlowSystemModel) -> InterclusterStorageModel | StorageModelProxy:
-        """Create the appropriate storage model based on cluster_mode.
-
-        For intercluster modes ('intercluster', 'intercluster_cyclic'), uses
-        :class:`InterclusterStorageModel` which implements S-N linking.
-        For basic storages, uses :class:`StorageModelProxy` which provides
-        element-level access to the batched StoragesModel.
-
-        Args:
-            model: The FlowSystemModel to add constraints to.
-
-        Returns:
-            InterclusterStorageModel or StorageModelProxy instance.
-        """
-        self._plausibility_checks()
-
-        # Use InterclusterStorageModel for intercluster modes when clustering is active
-        clustering = model.flow_system.clustering
-        is_intercluster = clustering is not None and self.cluster_mode in (
-            'intercluster',
-            'intercluster_cyclic',
-        )
-
-        if is_intercluster:
-            # Intercluster storages use standalone model (too complex to batch)
-            self.submodel = InterclusterStorageModel(model, self)
-        else:
-            # Basic storages use proxy to batched StoragesModel
-            self.submodel = StorageModelProxy(model, self)
-
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
@@ -732,8 +691,6 @@ class Transmission(Component):
 
     """
 
-    submodel: TransmissionModel | None
-
     def __init__(
         self,
         label: str,
@@ -793,64 +750,13 @@ class Transmission(Component):
                     f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
                 )
 
-    def create_model(self, model) -> TransmissionModel:
-        self._plausibility_checks()
-        self.submodel = TransmissionModel(model, self)
-        return self.submodel
-
     def transform_data(self) -> None:
         super().transform_data()
         self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
         self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
 
 
-class TransmissionModel(ComponentModel):
-    """Lightweight proxy for Transmission elements when using type-level modeling.
-
-    Transmission constraints are created by ComponentsModel.create_transmission_constraints().
-    This proxy exists for:
-    - Results structure compatibility
-    - Submodel registration in FlowSystemModel
-    """
-
-    element: Transmission
-
-    def _do_modeling(self):
-        """No-op: transmission constraints handled by ComponentsModel."""
-        super()._do_modeling()
-        # Transmission efficiency constraints are now created by
-        # ComponentsModel.create_transmission_constraints()
-        pass
-
-
-class LinearConverterModel(ComponentModel):
-    """Mathematical model implementation for LinearConverter components.
-
-    Creates optimization constraints for linear conversion relationships between
-    input and output flows, supporting both simple conversion factors and piecewise
-    non-linear approximations.
-
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/LinearConverter/>
-    """
-
-    element: LinearConverter
-
-    def __init__(self, model: FlowSystemModel, element: LinearConverter):
-        self.piecewise_conversion: PiecewiseConversion | None = None
-        super().__init__(model, element)
-
-    def _do_modeling(self):
-        """Create linear conversion equations or piecewise conversion constraints between input and output flows"""
-        super()._do_modeling()
-
-        # Both conversion factor and piecewise conversion constraints are now handled
-        # by type-level model ConvertersModel in elements.py
-        # This model is kept for component-specific logic and results structure
-        pass
-
-
-class InterclusterStorageModel(ComponentModel):
+class InterclusterStorageModel:
     """Storage model with inter-cluster linking for clustered optimization.
 
     This is a standalone model for storages with ``cluster_mode='intercluster'``
@@ -952,7 +858,69 @@ class InterclusterStorageModel(ComponentModel):
     element: Storage
 
     def __init__(self, model: FlowSystemModel, element: Storage):
-        super().__init__(model, element)
+        self._model = model
+        self.element = element
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+        self._submodels: dict[str, InvestmentModel] = {}
+        self.label_of_element = element.label_full
+        self.label_full = element.label_full
+
+        # Run modeling
+        self._do_modeling()
+
+    def __getitem__(self, key: str) -> linopy.Variable:
+        """Get a variable by its short name."""
+        return self._variables[key]
+
+    @property
+    def submodels(self) -> dict[str, InvestmentModel]:
+        """Access to submodels (for investment)."""
+        return self._submodels
+
+    def add_variables(
+        self,
+        lower: float | xr.DataArray = -np.inf,
+        upper: float | xr.DataArray = np.inf,
+        coords: xr.Coordinates | None = None,
+        dims: list[str] | None = None,
+        short_name: str | None = None,
+        name: str | None = None,
+        category: VariableCategory | None = None,
+    ) -> linopy.Variable:
+        """Add a variable and register it."""
+        if name is None:
+            name = f'{self.label_full}|{short_name}'
+        var = self._model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            dims=dims,
+            name=name,
+            category=category,
+        )
+        if short_name:
+            self._variables[short_name] = var
+        return var
+
+    def add_constraints(
+        self,
+        expr: linopy.LinearExpression,
+        short_name: str | None = None,
+        name: str | None = None,
+    ) -> linopy.Constraint:
+        """Add a constraint and register it."""
+        if name is None:
+            name = f'{self.label_full}|{short_name}'
+        con = self._model.add_constraints(expr, name=name)
+        if short_name:
+            self._constraints[short_name] = con
+        return con
+
+    def add_submodels(self, submodel: InvestmentModel, short_name: str) -> InvestmentModel:
+        """Register a submodel."""
+        self._submodels[short_name] = submodel
+        return submodel
 
     # =========================================================================
     # Variable and Constraint Creation
@@ -960,7 +928,6 @@ class InterclusterStorageModel(ComponentModel):
 
     def _do_modeling(self):
         """Create charge state variables, energy balance equations, and inter-cluster linking."""
-        super()._do_modeling()
         self._create_storage_variables()
         self._add_netto_discharge_constraint()
         self._add_energy_balance_constraint()
@@ -2354,92 +2321,6 @@ class StoragesModel:
             )
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} storages')
-
-
-class StorageModelProxy(ComponentModel):
-    """Lightweight proxy for Storage elements when using type-level modeling.
-
-    Instead of creating its own variables and constraints, this proxy
-    provides access to the variables created by StoragesModel.
-    """
-
-    element: Storage
-
-    def __init__(self, model: FlowSystemModel, element: Storage):
-        # Set _storages_model BEFORE super().__init__() because _do_modeling() may use it
-        self._storages_model = model._storages_model
-        super().__init__(model, element)
-
-        # Register variables from StoragesModel
-        if self._storages_model is not None:
-            charge_state = self._storages_model.get_variable('charge', self.label_full)
-            if charge_state is not None:
-                self.register_variable(charge_state, 'charge_state')
-
-            netto_discharge = self._storages_model.get_variable('netto', self.label_full)
-            if netto_discharge is not None:
-                self.register_variable(netto_discharge, 'netto_discharge')
-
-    def _do_modeling(self):
-        """Skip most modeling - StoragesModel handles variables and constraints.
-
-        Still creates FlowModels for charging/discharging flows and investment model.
-        """
-        # Create flow models for charging/discharging
-        all_flows = self.element.inputs + self.element.outputs
-
-        # Set status_parameters on flows if needed (from ComponentModel)
-        if self.element.status_parameters:
-            for flow in all_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
-
-        if self.element.prevent_simultaneous_flows:
-            for flow in self.element.prevent_simultaneous_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
-
-        # Note: All storage modeling is now handled by StoragesModel type-level model:
-        # - Variables: charge_state, netto_discharge, size, invested
-        # - Constraints: netto_discharge, energy_balance, initial/final, balanced_sizes
-        #
-        # Flow modeling is handled by FlowsModel type-level model.
-        # Investment modeling for storages is handled by StoragesModel.create_investment_model().
-        # The balanced_sizes constraint is handled by StoragesModel._add_balanced_flow_sizes_constraint().
-        #
-        # This proxy class only exists for backwards compatibility.
-
-    @property
-    def investment(self):
-        """Investment feature - provides access to batched investment variables for this storage.
-
-        Returns a proxy object with size/invested properties that select this storage's
-        portion of the batched investment variables.
-        """
-        if not isinstance(self.element.capacity_in_flow_hours, InvestParameters):
-            return None
-
-        if self._storages_model.size is None:
-            return None
-
-        # Return a proxy that provides size/invested for this specific element
-        return InvestmentProxy(self._storages_model, self.label_full, dim_name='storage')
-
-    @property
-    def charge_state(self) -> linopy.Variable:
-        """Charge state variable."""
-        return self['charge_state']
-
-    @property
-    def netto_discharge(self) -> linopy.Variable:
-        """Netto discharge variable."""
-        return self['netto_discharge']
 
 
 @register_class_for_io

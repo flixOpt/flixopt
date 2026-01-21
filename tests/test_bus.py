@@ -17,9 +17,14 @@ class TestBusModel:
         )
         model = create_linopy_model(flow_system)
 
-        # Check proxy variables contain individual flow names for backward compatibility
-        assert set(bus.submodel.variables) == {'WärmelastTest(Q_th_Last)|flow_rate', 'GastarifTest(Q_Gas)|flow_rate'}
-        assert set(bus.submodel.constraints) == {'TestBus|balance'}
+        # Check batched variables exist
+        assert 'flow|rate' in model.variables
+        # Check flows are in the coordinate
+        flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
+        assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
+        assert 'GastarifTest(Q_Gas)' in flow_rate_coords
+        # Check balance constraint exists
+        assert 'TestBus|balance' in model.constraints
 
         # Access batched flow rate variable and select individual flows
         flow_rate = model.variables['flow|rate']
@@ -42,14 +47,13 @@ class TestBusModel:
         )
         model = create_linopy_model(flow_system)
 
-        # Check proxy variables contain individual names for backward compatibility
-        assert set(bus.submodel.variables) == {
-            'TestBus|virtual_supply',
-            'TestBus|virtual_demand',
-            'WärmelastTest(Q_th_Last)|flow_rate',
-            'GastarifTest(Q_Gas)|flow_rate',
-        }
-        assert set(bus.submodel.constraints) == {'TestBus|balance'}
+        # Check batched variables exist
+        assert 'flow|rate' in model.variables
+        flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
+        assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
+        assert 'GastarifTest(Q_Gas)' in flow_rate_coords
+        # Check balance constraint exists
+        assert 'TestBus|balance' in model.constraints
 
         # Verify batched variables exist and are accessible
         assert 'flow|rate' in model.variables
@@ -72,9 +76,9 @@ class TestBusModel:
         assert 'TestBus->Penalty(temporal)' in model.constraints
         assert 'TestBus->Penalty(temporal)' in model.variables
 
-        # Verify penalty effect model exists
+        # Verify penalty effect exists in the effects collection
         penalty_effect = flow_system.effects.penalty_effect
-        assert penalty_effect.submodel is not None
+        assert penalty_effect is not None
 
     def test_bus_with_coords(self, basic_flow_system_linopy_coords, coords_config):
         """Test bus behavior across different coordinate configurations."""
@@ -87,9 +91,13 @@ class TestBusModel:
         )
         model = create_linopy_model(flow_system)
 
-        # Same core assertions as your existing test
-        assert set(bus.submodel.variables) == {'WärmelastTest(Q_th_Last)|flow_rate', 'GastarifTest(Q_Gas)|flow_rate'}
-        assert set(bus.submodel.constraints) == {'TestBus|balance'}
+        # Check batched variables exist
+        assert 'flow|rate' in model.variables
+        flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
+        assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
+        assert 'GastarifTest(Q_Gas)' in flow_rate_coords
+        # Check balance constraint exists
+        assert 'TestBus|balance' in model.constraints
 
         # Access batched flow rate variable and select individual flows
         flow_rate = model.variables['flow|rate']

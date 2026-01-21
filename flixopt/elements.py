@@ -15,14 +15,13 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, InvestmentProxy, MaskHelpers, StatusProxy
+from .features import MaskHelpers
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
     ComponentVarName,
     ConverterVarName,
     Element,
-    ElementModel,
     ElementType,
     FlowSystemModel,
     FlowVarName,
@@ -113,11 +112,6 @@ class Component(Element):
         self._connect_flows()
 
         self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
-
-    def create_model(self, model: FlowSystemModel) -> ComponentModel:
-        self._plausibility_checks()
-        self.submodel = ComponentModel(model, self)
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects and flows.
@@ -265,8 +259,6 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
-    submodel: BusModelProxy | None
-
     def __init__(
         self,
         label: str,
@@ -284,16 +276,6 @@ class Bus(Element):
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
         self.inputs: list[Flow] = []
         self.outputs: list[Flow] = []
-
-    def create_model(self, model: FlowSystemModel) -> BusModelProxy:
-        """Create the bus model proxy for this bus element.
-
-        BusesModel creates the actual variables/constraints. The proxy provides
-        element-level access to those batched variables.
-        """
-        self._plausibility_checks()
-        self.submodel = BusModelProxy(model, self)
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested flows.
@@ -480,8 +462,6 @@ class Flow(Element):
 
     """
 
-    submodel: FlowModelProxy | None
-
     def __init__(
         self,
         label: str,
@@ -528,16 +508,6 @@ class Flow(Element):
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
             )
         self.bus = bus
-
-    def create_model(self, model: FlowSystemModel) -> FlowModelProxy:
-        """Create the flow model proxy for this flow element.
-
-        FlowsModel creates the actual variables/constraints. The proxy provides
-        element-level access to those batched variables.
-        """
-        self._plausibility_checks()
-        self.submodel = FlowModelProxy(model, self)
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects.
@@ -703,140 +673,6 @@ class Flow(Element):
     def _format_invest_params(self, params: InvestParameters) -> str:
         """Format InvestParameters for display."""
         return f'size: {params.format_for_repr()}'
-
-
-class FlowModelProxy(ElementModel):
-    """Lightweight proxy for Flow elements when using type-level modeling.
-
-    Instead of creating its own variables and constraints, this proxy
-    provides access to the variables created by FlowsModel. This enables
-    the same interface (flow_rate, total_flow_hours, etc.) while avoiding
-    duplicate variable/constraint creation.
-    """
-
-    element: Flow  # Type hint
-
-    def __init__(self, model: FlowSystemModel, element: Flow):
-        # Set _flows_model BEFORE super().__init__() because _do_modeling() uses it
-        self._flows_model = model._flows_model
-        super().__init__(model, element)
-
-        # Public variables dict with full element names (for .variables property)
-        self._public_variables: dict[str, linopy.Variable] = {}
-
-        # Register variables from FlowsModel in our local registry
-        # Short names go to _variables (for property access like self['flow_rate'])
-        # Full names go to _public_variables (for .variables property that tests use)
-        if self._flows_model is not None:
-            # Flow rate
-            flow_rate = self._flows_model.get_variable('rate', self.label_full)
-            self.register_variable(flow_rate, 'flow_rate')
-            self._public_variables[f'{self.label_full}|flow_rate'] = flow_rate
-
-            # Total flow hours
-            total_flow_hours = self._flows_model.get_variable('hours', self.label_full)
-            self.register_variable(total_flow_hours, 'total_flow_hours')
-            self._public_variables[f'{self.label_full}|total_flow_hours'] = total_flow_hours
-
-            # Status if applicable
-            if self.label_full in self._flows_model.status_ids:
-                status = self._flows_model.get_variable('status', self.label_full)
-                self.register_variable(status, 'status')
-                self._public_variables[f'{self.label_full}|status'] = status
-
-                # Active hours
-                active_hours = self._flows_model.get_variable('active_hours', self.label_full)
-                if active_hours is not None:
-                    self.register_variable(active_hours, 'active_hours')
-                    self._public_variables[f'{self.label_full}|active_hours'] = active_hours
-
-            # Investment variables if applicable (from FlowsModel)
-            if self.label_full in self._flows_model.investment_ids:
-                size = self._flows_model.get_variable('size', self.label_full)
-                if size is not None:
-                    self.register_variable(size, 'size')
-                    self._public_variables[f'{self.label_full}|size'] = size
-
-                if self.label_full in self._flows_model.optional_investment_ids:
-                    invested = self._flows_model.get_variable('invested', self.label_full)
-                    if invested is not None:
-                        self.register_variable(invested, 'invested')
-                        self._public_variables[f'{self.label_full}|invested'] = invested
-
-    def _do_modeling(self):
-        """Skip modeling - FlowsModel already created everything via StatusHelpers."""
-        # Status features are handled by StatusHelpers in FlowsModel
-        pass
-
-    @property
-    def variables(self) -> dict[str, linopy.Variable]:
-        """Return variables with full element names (for backward compatibility with tests)."""
-        return self._public_variables
-
-    @property
-    def constraints(self) -> dict[str, linopy.Constraint]:
-        """Return registered constraints with individual element names (not batched names)."""
-        return self._constraints
-
-    @property
-    def with_status(self) -> bool:
-        return self.element.status_parameters is not None
-
-    @property
-    def with_investment(self) -> bool:
-        return isinstance(self.element.size, InvestParameters)
-
-    @property
-    def flow_rate(self) -> linopy.Variable:
-        """Main flow rate variable from FlowsModel."""
-        return self['flow_rate']
-
-    @property
-    def total_flow_hours(self) -> linopy.Variable:
-        """Total flow hours variable from FlowsModel."""
-        return self['total_flow_hours']
-
-    @property
-    def status(self) -> StatusProxy | None:
-        """Status feature - returns proxy to FlowsModel's batched status variables."""
-        if not self.with_status:
-            return None
-
-        # Return a proxy that provides active_hours/startup/etc. for this specific element
-        # FlowsModel has get_variable and _previous_status that StatusProxy needs
-        return StatusProxy(self._flows_model, self.label_full)
-
-    @property
-    def investment(self) -> InvestmentModel | InvestmentProxy | None:
-        """Investment feature - returns proxy to access investment variables."""
-        if not self.with_investment:
-            return None
-
-        # Return a proxy that provides size/invested for this specific element from FlowsModel
-        return InvestmentProxy(self._flows_model, self.label_full, dim_name='flow')
-
-    @property
-    def previous_status(self) -> xr.DataArray | None:
-        """Previous status of the flow rate."""
-        previous_flow_rate = self.element.previous_flow_rate
-        if previous_flow_rate is None:
-            return None
-
-        return ModelingUtilitiesAbstract.to_binary(
-            values=xr.DataArray(
-                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
-            ),
-            epsilon=CONFIG.Modeling.epsilon,
-            dims='time',
-        )
-
-    def results_structure(self):
-        return {
-            **super().results_structure(),
-            'start': self.element.bus if self.element.is_input_in_component else self.element.component,
-            'end': self.element.component if self.element.is_input_in_component else self.element.bus,
-            'component': self.element.component,
-        }
 
 
 # =============================================================================
@@ -2293,156 +2129,6 @@ class BusesModel(TypeModel):
         if element_id is not None:
             return var.sel({self.dim_name: element_id})
         return var
-
-
-class BusModelProxy(ElementModel):
-    """Lightweight proxy for Bus elements when using type-level modeling.
-
-    Instead of creating its own variables and constraints, this proxy
-    provides access to the variables created by BusesModel. This enables
-    the same interface (virtual_supply, virtual_demand, etc.) while avoiding
-    duplicate variable/constraint creation.
-    """
-
-    element: Bus  # Type hint
-
-    def __init__(self, model: FlowSystemModel, element: Bus):
-        # Set _buses_model BEFORE super().__init__() for consistency
-        self._buses_model = model._buses_model
-
-        # Pre-fetch virtual supply/demand BEFORE super().__init__() because
-        # _do_modeling() is called during super().__init__() and needs them
-        self.virtual_supply: linopy.Variable | None = None
-        self.virtual_demand: linopy.Variable | None = None
-        if self._buses_model is not None and element.label_full in self._buses_model.imbalance_ids:
-            self.virtual_supply = self._buses_model.get_variable('virtual_supply', element.label_full)
-            self.virtual_demand = self._buses_model.get_variable('virtual_demand', element.label_full)
-
-        super().__init__(model, element)
-
-        # Register variables from BusesModel in our local registry (after super().__init__)
-        if self.virtual_supply is not None:
-            self.register_variable(self.virtual_supply, 'virtual_supply')
-        if self.virtual_demand is not None:
-            self.register_variable(self.virtual_demand, 'virtual_demand')
-
-    def _do_modeling(self):
-        """Skip modeling - BusesModel already created everything."""
-        # Build public variables dict with individual flow names for backward compatibility
-        self._public_variables: dict[str, linopy.Variable] = {}
-        self._public_constraints: dict[str, linopy.Constraint] = {}
-
-        flows_model = self._model._flows_model
-        if flows_model is not None:
-            for flow in self.element.inputs + self.element.outputs:
-                flow_rate = flows_model.get_variable('rate', flow.label_full)
-                if flow_rate is not None:
-                    self._public_variables[f'{flow.label_full}|flow_rate'] = flow_rate
-
-        # Add virtual supply/demand variables if bus has imbalance
-        if self._buses_model is not None and self.label_full in self._buses_model.imbalance_ids:
-            if self.virtual_supply is not None:
-                self._public_variables[f'{self.label_full}|virtual_supply'] = self.virtual_supply
-            if self.virtual_demand is not None:
-                self._public_variables[f'{self.label_full}|virtual_demand'] = self.virtual_demand
-
-        # Register balance constraint - constraint name is '{label_full}|balance'
-        balance_con_name = f'{self.label_full}|balance'
-        if self._buses_model is not None and balance_con_name in self._model.constraints:
-            balance_con = self._model.constraints[balance_con_name]
-            self._public_constraints[balance_con_name] = balance_con
-
-    @property
-    def variables(self) -> dict[str, linopy.Variable]:
-        """Return variables dict with individual flow names for backward compatibility."""
-        return self._public_variables
-
-    @property
-    def constraints(self) -> dict[str, linopy.Constraint]:
-        """Return constraints dict with individual element names for backward compatibility."""
-        return self._public_constraints
-
-    def results_structure(self):
-        # Get flow rate variable names from FlowsModel
-        flows_model = self._model._flows_model
-        flow_rate_var = flows_model.get_variable('rate') if flows_model else None
-        rate_name = flow_rate_var.name if flow_rate_var is not None else 'flow|rate'
-        inputs = [rate_name for _ in self.element.inputs]
-        outputs = [rate_name for _ in self.element.outputs]
-        if self.virtual_supply is not None:
-            inputs.append(self.virtual_supply.name)
-        if self.virtual_demand is not None:
-            outputs.append(self.virtual_demand.name)
-        return {
-            **super().results_structure(),
-            'inputs': inputs,
-            'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
-        }
-
-
-class ComponentModel(ElementModel):
-    element: Component  # Type hint
-
-    def __init__(self, model: FlowSystemModel, element: Component):
-        self.status: StatusProxy | None = None
-        super().__init__(model, element)
-
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels.
-
-        Note: status_parameters setup is done in FlowSystemModel.do_modeling() preprocessing,
-        before FlowsModel is created. This ensures FlowsModel knows which flows need status variables.
-        """
-        super()._do_modeling()
-
-        # Create FlowModelProxy for each flow (variables/constraints handled by FlowsModel)
-        for flow in self.element.inputs + self.element.outputs:
-            self.add_submodels(flow.create_model(self._model), short_name=flow.label)
-        # Status and prevent_simultaneous constraints handled by type-level models
-
-    def results_structure(self):
-        # Get flow rate variable names from FlowsModel
-        flows_model = self._model._flows_model
-        flow_rate_var = flows_model.get_variable('rate') if flows_model else None
-        rate_name = flow_rate_var.name if flow_rate_var is not None else 'flow|rate'
-        return {
-            **super().results_structure(),
-            'inputs': [rate_name for _ in self.element.inputs],
-            'outputs': [rate_name for _ in self.element.outputs],
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
-        }
-
-    @property
-    def previous_status(self) -> xr.DataArray | None:
-        """Previous status of the component, derived from its flows.
-
-        Note: This property is deprecated and will be removed. Use FlowsModel/ComponentsModel instead.
-        """
-        if self.element.status_parameters is None:
-            raise ValueError(f'status_parameters not present in \n{self}\nCant access previous_status')
-
-        # Get previous_status from FlowsModel
-        flows_model = self._model._flows_model
-        if flows_model is None:
-            return None
-
-        previous_status = []
-        for flow in self.element.inputs + self.element.outputs:
-            prev = flows_model.get_previous_status(flow)
-            if prev is not None:
-                previous_status.append(prev)
-
-        if not previous_status:  # Empty list
-            return None
-
-        max_len = max(da.sizes['time'] for da in previous_status)
-
-        padded_previous_status = [
-            da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
-            for da in previous_status
-        ]
-        return xr.concat(padded_previous_status, dim='flow').any(dim='flow').astype(int)
 
 
 class ComponentsModel:

@@ -1261,6 +1261,23 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         record('storages_investment_constraints')
 
+        # Create InterclusterStorageModel for intercluster storages
+        # These are too complex to batch and are handled individually
+        from .components import InterclusterStorageModel
+
+        self._intercluster_storage_models: list[InterclusterStorageModel] = []
+        for component in self.flow_system.components.values():
+            if isinstance(component, Storage):
+                clustering = self.flow_system.clustering
+                is_intercluster = clustering is not None and component.cluster_mode in (
+                    'intercluster',
+                    'intercluster_cyclic',
+                )
+                if is_intercluster:
+                    self._intercluster_storage_models.append(InterclusterStorageModel(self, component))
+
+        record('intercluster_storages')
+
         # Collect components for batched handling
         from .components import Transmission
         from .elements import ComponentsModel, PreventSimultaneousFlowsModel
@@ -1320,20 +1337,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         self._prevent_simultaneous_model.create_constraints()
 
         record('prevent_simultaneous')
-
-        # Create component models (without flow modeling - flows handled by FlowsModel)
-        # Note: StorageModelProxy will skip InvestmentModel creation since InvestmentsModel handles it
-        # Note: ComponentModel will skip status creation since ComponentsModel handles it
-        for component in self.flow_system.components.values():
-            component.create_model(self)
-
-        record('components')
-
-        # Create bus proxy models (for results structure, no variables/constraints)
-        for bus in self.flow_system.buses.values():
-            bus.create_model(self)
-
-        record('buses')
 
         # Post-processing
         self._add_scenario_equality_constraints()
