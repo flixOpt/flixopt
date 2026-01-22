@@ -1550,7 +1550,6 @@ class StatisticsPlotAccessor:
         _apply_slot_defaults(plotly_kwargs, 'balance')
         fig = ds.plotly.fast_bar(
             title=f'{node} [{unit_label}]' if unit_label else node,
-            line_shape='hv',
             **color_kwargs,
             **plotly_kwargs,
         )
@@ -1674,7 +1673,6 @@ class StatisticsPlotAccessor:
         _apply_slot_defaults(plotly_kwargs, 'carrier_balance')
         fig = ds.plotly.fast_bar(
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
-            line_shape='hv',
             **color_kwargs,
             **plotly_kwargs,
         )
