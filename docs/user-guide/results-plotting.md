@@ -394,24 +394,38 @@ flow_system.carriers  # CarrierContainer with locally registered carriers
 flow_system.get_carrier('biogas')  # Returns Carrier object
 ```
 
-### Color Accessor
+### Setting Colors via Topology Accessor
 
-The `flow_system.colors` accessor provides centralized color configuration:
+The `flow_system.topology` accessor provides methods for bulk color assignment:
 
 ```python
 # Configure colors for components
-flow_system.colors.setup({
+flow_system.topology.set_component_colors({
     'Boiler': '#D35400',
     'CHP': '#8E44AD',
     'HeatPump': '#27AE60',
 })
 
 # Or set individual colors
-flow_system.colors.set_component_color('Boiler', '#D35400')
-flow_system.colors.set_carrier_color('biogas', '#228B22')
+flow_system.topology.set_component_color('Boiler', '#D35400')
+flow_system.topology.set_carrier_color('electricity', '#FECB52')
 
-# Load from file
-flow_system.colors.setup('colors.json')  # or .yaml
+# Apply a colorscale to groups of components
+flow_system.topology.set_component_colors({
+    'Oranges': ['Solar1', 'Solar2', 'Solar3'],  # Colorscale for solar
+    'Blues': ['Wind1', 'Wind2'],                 # Colorscale for wind
+    'Battery': 'green',                          # Direct color assignment
+})
+
+# Apply a colorscale to all components
+flow_system.topology.set_component_colors('turbo')
+```
+
+You can also set colors at component instantiation:
+
+```python
+boiler = fx.Boiler('Boiler', ..., color='#D35400')
+storage = fx.Storage('Battery', ..., color='green')
 ```
 
 ### Context-Aware Coloring
@@ -435,22 +449,21 @@ flow_system.statistics.plot.balance('CHP')
 Colors are resolved in this order:
 
 1. **Explicit colors** passed to plot methods (always override)
-2. **Component/bus colors** set via `flow_system.colors.setup()`
-3. **Element `meta_data['color']`** if present
-4. **Carrier colors** from FlowSystem or CONFIG.Carriers
-5. **Default colorscale** (controlled by `CONFIG.Plotting.default_qualitative_colorscale`)
+2. **Component colors** set via `flow_system.topology.set_component_colors()` or at instantiation
+3. **Carrier colors** from FlowSystem or CONFIG.Carriers (for buses)
+4. **Default colorscale** (controlled by `CONFIG.Plotting.default_qualitative_colorscale`)
 
 ### Persistence
 
 Color configurations are automatically saved with the FlowSystem:
 
 ```python
-# Colors are persisted
+# Colors are persisted (component.color attributes)
 flow_system.to_netcdf('my_system.nc')
 
 # And restored
 loaded = fx.FlowSystem.from_netcdf('my_system.nc')
-loaded.colors  # Configuration restored
+loaded.topology.component_colors  # Colors are restored
 ```
 
 ### Display Control
