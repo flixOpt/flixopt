@@ -301,6 +301,7 @@ fs.transform.cluster(
 
 - `FlowSystem.weights` returns `dict[str, xr.DataArray]` (unit weights instead of `1.0` float fallback)
 - `FlowSystemDimensions` type now includes `'cluster'`
+- `statistics.plot.balance()`, `carrier_balance()`, and `storage()` now use `xarray_plotly.fast_bar()` internally (styled stacked areas for better performance)
 
 ### 🗑️ Deprecated
 
