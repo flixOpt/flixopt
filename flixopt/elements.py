@@ -1253,18 +1253,18 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         dt = self.model.timestep_duration
 
         # Effects per active hour: status * factor * dt
-        if (factors := self.status_effects_per_active_hour) is not None:
-            flow_ids = factors.coords[dim].values
+        factor = self.data.status_effects_per_active_hour
+        if factor is not None:
+            flow_ids = factor.coords[dim].values
             status_subset = self.status.sel({dim: flow_ids})
-            expr = (status_subset * factors.fillna(0) * dt).sum(dim)
-            effects_model.add_temporal_contribution(expr)
+            effects_model.add_temporal_contribution((status_subset * factor.fillna(0) * dt).sum(dim))
 
         # Effects per startup: startup * factor
-        if (factors := self.status_effects_per_startup) is not None and self.startup is not None:
-            flow_ids = factors.coords[dim].values
+        factor = self.data.status_effects_per_startup
+        if self.startup is not None and factor is not None:
+            flow_ids = factor.coords[dim].values
             startup_subset = self.startup.sel({dim: flow_ids})
-            expr = (startup_subset * factors.fillna(0)).sum(dim)
-            effects_model.add_temporal_contribution(expr)
+            effects_model.add_temporal_contribution((startup_subset * factor.fillna(0)).sum(dim))
 
     def create_status_model(self) -> None:
         """Create status variables and constraints for flows with status.
