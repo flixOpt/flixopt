@@ -1248,14 +1248,14 @@ class FlowsModel(TypeModel):
         if factor is not None:
             flow_ids = factor.coords[dim].values
             status_subset = self.status.sel({dim: flow_ids})
-            effects_model.add_temporal_contribution((status_subset * factor.fillna(0) * dt).sum(dim))
+            effects_model.add_temporal_contribution((status_subset * factor * dt).sum(dim))
 
         # Effects per startup: startup * factor
         factor = self.data.effects_per_startup
         if self.startup is not None and factor is not None:
             flow_ids = factor.coords[dim].values
             startup_subset = self.startup.sel({dim: flow_ids})
-            effects_model.add_temporal_contribution((startup_subset * factor.fillna(0)).sum(dim))
+            effects_model.add_temporal_contribution((startup_subset * factor).sum(dim))
 
     # === Status Variables (cached_property) ===
 
@@ -1764,60 +1764,57 @@ class BusesModel(TypeModel):
         - bus|balance: Sum(inputs) - Sum(outputs) == 0 for all buses
         - With virtual_supply/demand adjustment for buses with imbalance
 
-        Uses sparse approach: only includes flows that actually connect to each bus,
-        avoiding zero coefficients in the LP file.
+        Uses dense coefficient matrix approach for fast vectorized computation.
+        The coefficient matrix has +1 for inputs, -1 for outputs, 0 for unconnected flows.
         """
         flow_rate = self._flows_model._variables['rate']
         flow_dim = self._flows_model.dim_name  # 'flow'
         bus_dim = self.dim_name  # 'bus'
 
-        # Precompute flow lists per bus (sparse representation)
-        bus_inputs: dict[str, list[str]] = {}
-        bus_outputs: dict[str, list[str]] = {}
+        # Get ordered lists for coefficient matrix
+        bus_ids = list(self.elements.keys())
+        flow_ids = list(flow_rate.coords[flow_dim].values)
+
+        if not bus_ids or not flow_ids:
+            logger.debug('BusesModel: no buses or flows, skipping balance constraints')
+            return
+
+        # Build dense coefficient matrix: coeffs[bus, flow] = +1 inputs, -1 outputs, 0 other
+        bus_index = {b: i for i, b in enumerate(bus_ids)}
+        flow_index = {f: i for i, f in enumerate(flow_ids)}
+
+        coeffs = np.zeros((len(bus_ids), len(flow_ids)), dtype=np.float64)
         for bus in self.elements.values():
-            bus_inputs[bus.label_full] = [f.label_full for f in bus.inputs]
-            bus_outputs[bus.label_full] = [f.label_full for f in bus.outputs]
+            bus_idx = bus_index[bus.label_full]
+            for f in bus.inputs:
+                coeffs[bus_idx, flow_index[f.label_full]] = 1.0
+            for f in bus.outputs:
+                coeffs[bus_idx, flow_index[f.label_full]] = -1.0
 
-        # Build balance expressions per bus (sparse - only non-zero terms)
-        balance_list = []
-        for bus in self.elements.values():
-            bus_label = bus.label_full
-            input_ids = bus_inputs[bus_label]
-            output_ids = bus_outputs[bus_label]
+        coeffs_da = xr.DataArray(
+            coeffs,
+            coords={bus_dim: bus_ids, flow_dim: flow_ids},
+            dims=[bus_dim, flow_dim],
+        )
 
-            # Sum inputs - outputs (only includes actual flows, no zeros)
-            if input_ids:
-                inputs_sum = flow_rate.sel({flow_dim: input_ids}).sum(flow_dim)
-            else:
-                inputs_sum = 0
+        # Compute balance: sum over flows of (coeffs * flow_rate) - vectorized
+        balance = (coeffs_da * flow_rate).sum(flow_dim)
 
-            if output_ids:
-                outputs_sum = flow_rate.sel({flow_dim: output_ids}).sum(flow_dim)
-            else:
-                outputs_sum = 0
+        # Add virtual flows for buses with imbalance
+        if self.buses_with_imbalance:
+            virtual_supply = self._variables['virtual_supply']
+            virtual_demand = self._variables['virtual_demand']
+            # Only add to buses that have imbalance (others get 0 contribution)
+            balance = balance + virtual_supply.reindex({bus_dim: bus_ids}, fill_value=0)
+            balance = balance - virtual_demand.reindex({bus_dim: bus_ids}, fill_value=0)
 
-            balance = inputs_sum - outputs_sum
+        # Single batched constraint for all buses
+        self.model.add_constraints(
+            balance == 0,
+            name='bus|balance',
+        )
 
-            # Add virtual flows for buses with imbalance
-            if bus.allows_imbalance:
-                virtual_supply = self._variables['virtual_supply'].sel({bus_dim: bus_label})
-                virtual_demand = self._variables['virtual_demand'].sel({bus_dim: bus_label})
-                balance = balance + virtual_supply - virtual_demand
-
-            # Skip if no flows connected (both sides are 0)
-            if isinstance(balance, (int, float)):
-                continue
-
-            balance_list.append((bus_label, balance))
-
-        # Create constraints - one per bus for sparse LP output
-        for bus_label, balance in balance_list:
-            self.model.add_constraints(
-                balance == 0,
-                name=f'{bus_label}|balance',
-            )
-
-        logger.debug(f'BusesModel created {len(balance_list)} balance constraints')
+        logger.debug(f'BusesModel created batched balance constraint for {len(bus_ids)} buses')
 
     def collect_penalty_share_specs(self) -> list[tuple[str, xr.DataArray]]:
         """Collect penalty effect share specifications for buses with imbalance.

@@ -205,7 +205,7 @@ class StatusData:
 
         flow_factors = [
             xr.concat(
-                [xr.DataArray(getattr(self._params[eid], attr).get(eff, np.nan)) for eff in self._effect_ids],
+                [xr.DataArray(getattr(self._params[eid], attr).get(eff, 0.0)) for eff in self._effect_ids],
                 dim='effect',
                 coords='minimal',
             ).assign_coords(effect=self._effect_ids)
@@ -346,7 +346,7 @@ class InvestmentData:
 
         factors = [
             xr.concat(
-                [xr.DataArray(getattr(self._params[eid], attr).get(eff, np.nan)) for eff in self._effect_ids],
+                [xr.DataArray(getattr(self._params[eid], attr).get(eff, 0.0)) for eff in self._effect_ids],
                 dim='effect',
                 coords='minimal',
             ).assign_coords(effect=self._effect_ids)
@@ -755,14 +755,16 @@ class FlowsData:
         """(flow, period, scenario) - minimum size for flows with investment."""
         if not self._investment_data:
             return None
-        return self._broadcast_to_coords(self._investment_data.size_minimum, dims=['period', 'scenario'])
+        raw = self._investment_data.size_minimum
+        return self._broadcast_investment_bounds(raw, self.with_investment, dims=['period', 'scenario'])
 
     @property
     def investment_size_maximum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - maximum size for flows with investment."""
         if not self._investment_data:
             return None
-        return self._broadcast_to_coords(self._investment_data.size_maximum, dims=['period', 'scenario'])
+        raw = self._investment_data.size_maximum
+        return self._broadcast_investment_bounds(raw, self.with_investment, dims=['period', 'scenario'])
 
     @property
     def optional_investment_size_minimum(self) -> xr.DataArray | None:
@@ -772,7 +774,7 @@ class FlowsData:
         raw = self._investment_data.optional_size_minimum
         if raw is None:
             return None
-        return self._broadcast_to_coords(raw, dims=['period', 'scenario'])
+        return self._broadcast_investment_bounds(raw, self.with_optional_investment, dims=['period', 'scenario'])
 
     @property
     def optional_investment_size_maximum(self) -> xr.DataArray | None:
@@ -782,16 +784,13 @@ class FlowsData:
         raw = self._investment_data.optional_size_maximum
         if raw is None:
             return None
-        return self._broadcast_to_coords(raw, dims=['period', 'scenario'])
+        return self._broadcast_investment_bounds(raw, self.with_optional_investment, dims=['period', 'scenario'])
 
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per flow hour.
 
-        Missing (flow, effect) combinations are NaN - the xarray convention for
-        missing data. This distinguishes "no effect defined" from "effect is zero".
-
-        Use `.fillna(0)` to fill for computation, `.notnull()` as mask.
+        Missing (flow, effect) combinations are 0 (pre-filled for efficient computation).
         """
         if not self.with_effects:
             return None
@@ -802,54 +801,49 @@ class FlowsData:
 
         flow_ids = self.with_effects
 
-        # Check what extra dimensions are present (time, period, scenario)
-        extra_dims: set[str] = set()
+        # Determine required dimensions by scanning all effect values
+        extra_dims: dict[str, pd.Index] = {}
         for fid in flow_ids:
             flow_effects = self[fid].effects_per_flow_hour
             for val in flow_effects.values():
                 if isinstance(val, xr.DataArray) and val.ndim > 0:
-                    extra_dims.update(val.dims)
+                    for dim in val.dims:
+                        if dim not in extra_dims:
+                            extra_dims[dim] = val.coords[dim].values
 
-        if extra_dims:
-            # Has multi-dimensional effects - use concat approach
-            # But optimize by only doing inner concat once per flow
-            flow_factors = []
-            for fid in flow_ids:
-                flow_effects = self[fid].effects_per_flow_hour
-                effect_arrays = []
-                for eff in effect_ids:
-                    val = flow_effects.get(eff)
-                    if val is None:
-                        effect_arrays.append(xr.DataArray(np.nan))
-                    elif isinstance(val, xr.DataArray):
-                        effect_arrays.append(val)
-                    else:
-                        effect_arrays.append(xr.DataArray(float(val)))
+        # Build shape and coords
+        shape = [len(flow_ids), len(effect_ids)]
+        dims = ['flow', 'effect']
+        coords: dict = {'flow': pd.Index(flow_ids), 'effect': pd.Index(effect_ids)}
 
-                flow_factor = xr.concat(effect_arrays, dim='effect', coords='minimal')
-                flow_factor = flow_factor.assign_coords(effect=effect_ids)
-                flow_factors.append(flow_factor)
+        for dim, coord_vals in extra_dims.items():
+            shape.append(len(coord_vals))
+            dims.append(dim)
+            coords[dim] = pd.Index(coord_vals)
 
-            return concat_with_coords(flow_factors, 'flow', flow_ids)
+        # Pre-allocate numpy array with zeros (pre-filled, avoids fillna later)
+        data = np.zeros(shape)
 
-        # Fast path: all scalars - build numpy array directly
-        data = np.full((len(flow_ids), len(effect_ids)), np.nan)
-
+        # Fill in values
         for i, fid in enumerate(flow_ids):
             flow_effects = self[fid].effects_per_flow_hour
             for j, eff in enumerate(effect_ids):
                 val = flow_effects.get(eff)
-                if val is not None:
-                    if isinstance(val, xr.DataArray):
-                        data[i, j] = float(val.values)
+                if val is None:
+                    continue
+                elif isinstance(val, xr.DataArray):
+                    if val.ndim == 0:
+                        # Scalar DataArray - broadcast to all extra dims
+                        data[i, j, ...] = float(val.values)
                     else:
-                        data[i, j] = float(val)
+                        # Multi-dimensional - place in correct position
+                        # Build slice for this value's dimensions
+                        data[i, j, ...] = val.values
+                else:
+                    # Python scalar - broadcast to all extra dims
+                    data[i, j, ...] = float(val)
 
-        return xr.DataArray(
-            data,
-            coords={'flow': pd.Index(flow_ids), 'effect': pd.Index(effect_ids)},
-            dims=['flow', 'effect'],
-        )
+        return xr.DataArray(data, coords=coords, dims=dims)
 
     # --- Investment Parameters ---
 
@@ -996,22 +990,22 @@ class FlowsData:
         """
         dim = 'flow'
 
-        # Extract scalar values
+        # Determine value types and dimensions
         scalar_values = []
-        has_multidim = False
+        first_array = None
 
         for v in values:
             if isinstance(v, xr.DataArray):
                 if v.ndim == 0:
                     scalar_values.append(float(v.values))
                 else:
-                    has_multidim = True
+                    first_array = v
                     break
             else:
                 scalar_values.append(float(v) if not (isinstance(v, float) and np.isnan(v)) else np.nan)
 
         # Fast path: all scalars
-        if not has_multidim:
+        if first_array is None:
             unique_values = set(v for v in scalar_values if not (isinstance(v, float) and np.isnan(v)))
             nan_count = sum(1 for v in scalar_values if isinstance(v, float) and np.isnan(v))
             if len(unique_values) == 1 and nan_count == 0:
@@ -1023,16 +1017,91 @@ class FlowsData:
                 dims=[dim],
             )
 
-        # Slow path: concat multi-dimensional arrays
-        arrays_to_stack = []
-        for val, fid in zip(values, self.ids, strict=False):
-            if isinstance(val, xr.DataArray):
-                arr = val.expand_dims({dim: [fid]})
-            else:
-                arr = xr.DataArray(val, coords={dim: [fid]}, dims=[dim])
-            arrays_to_stack.append(arr)
+        # Fast path for multi-dimensional: pre-allocate numpy array
+        # All arrays should have same shape (time, ...) - use first array as template
+        extra_dims = list(first_array.dims)
+        extra_shape = list(first_array.shape)
+        extra_coords = {d: first_array.coords[d].values for d in extra_dims}
 
-        return xr.concat(arrays_to_stack, dim=dim, coords='minimal')
+        # Build full shape: (n_flows, *extra_dims)
+        n_flows = len(values)
+        full_shape = [n_flows] + extra_shape
+        full_dims = [dim] + extra_dims
+
+        # Pre-allocate with NaN (for missing values)
+        data = np.full(full_shape, np.nan)
+
+        # Fill in values
+        for i, v in enumerate(values):
+            if isinstance(v, xr.DataArray):
+                if v.ndim == 0:
+                    data[i, ...] = float(v.values)
+                else:
+                    data[i, ...] = v.values
+            elif not (isinstance(v, float) and np.isnan(v)):
+                data[i, ...] = float(v)
+            # else: leave as NaN
+
+        # Build coords
+        full_coords = {dim: self._ids_index}
+        full_coords.update(extra_coords)
+
+        return xr.DataArray(data, coords=full_coords, dims=full_dims)
+
+    def _broadcast_investment_bounds(
+        self,
+        arr: xr.DataArray | float,
+        element_ids: list[str],
+        dims: list[str] | None,
+    ) -> xr.DataArray:
+        """Broadcast investment bounds to include model coordinates.
+
+        Unlike _broadcast_to_coords, this uses the provided element_ids for scalars
+        instead of all flow IDs.
+
+        Args:
+            arr: Array with flow dimension (or scalar).
+            element_ids: List of element IDs to use for scalar broadcasting.
+            dims: Model dimensions to include.
+
+        Returns:
+            DataArray with dimensions in canonical order: (flow, time, period, scenario)
+        """
+        if isinstance(arr, (int, float)):
+            # Scalar - create array with specified element IDs
+            arr = xr.DataArray(
+                np.full(len(element_ids), arr),
+                coords={'flow': pd.Index(element_ids)},
+                dims=['flow'],
+            )
+
+        # Get model coordinates from FlowSystem.indexes
+        if dims is None:
+            dims = ['time', 'period', 'scenario']
+
+        indexes = self._fs.indexes
+        coords_to_add = {dim: indexes[dim] for dim in dims if dim in indexes}
+
+        if not coords_to_add:
+            return arr
+
+        # Broadcast to include new dimensions
+        for dim_name, coord in coords_to_add.items():
+            if dim_name not in arr.dims:
+                arr = arr.expand_dims({dim_name: coord})
+
+        # Enforce canonical dimension order: (flow, time, period, scenario)
+        canonical_order = ['flow', 'time', 'period', 'scenario']
+        actual_dims = [d for d in canonical_order if d in arr.dims]
+        if list(arr.dims) != actual_dims:
+            arr = arr.transpose(*actual_dims)
+
+        # Ensure coords dict order matches dims order (linopy uses coords order)
+        if list(arr.coords.keys()) != list(arr.dims):
+            ordered_coords = {d: arr.coords[d] for d in arr.dims}
+            arr = xr.DataArray(arr.values, dims=arr.dims, coords=ordered_coords)
+
+        return arr
 
     def _broadcast_to_coords(
         self,
@@ -1076,6 +1145,11 @@ class FlowsData:
         actual_dims = [d for d in canonical_order if d in arr.dims]
         if list(arr.dims) != actual_dims:
             arr = arr.transpose(*actual_dims)
+
+        # Ensure coords dict order matches dims order (linopy uses coords order)
+        if list(arr.coords.keys()) != list(arr.dims):
+            ordered_coords = {d: arr.coords[d] for d in arr.dims}
+            arr = xr.DataArray(arr.values, dims=arr.dims, coords=ordered_coords)
 
         return arr
 

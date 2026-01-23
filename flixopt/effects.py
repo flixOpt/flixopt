@@ -613,7 +613,7 @@ class EffectsModel:
             name='share|temporal',
         )
         self.model.add_constraints(
-            self.share_temporal == rate * factors.fillna(0) * dt,
+            self.share_temporal == rate * factors * dt,
             name='share|temporal',
         )
 
@@ -665,7 +665,7 @@ class EffectsModel:
                 coords=self._share_coords(dim, factors.coords[dim], temporal=False),
                 name=var_name,
             )
-            self.model.add_constraints(share_var == size * factors.fillna(0), name=var_name)
+            self.model.add_constraints(share_var == size * factors, name=var_name)
 
             # Store first share_periodic for backwards compatibility
             if i == 0:
@@ -677,9 +677,9 @@ class EffectsModel:
             # Add invested-based effects
             if type_model.invested is not None:
                 if (f := type_model.effects_of_investment) is not None:
-                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * f).sum(dim))
                 if (f := type_model.effects_of_retirement) is not None:
-                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f.fillna(0))).sum(dim))
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim))
 
         # Add all expressions to periodic constraint
         # NOTE: Reindex each expression to match _effect_index to ensure proper coordinate alignment.
