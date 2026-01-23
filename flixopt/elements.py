@@ -708,40 +708,10 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
     element_type = ElementType.FLOW
 
-    def __init__(self, model: FlowSystemModel, elements: list[Flow]):
-        """Initialize the type-level model for all flows.
-
-        Args:
-            model: The FlowSystemModel to create variables/constraints in.
-            elements: List of all Flow elements to model.
-        """
-        super().__init__(model, elements)
-
-        # Set reference on each flow element for element access pattern
-        for flow in elements:
-            flow.set_flows_model(self)
-
     @property
     def data(self) -> FlowsData:
         """Access FlowsData from the batched accessor."""
         return self.model.flow_system.batched.flows
-
-    @cached_property
-    def _previous_status(self) -> dict[str, xr.DataArray]:
-        """Previous status for flows that have it, keyed by label_full."""
-        result = {}
-        for fid in self.data.with_status:
-            flow = self.data[fid]
-            if flow.previous_flow_rate is not None:
-                result[fid] = ModelingUtilitiesAbstract.to_binary(
-                    values=xr.DataArray(
-                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
-                        dims='time',
-                    ),
-                    epsilon=CONFIG.Modeling.epsilon,
-                    dims='time',
-                )
-        return result
 
     # === Variables (cached_property) ===
 
@@ -864,6 +834,36 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
         rhs = total_time * self.data.load_factor_maximum * size
         self.add_constraints(hours <= rhs, name='load_factor_max')
+
+    def __init__(self, model: FlowSystemModel, elements: list[Flow]):
+        """Initialize the type-level model for all flows.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of all Flow elements to model.
+        """
+        super().__init__(model, elements)
+
+        # Set reference on each flow element for element access pattern
+        for flow in elements:
+            flow.set_flows_model(self)
+
+    @cached_property
+    def _previous_status(self) -> dict[str, xr.DataArray]:
+        """Previous status for flows that have it, keyed by label_full."""
+        result = {}
+        for fid in self.data.with_status:
+            flow = self.data[fid]
+            if flow.previous_flow_rate is not None:
+                result[fid] = ModelingUtilitiesAbstract.to_binary(
+                    values=xr.DataArray(
+                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
+                        dims='time',
+                    ),
+                    epsilon=CONFIG.Modeling.epsilon,
+                    dims='time',
+                )
+        return result
 
     def _add_subset_variables(
         self,
