@@ -2261,54 +2261,86 @@ class ConvertersModel:
         """
         max_eq = self._max_equations
         all_flow_ids = self._flows_model.element_ids
+        n_conv = len(self.element_ids)
+        n_flows = len(all_flow_ids)
 
-        # Build list of coefficient arrays per (converter, equation_idx, flow)
-        coeff_arrays = []
+        # Build flow_label -> flow_id mapping for each converter
+        conv_flow_maps = []
         for conv in self.converters_with_factors:
-            conv_eqs = []
-            for eq_idx in range(max_eq):
-                eq_coeffs = []
-                if eq_idx < len(conv.conversion_factors):
-                    conv_factors = conv.conversion_factors[eq_idx]
-                    for flow_id in all_flow_ids:
-                        # Find if this flow belongs to this converter
-                        flow_label = None
-                        for fl in conv.flows.values():
-                            if fl.label_full == flow_id:
-                                flow_label = fl.label
-                                break
+            flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
+            conv_flow_maps.append(flow_map)
 
-                        if flow_label and flow_label in conv_factors:
-                            coeff = conv_factors[flow_label]
-                            eq_coeffs.append(coeff)
-                        else:
-                            eq_coeffs.append(0.0)
+        # First pass: collect all coefficients and check for time-varying
+        coeff_values = {}  # (i, eq_idx, j) -> value
+        has_dataarray = False
+        extra_coords = {}
+
+        flow_id_to_idx = {fid: j for j, fid in enumerate(all_flow_ids)}
+
+        for i, (conv, flow_map) in enumerate(zip(self.converters_with_factors, conv_flow_maps, strict=False)):
+            for eq_idx, conv_factors in enumerate(conv.conversion_factors):
+                for flow_label, coeff in conv_factors.items():
+                    flow_id = flow_map.get(flow_label)
+                    if flow_id and flow_id in flow_id_to_idx:
+                        j = flow_id_to_idx[flow_id]
+                        coeff_values[(i, eq_idx, j)] = coeff
+                        if isinstance(coeff, xr.DataArray) and coeff.ndim > 0:
+                            has_dataarray = True
+                            for d in coeff.dims:
+                                if d not in extra_coords:
+                                    extra_coords[d] = coeff.coords[d].values
+
+        # Build the coefficient array
+        if not has_dataarray:
+            # Fast path: all scalars - use simple numpy array
+            data = np.zeros((n_conv, max_eq, n_flows), dtype=np.float64)
+            for (i, eq_idx, j), val in coeff_values.items():
+                if isinstance(val, xr.DataArray):
+                    data[i, eq_idx, j] = float(val.values)
                 else:
-                    # Padding for converters with fewer equations
-                    eq_coeffs = [0.0] * len(all_flow_ids)
-                conv_eqs.append(eq_coeffs)
-            coeff_arrays.append(conv_eqs)
+                    data[i, eq_idx, j] = float(val)
 
-        # Stack into DataArray - xarray handles broadcasting of mixed scalar/DataArray
-        # Build by stacking along dimensions
-        result = xr.concat(
-            [
-                xr.concat(
-                    [
-                        xr.concat(
-                            [xr.DataArray(c) if not isinstance(c, xr.DataArray) else c for c in eq],
-                            dim='flow',
-                        ).assign_coords(flow=all_flow_ids)
-                        for eq in conv
-                    ],
-                    dim='equation_idx',
-                ).assign_coords(equation_idx=list(range(max_eq)))
-                for conv in coeff_arrays
-            ],
-            dim='converter',
-        ).assign_coords(converter=self.element_ids)
+            return xr.DataArray(
+                data,
+                dims=['converter', 'equation_idx', 'flow'],
+                coords={
+                    'converter': self.element_ids,
+                    'equation_idx': list(range(max_eq)),
+                    'flow': all_flow_ids,
+                },
+            )
+        else:
+            # Slow path: some time-varying coefficients - broadcast all to common shape
+            extra_dims = list(extra_coords.keys())
+            extra_shape = [len(c) for c in extra_coords.values()]
+            full_shape = [n_conv, max_eq, n_flows] + extra_shape
+            full_dims = ['converter', 'equation_idx', 'flow'] + extra_dims
 
-        return result
+            data = np.zeros(full_shape, dtype=np.float64)
+
+            # Create template for broadcasting
+            template = xr.DataArray(coords=extra_coords, dims=extra_dims) if extra_coords else None
+
+            for (i, eq_idx, j), val in coeff_values.items():
+                if isinstance(val, xr.DataArray):
+                    if val.ndim == 0:
+                        data[i, eq_idx, j, ...] = float(val.values)
+                    elif template is not None:
+                        broadcasted = val.broadcast_like(template)
+                        data[i, eq_idx, j, ...] = broadcasted.values
+                    else:
+                        data[i, eq_idx, j, ...] = val.values
+                else:
+                    data[i, eq_idx, j, ...] = float(val)
+
+            full_coords = {
+                'converter': self.element_ids,
+                'equation_idx': list(range(max_eq)),
+                'flow': all_flow_ids,
+            }
+            full_coords.update(extra_coords)
+
+            return xr.DataArray(data, dims=full_dims, coords=full_coords)
 
     def create_linear_constraints(self) -> None:
         """Create batched linear conversion factor constraints.
