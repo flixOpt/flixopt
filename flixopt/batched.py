@@ -536,41 +536,66 @@ class FlowsData:
 
     # --- Status Bounds (for duration tracking) ---
 
+    def _build_status_bounds(
+        self, flow_ids: list[str], min_attr: str, max_attr: str
+    ) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Build min/max bound arrays for a subset of flows in a single pass.
+
+        Args:
+            flow_ids: List of flow IDs to include.
+            min_attr: Attribute name for minimum bound on StatusParameters.
+            max_attr: Attribute name for maximum bound on StatusParameters.
+
+        Returns:
+            Tuple of (min_array, max_array) or None if flow_ids is empty.
+        """
+        if not flow_ids:
+            return None
+        params = self.status_params
+        min_vals = np.empty(len(flow_ids), dtype=float)
+        max_vals = np.empty(len(flow_ids), dtype=float)
+        for i, fid in enumerate(flow_ids):
+            p = params[fid]
+            min_vals[i] = getattr(p, min_attr) or np.nan
+            max_vals[i] = getattr(p, max_attr) or np.nan
+        return (
+            xr.DataArray(min_vals, dims=['flow'], coords={'flow': flow_ids}),
+            xr.DataArray(max_vals, dims=['flow'], coords={'flow': flow_ids}),
+        )
+
     @cached_property
+    def _uptime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Cached (min_uptime, max_uptime) tuple computed in single pass."""
+        return self._build_status_bounds(self.with_uptime_tracking, 'min_uptime', 'max_uptime')
+
+    @cached_property
+    def _downtime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Cached (min_downtime, max_downtime) tuple computed in single pass."""
+        return self._build_status_bounds(self.with_downtime_tracking, 'min_downtime', 'max_downtime')
+
+    @property
     def min_uptime(self) -> xr.DataArray | None:
         """(flow,) - minimum uptime for flows with uptime tracking. NaN = no constraint."""
-        flow_ids = self.with_uptime_tracking
-        if not flow_ids:
-            return None
-        values = [self.status_params[fid].min_uptime or np.nan for fid in flow_ids]
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        bounds = self._uptime_bounds
+        return bounds[0] if bounds else None
 
-    @cached_property
+    @property
     def max_uptime(self) -> xr.DataArray | None:
         """(flow,) - maximum uptime for flows with uptime tracking. NaN = no constraint."""
-        flow_ids = self.with_uptime_tracking
-        if not flow_ids:
-            return None
-        values = [self.status_params[fid].max_uptime or np.nan for fid in flow_ids]
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        bounds = self._uptime_bounds
+        return bounds[1] if bounds else None
 
-    @cached_property
+    @property
     def min_downtime(self) -> xr.DataArray | None:
         """(flow,) - minimum downtime for flows with downtime tracking. NaN = no constraint."""
-        flow_ids = self.with_downtime_tracking
-        if not flow_ids:
-            return None
-        values = [self.status_params[fid].min_downtime or np.nan for fid in flow_ids]
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        bounds = self._downtime_bounds
+        return bounds[0] if bounds else None
 
-    @cached_property
+    @property
     def max_downtime(self) -> xr.DataArray | None:
         """(flow,) - maximum downtime for flows with downtime tracking. NaN = no constraint."""
-        flow_ids = self.with_downtime_tracking
-        if not flow_ids:
-            return None
-        values = [self.status_params[fid].max_downtime or np.nan for fid in flow_ids]
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        bounds = self._downtime_bounds
+        return bounds[1] if bounds else None
 
     @cached_property
     def startup_limit_values(self) -> xr.DataArray | None:
@@ -578,66 +603,48 @@ class FlowsData:
         flow_ids = self.with_startup_limit
         if not flow_ids:
             return None
-        values = [self.status_params[fid].startup_limit for fid in flow_ids]
+        params = self.status_params
+        values = np.array([params[fid].startup_limit for fid in flow_ids], dtype=float)
+        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+
+    def _build_previous_durations(self, flow_ids: list[str], target_state: int, min_attr: str) -> xr.DataArray | None:
+        """Build previous duration array for flows with previous state.
+
+        Args:
+            flow_ids: List of flow IDs to include.
+            target_state: 1 for uptime, 0 for downtime.
+            min_attr: Attribute name for minimum bound (determines if duration is needed).
+
+        Returns:
+            DataArray with previous durations (NaN where not applicable).
+        """
+        if not flow_ids:
+            return None
+
+        from .features import StatusHelpers
+
+        params = self.status_params
+        previous = self.previous_states
+        timestep_duration = self._fs.timestep_duration
+
+        values = np.full(len(flow_ids), np.nan, dtype=float)
+        for i, fid in enumerate(flow_ids):
+            if fid in previous and getattr(params[fid], min_attr) is not None:
+                values[i] = StatusHelpers.compute_previous_duration(
+                    previous[fid], target_state=target_state, timestep_duration=timestep_duration
+                )
+
         return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
 
     @cached_property
     def previous_uptime(self) -> xr.DataArray | None:
-        """(flow,) - previous uptime duration for flows with uptime tracking and previous state.
-
-        Computed from previous_states using StatusHelpers.compute_previous_duration().
-        NaN for flows without previous state or without min_uptime.
-        """
-        from .features import StatusHelpers
-
-        flow_ids = self.with_uptime_tracking
-        if not flow_ids:
-            return None
-
-        # Need timestep_duration for computation
-        timestep_duration = self._fs.timestep_duration
-
-        values = []
-        for fid in flow_ids:
-            params = self.status_params[fid]
-            if fid in self.previous_states and params.min_uptime is not None:
-                prev = StatusHelpers.compute_previous_duration(
-                    self.previous_states[fid], target_state=1, timestep_duration=timestep_duration
-                )
-                values.append(prev)
-            else:
-                values.append(np.nan)
-
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        """(flow,) - previous uptime duration for flows with uptime tracking and previous state."""
+        return self._build_previous_durations(self.with_uptime_tracking, target_state=1, min_attr='min_uptime')
 
     @cached_property
     def previous_downtime(self) -> xr.DataArray | None:
-        """(flow,) - previous downtime duration for flows with downtime tracking and previous state.
-
-        Computed from previous_states using StatusHelpers.compute_previous_duration().
-        NaN for flows without previous state or without min_downtime.
-        """
-        from .features import StatusHelpers
-
-        flow_ids = self.with_downtime_tracking
-        if not flow_ids:
-            return None
-
-        # Need timestep_duration for computation
-        timestep_duration = self._fs.timestep_duration
-
-        values = []
-        for fid in flow_ids:
-            params = self.status_params[fid]
-            if fid in self.previous_states and params.min_downtime is not None:
-                prev = StatusHelpers.compute_previous_duration(
-                    self.previous_states[fid], target_state=0, timestep_duration=timestep_duration
-                )
-                values.append(prev)
-            else:
-                values.append(np.nan)
-
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        """(flow,) - previous downtime duration for flows with downtime tracking and previous state."""
+        return self._build_previous_durations(self.with_downtime_tracking, target_state=0, min_attr='min_downtime')
 
     # === Helper Methods ===
 
