@@ -771,70 +771,65 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     # === Constraints (methods with constraint_* naming) ===
 
     def constraint_flow_hours(self) -> None:
-        """Constrain sum_temporal(rate) within [min, max] for flows with flow_hours bounds."""
-        if not self.data.with_flow_hours:
-            return
+        """Constrain sum_temporal(rate) for flows with flow_hours bounds."""
         dim = self.dim_name
-        flow_ids = self.data.with_flow_hours
-        rate_subset = self.rate.sel({dim: flow_ids})
-        hours = self.model.sum_temporal(rate_subset)
 
-        # Add min/max constraints
-        self.add_constraints(hours >= self.data.flow_hours_minimum, name='flow_hours_min')
-        self.add_constraints(hours <= self.data.flow_hours_maximum, name='flow_hours_max')
+        # Min constraint
+        if self.data.flow_hours_minimum is not None:
+            flow_ids = self.data.with_flow_hours_min
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            self.add_constraints(hours >= self.data.flow_hours_minimum, name='flow|hours_min')
+
+        # Max constraint
+        if self.data.flow_hours_maximum is not None:
+            flow_ids = self.data.with_flow_hours_max
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            self.add_constraints(hours <= self.data.flow_hours_maximum, name='flow|hours_max')
 
     def constraint_flow_hours_over_periods(self) -> None:
-        """Constrain weighted sum of hours across periods within [min, max]."""
-        if not self.data.with_flow_hours_over_periods:
-            return
+        """Constrain weighted sum of hours across periods."""
         dim = self.dim_name
-        flow_ids = self.data.with_flow_hours_over_periods
-        rate_subset = self.rate.sel({dim: flow_ids})
-        hours_per_period = self.model.sum_temporal(rate_subset)
-        if self.model.flow_system.periods is not None:
-            period_weights = self.model.flow_system.weights.get('period', 1)
-            hours_over_periods = (hours_per_period * period_weights).sum('period')
-        else:
-            hours_over_periods = hours_per_period
 
-        # Add min/max constraints
-        self.add_constraints(
-            hours_over_periods >= self.data.flow_hours_minimum_over_periods, name='flow|hours_over_periods'
-        )
-        self.add_constraints(
-            hours_over_periods <= self.data.flow_hours_maximum_over_periods, name='flow|hours_over_periods_max'
-        )
+        def compute_hours_over_periods(flow_ids: list[str]):
+            rate_subset = self.rate.sel({dim: flow_ids})
+            hours_per_period = self.model.sum_temporal(rate_subset)
+            if self.model.flow_system.periods is not None:
+                period_weights = self.model.flow_system.weights.get('period', 1)
+                return (hours_per_period * period_weights).sum('period')
+            return hours_per_period
+
+        # Min constraint
+        if self.data.flow_hours_minimum_over_periods is not None:
+            flow_ids = self.data.with_flow_hours_over_periods_min
+            hours = compute_hours_over_periods(flow_ids)
+            self.add_constraints(hours >= self.data.flow_hours_minimum_over_periods, name='flow|hours_over_periods_min')
+
+        # Max constraint
+        if self.data.flow_hours_maximum_over_periods is not None:
+            flow_ids = self.data.with_flow_hours_over_periods_max
+            hours = compute_hours_over_periods(flow_ids)
+            self.add_constraints(hours <= self.data.flow_hours_maximum_over_periods, name='flow|hours_over_periods_max')
 
     def constraint_load_factor(self) -> None:
         """Load factor min/max constraints for flows that have them."""
-        self._constraint_load_factor_min()
-        self._constraint_load_factor_max()
-
-    def _constraint_load_factor_min(self) -> None:
-        """sum_temporal(rate) >= total_time * load_factor_min * size."""
-        if self.data.load_factor_minimum is None:
-            return
         dim = self.dim_name
-        flow_ids = self.data.with_load_factor
-        rate_subset = self.rate.sel({dim: flow_ids})
-        hours = self.model.sum_temporal(rate_subset)
         total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
-        rhs = total_time * self.data.load_factor_minimum * size
-        self.add_constraints(hours >= rhs, name='load_factor_min')
 
-    def _constraint_load_factor_max(self) -> None:
-        """sum_temporal(rate) <= total_time * load_factor_max * size."""
-        if self.data.load_factor_maximum is None:
-            return
-        dim = self.dim_name
-        flow_ids = self.data.with_load_factor
-        rate_subset = self.rate.sel({dim: flow_ids})
-        hours = self.model.sum_temporal(rate_subset)
-        total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
-        rhs = total_time * self.data.load_factor_maximum * size
-        self.add_constraints(hours <= rhs, name='load_factor_max')
+        # Min constraint: hours >= total_time * load_factor_min * size
+        if self.data.load_factor_minimum is not None:
+            flow_ids = self.data.with_load_factor_min
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
+            rhs = total_time * self.data.load_factor_minimum * size
+            self.add_constraints(hours >= rhs, name='flow|load_factor_min')
+
+        # Max constraint: hours <= total_time * load_factor_max * size
+        if self.data.load_factor_maximum is not None:
+            flow_ids = self.data.with_load_factor_max
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
+            rhs = total_time * self.data.load_factor_maximum * size
+            self.add_constraints(hours <= rhs, name='flow|load_factor_max')
 
     def __init__(self, model: FlowSystemModel, elements: list[Flow]):
         """Initialize the type-level model for all flows.

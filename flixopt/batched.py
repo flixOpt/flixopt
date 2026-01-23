@@ -91,29 +91,34 @@ class FlowsData:
         return [fid for fid in self.with_investment if self[fid].size.mandatory]
 
     @cached_property
-    def with_flow_hours(self) -> list[str]:
-        """IDs of flows with flow_hours constraints (min or max)."""
-        return [
-            f.label_full for f in self.elements.values() if f.flow_hours_min is not None or f.flow_hours_max is not None
-        ]
+    def with_flow_hours_min(self) -> list[str]:
+        """IDs of flows with explicit flow_hours_min constraint."""
+        return [f.label_full for f in self.elements.values() if f.flow_hours_min is not None]
 
     @cached_property
-    def with_flow_hours_over_periods(self) -> list[str]:
-        """IDs of flows with flow_hours_over_periods constraints."""
-        return [
-            f.label_full
-            for f in self.elements.values()
-            if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
-        ]
+    def with_flow_hours_max(self) -> list[str]:
+        """IDs of flows with explicit flow_hours_max constraint."""
+        return [f.label_full for f in self.elements.values() if f.flow_hours_max is not None]
 
     @cached_property
-    def with_load_factor(self) -> list[str]:
-        """IDs of flows with load_factor constraints (min or max)."""
-        return [
-            f.label_full
-            for f in self.elements.values()
-            if f.load_factor_min is not None or f.load_factor_max is not None
-        ]
+    def with_flow_hours_over_periods_min(self) -> list[str]:
+        """IDs of flows with explicit flow_hours_min_over_periods constraint."""
+        return [f.label_full for f in self.elements.values() if f.flow_hours_min_over_periods is not None]
+
+    @cached_property
+    def with_flow_hours_over_periods_max(self) -> list[str]:
+        """IDs of flows with explicit flow_hours_max_over_periods constraint."""
+        return [f.label_full for f in self.elements.values() if f.flow_hours_max_over_periods is not None]
+
+    @cached_property
+    def with_load_factor_min(self) -> list[str]:
+        """IDs of flows with explicit load_factor_min constraint."""
+        return [f.label_full for f in self.elements.values() if f.load_factor_min is not None]
+
+    @cached_property
+    def with_load_factor_max(self) -> list[str]:
+        """IDs of flows with explicit load_factor_max constraint."""
+        return [f.label_full for f in self.elements.values() if f.load_factor_max is not None]
 
     @cached_property
     def with_effects(self) -> list[str]:
@@ -142,80 +147,56 @@ class FlowsData:
 
     @cached_property
     def flow_hours_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum total flow hours for flows in with_flow_hours.
-
-        Returns 0 for flows without explicit minimum. None if no flows have flow_hours constraints.
-        """
-        flow_ids = self.with_flow_hours
+        """(flow, period, scenario) - minimum total flow hours for flows with explicit min."""
+        flow_ids = self.with_flow_hours_min
         if not flow_ids:
             return None
-        values = [self[fid].flow_hours_min if self[fid].flow_hours_min is not None else 0 for fid in flow_ids]
+        values = [self[fid].flow_hours_min for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
     def flow_hours_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum total flow hours for flows in with_flow_hours.
-
-        Returns inf for flows without explicit maximum. None if no flows have flow_hours constraints.
-        """
-        flow_ids = self.with_flow_hours
+        """(flow, period, scenario) - maximum total flow hours for flows with explicit max."""
+        flow_ids = self.with_flow_hours_max
         if not flow_ids:
             return None
-        values = [self[fid].flow_hours_max if self[fid].flow_hours_max is not None else np.inf for fid in flow_ids]
+        values = [self[fid].flow_hours_max for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
     def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
-        """(flow, scenario) - minimum flow hours over all periods for flows in with_flow_hours_over_periods.
-
-        Returns 0 for flows without explicit minimum. None if no flows have this constraint.
-        """
-        flow_ids = self.with_flow_hours_over_periods
+        """(flow, scenario) - minimum flow hours over all periods for flows with explicit min."""
+        flow_ids = self.with_flow_hours_over_periods_min
         if not flow_ids:
             return None
-        values = [
-            self[fid].flow_hours_min_over_periods if self[fid].flow_hours_min_over_periods is not None else 0
-            for fid in flow_ids
-        ]
+        values = [self[fid].flow_hours_min_over_periods for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
 
     @cached_property
     def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
-        """(flow, scenario) - maximum flow hours over all periods for flows in with_flow_hours_over_periods.
-
-        Returns inf for flows without explicit maximum. None if no flows have this constraint.
-        """
-        flow_ids = self.with_flow_hours_over_periods
+        """(flow, scenario) - maximum flow hours over all periods for flows with explicit max."""
+        flow_ids = self.with_flow_hours_over_periods_max
         if not flow_ids:
             return None
-        values = [
-            self[fid].flow_hours_max_over_periods if self[fid].flow_hours_max_over_periods is not None else np.inf
-            for fid in flow_ids
-        ]
+        values = [self[fid].flow_hours_max_over_periods for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
 
     @cached_property
     def load_factor_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum load factor for flows in with_load_factor.
-
-        Returns 0 for flows without explicit minimum. None if no flows have load_factor constraints.
-        """
-        flow_ids = self.with_load_factor
+        """(flow, period, scenario) - minimum load factor for flows with explicit min."""
+        flow_ids = self.with_load_factor_min
         if not flow_ids:
             return None
-        values = [self[fid].load_factor_min if self[fid].load_factor_min is not None else 0 for fid in flow_ids]
+        values = [self[fid].load_factor_min for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
     def load_factor_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum load factor for flows in with_load_factor.
-
-        Returns 1 for flows without explicit maximum. None if no flows have load_factor constraints.
-        """
-        flow_ids = self.with_load_factor
+        """(flow, period, scenario) - maximum load factor for flows with explicit max."""
+        flow_ids = self.with_load_factor_max
         if not flow_ids:
             return None
-        values = [self[fid].load_factor_max if self[fid].load_factor_max is not None else 1 for fid in flow_ids]
+        values = [self[fid].load_factor_max for fid in flow_ids]
         return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
