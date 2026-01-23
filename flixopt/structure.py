@@ -529,12 +529,16 @@ class TypeModel(ABC):
             elements: List of elements of this type to model.
         """
         self.model = model
-        self.elements = elements
-        self.element_ids: list[str] = [e.label_full for e in elements]
+        self.elements: ElementContainer = ElementContainer(elements)
 
         # Storage for created variables and constraints
         self._variables: dict[str, linopy.Variable] = {}
         self._constraints: dict[str, linopy.Constraint] = {}
+
+    @property
+    def element_ids(self) -> list[str]:
+        """List of element IDs (label_full) in this model."""
+        return list(self.elements.keys())
 
     @property
     def dim_name(self) -> str:

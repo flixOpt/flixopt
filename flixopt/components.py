@@ -796,9 +796,6 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         super().__init__(model, elements)
         self._flows_model = flows_model
 
-        # Fast lookup: label_full -> Storage
-        self._storages_by_id: dict[str, Storage] = {s.label_full: s for s in elements}
-
         # Investment params dict (populated in create_investment_model)
         self._invest_params: dict[str, InvestParameters] = {}
 
@@ -808,7 +805,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
 
     def storage(self, label: str) -> Storage:
         """Get a storage by its label_full."""
-        return self._storages_by_id[label]
+        return self.elements[label]
 
     # === Storage Categorization Properties ===
     # All return list[str] of label_full IDs. Use self.storage(id) to get the Storage object.
@@ -816,7 +813,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
     @functools.cached_property
     def with_investment(self) -> list[str]:
         """IDs of storages with investment parameters."""
-        return [s.label_full for s in self.elements if isinstance(s.capacity_in_flow_hours, InvestParameters)]
+        return [s.label_full for s in self.elements.values() if isinstance(s.capacity_in_flow_hours, InvestParameters)]
 
     @functools.cached_property
     def with_optional_investment(self) -> list[str]:
@@ -985,7 +982,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         """
         dim = self.dim_name  # 'storage'
         bounds_list = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             rel_min, rel_max = self._get_relative_charge_state_bounds(storage)
 
             if storage.capacity_in_flow_hours is None:
@@ -1064,8 +1061,8 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
 
         # === Batched netto_discharge constraint ===
         # Build charge and discharge flow_rate selections aligned with storage dimension
-        charge_flow_ids = [s.charging.label_full for s in self.elements]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements]
+        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
+        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
 
         # Detect flow dimension name from flow_rate variable
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
@@ -1084,9 +1081,9 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
 
         # === Batched energy balance constraint ===
         # Stack parameters into DataArrays with element dimension
-        eta_charge = self._stack_parameter([s.eta_charge for s in self.elements])
-        eta_discharge = self._stack_parameter([s.eta_discharge for s in self.elements])
-        rel_loss = self._stack_parameter([s.relative_loss_per_hour for s in self.elements])
+        eta_charge = self._stack_parameter([s.eta_charge for s in self.elements.values()])
+        eta_discharge = self._stack_parameter([s.eta_discharge for s in self.elements.values()])
+        rel_loss = self._stack_parameter([s.relative_loss_per_hour for s in self.elements.values()])
 
         # Energy balance: cs[t+1] = cs[t] * (1-loss)^dt + charge * eta_c * dt - discharge * dt / eta_d
         # Rearranged: cs[t+1] - cs[t] * (1-loss)^dt - charge * eta_c * dt + discharge * dt / eta_d = 0
@@ -1114,7 +1111,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
 
     def _add_balanced_flow_sizes_constraint(self) -> None:
         """Add constraint ensuring charging and discharging flow capacities are equal for balanced storages."""
-        balanced_storages = [s for s in self.elements if s.balanced]
+        balanced_storages = [s for s in self.elements.values() if s.balanced]
         if not balanced_storages:
             return
 
@@ -1153,7 +1150,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         storages_max_final: list[tuple[Storage, float]] = []
         storages_min_final: list[tuple[Storage, float]] = []
 
-        for storage in self.elements:
+        for storage in self.elements.values():
             # Skip for clustered independent/cyclic modes
             if self.model.flow_system.clusters is not None and storage.cluster_mode in ('independent', 'cyclic'):
                 continue
@@ -1216,7 +1213,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         if self.model.flow_system.clusters is None:
             return
 
-        cyclic_storages = [s for s in self.elements if s.cluster_mode == 'cyclic']
+        cyclic_storages = [s for s in self.elements.values() if s.cluster_mode == 'cyclic']
         if not cyclic_storages:
             return
 
@@ -1739,7 +1736,7 @@ class InterclusterStoragesModel:
         # Bounds: -capacity <= ΔE <= capacity
         lowers = []
         uppers = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             if storage.capacity_in_flow_hours is None:
                 lowers.append(-np.inf)
                 uppers.append(np.inf)
@@ -1779,7 +1776,7 @@ class InterclusterStoragesModel:
         # Compute bounds per storage
         lowers = []
         uppers = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             cap_bounds = extract_capacity_bounds(storage.capacity_in_flow_hours, boundary_coords_dict, boundary_dims)
             lowers.append(cap_bounds.lower)
             uppers.append(cap_bounds.upper)
@@ -1822,8 +1819,8 @@ class InterclusterStoragesModel:
         flow_rate = self._flows_model._variables['rate']
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
 
-        charge_flow_ids = [s.charging.label_full for s in self.elements]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements]
+        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
+        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
 
         # Select and rename to match storage dimension
         charge_rates = flow_rate.sel({flow_dim: charge_flow_ids})
@@ -1847,7 +1844,7 @@ class InterclusterStoragesModel:
         dim = self.dim_name
 
         # Add constraint per storage (dimension alignment is complex in clustered systems)
-        for storage in self.elements:
+        for storage in self.elements.values():
             cs = charge_state.sel({dim: storage.label_full})
             charge_rate = self._flows_model.get_variable('rate', storage.charging.label_full)
             discharge_rate = self._flows_model.get_variable('rate', storage.discharging.label_full)
@@ -1897,7 +1894,7 @@ class InterclusterStoragesModel:
 
         # Build decay factors per storage
         decay_factors = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
             total_hours = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'sum')
             decay = (1 - rel_loss) ** total_hours
@@ -1924,7 +1921,7 @@ class InterclusterStoragesModel:
         initial_fixed_ids = []
         initial_values = []
 
-        for storage in self.elements:
+        for storage in self.elements.values():
             if storage.cluster_mode == 'intercluster_cyclic':
                 cyclic_ids.append(storage.label_full)
             else:
@@ -1979,7 +1976,7 @@ class InterclusterStoragesModel:
 
             # Build decay factors per storage
             decay_factors = []
-            for storage in self.elements:
+            for storage in self.elements.values():
                 rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
                 mean_dt = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'mean')
                 hours_offset = offset * mean_dt
@@ -2009,7 +2006,7 @@ class InterclusterStoragesModel:
         fixed_ids = []
         fixed_caps = []
 
-        for storage in self.elements:
+        for storage in self.elements.values():
             if isinstance(storage.capacity_in_flow_hours, InvestParameters):
                 invest_ids.append(storage.label_full)
             elif storage.capacity_in_flow_hours is not None:

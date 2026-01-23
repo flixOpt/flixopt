@@ -719,14 +719,9 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         for flow in elements:
             flow.set_flows_model(self)
 
-    @cached_property
-    def _flows_by_id(self) -> dict[str, Flow]:
-        """Fast lookup: label_full -> Flow."""
-        return {f.label_full: f for f in self.elements}
-
     def flow(self, label: str) -> Flow:
         """Get a flow by its label_full."""
-        return self._flows_by_id[label]
+        return self.elements[label]
 
     @cached_property
     def _invest_params(self) -> dict[str, InvestParameters]:
@@ -754,12 +749,12 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def with_status(self) -> list[str]:
         """IDs of flows with status parameters."""
-        return [f.label_full for f in self.elements if f.status_parameters is not None]
+        return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
 
     @cached_property
     def with_investment(self) -> list[str]:
         """IDs of flows with investment parameters."""
-        return [f.label_full for f in self.elements if isinstance(f.size, InvestParameters)]
+        return [f.label_full for f in self.elements.values() if isinstance(f.size, InvestParameters)]
 
     @cached_property
     def with_optional_investment(self) -> list[str]:
@@ -776,7 +771,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """IDs of flows with flow_hours_over_periods constraints."""
         return [
             f.label_full
-            for f in self.elements
+            for f in self.elements.values()
             if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
         ]
 
@@ -986,7 +981,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             Stacked bounds with element dimension.
         """
         bounds_list = []
-        for flow in self.elements:
+        for flow in self.elements.values():
             if bound_type == 'absolute_lower':
                 bounds_list.append(self._get_absolute_lower_bound(flow))
             elif bound_type == 'absolute_upper':
@@ -1458,7 +1453,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
         """
         effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]] = {}
-        for flow in self.elements:
+        for flow in self.elements.values():
             if flow.effects_per_flow_hour:
                 for effect_name, factor in flow.effects_per_flow_hour.items():
                     if effect_name not in effect_specs:
@@ -1505,7 +1500,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         Use `.fillna(0)` to fill for computation, `.notnull()` as mask.
         """
-        flows_with_effects = [f for f in self.elements if f.effects_per_flow_hour]
+        flows_with_effects = [f for f in self.elements.values() if f.effects_per_flow_hour]
         if not flows_with_effects:
             return None
 
@@ -1560,13 +1555,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def flow_hours_minimum(self) -> xr.DataArray:
         """(flow, period, scenario) - minimum total flow hours. NaN = no constraint."""
-        values = [f.flow_hours_min if f.flow_hours_min is not None else np.nan for f in self.elements]
+        values = [f.flow_hours_min if f.flow_hours_min is not None else np.nan for f in self.elements.values()]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
 
     @cached_property
     def flow_hours_maximum(self) -> xr.DataArray:
         """(flow, period, scenario) - maximum total flow hours. NaN = no constraint."""
-        values = [f.flow_hours_max if f.flow_hours_max is not None else np.nan for f in self.elements]
+        values = [f.flow_hours_max if f.flow_hours_max is not None else np.nan for f in self.elements.values()]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
 
     @cached_property
@@ -1574,7 +1569,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """(flow, scenario) - minimum flow hours summed over all periods. NaN = no constraint."""
         values = [
             f.flow_hours_min_over_periods if f.flow_hours_min_over_periods is not None else np.nan
-            for f in self.elements
+            for f in self.elements.values()
         ]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['scenario'])
 
@@ -1583,7 +1578,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """(flow, scenario) - maximum flow hours summed over all periods. NaN = no constraint."""
         values = [
             f.flow_hours_max_over_periods if f.flow_hours_max_over_periods is not None else np.nan
-            for f in self.elements
+            for f in self.elements.values()
         ]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['scenario'])
 
@@ -1592,13 +1587,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def load_factor_minimum(self) -> xr.DataArray:
         """(flow, period, scenario) - minimum load factor. NaN = no constraint."""
-        values = [f.load_factor_min if f.load_factor_min is not None else np.nan for f in self.elements]
+        values = [f.load_factor_min if f.load_factor_min is not None else np.nan for f in self.elements.values()]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
 
     @cached_property
     def load_factor_maximum(self) -> xr.DataArray:
         """(flow, period, scenario) - maximum load factor. NaN = no constraint."""
-        values = [f.load_factor_max if f.load_factor_max is not None else np.nan for f in self.elements]
+        values = [f.load_factor_max if f.load_factor_max is not None else np.nan for f in self.elements.values()]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=['period', 'scenario'])
 
     # --- Relative Bounds ---
@@ -1606,19 +1601,21 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def relative_minimum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative lower bound on flow rate."""
-        values = [f.relative_minimum for f in self.elements]  # Default is 0, never None
+        values = [f.relative_minimum for f in self.elements.values()]  # Default is 0, never None
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
 
     @cached_property
     def relative_maximum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative upper bound on flow rate."""
-        values = [f.relative_maximum for f in self.elements]  # Default is 1, never None
+        values = [f.relative_maximum for f in self.elements.values()]  # Default is 1, never None
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
 
     @cached_property
     def fixed_relative_profile(self) -> xr.DataArray:
         """(flow, time, period, scenario) - fixed profile. NaN = not fixed."""
-        values = [f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements]
+        values = [
+            f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements.values()
+        ]
         return self._broadcast_to_model_coords(self._stack_bounds(values), dims=None)
 
     @cached_property
@@ -1641,7 +1638,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     def fixed_size(self) -> xr.DataArray:
         """(flow, period, scenario) - fixed size for non-investment flows. NaN for investment/no-size flows."""
         values = []
-        for f in self.elements:
+        for f in self.elements.values():
             if f.size is None or isinstance(f.size, InvestParameters):
                 values.append(np.nan)
             else:
@@ -1654,7 +1651,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     def size_minimum(self) -> xr.DataArray:
         """(flow, period, scenario) - minimum size. NaN for flows without size."""
         values = []
-        for f in self.elements:
+        for f in self.elements.values():
             if f.size is None:
                 values.append(np.nan)
             elif isinstance(f.size, InvestParameters):
@@ -1667,7 +1664,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     def size_maximum(self) -> xr.DataArray:
         """(flow, period, scenario) - maximum size. NaN for flows without size."""
         values = []
-        for f in self.elements:
+        for f in self.elements.values():
             if f.size is None:
                 values.append(np.nan)
             elif isinstance(f.size, InvestParameters):
@@ -1682,7 +1679,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     def investment_mandatory(self) -> xr.DataArray:
         """(flow,) bool - True if investment is mandatory, False if optional, NaN if no investment."""
         values = []
-        for f in self.elements:
+        for f in self.elements.values():
             if not isinstance(f.size, InvestParameters):
                 values.append(np.nan)
             else:
@@ -1693,13 +1690,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     def linked_periods(self) -> xr.DataArray | None:
         """(flow, period) - period linking mask. 1=linked, 0=not linked, NaN=no linking."""
         has_linking = any(
-            isinstance(f.size, InvestParameters) and f.size.linked_periods is not None for f in self.elements
+            isinstance(f.size, InvestParameters) and f.size.linked_periods is not None for f in self.elements.values()
         )
         if not has_linking:
             return None
 
         values = []
-        for f in self.elements:
+        for f in self.elements.values():
             if not isinstance(f.size, InvestParameters) or f.size.linked_periods is None:
                 values.append(np.nan)
             else:
@@ -1931,7 +1928,7 @@ class BusesModel(TypeModel):
         lhs_list = []
         rhs_list = []
 
-        for bus in self.elements:
+        for bus in self.elements.values():
             bus_label = bus.label_full
 
             # Get input flow IDs and output flow IDs for this bus
@@ -1967,7 +1964,7 @@ class BusesModel(TypeModel):
 
         # Stack into a single constraint with bus dimension
         # Note: For efficiency, we create one constraint per bus but they share a name prefix
-        for i, bus in enumerate(self.elements):
+        for i, bus in enumerate(self.elements.values()):
             lhs, rhs = lhs_list[i], rhs_list[i]
             # Skip if both sides are scalar zeros (no flows connected)
             if isinstance(lhs, (int, float)) and isinstance(rhs, (int, float)):
