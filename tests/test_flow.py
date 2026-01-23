@@ -843,8 +843,10 @@ class TestFlowOnInvestModel:
         assert 'flow|active_hours' in model.constraints
         assert 'flow|size|lb' in model.constraints
         assert 'flow|size|ub' in model.constraints
+        # When flow has both status AND investment, uses status+invest bounds
         assert 'flow|status+invest_ub1' in model.constraints
-        assert 'flow|invest_ub' in model.constraints
+        assert 'flow|status+invest_ub2' in model.constraints
+        assert 'flow|status+invest_lb' in model.constraints
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -893,8 +895,8 @@ class TestFlowOnInvestModel:
         # Investment
         assert_var_equal(size, model.add_variables(lower=0, upper=200, coords=model.get_coords(['period', 'scenario'])))
 
-        # Check rate/invest constraints exist
-        assert 'flow|invest_ub' in model.constraints
+        # Check rate/invest constraints exist (status+invest variants for flows with both)
+        assert 'flow|status+invest_ub2' in model.constraints  # rate <= size * rel_max
         assert 'flow|status+invest_lb' in model.constraints
 
     def test_flow_on_invest_non_optional(self, basic_flow_system_linopy_coords, coords_config):
@@ -926,8 +928,10 @@ class TestFlowOnInvestModel:
         # Verify batched constraints exist
         # Note: hours_eq constraint removed - hours computed inline now
         assert 'flow|active_hours' in model.constraints
+        # When flow has both status AND investment, uses status+invest bounds
         assert 'flow|status+invest_ub1' in model.constraints
-        assert 'flow|invest_ub' in model.constraints
+        assert 'flow|status+invest_ub2' in model.constraints
+        assert 'flow|status+invest_lb' in model.constraints
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -964,8 +968,8 @@ class TestFlowOnInvestModel:
             size, model.add_variables(lower=20, upper=200, coords=model.get_coords(['period', 'scenario']))
         )
 
-        # Check rate/invest constraints exist
-        assert 'flow|invest_ub' in model.constraints
+        # Check rate/invest constraints exist (status+invest variants for flows with both)
+        assert 'flow|status+invest_ub2' in model.constraints  # rate <= size * rel_max
         assert 'flow|status+invest_lb' in model.constraints
 
 
