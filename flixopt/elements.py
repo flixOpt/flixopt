@@ -1297,22 +1297,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         # Store created variables in our variables dict
         self._variables.update(status_vars)
 
-    def collect_effect_share_specs(self) -> dict[str, list[tuple[str, float | xr.DataArray]]]:
-        """Collect effect share specifications for all flows.
-
-        Returns:
-            Dict mapping effect_name to list of (element_id, factor) tuples.
-            Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
-        """
-        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]] = {}
-        for flow in self.elements.values():
-            if flow.effects_per_flow_hour:
-                for effect_name, factor in flow.effects_per_flow_hour.items():
-                    if effect_name not in effect_specs:
-                        effect_specs[effect_name] = []
-                    effect_specs[effect_name].append((flow.label_full, factor))
-        return effect_specs
-
     @property
     def startup(self) -> linopy.Variable | None:
         """Batched startup variable with (flow, time) dims, or None if no flows need startup tracking."""
