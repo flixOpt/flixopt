@@ -1219,14 +1219,14 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     # Investment effect properties are provided by InvestmentEffectsMixin
 
     @property
-    def status_effects_per_active_hour(self) -> xr.DataArray | None:
+    def effects_per_active_hour(self) -> xr.DataArray | None:
         """Combined effects_per_active_hour with (flow, effect) dims."""
-        return self.data.status_effects_per_active_hour
+        return self.data.effects_per_active_hour
 
     @property
-    def status_effects_per_startup(self) -> xr.DataArray | None:
+    def effects_per_startup(self) -> xr.DataArray | None:
         """Combined effects_per_startup with (flow, effect) dims."""
-        return self.data.status_effects_per_startup
+        return self.data.effects_per_startup
 
     def add_effect_contributions(self, effects_model) -> None:
         """Register effect contributions with EffectsModel.
@@ -1244,14 +1244,14 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         dt = self.model.timestep_duration
 
         # Effects per active hour: status * factor * dt
-        factor = self.data.status_effects_per_active_hour
+        factor = self.data.effects_per_active_hour
         if factor is not None:
             flow_ids = factor.coords[dim].values
             status_subset = self.status.sel({dim: flow_ids})
             effects_model.add_temporal_contribution((status_subset * factor.fillna(0) * dt).sum(dim))
 
         # Effects per startup: startup * factor
-        factor = self.data.status_effects_per_startup
+        factor = self.data.effects_per_startup
         if self.startup is not None and factor is not None:
             flow_ids = factor.coords[dim].values
             startup_subset = self.startup.sel({dim: flow_ids})

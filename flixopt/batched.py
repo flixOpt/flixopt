@@ -473,7 +473,7 @@ class FlowsData:
     # --- Status Effects ---
 
     @cached_property
-    def status_effects_per_active_hour(self) -> xr.DataArray | None:
+    def effects_per_active_hour(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per active hour for flows with status."""
         if not self.with_status:
             return None
@@ -491,7 +491,7 @@ class FlowsData:
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
 
     @cached_property
-    def status_effects_per_startup(self) -> xr.DataArray | None:
+    def effects_per_startup(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per startup for flows with status."""
         if not self.with_status:
             return None
