@@ -759,21 +759,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         return var
 
     @cached_property
-    def hours(self) -> linopy.Variable | None:
-        """(flow, period, scenario) - total flow hours variable for flows in with_flow_hours."""
-        if not self.data.with_flow_hours:
-            return None
-        var = self.model.add_variables(
-            lower=self.data.flow_hours_minimum,
-            upper=self.data.flow_hours_maximum,
-            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_flow_hours),
-            name=f'{self.dim_name}|hours',
-        )
-        self._variables['hours'] = var
-        self.model.variable_categories[var.name] = VariableCategory.TOTAL
-        return var
-
-    @cached_property
     def status(self) -> linopy.Variable | None:
         """(flow, time, ...) - binary status variable, or None if no flows have status."""
         if not self.data.with_status:
@@ -785,21 +770,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         )
         self._variables['status'] = var
         self.model.variable_categories[var.name] = VariableCategory.STATUS
-        return var
-
-    @cached_property
-    def hours_over_periods(self) -> linopy.Variable | None:
-        """(flow, scenario) - total hours over all periods, or None if not needed."""
-        if not self.data.with_flow_hours_over_periods:
-            return None
-        var = self.model.add_variables(
-            lower=self.data.flow_hours_minimum_over_periods,
-            upper=self.data.flow_hours_maximum_over_periods,
-            coords=self._build_coords(dims=('scenario',), element_ids=self.data.with_flow_hours_over_periods),
-            name=f'{self.dim_name}|hours_over_periods',
-        )
-        self._variables['hours_over_periods'] = var
-        self.model.variable_categories[var.name] = VariableCategory.TOTAL_OVER_PERIODS
         return var
 
     def create_variables(self) -> None:
