@@ -15,6 +15,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from .features import InvestmentHelpers, concat_with_coords
@@ -439,6 +440,11 @@ class FlowsData:
         """List of all flow IDs (label_full)."""
         return list(self.elements.keys())
 
+    @cached_property
+    def _ids_index(self) -> pd.Index:
+        """Cached pd.Index of flow IDs for fast DataArray creation."""
+        return pd.Index(self.ids)
+
     # === Flow Categorizations ===
     # All return list[str] of label_full IDs.
 
@@ -645,14 +651,16 @@ class FlowsData:
         """(flow, time, period, scenario) - effective lower bound (uses fixed_profile if set)."""
         fixed = self.fixed_relative_profile
         rel_min = self.relative_minimum
-        return xr.where(fixed.notnull(), fixed, rel_min)
+        # Use DataArray.where (faster than xr.where)
+        return rel_min.where(fixed.isnull(), fixed)
 
     @cached_property
     def effective_relative_maximum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - effective upper bound (uses fixed_profile if set)."""
         fixed = self.fixed_relative_profile
         rel_max = self.relative_maximum
-        return xr.where(fixed.notnull(), fixed, rel_max)
+        # Use DataArray.where (faster than xr.where)
+        return rel_max.where(fixed.isnull(), fixed)
 
     @cached_property
     def fixed_size(self) -> xr.DataArray:
@@ -716,13 +724,14 @@ class FlowsData:
         base = self.effective_relative_minimum * self.effective_size_lower
 
         # Build mask for flows that should have lb=0
-        flow_ids = xr.DataArray(self.ids, dims=['flow'], coords={'flow': self.ids})
+        flow_ids = xr.DataArray(self._ids_index, dims=['flow'], coords={'flow': self._ids_index})
         is_status = flow_ids.isin(self.with_status)
         is_optional_invest = flow_ids.isin(self.with_optional_investment)
         has_no_size = self.effective_size_lower.isnull()
 
         is_zero = is_status | is_optional_invest | has_no_size
-        return xr.where(is_zero, 0.0, base).fillna(0.0)
+        # Use DataArray.where (faster than xr.where)
+        return base.where(~is_zero, 0.0).fillna(0.0)
 
     @cached_property
     def absolute_upper_bounds(self) -> xr.DataArray:
@@ -736,8 +745,8 @@ class FlowsData:
         # Base: relative_max * size_upper
         base = self.effective_relative_maximum * self.effective_size_upper
 
-        # Inf for flows without size
-        return xr.where(self.effective_size_upper.isnull(), np.inf, base)
+        # Inf for flows without size (use DataArray.where, faster than xr.where)
+        return base.where(self.effective_size_upper.notnull(), np.inf)
 
     # --- Investment Bounds (delegated to InvestmentData) ---
 
@@ -975,7 +984,7 @@ class FlowsData:
 
             return xr.DataArray(
                 np.array(scalar_values),
-                coords={dim: self.ids},
+                coords={dim: self._ids_index},
                 dims=[dim],
             )
 
@@ -988,7 +997,7 @@ class FlowsData:
                 arr = xr.DataArray(val, coords={dim: [fid]}, dims=[dim])
             arrays_to_stack.append(arr)
 
-        return xr.concat(arrays_to_stack, dim=dim)
+        return xr.concat(arrays_to_stack, dim=dim, coords='minimal')
 
     def _broadcast_to_coords(
         self,
@@ -1007,8 +1016,8 @@ class FlowsData:
         if isinstance(arr, (int, float)):
             # Scalar - create array with flow dim first
             arr = xr.DataArray(
-                np.full(len(self.ids), arr),
-                coords={'flow': self.ids},
+                np.full(len(self._ids_index), arr),
+                coords={'flow': self._ids_index},
                 dims=['flow'],
             )
 
