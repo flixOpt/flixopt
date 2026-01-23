@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
-from .features import concat_with_coords
+from .features import InvestmentHelpers, concat_with_coords
 from .interface import InvestParameters, StatusParameters
 from .structure import ElementContainer
 
@@ -293,40 +293,37 @@ class InvestmentData:
 
     @cached_property
     def size_minimum(self) -> xr.DataArray:
-        """(element,) - minimum size for all investment elements.
+        """(element, [period, scenario]) - minimum size for all investment elements.
 
         For mandatory: minimum_or_fixed_size
         For optional: 0 (invested variable controls actual minimum)
         """
-        values = np.array(
-            [0 if not self._params[eid].mandatory else self._params[eid].minimum_or_fixed_size for eid in self._ids],
-            dtype=float,
-        )
-        return xr.DataArray(values, dims=[self._dim], coords={self._dim: self._ids})
+        bounds = [self._params[eid].minimum_or_fixed_size if self._params[eid].mandatory else 0.0 for eid in self._ids]
+        return InvestmentHelpers.stack_bounds(bounds, self._ids, self._dim)
 
     @cached_property
     def size_maximum(self) -> xr.DataArray:
-        """(element,) - maximum size for all investment elements."""
-        values = np.array([self._params[eid].maximum_or_fixed_size for eid in self._ids], dtype=float)
-        return xr.DataArray(values, dims=[self._dim], coords={self._dim: self._ids})
+        """(element, [period, scenario]) - maximum size for all investment elements."""
+        bounds = [self._params[eid].maximum_or_fixed_size for eid in self._ids]
+        return InvestmentHelpers.stack_bounds(bounds, self._ids, self._dim)
 
     @cached_property
     def optional_size_minimum(self) -> xr.DataArray | None:
-        """(element,) - minimum size for optional investment (used in: size >= min * invested)."""
+        """(element, [period, scenario]) - minimum size for optional investment."""
         ids = self.with_optional
         if not ids:
             return None
-        values = np.array([self._params[eid].minimum_or_fixed_size for eid in ids], dtype=float)
-        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+        bounds = [self._params[eid].minimum_or_fixed_size for eid in ids]
+        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
 
     @cached_property
     def optional_size_maximum(self) -> xr.DataArray | None:
-        """(element,) - maximum size for optional investment (used in: size <= max * invested)."""
+        """(element, [period, scenario]) - maximum size for optional investment."""
         ids = self.with_optional
         if not ids:
             return None
-        values = np.array([self._params[eid].maximum_or_fixed_size for eid in ids], dtype=float)
-        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+        bounds = [self._params[eid].maximum_or_fixed_size for eid in ids]
+        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
 
     @cached_property
     def linked_periods(self) -> xr.DataArray | None:
@@ -334,9 +331,8 @@ class InvestmentData:
         ids = self.with_linked_periods
         if not ids:
             return None
-        # This needs period coords - return raw values, FlowsData will broadcast
-        values = [self._params[eid].linked_periods for eid in ids]
-        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+        bounds = [self._params[eid].linked_periods for eid in ids]
+        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
 
     # === Effects ===
 
