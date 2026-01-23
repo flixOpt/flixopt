@@ -1557,6 +1557,7 @@ class FlowContainer(ContainerMixin[T]):
 
     Supports:
         - container['Boiler(Q_th)']  # label_full-based access
+        - container['Q_th']          # short-label access (when all flows share same component)
         - container[0]               # index-based access
         - container.add(flow)
         - for flow in container.values()
@@ -1565,7 +1566,8 @@ class FlowContainer(ContainerMixin[T]):
     Examples:
         >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
         >>> boiler.inputs[0]  # Index access
-        >>> boiler.inputs['Boiler(Q_th)']  # Label access
+        >>> boiler.inputs['Boiler(Q_th)']  # Full label access
+        >>> boiler.inputs['Q_th']  # Short label access (same component)
         >>> for flow in boiler.inputs.values():
         ...     print(flow.label_full)
     """
@@ -1575,10 +1577,12 @@ class FlowContainer(ContainerMixin[T]):
         return flow.label_full
 
     def __getitem__(self, key: str | int) -> T:
-        """Get flow by label_full (string) or index (int).
+        """Get flow by label_full, short label, or index.
 
         Args:
-            key: Either the flow's label_full (string) or index (int)
+            key: Flow's label_full (string), short label (string), or index (int).
+                Short label access (e.g., 'Q_th' instead of 'Boiler(Q_th)') is only
+                supported when all flows in the container belong to the same component.
 
         Returns:
             The Flow at the given key/index
@@ -1593,7 +1597,48 @@ class FlowContainer(ContainerMixin[T]):
                 return list(self.values())[key]
             except IndexError:
                 raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
-        return super().__getitem__(key)
+
+        # Try exact label_full match first
+        if dict.__contains__(self, key):
+            return super().__getitem__(key)
+
+        # Try short-label match if all flows share the same component
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                if dict.__contains__(self, full_key):
+                    return super().__getitem__(full_key)
+
+        # Key not found - raise with helpful message
+        raise KeyError(f"'{key}' not found in {self._element_type_name}")
+
+    def __contains__(self, key: object) -> bool:
+        """Check if key exists (supports label_full or short label).
+
+        Args:
+            key: Flow's label_full or short label
+
+        Returns:
+            True if the key matches a flow in the container
+        """
+        if not isinstance(key, str):
+            return False
+
+        # Try exact label_full match first
+        if dict.__contains__(self, key):
+            return True
+
+        # Try short-label match if all flows share the same component
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                return dict.__contains__(self, full_key)
+
+        return False
 
 
 T_element = TypeVar('T_element')

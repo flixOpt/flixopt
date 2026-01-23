@@ -122,12 +122,20 @@ class Component(Element):
         self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
         self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
 
-        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.all_flows}
-
     @property
     def all_flows(self) -> Iterator[Flow]:
         """Iterate over all flows (inputs and outputs) without creating intermediate containers."""
         return chain(self.inputs.values(), self.outputs.values())
+
+    @functools.cached_property
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer.
+
+        Supports access by label_full or short label:
+            component.flows['Boiler(Q_th)']  # Full label
+            component.flows['Q_th']          # Short label
+        """
+        return self.inputs + self.outputs
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
