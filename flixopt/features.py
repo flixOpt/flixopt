@@ -198,7 +198,7 @@ class InvestmentHelpers:
         bounds: list[float | xr.DataArray],
         element_ids: list[str],
         dim_name: str,
-    ) -> xr.DataArray | float:
+    ) -> xr.DataArray:
         """Stack per-element bounds into array with element dimension.
 
         Args:
@@ -207,7 +207,8 @@ class InvestmentHelpers:
             dim_name: Dimension name (e.g., 'flow', 'storage').
 
         Returns:
-            Stacked DataArray with element dimension, or scalar if all identical.
+            Stacked DataArray with element dimension. Always includes the
+            element dimension for consistent dimension handling.
         """
         # Extract scalar values from 0-d DataArrays or plain scalars
         scalar_values = []
@@ -223,12 +224,8 @@ class InvestmentHelpers:
             else:
                 scalar_values.append(float(b))
 
-        # Fast path: all scalars
+        # Fast path: all scalars - still return DataArray with element dim
         if not has_multidim:
-            unique_values = set(scalar_values)
-            if len(unique_values) == 1:
-                return scalar_values[0]  # Return scalar - linopy will broadcast
-
             return xr.DataArray(
                 np.array(scalar_values),
                 coords={dim_name: element_ids},

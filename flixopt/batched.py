@@ -27,6 +27,82 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 
+def stack_and_broadcast(
+    values: list[float | xr.DataArray],
+    element_ids: list[str] | pd.Index,
+    element_dim: str,
+    target_coords: dict[str, pd.Index | np.ndarray] | None = None,
+) -> xr.DataArray:
+    """Stack per-element values and broadcast to target coordinates.
+
+    Always returns a DataArray with element_dim as first dimension,
+    followed by target dimensions in the order provided.
+
+    Args:
+        values: Per-element values (scalars or DataArrays with any dims).
+        element_ids: Element IDs for the stacking dimension.
+        element_dim: Name of element dimension ('flow', 'storage', etc.).
+        target_coords: Coords to broadcast to (e.g., {'time': ..., 'period': ...}).
+            Order determines output dimension order after element_dim.
+
+    Returns:
+        DataArray with dims (element_dim, *target_dims) and all values broadcast
+        to the full shape.
+    """
+    if not isinstance(element_ids, pd.Index):
+        element_ids = pd.Index(element_ids)
+
+    target_coords = target_coords or {}
+
+    # Collect coords from input arrays (may have subset of target dims)
+    collected_coords: dict[str, Any] = {}
+    for v in values:
+        if isinstance(v, xr.DataArray) and v.ndim > 0:
+            for d in v.dims:
+                if d not in collected_coords:
+                    collected_coords[d] = v.coords[d].values
+
+    # Merge: target_coords take precedence, add any from collected
+    final_coords = dict(target_coords)
+    for d, c in collected_coords.items():
+        if d not in final_coords:
+            final_coords[d] = c
+
+    # Build full shape: (n_elements, *target_dims)
+    n_elements = len(element_ids)
+    extra_dims = list(final_coords.keys())
+    extra_shape = [len(c) for c in final_coords.values()]
+    full_shape = [n_elements] + extra_shape
+    full_dims = [element_dim] + extra_dims
+
+    # Pre-allocate with NaN
+    data = np.full(full_shape, np.nan)
+
+    # Create template for broadcasting (if we have extra dims)
+    template = xr.DataArray(coords=final_coords, dims=extra_dims) if final_coords else None
+
+    # Fill in values
+    for i, v in enumerate(values):
+        if isinstance(v, xr.DataArray):
+            if v.ndim == 0:
+                data[i, ...] = float(v.values)
+            elif template is not None:
+                # Broadcast to template shape
+                broadcasted = v.broadcast_like(template)
+                data[i, ...] = broadcasted.values
+            else:
+                data[i, ...] = v.values
+        elif not (isinstance(v, float) and np.isnan(v)):
+            data[i, ...] = float(v)
+        # else: leave as NaN
+
+    # Build coords with element_dim first
+    full_coords = {element_dim: element_ids}
+    full_coords.update(final_coords)
+
+    return xr.DataArray(data, coords=full_coords, dims=full_dims)
+
+
 class StatusData:
     """Batched access to StatusParameters for a group of elements.
 
@@ -579,7 +655,8 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].flow_hours_min for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def flow_hours_maximum(self) -> xr.DataArray | None:
@@ -588,7 +665,8 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].flow_hours_max for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
@@ -597,7 +675,8 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].flow_hours_min_over_periods for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
@@ -606,7 +685,8 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].flow_hours_max_over_periods for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def load_factor_minimum(self) -> xr.DataArray | None:
@@ -615,7 +695,8 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].load_factor_min for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def load_factor_maximum(self) -> xr.DataArray | None:
@@ -624,19 +705,22 @@ class FlowsData:
         if not flow_ids:
             return None
         values = [self[fid].load_factor_max for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def relative_minimum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative lower bound on flow rate."""
         values = [f.relative_minimum for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=None)
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(None))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def relative_maximum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative upper bound on flow rate."""
         values = [f.relative_maximum for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=None)
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(None))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def fixed_relative_profile(self) -> xr.DataArray:
@@ -644,7 +728,8 @@ class FlowsData:
         values = [
             f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements.values()
         ]
-        return self._broadcast_to_coords(self._stack_values(values), dims=None)
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(None))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def effective_relative_minimum(self) -> xr.DataArray:
@@ -671,7 +756,8 @@ class FlowsData:
                 values.append(np.nan)
             else:
                 values.append(f.size)
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def effective_size_lower(self) -> xr.DataArray:
@@ -689,7 +775,8 @@ class FlowsData:
                 values.append(f.size.minimum_or_fixed_size)
             else:
                 values.append(f.size)
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def effective_size_upper(self) -> xr.DataArray:
@@ -707,7 +794,8 @@ class FlowsData:
                 values.append(f.size.maximum_or_fixed_size)
             else:
                 values.append(f.size)
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(['period', 'scenario']))
+        return self._ensure_canonical_order(arr)
 
     @cached_property
     def absolute_lower_bounds(self) -> xr.DataArray:
@@ -755,8 +843,9 @@ class FlowsData:
         """(flow, period, scenario) - minimum size for flows with investment."""
         if not self._investment_data:
             return None
+        # InvestmentData.size_minimum already has flow dim via InvestmentHelpers.stack_bounds
         raw = self._investment_data.size_minimum
-        return self._broadcast_investment_bounds(raw, self.with_investment, dims=['period', 'scenario'])
+        return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
     @property
     def investment_size_maximum(self) -> xr.DataArray | None:
@@ -764,17 +853,17 @@ class FlowsData:
         if not self._investment_data:
             return None
         raw = self._investment_data.size_maximum
-        return self._broadcast_investment_bounds(raw, self.with_investment, dims=['period', 'scenario'])
+        return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
     @property
     def optional_investment_size_minimum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - minimum size for optional investment flows."""
-        if not self._investment_data or not self._investment_data.optional_size_minimum is not None:
+        if not self._investment_data:
             return None
         raw = self._investment_data.optional_size_minimum
         if raw is None:
             return None
-        return self._broadcast_investment_bounds(raw, self.with_optional_investment, dims=['period', 'scenario'])
+        return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
     @property
     def optional_investment_size_maximum(self) -> xr.DataArray | None:
@@ -784,7 +873,7 @@ class FlowsData:
         raw = self._investment_data.optional_size_maximum
         if raw is None:
             return None
-        return self._broadcast_investment_bounds(raw, self.with_optional_investment, dims=['period', 'scenario'])
+        return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:
@@ -862,7 +951,8 @@ class FlowsData:
                 values.append(np.nan)
             else:
                 values.append(f.size.linked_periods)
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period'])
+        arr = stack_and_broadcast(values, self.ids, 'flow', self._model_coords(['period']))
+        return self._ensure_canonical_order(arr)
 
     # --- Status Effects (delegated to StatusData) ---
 
@@ -941,162 +1031,30 @@ class FlowsData:
 
     # === Helper Methods ===
 
-    def _stack_values_for_subset(
-        self, flow_ids: list[str], values: list, dims: list[str] | None = None
-    ) -> xr.DataArray | None:
-        """Stack values for a subset of flows and broadcast to coords.
+    def _model_coords(self, dims: list[str] | None = None) -> dict[str, pd.Index | np.ndarray]:
+        """Get model coordinates for broadcasting.
 
         Args:
-            flow_ids: List of flow IDs to include.
-            values: List of values corresponding to flow_ids.
-            dims: Model dimensions to broadcast to. None = all (time, period, scenario).
+            dims: Dimensions to include. None = all (time, period, scenario).
 
         Returns:
-            DataArray with flow dimension, or None if flow_ids is empty.
+            Dict of dim name -> coordinate values.
         """
-        if not flow_ids:
-            return None
-
-        dim = 'flow'
-
-        # Check for multi-dimensional values
-        has_multidim = any(isinstance(v, xr.DataArray) and v.ndim > 0 for v in values)
-
-        if not has_multidim:
-            # Fast path: all scalars
-            scalar_values = [float(v.values) if isinstance(v, xr.DataArray) else float(v) for v in values]
-            arr = xr.DataArray(
-                np.array(scalar_values),
-                coords={dim: flow_ids},
-                dims=[dim],
-            )
-        else:
-            # Slow path: concat multi-dimensional arrays
-            arrays_to_stack = []
-            for val, fid in zip(values, flow_ids, strict=True):
-                if isinstance(val, xr.DataArray):
-                    arr_item = val.expand_dims({dim: [fid]})
-                else:
-                    arr_item = xr.DataArray(val, coords={dim: [fid]}, dims=[dim])
-                arrays_to_stack.append(arr_item)
-            arr = xr.concat(arrays_to_stack, dim=dim)
-
-        return self._broadcast_to_coords(arr, dims=dims)
-
-    def _stack_values(self, values: list) -> xr.DataArray | float:
-        """Stack per-element values into array with flow dimension.
-
-        Returns scalar if all values are identical scalars.
-        Uses broadcast_like pattern to handle heterogeneous shapes.
-        """
-        dim = 'flow'
-
-        # Classify values and collect target coords
-        scalar_values = []
-        target_coords: dict[str, Any] = {}
-        has_multidim = False
-
-        for v in values:
-            if isinstance(v, xr.DataArray):
-                if v.ndim == 0:
-                    scalar_values.append(float(v.values))
-                else:
-                    has_multidim = True
-                    # Collect coords from all arrays
-                    for d in v.dims:
-                        if d not in target_coords:
-                            target_coords[d] = v.coords[d].values
-            else:
-                scalar_values.append(float(v) if not (isinstance(v, float) and np.isnan(v)) else np.nan)
-
-        # Fast path: all scalars
-        if not has_multidim:
-            unique_values = set(v for v in scalar_values if not (isinstance(v, float) and np.isnan(v)))
-            nan_count = sum(1 for v in scalar_values if isinstance(v, float) and np.isnan(v))
-            if len(unique_values) == 1 and nan_count == 0:
-                return list(unique_values)[0]
-
-            return xr.DataArray(
-                np.array(scalar_values),
-                coords={dim: self._ids_index},
-                dims=[dim],
-            )
-
-        # Create template for broadcasting (without flow dim - that's added by stacking)
-        template = xr.DataArray(coords=target_coords, dims=list(target_coords.keys()))
-
-        # Build full shape: (n_flows, *extra_dims)
-        n_flows = len(values)
-        extra_dims = list(target_coords.keys())
-        extra_shape = [len(c) for c in target_coords.values()]
-        full_shape = [n_flows] + extra_shape
-        full_dims = [dim] + extra_dims
-
-        # Pre-allocate with NaN
-        data = np.full(full_shape, np.nan)
-
-        # Fill in values, broadcasting each to template shape
-        for i, v in enumerate(values):
-            if isinstance(v, xr.DataArray):
-                if v.ndim == 0:
-                    data[i, ...] = float(v.values)
-                else:
-                    # Broadcast to template shape
-                    broadcasted = v.broadcast_like(template)
-                    data[i, ...] = broadcasted.values
-            elif not (isinstance(v, float) and np.isnan(v)):
-                data[i, ...] = float(v)
-            # else: leave as NaN
-
-        # Build coords with flow first
-        full_coords = {dim: self._ids_index}
-        full_coords.update(target_coords)
-
-        return xr.DataArray(data, coords=full_coords, dims=full_dims)
-
-    def _broadcast_investment_bounds(
-        self,
-        arr: xr.DataArray | float,
-        element_ids: list[str],
-        dims: list[str] | None,
-    ) -> xr.DataArray:
-        """Broadcast investment bounds to include model coordinates.
-
-        Unlike _broadcast_to_coords, this uses the provided element_ids for scalars
-        instead of all flow IDs.
-
-        Args:
-            arr: Array with flow dimension (or scalar).
-            element_ids: List of element IDs to use for scalar broadcasting.
-            dims: Model dimensions to include.
-
-        Returns:
-            DataArray with dimensions in canonical order: (flow, time, period, scenario)
-        """
-        if isinstance(arr, (int, float)):
-            # Scalar - create array with specified element IDs
-            arr = xr.DataArray(
-                np.full(len(element_ids), arr),
-                coords={'flow': pd.Index(element_ids)},
-                dims=['flow'],
-            )
-
-        # Get model coordinates from FlowSystem.indexes
         if dims is None:
             dims = ['time', 'period', 'scenario']
-
         indexes = self._fs.indexes
-        coords_to_add = {dim: indexes[dim] for dim in dims if dim in indexes}
+        return {dim: indexes[dim] for dim in dims if dim in indexes}
 
-        if not coords_to_add:
-            return arr
+    def _ensure_canonical_order(self, arr: xr.DataArray) -> xr.DataArray:
+        """Ensure array has canonical dimension order and coord dict order.
 
-        # Broadcast to include new dimensions
-        for dim_name, coord in coords_to_add.items():
-            if dim_name not in arr.dims:
-                arr = arr.expand_dims({dim_name: coord})
+        Args:
+            arr: Input DataArray.
 
-        # Enforce canonical dimension order: (flow, time, period, scenario)
+        Returns:
+            DataArray with dims in order (flow, time, period, scenario) and
+            coords dict matching dims order.
+        """
         canonical_order = ['flow', 'time', 'period', 'scenario']
         actual_dims = [d for d in canonical_order if d in arr.dims]
         if list(arr.dims) != actual_dims:
@@ -1109,55 +1067,29 @@ class FlowsData:
 
         return arr
 
-    def _broadcast_to_coords(
-        self,
-        arr: xr.DataArray | float,
-        dims: list[str] | None,
-    ) -> xr.DataArray:
-        """Broadcast array to include model coordinates.
+    def _broadcast_existing(self, arr: xr.DataArray, dims: list[str] | None = None) -> xr.DataArray:
+        """Broadcast an existing DataArray (with element dim) to model coordinates.
+
+        Use this for arrays that already have the flow dimension (e.g., from InvestmentData).
 
         Args:
-            arr: Array with flow dimension (or scalar).
-            dims: Model dimensions to include. None = all (time, period, scenario).
+            arr: DataArray with flow dimension.
+            dims: Model dimensions to add. None = all (time, period, scenario).
 
         Returns:
             DataArray with dimensions in canonical order: (flow, time, period, scenario)
         """
-        if isinstance(arr, (int, float)):
-            # Scalar - create array with flow dim first
-            arr = xr.DataArray(
-                np.full(len(self._ids_index), arr),
-                coords={'flow': self._ids_index},
-                dims=['flow'],
-            )
-
-        # Get model coordinates from FlowSystem.indexes
-        if dims is None:
-            dims = ['time', 'period', 'scenario']
-
-        indexes = self._fs.indexes
-        coords_to_add = {dim: indexes[dim] for dim in dims if dim in indexes}
+        coords_to_add = self._model_coords(dims)
 
         if not coords_to_add:
-            return arr
+            return self._ensure_canonical_order(arr)
 
         # Broadcast to include new dimensions
         for dim_name, coord in coords_to_add.items():
             if dim_name not in arr.dims:
                 arr = arr.expand_dims({dim_name: coord})
 
-        # Enforce canonical dimension order: (flow, time, period, scenario)
-        canonical_order = ['flow', 'time', 'period', 'scenario']
-        actual_dims = [d for d in canonical_order if d in arr.dims]
-        if list(arr.dims) != actual_dims:
-            arr = arr.transpose(*actual_dims)
-
-        # Ensure coords dict order matches dims order (linopy uses coords order)
-        if list(arr.coords.keys()) != list(arr.dims):
-            ordered_coords = {d: arr.coords[d] for d in arr.dims}
-            arr = xr.DataArray(arr.values, dims=arr.dims, coords=ordered_coords)
-
-        return arr
+        return self._ensure_canonical_order(arr)
 
 
 class BatchedAccessor:
