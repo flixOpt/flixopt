@@ -565,6 +565,9 @@ class FlowsData:
         Args:
             arr: Array with flow dimension (or scalar).
             dims: Model dimensions to include. None = all (time, period, scenario).
+
+        Returns:
+            DataArray with dimensions in canonical order: (flow, time, period, scenario)
         """
         if isinstance(arr, (int, float)):
             # Scalar - create array with flow dim first
@@ -588,6 +591,12 @@ class FlowsData:
         for dim_name, coord in coords_to_add.items():
             if dim_name not in arr.dims:
                 arr = arr.expand_dims({dim_name: coord})
+
+        # Enforce canonical dimension order: (flow, time, period, scenario)
+        canonical_order = ['flow', 'time', 'period', 'scenario']
+        actual_dims = [d for d in canonical_order if d in arr.dims]
+        if list(arr.dims) != actual_dims:
+            arr = arr.transpose(*actual_dims)
 
         return arr
 
