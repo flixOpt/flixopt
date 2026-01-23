@@ -907,11 +907,10 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         # Group flow IDs by their constraint type
         status_set = set(self.data.with_status)
         investment_set = set(self.data.with_investment)
+        without_size_set = set(self.data.without_size)
 
         # 1. Status only (no investment) - exclude flows with size=None (bounds come from converter)
-        status_only_ids = [
-            fid for fid in self.data.with_status if fid not in investment_set and self.data[fid].size is not None
-        ]
+        status_only_ids = [fid for fid in status_set - investment_set - without_size_set]
         if status_only_ids:
             self._constraint_status_bounds(status_only_ids)
 
@@ -925,8 +924,32 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         if both_ids:
             self._constraint_status_investment_bounds(both_ids)
 
-    def _constraint_status_bounds(self, flow_ids: list[str]) -> None:
-        """rate <= status * size * relative_max, rate >= status * epsilon."""
+    def _constraint_investment_bounds(self) -> None:
+        """
+        Case: With investment, without status.
+        rate <= size * relative_max, rate >= size * relative_min."""
+        flow_ids = sorted([fid for fid in set(self.data.with_investment) - set(self.data.with_status)])
+        dim = self.dim_name
+        flow_rate = self.rate.sel({dim: flow_ids})
+        size = self._variables['size'].sel({dim: flow_ids})
+
+        # Get effective relative bounds for the subset
+        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
+
+        # Upper bound: rate <= size * relative_max
+        self.add_constraints(flow_rate <= size * rel_max, name='rate|invest_ub')
+
+        # Lower bound: rate >= size * relative_min
+        self.add_constraints(flow_rate >= size * rel_min, name='rate|invest_lb')
+
+    def _constraint_status_bounds(self) -> None:
+        """
+        Case: With status, without investment.
+        rate <= status * size * relative_max, rate >= status * epsilon."""
+        flow_ids = sorted(
+            [fid for fid in set(self.data.with_status) - set(self.data.with_investment) - set(self.data.without_size)]
+        )
         dim = self.dim_name
         flow_rate = self.rate.sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
@@ -938,27 +961,11 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         # Upper bound: rate <= status * size * relative_max
         upper_bounds = rel_max * size
-        self.add_constraints(flow_rate <= status * upper_bounds, name='rate_status_ub')
+        self.add_constraints(flow_rate <= status * upper_bounds, name='rate|status_ub')
 
         # Lower bound: rate >= status * max(epsilon, size * relative_min)
         lower_bounds = np.maximum(CONFIG.Modeling.epsilon, rel_min * size)
-        self.add_constraints(flow_rate >= status * lower_bounds, name='rate_status_lb')
-
-    def _constraint_investment_bounds(self, flow_ids: list[str]) -> None:
-        """rate <= size * relative_max, rate >= size * relative_min."""
-        dim = self.dim_name
-        flow_rate = self.rate.sel({dim: flow_ids})
-        size = self._variables['size'].sel({dim: flow_ids})
-
-        # Get effective relative bounds for the subset
-        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
-        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
-
-        # Upper bound: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='rate_invest_ub')
-
-        # Lower bound: rate >= size * relative_min
-        self.add_constraints(flow_rate >= size * rel_min, name='rate_invest_lb')
+        self.add_constraints(flow_rate >= status * lower_bounds, name='rate|status_lb')
 
     def _constraint_status_investment_bounds(self, flow_ids: list[str]) -> None:
         """Bounds for flows with both status and investment.
@@ -968,6 +975,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         2. rate <= size * rel_max: limits rate by actual invested size
         3. rate >= (status - 1) * M + size * rel_min: enforces minimum when status=1
         """
+        flow_ids = sorted([fid for fid in set(self.data.with_investment) & set(self.data.with_status)])
         dim = self.dim_name
         flow_rate = self.rate.sel({dim: flow_ids})
         size = self._variables['size'].sel({dim: flow_ids})
@@ -980,10 +988,10 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max
-        self.add_constraints(flow_rate <= status * big_m_upper, name='rate_status_invest_ub')
+        self.add_constraints(flow_rate <= status * big_m_upper, name='rate|status_invest_ub')
 
         # Upper bound 2: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='rate_invest_ub')
+        self.add_constraints(flow_rate <= size * rel_max, name='rate|invest_ub')
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
         big_m_lower = max_size * rel_min

@@ -76,6 +76,11 @@ class FlowsData:
         return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
 
     @cached_property
+    def without_size(self) -> list[str]:
+        """IDs of flows with status parameters."""
+        return [f.label_full for f in self.elements.values() if f.size is None]
+
+    @cached_property
     def with_investment(self) -> list[str]:
         """IDs of flows with investment parameters."""
         return [f.label_full for f in self.elements.values() if isinstance(f.size, InvestParameters)]
