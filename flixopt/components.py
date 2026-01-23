@@ -13,9 +13,10 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
+from .batched import InvestmentData
 from .core import PlausibilityError
 from .elements import Component, Flow
-from .features import InvestmentEffectsMixin, MaskHelpers, concat_with_coords
+from .features import MaskHelpers, concat_with_coords
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import ElementType, FlowSystemModel, TypeModel, VariableCategory, register_class_for_io
@@ -756,7 +757,7 @@ class Transmission(Component):
         self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
 
 
-class StoragesModel(InvestmentEffectsMixin, TypeModel):
+class StoragesModel(TypeModel):
     """Type-level model for ALL basic (non-intercluster) storages in a FlowSystem.
 
     Unlike StorageModel (one per Storage instance), StoragesModel handles ALL
@@ -850,6 +851,55 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
     def mandatory_investment_ids(self) -> list[str]:
         """Alias for with_mandatory_investment (legacy)."""
         return self.with_mandatory_investment
+
+    # --- Investment Data and Effect Properties ---
+
+    @functools.cached_property
+    def _investment_data(self) -> InvestmentData | None:
+        """Batched investment data for storages with investment."""
+        if not self.with_investment:
+            return None
+        # Build params dict from capacity_in_flow_hours
+        params = {
+            s.label_full: s.capacity_in_flow_hours
+            for s in self.elements.values()
+            if s.label_full in self.with_investment
+        }
+        return InvestmentData(
+            params=params,
+            dim_name=self.dim_name,
+            effect_ids=list(self.model.flow_system.effects.keys()),
+        )
+
+    @property
+    def effects_per_size(self) -> xr.DataArray | None:
+        """(storage, effect) - effects per unit size."""
+        inv = self._investment_data
+        return inv.effects_per_size if inv else None
+
+    @property
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """(storage, effect) - fixed effects of investment (optional only)."""
+        inv = self._investment_data
+        return inv.effects_of_investment if inv else None
+
+    @property
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """(storage, effect) - effects of retirement (optional only)."""
+        inv = self._investment_data
+        return inv.effects_of_retirement if inv else None
+
+    @property
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
+        inv = self._investment_data
+        return inv.effects_of_investment_mandatory if inv else []
+
+    @property
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        inv = self._investment_data
+        return inv.effects_of_retirement_constant if inv else []
 
     # --- Investment Cached Properties ---
 
@@ -1445,7 +1495,7 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
             return var.sel({self.dim_name: element_id})
         return var
 
-    # Investment effect properties are provided by InvestmentEffectsMixin
+    # Investment effect properties are defined above, delegating to _investment_data
 
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for storages with piecewise_effects_of_investment.
