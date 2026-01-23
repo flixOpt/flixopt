@@ -978,7 +978,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         flow_ids = sorted([fid for fid in set(self.data.with_investment) & set(self.data.with_status)])
         dim = self.dim_name
         flow_rate = self.rate.sel({dim: flow_ids})
-        size = self._variables['size'].sel({dim: flow_ids})
+        size = self.size.sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
 
         # Get effective relative bounds and effective_size_upper for the subset
@@ -988,15 +988,15 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max
-        self.add_constraints(flow_rate <= status * big_m_upper, name='rate|status_invest_ub')
+        self.add_constraints(flow_rate <= status * big_m_upper, name='flow|status+invest_ub1')
 
         # Upper bound 2: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='rate|invest_ub')
+        self.add_constraints(flow_rate <= size * rel_max, name='flow|status+invest_ub2')
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
         big_m_lower = max_size * rel_min
         rhs = (status - 1) * big_m_lower + size * rel_min
-        self.add_constraints(flow_rate >= rhs, name='rate_status_invest_lb')
+        self.add_constraints(flow_rate >= rhs, name='flow|status+invest_lb')
 
     def create_investment_model(self) -> None:
         """Create investment variables and constraints for flows with investment.
