@@ -1736,7 +1736,7 @@ class InterclusterStoragesModel:
         # Bounds: -capacity <= ΔE <= capacity
         lowers = []
         uppers = []
-        for storage in self.elements.values():
+        for storage in self.elements:
             if storage.capacity_in_flow_hours is None:
                 lowers.append(-np.inf)
                 uppers.append(np.inf)
@@ -1776,7 +1776,7 @@ class InterclusterStoragesModel:
         # Compute bounds per storage
         lowers = []
         uppers = []
-        for storage in self.elements.values():
+        for storage in self.elements:
             cap_bounds = extract_capacity_bounds(storage.capacity_in_flow_hours, boundary_coords_dict, boundary_dims)
             lowers.append(cap_bounds.lower)
             uppers.append(cap_bounds.upper)
@@ -1819,8 +1819,8 @@ class InterclusterStoragesModel:
         flow_rate = self._flows_model._variables['rate']
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
 
-        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
+        charge_flow_ids = [s.charging.label_full for s in self.elements]
+        discharge_flow_ids = [s.discharging.label_full for s in self.elements]
 
         # Select and rename to match storage dimension
         charge_rates = flow_rate.sel({flow_dim: charge_flow_ids})
@@ -1844,7 +1844,7 @@ class InterclusterStoragesModel:
         dim = self.dim_name
 
         # Add constraint per storage (dimension alignment is complex in clustered systems)
-        for storage in self.elements.values():
+        for storage in self.elements:
             cs = charge_state.sel({dim: storage.label_full})
             charge_rate = self._flows_model.get_variable('rate', storage.charging.label_full)
             discharge_rate = self._flows_model.get_variable('rate', storage.discharging.label_full)
@@ -1894,7 +1894,7 @@ class InterclusterStoragesModel:
 
         # Build decay factors per storage
         decay_factors = []
-        for storage in self.elements.values():
+        for storage in self.elements:
             rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
             total_hours = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'sum')
             decay = (1 - rel_loss) ** total_hours
@@ -1921,7 +1921,7 @@ class InterclusterStoragesModel:
         initial_fixed_ids = []
         initial_values = []
 
-        for storage in self.elements.values():
+        for storage in self.elements:
             if storage.cluster_mode == 'intercluster_cyclic':
                 cyclic_ids.append(storage.label_full)
             else:
@@ -1976,7 +1976,7 @@ class InterclusterStoragesModel:
 
             # Build decay factors per storage
             decay_factors = []
-            for storage in self.elements.values():
+            for storage in self.elements:
                 rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
                 mean_dt = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'mean')
                 hours_offset = offset * mean_dt
@@ -2006,7 +2006,7 @@ class InterclusterStoragesModel:
         fixed_ids = []
         fixed_caps = []
 
-        for storage in self.elements.values():
+        for storage in self.elements:
             if isinstance(storage.capacity_in_flow_hours, InvestParameters):
                 invest_ids.append(storage.label_full)
             elif storage.capacity_in_flow_hours is not None:

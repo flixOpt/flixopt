@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from .features import concat_with_coords
 from .interface import InvestParameters, StatusParameters
 from .structure import ElementContainer
 
@@ -97,6 +98,11 @@ class FlowsData:
             for f in self.elements.values()
             if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
         ]
+
+    @cached_property
+    def with_effects(self) -> list[str]:
+        """IDs of flows with effects_per_flow_hour defined."""
+        return [f.label_full for f in self.elements.values() if f.effects_per_flow_hour]
 
     # === Parameter Dicts ===
 
@@ -226,6 +232,38 @@ class FlowsData:
                 values.append(f.size)
         return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
 
+    @cached_property
+    def effects_per_flow_hour(self) -> xr.DataArray | None:
+        """(flow, effect, ...) - effect factors per flow hour.
+
+        Missing (flow, effect) combinations are NaN - the xarray convention for
+        missing data. This distinguishes "no effect defined" from "effect is zero".
+
+        Use `.fillna(0)` to fill for computation, `.notnull()` as mask.
+        """
+        if not self.with_effects:
+            return None
+
+        effect_ids = list(self._fs.effects.keys())
+        if not effect_ids:
+            return None
+
+        flow_ids = self.with_effects
+
+        # Use np.nan for missing effects (not 0!) to distinguish "not defined" from "zero"
+        # Use coords='minimal' to handle dimension mismatches (some effects may have 'time', some scalars)
+        flow_factors = [
+            xr.concat(
+                [xr.DataArray(self[fid].effects_per_flow_hour.get(eff, np.nan)) for eff in effect_ids],
+                dim='effect',
+                coords='minimal',
+            ).assign_coords(effect=effect_ids)
+            for fid in flow_ids
+        ]
+
+        # Use coords='minimal' to handle dimension mismatches (some effects may have 'period', some don't)
+        return concat_with_coords(flow_factors, 'flow', flow_ids)
+
     # === Helper Methods ===
 
     def _stack_values(self, values: list) -> xr.DataArray | float:
@@ -292,17 +330,12 @@ class FlowsData:
                 dims=['flow'],
             )
 
-        # Get model coordinates
+        # Get model coordinates from FlowSystem.indexes
         if dims is None:
             dims = ['time', 'period', 'scenario']
 
-        coords_to_add = {}
-        if 'time' in dims and self._fs.timesteps is not None:
-            coords_to_add['time'] = self._fs.timesteps
-        if 'period' in dims and self._fs.periods is not None:
-            coords_to_add['period'] = self._fs.periods
-        if 'scenario' in dims and self._fs.scenarios is not None:
-            coords_to_add['scenario'] = self._fs.scenarios
+        indexes = self._fs.indexes
+        coords_to_add = {dim: indexes[dim] for dim in dims if dim in indexes}
 
         if not coords_to_add:
             return arr
